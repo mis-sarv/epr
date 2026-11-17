@@ -1721,14 +1721,20 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
   const saveMaintInfo = async () => {
     setErr("");
     if (!miAction) return setErr("Choose the Action Type.");
-    if (!miItem) return setErr("Choose the item from Item Master.");
-    const qty = Number(miQty);
-    if (!miQty || !isFinite(qty) || qty <= 0) return setErr("Enter the quantity consumed (more than 0).");
+    /* Item and quantity are compulsory except for Repair, where nothing may
+       have been consumed. If either is given for a Repair, both are (an item
+       without a quantity, or a quantity without an item, says nothing). */
+    const qty = miQty === "" ? null : Number(miQty);
+    const optional = miAction === "Repair" && !miItem && qty == null;
+    if (!optional){
+      if (!miItem) return setErr("Choose the item from Item Master.");
+      if (qty == null || !isFinite(qty) || qty <= 0) return setErr("Enter the quantity consumed (more than 0).");
+    }
     if (!miPhoto) return setErr("The live photo is required.");
     setBusy(true);
     const { data, error } = await sb.rpc("cmp_maint_info_save", {
       p_domain: D.key, p_complaint_id: String(c.id), p_action_type: miAction,
-      p_item_id: String(miItem.id), p_qty: qty, p_photo: miPhoto,
+      p_item_id: optional ? null : String(miItem.id), p_qty: optional ? null : qty, p_photo: miPhoto,
     });
     setBusy(false);
     if (error) return setErr(/cmp_maint_info_save|schema cache|does not exist/i.test(error.message || "")
@@ -2032,8 +2038,8 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
                    className="w-20 h-20 rounded-lg object-cover border-2 border-orange-300 cursor-zoom-in shrink-0" />
               <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 min-w-0 grow">
                 <Row k="Action Type" v={<span className="font-semibold">{m.action_type}</span>} />
-                <Row k="Qty Consumed" v={<span className="font-semibold">{m.qty} {m.uom || ""}</span>} />
-                <Row k="Item" v={m.item_name} />
+                <Row k="Qty Consumed" v={<span className="font-semibold">{m.qty != null ? `${m.qty} ${m.uom || ""}` : "—"}</span>} />
+                <Row k="Item" v={m.item_name || "—"} />
                 <Row k="Filled by" v={`${m.by_name || "—"} · ${fmtDateTime(m.updated_at || m.created_at)}`} />
               </div>
             </div>
@@ -2054,14 +2060,14 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
               {MI_ACTIONS.map(a => <option key={a} value={a}>{a}</option>)}
             </select>
           </Field>
-          <Field label="Item Name" hindi="आइटम" required hint="From Item Master. Type a few letters of the name or code.">
+          <Field label="Item Name" hindi="आइटम" required={miAction !== "Repair"} hint={miAction === "Repair" ? "Optional for Repair. From Item Master; if you choose one, enter the quantity too." : "From Item Master. Type a few letters of the name or code."}>
             <ItemPicker items={miItems} value={miItem ? miItem.id : ""} onPick={setMiItem} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Item UOM" hindi="यूनिट">
               <input className={inputCls(false)+" bg-slate-100"} value={miItem ? (miItem.uom || "—") : ""} readOnly placeholder="From the item" />
             </Field>
-            <Field label="Quantity Consumed" hindi="कितना लगा" required>
+            <Field label="Quantity Consumed" hindi="कितना लगा" required={miAction !== "Repair"}>
               <input type="number" inputMode="decimal" min="0" step="any" className={inputCls(false)} value={miQty}
                      onChange={e=>setMiQty(e.target.value.replace(/[^0-9.]/g, ""))} placeholder="0" />
             </Field>

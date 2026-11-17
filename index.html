@@ -731,9 +731,9 @@
                         <option value="ISSUE">&nbsp;&nbsp;↳ ISSUE</option>
                     </select>
 
-                    <!-- Record status filter (RECORD STATUS section in store-core.js; options filled from SRS_STATUSES) -->
-                    <select class="form-control" id="searchStatusFilter" title="Record status (set in Preview)"
-                        style="width:130px; font-weight:600; color:#0f172a; flex-shrink:0;">
+                    <!-- Bill check pipeline filter (CHECK PIPELINE section in store-core.js; options filled by scsFillFilter_) -->
+                    <select class="form-control" id="searchStatusFilter" title="Bill check status (GM, EA, MD-1, MD-2, Accounts, Debit Note; checked in Preview)"
+                        style="width:150px; font-weight:600; color:#0f172a; flex-shrink:0;">
                         <option value="ALL">All Status</option>
                     </select>
 
@@ -786,8 +786,8 @@
                         <thead>
                             <tr>
                                 <th style="width:5%;">Type</th>
-                                <th style="width:7%; text-align:center;">Status</th>
-                                <th style="width:13%;">Record No.</th>
+                                <th style="width:15%; text-align:center;" title="Bill check pipeline: GM > EA > MD-1 > MD-2 > Accounts, then Debit Note">Bill Check</th>
+                                <th style="width:11%;">Record No.</th>
                                 <th style="width:10%;">Invoice No.</th>
                                 <th style="width:8%;">Date</th>
                                 <th style="width:12%;">Party / Supplier</th>

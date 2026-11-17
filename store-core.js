@@ -6435,7 +6435,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER',
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
   'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE'];
 function sarvAllowedApps_(){
@@ -7377,6 +7377,21 @@ const SARV_TABS=[
      srs_default_roles_() there. Per store via S1_ / S2_ in Manage access ›
      Store access (SARV_STORE_SCREENS). */
   {key:'RPT_REC_STATUS',label:'Change record status',hint:'Print History › Preview: set OKAY / HOLD / DEBIT on an Inward / Outward / Issue record',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  /* Bill check pipeline (CHECK PIPELINE section after RECORD STATUS): one right
+     per step, each person acts only on his / her own step; everyone sees the
+     whole pipeline. Decided again by scs_can_ (sql/STORE_CHECK_PIPELINE_MIGRATION.sql):
+     keep def in step with scs_flow_() / scs_debit_def_(). On the server the
+     MD-1 / MD-2 steps and Raise Debit are narrowed by Emp Code (MD-1 / MD-2),
+     which a role-wise tick here cannot express: use Manage access per user
+     to give a person a step outside that rule. EA has no role of its own:
+     tick it per user. */
+  {key:'RPT_CHK_GM',label:'Bill check · GM',hint:'Print History › Preview: GM Bill Check step',def:['ADMIN_PIN','USER_GM_PIN'],lock:['ADMIN_PIN']},
+  {key:'RPT_CHK_EA',label:'Bill check · EA',hint:'Print History › Preview: EA Bill Check step (tick the EA user in Manage access)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'RPT_CHK_MD1',label:'Bill check · MD-1',hint:'Print History › Preview: MD-1 Bill Check step (Emp Code MD-1)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'RPT_CHK_MD2',label:'Bill check · MD-2',hint:'Print History › Preview: MD-2 Bill Check step (Emp Code MD-2)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'RPT_CHK_AC',label:'Bill check · Accounts',hint:'Print History › Preview: Accounts Check step',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  {key:'RPT_DEBIT_RAISE',label:'Debit Note · Raise',hint:'Print History › Preview: raise / withdraw a Debit Note (MD-1 / MD-2)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  {key:'RPT_DEBIT_VERIFY',label:'Debit Note · Verify with proof',hint:'Print History › Preview: attach proof and verify a raised Debit Note (Accountant)',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HOME_MYDAY',label:'My Day (daily tasks)',hint:'Daily task list: Below-MSV PRs, inform requester, rejected PRs, stock count … (store-mytasks.js)',def:['USER_IC_PIN','ADMIN_PIN']},
   {key:'HOME_TRACKER',label:'Item Tracker',def:'ALL'},
   // Administration › PR-PO Master: category → Purchaser, and the Store 1 / Store 2 ticks (category_purchasers).
@@ -7443,6 +7458,7 @@ const SARV_TABS=[
      UNLOADER_APPROVAL_MIGRATION.sql), so it is a real right. Admin only by
      default: turn it ON for the supervisor(s) here or under Users › Apps.
      The same default as launcher.html's APPS entry (its defRoles). */
+  {key:'HOME_BILL_CHECK',label:'Bill Check',hint:'Bill Check app (bill-check.html, opens from the launcher): the records waiting for the user\x27s own pipeline step, Pending / Done lists, Preview of every attachment. WHAT a person may check is decided by the RPT_CHK_* rights',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN','USER_AC_PIN']},
   {key:'HOME_UNLOADER',label:'Unloader Supervisor',hint:'Verify every new Inward at unloading: item photos + own PIN, approve or reject (unloader.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Inward PDF)',def:['ADMIN_PIN']},
   // Same default as the launcher tile (defRoles) and the key iss_list / iss_decide check on the server.
   {key:'HOME_ISSUER',label:'Issue Supervisor',hint:'Approve every new Store 1 / Store 2 Issue: photos + own PIN; the Issue and its PDF are saved the moment it is approved (issuer.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Issue PDF)',def:['ADMIN_PIN']},
@@ -8230,9 +8246,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8448,7 +8464,7 @@ function sarvUserAppsHtml_(u){
 const SARV_ACCESS_AREAS=[
   {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
   {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
-  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_YARN_UNLOADING']},
+  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_YARN_UNLOADING']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
@@ -8468,7 +8484,10 @@ const SARV_STORE_SCREENS=[
   {k:'HOME_MYDAY',l:'My Day (Daily Tasks)'},{k:'HOME_IN',l:'Material Inward'},{k:'HOME_IN_NB',l:'Inward (NB)'},
   {k:'HOME_OUT',l:'Material Outward'},{k:'HOME_ISSUE',l:'Issue'},{k:'HOME_MASTER',l:'Item Stock'},
   {k:'HOME_TRACKER',l:'Item Tracker + Consumption'},{k:'HOME_REPAIR',l:'Repair Challans'},
-  {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'RPT_REC_STATUS',l:'Reports · Change record status'},{k:'HOME_STORE_TRANSFER',l:'Store Transfer'}];
+  {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'RPT_REC_STATUS',l:'Reports · Change record status'},
+  {k:'RPT_CHK_GM',l:'Reports · GM Bill Check'},{k:'RPT_CHK_EA',l:'Reports · EA Bill Check'},{k:'RPT_CHK_MD1',l:'Reports · MD-1 Bill Check'},
+  {k:'RPT_CHK_MD2',l:'Reports · MD-2 Bill Check'},{k:'RPT_CHK_AC',l:'Reports · Accounts Check'},
+  {k:'RPT_DEBIT_RAISE',l:'Reports · Raise Debit Note'},{k:'RPT_DEBIT_VERIFY',l:'Reports · Verify Debit Note'},{k:'HOME_STORE_TRANSFER',l:'Store Transfer'}];
 const sarvAccExtraKey_=k=>/^S[12]_/.test(k)||k==='ERP_STORE1'||k==='ERP_WAREHOUSE'||k==='CMP_MACHINE'||k==='CMP_FABRIC';
 // A readable name for any app_access key (user list tooltip, panel).
 function sarvAccKeyLabel_(k){
@@ -17549,7 +17568,7 @@ window.loadReports=async function(){
     // moment it is saved. Inward and Outward are merged into one list here.
     filtered.sort((a,b)=>(b.createdAt||b.date||'').localeCompare(a.createdAt||a.date||''));
     // Each record's OKAY / HOLD / DEBIT (RECORD STATUS section); never blocks the list.
-    await srsLoad_(filtered);
+    await Promise.all([srsLoad_(filtered),scsLoad_(filtered)]);   // old single status + the bill check pipeline
     sarvReportsAll=filtered;
     sarvRenderReports_();
   }catch(e){dbError(e);tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:20px;color:#ef4444;">Error loading reports</td></tr>';}
@@ -17563,10 +17582,10 @@ function sarvRenderReports_(){
   if(!tb)return;
   {
     const stF=byId('searchStatusFilter')?.value||'ALL';
-    const filtered=sarvReportsAll.filter(r=>srsFilterPass_(r,stF));
+    const filtered=sarvReportsAll.filter(r=>scsFilterPass_(r,stF));
     sarvLastReportsFiltered=filtered;
     if(statusEl)statusEl.textContent=sarvStoreLabel()+' · '+filtered.length+' records found'
-      +(stF!=='ALL'?' (status '+srsLabel_(stF)+', of '+sarvReportsAll.length+')':'')+srsCountsText_(sarvReportsAll);
+      +(stF!=='ALL'?' ('+scsFilterLabel_(stF)+', of '+sarvReportsAll.length+')':'')+scsCountsText_(sarvReportsAll);
     if(!filtered.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:30px;color:#94a3b8;">No records found</td></tr>';return;}
     const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed'};
     // Editing an already-saved record is an Admin-only action — everyone else
@@ -17581,7 +17600,7 @@ function sarvRenderReports_(){
       const cxBadge=r.cancelled?`<div style="margin-top:2px;"><span title="${escText(r.notes)}" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;border-radius:4px;padding:1px 5px;font-size:8.5px;font-weight:800;white-space:nowrap;">CANCELLED</span></div>`:'';
       return `<tr style="font-size:11px;border-bottom:1px solid #f1f5f9;${r.cancelled?'background:#fef2f2;opacity:.75;':''}">
         <td style="padding:5px 6px;"><span style="background:${col}18;color:${col};border:1px solid ${col}33;border-radius:4px;padding:2px 6px;font-size:9px;font-weight:800;white-space:nowrap;">${escText(r.type)}</span></td>
-        <td style="padding:5px 6px;text-align:center;">${srsChipHtml_(r)}</td>
+        <td style="padding:5px 6px;text-align:center;">${scsCellHtml_(r)}</td>
         <td style="padding:5px 6px;font-weight:800;color:${r.cancelled?'#b91c1c':'#0284c7'};white-space:nowrap;${r.cancelled?'text-decoration:line-through;':''}">${escText(r.no||'—')}${cxBadge}</td>
         <td style="padding:5px 6px;color:#64748b;">${escText(r.invoice)}</td>
         <td style="padding:5px 6px;white-space:nowrap;">${escText(r.date)}</td>
@@ -18345,9 +18364,14 @@ async function syncPoReceiptsForLines(lineIds){
 window.downloadFilteredExcel=function(){
   if(!sarvCan('DOWNLOAD_CSV'))return sarvDeny('DOWNLOAD_CSV');
   if(!sarvLastReportsFiltered.length)return showToast('Load data with Search / All Records first','warn');
-  const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items','Status','Status Remarks','Status By','Status At'];
-  const rows=sarvLastReportsFiltered.map(r=>{const st=srsOf_(r)||{};
+  const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items',
+    ...scsFlow.flatMap(s=>[s.label+' Status',s.label+' Remarks',s.label+' By',s.label+' At']),
+    'Debit Status','Debit Reason','Debit Amount','Debit Raised By','Debit Verified By','Debit Verified At','Debit Proofs',
+    'Old Status','Old Status Remarks','Old Status By','Old Status At'];
+  const rows=sarvLastReportsFiltered.map(r=>{const st=srsOf_(r)||{},d=scsDebit_(r)||{};
     return [r.type||'',r.no||'',r.invoice||'',r.date||'',r.party||'',r.receiver||'',r.amount||0,r.qty||0,r.items||'',
+      ...scsFlow.flatMap(s=>{const x=scsStep_(r,s.code)||{};return [x.status||'',x.remarks||'',x.by||'',x.at?pStamp(x.at):''];}),
+      d.status||'',d.reason||'',d.amount!=null?d.amount:'',d.raisedBy||'',d.verifiedBy||'',d.verifiedAt?pStamp(d.verifiedAt):'',d.proofs||0,
       st.status?srsLabel_(st.status):'',st.remarks||'',st.by||'',st.at?pStamp(st.at):''];});
   downloadCSV('SARV_Reports_'+today()+'.csv',[headers,...rows]);
   showToast('CSV downloaded — '+rows.length+' records');
@@ -19946,7 +19970,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const sfsMax=Math.max(...sigLabels.map(l=>FS(sigRole(l),7.5*K))), prFs=FS('printed',6.5);
    const lblOff=Math.max(3.4*K,mmPt(sfsMax)*0.8+0.6);
    const prOff=lblOff+mmPt(sfsMax)*0.3+mmPt(prFs)*0.95;
-   const SIG_BELOW=Math.max(O('sigBelow'),(showSec.printed?prOff+mmPt(prFs)*0.25:lblOff+mmPt(sfsMax)*0.3)+0.6);
+   const SIG_BELOW=Math.max(O('sigBelow'),(showSec.printed?prOff+mmPt(prFs)*0.25:lblOff+mmPt(sfsMax)*0.3)+0.6)+(d.__remarksBox?24:0);   // + the CHECK REMARKS box of the Accountant Copy base
    const hasChecklist=showSec.checklist&&sarvStoreChecklistsFor_(kind,d,items).length>0;
    const tailH=!O('keepTail')?0:(()=>{
      let h=hasChecklist?0:SIG_ABOVE+SIG_BELOW;   // exactly what the footer below needs (yy + SIG_ABOVE ≤ bottom − SIG_BELOW)
@@ -20070,6 +20094,18 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(showSec.printed){const pt=TX('printed','Printed:')+' '+pStamp();fitFs(pt,prFs,w-6);doc.text(pt,x+3,sigY+prOff);}
    doc.setTextColor(0,0,0);
    R(null);
+   /* Accountant Copy base only: an empty CHECK REMARKS box under the signatures. The Bill Check app
+      writes each checker's remark into it (and remembers where it is: slot st 'remarks'). */
+   if(d.__remarksBox){
+     const ry=sigY+(showSec.printed?prOff:lblOff)+2.5, rh=bottomY-ry-0.5;
+     if(rh>6){
+       doc.setDrawColor(148,163,184);doc.setLineWidth(0.25);doc.rect(x+1,ry,w-2,rh);
+       doc.setFontSize(6);doc.setFont(undefined,'bold');doc.setTextColor(71,85,105);
+       doc.text('CHECK REMARKS',x+3,ry+2.9);
+       doc.setFont(undefined,'normal');doc.setTextColor(0,0,0);
+       if(doc.__sigSlots)doc.__sigSlots.push({p:doc.internal.getCurrentPageInfo().pageNumber,st:'remarks',x:x+1,y:ry,w:w-2,h:rh});
+     }
+   }
    stripScale_(1);
  }
 
@@ -20142,7 +20178,8 @@ window.addEventListener('DOMContentLoaded',()=>{
    SARV_PDF_STORE=(d&&d.store)||'STORE 2';   // this entry's store decides which PDF Settings apply
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
    const {jsPDF}=window.jspdf;
-   const isTwoPage=variant==='TWO_PAGE';
+   const oneCopy=variant==='SUPPLIER_ONE'||variant==='ACCOUNT_BASE';   // a Store entry now makes ONE copy per file
+   const isTwoPage=variant==='TWO_PAGE'||oneCopy;
    const orientation=isTwoPage?'portrait':'landscape';
    const doc=new jsPDF({unit:'mm',format:'a4',orientation});
    doc.__sigSlots=[];
@@ -20150,7 +20187,12 @@ window.addEventListener('DOMContentLoaded',()=>{
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
    const copyATitle='ACCOUNT COPY', copyBTitle=isOut?'RECEIVER COPY':'SUPPLIER COPY';
    sarvPdfFillDoc_(sarvPdfElDoc_(doc,'store'),'store');   // cell / fill colours + element look (bold / colour / CAPS / hide) + where each element lands, for Edit on page
-   if(isTwoPage){
+   if(oneCopy){
+     const margin=sarvPdfOpt_('store','marginTwo');
+     if(variant==='ACCOUNT_BASE')d.__remarksBox=true;
+     try{drawStoreCopyNative_(doc,kind,d,items,variant==='ACCOUNT_BASE'?copyATitle:copyBTitle,margin,margin,pageW-margin*2,pageH-margin*2);}
+     finally{delete d.__remarksBox;}
+   } else if(isTwoPage){
      const margin=sarvPdfOpt_('store','marginTwo');
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,pageW-margin*2,pageH-margin*2);
      doc.addPage();
@@ -20199,6 +20241,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(u==='STORE IN-CHARGE')return 'store';
    if(u==='GM SIGN')return 'gm';
    if(u==='MD SIGN'||u==='MD 1 SIGN')return 'md';
+   if(u==='MD 2 SIGN')return 'md2';   // Bill Check app (Accountant Copy): the MD-2 step
    return null;
  }
  function sarvDrawSigNative_(doc,s,slot){
@@ -21721,8 +21764,26 @@ let PR_TEAL=[13,92,83];
    if(u.error)throw u.error;
    return true;
  }
+ /* The clean Accountant Copy base: the file to storage, then where it is (and where its sign / remarks
+    cells sit) to store_account_copy through acc_base_save. Without that migration there is nothing to
+    write or retry, so the upload alone counts as done. */
+ async function runAccBaseJob_(job){
+   const art=await uploadPdfArtifact(job.blob,job.kind,job.recordNo,'ACCOUNT_BASE',job.filename,{quiet:true});
+   if(!art.url||!art.path)return null;                       // still offline: stays in the outbox
+   const r=await SB.rpc('acc_base_save',{p_token:srsToken_(),p_kind:job.kind==='INWARD'?'inward':'outward',p_record_id:String(job.recordId),
+     p_document_no:job.recordNo,p_store:job.store||'STORE 2',p_path:art.path,p_layout:job.layout||{}});
+   if(r.error){
+     if(/acc_base_save|store_account_copy|schema cache|does not exist|could not find/i.test(r.error.message||'')){
+       console.warn('[SARV PDF] Accountant Copy is not set up yet. Admin: run sql/STORE_ACCOUNT_COPY_MIGRATION.sql');return art;
+     }
+     throw r.error;
+   }
+   if(r.data&&r.data.success===false)throw new Error(r.data.error||'acc_base_save refused');
+   return art;
+ }
  async function runPdfOutboxJob_(job){
    if(job.type==='checks')return runStoreChecksJob_(job);
+   if(job.type==='accbase')return runAccBaseJob_(job);
    const art=await uploadPdfArtifact(job.blob,job.kind,job.recordNo,job.variant,job.filename,{quiet:true});
    if(!art.url)return null;   // still offline — stays in the outbox
    await indexPdfArtifact(job.kind,job.recordId,job.recordNo,job.variant,art);
@@ -22640,18 +22701,29 @@ let PR_TEAL=[13,92,83];
     const sigLayouts={};
     // Lets the "Generating PDF…" overlay repaint between the CPU-bound builds.
     const yieldUi=()=>new Promise(r=>setTimeout(r,0));
-    for(const variant of ['SINGLE','TWO_PAGE']){
+    /* A Store entry now makes ONE file for the supplier / receiver: the Supplier (Receiver) Copy on a
+       single page, saved as variant SINGLE so every screen that links "the entry PDF" keeps finding it.
+       The Accountant Copy is NOT published here: only its clean base is built and kept (accBase, job
+       'accbase') and the Bill Check app stamps the GM / MD-1 / MD-2 sign + check remarks on it as
+       each of them checks the bill. */
+    let accBase=null;
+    const allSigs=d.__sigs;
+    for(const variant of ['SINGLE','ACCOUNT_BASE']){
       const filename=storePdfFilename_(kind,d,variant);
       try{
         // Native jsPDF/autoTable build — real vector text, no DOM/canvas
         // rendering involved, so it can't produce a blank screenshot.
-        const blob=await buildStoreNativePdfBlob(kind,d,items,variant);
+        if(variant==='ACCOUNT_BASE')d.__sigs=allSigs&&allSigs.store?{store:allSigs.store}:{};   // GM / MD cells stay blank
+        else d.__sigs=allSigs;
+        const blob=await buildStoreNativePdfBlob(kind,d,items,variant==='SINGLE'?'SUPPLIER_ONE':'ACCOUNT_BASE');
+        if(variant==='ACCOUNT_BASE'){accBase={blob,name:filename,layout:blob.sigLayout||null};await yieldUi();continue;}
         if(blob.sigLayout)sigLayouts[variant]=blob.sigLayout;
         result[variant]={blob,path:'',url:'',name:filename};
       }catch(e){
         console.warn('[SARV PDF] '+kind+' '+variant+' native PDF generation failed, HTML preview still available:',e.message||e);
+        if(variant==='ACCOUNT_BASE'){showToast('The Accountant Copy base for '+(no||'')+' could not be built: '+(e.message||e),'warn');await yieldUi();continue;}
         showToast(''+kind+' '+variant+' PDF could not be built: '+(e.message||e),'warn');
-        result[variant]={blob:null,path:'',url:'',name:filename,html:buildStorePdfHtml(kind,d,items,variant,[])};
+        result[variant]={blob:null,path:'',url:'',name:filename,html:buildStorePdfHtml(kind,d,items,'TWO_PAGE',[])};
       }
       await yieldUi();
     }
@@ -22672,6 +22744,8 @@ let PR_TEAL=[13,92,83];
       const r=result[v];
       if(r&&r.blob)jobs.push({type:'pdf',key:'pdf|'+no+'|'+v,kind,recordId:recordId||null,recordNo:no,variant:v,filename:r.name,blob:r.blob,at});
     });
+    if(accBase&&accBase.blob&&recordId)
+      jobs.push({type:'accbase',key:'accbase|'+no,kind,recordId,recordNo:no,filename:accBase.name,blob:accBase.blob,layout:accBase.layout,store:d.store||'STORE 2',at});
     if(recordId&&(storeSign||Object.keys(sigLayouts).length))
       jobs.push({type:'checks',key:'checks|'+no,table:sigTable,recordId,recordNo:no,store:storeSign,sigDataUrl:(me&&me.dataUrl)||'',pdfLayout:sigLayouts,at});
     /* images:[] — the entry PDF and its HTML print copies no longer carry the
@@ -31517,19 +31591,165 @@ function srsCanSet_(){
   if(srsCan&&typeof srsCan[s]==='boolean')return srsCan[s];
   return typeof sarvStoreTabVisible==='function'?sarvStoreTabVisible(s,SRS_RIGHT):sarvTabVisible(SRS_RIGHT);
 }
-function srsFillFilter_(){
-  const sel=byId('searchStatusFilter');if(!sel||sel.dataset.srs)return;
-  sel.dataset.srs='1';
-  sel.innerHTML='<option value="ALL">All Status</option>'
-    +SRS_STATUSES.map(s=>'<option value="'+escText(s.v)+'">'+escText(s.l)+'</option>').join('')
-    +'<option value="'+SRS_NONE+'">Not set</option>';
+
+/* ══ BILL CHECK PIPELINE (same Print History / Reports, same Preview) ═════
+   Replaces the single OKAY / HOLD / DEBIT choice above (those old statuses
+   stay readable, as a small "old" chip on records that have no pipeline).
+   Every record goes GM > EA > MD-1 > MD-2 > Accounts, each step OKAY or
+   HOLD by its own person, then an optional DEBIT NOTE: raised only by MD-1 /
+   MD-2, verified by the Accountant with proof attachments.
+     - Everybody sees the whole pipeline (list column + last Preview slide);
+       a person can act only on a step he / she has the right for
+       (RPT_CHK_<step>, RPT_DEBIT_RAISE / RPT_DEBIT_VERIFY), and only when
+       every step before it is OKAY. The server decides all of it again
+       (sql/STORE_CHECK_PIPELINE_MIGRATION.sql, scs_* functions).
+     - OKAY needs every PDF page / photo of the record to have been looked
+       at in this Preview (SRV.seen: a slide counts once it was shown one by
+       one or on screen side by side). HOLD does not. How many were seen
+       is saved with the step (audit), not enforced by the server.
+     - The pipeline itself (codes, labels, order) comes from the server
+       (scs_get → flow); SCS_FLOW_DEFAULT only labels the column before the
+       first answer. A new step = server scs_flow_() + one SARV_TABS row.
+     - Without the migration the old single status keeps working and the
+       Check slide says what to run. */
+const SCS_FLOW_DEFAULT=[
+  {code:'GM',label:'GM Bill Check',short:'GM'},{code:'EA',label:'EA Bill Check',short:'EA'},
+  {code:'MD1',label:'MD-1 Bill Check',short:'MD1'},{code:'MD2',label:'MD-2 Bill Check',short:'MD2'},
+  {code:'AC',label:'Accounts Check',short:'AC'}];
+const SCS_LOOK={
+  OKAY:{bg:'#dcfce7',fg:'#166534',bd:'#86efac'},HOLD:{bg:'#fef3c7',fg:'#92400e',bd:'#fcd34d'},
+  NEXT:{bg:'#dbeafe',fg:'#1d4ed8',bd:'#93c5fd'},WAIT:{bg:'#f8fafc',fg:'#94a3b8',bd:'#e2e8f0'}};
+let scsFlow=SCS_FLOW_DEFAULT;
+let scsMap={};                       // 'inward:12' -> {steps:{GM:{status,remarks,by,emp,at,seen,total}}, debit:{status,...}|null}
+let scsCan=null;                     // {GM:{'STORE 1':bool,'STORE 2':bool},…,DEBIT_RAISE:{…},DEBIT_VERIFY:{…}}; null = not known yet
+let scsMissing=false;                // STORE_CHECK_PIPELINE_MIGRATION.sql not run
+let scsMissingWarned=false;
+const SCS_ERR={
+  NO_TOKEN:SRS_ERR.NO_TOKEN,NO_SESSION:SRS_ERR.NO_SESSION,USER_INACTIVE:SRS_ERR.USER_INACTIVE,
+  NOT_ALLOWED:'You do not have the right for this ({x}). Ask the Admin (Admin Panel › Users › Manage access › Print History / Reports rights).',
+  WAIT_PREV:'Not yet: {x} must be OKAY first.',
+  REMARK_REQUIRED:SRS_ERR.REMARK_REQUIRED,BAD_STATUS:'That status is not valid for a check step.',BAD_STEP:'This step is not known to the server. Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql again.',
+  BAD_DATA:SRS_ERR.BAD_DATA,NOT_FOUND:SRS_ERR.NOT_FOUND,CANCELLED:'This record is cancelled; it cannot be checked.',TOO_MANY:SRS_ERR.TOO_MANY,
+  DEBIT_EXISTS:'A Debit Note is already raised on this record.',WRONG_STATE:'The Debit Note is not in the state this needs (reload the Preview).',
+  PROOF_REQUIRED:'Attach at least one proof (photo / PDF) before verifying.',BAD_FILE:'Only a photo or a PDF can be attached.',
+  FILE_TOO_BIG:'That file is too big. Use a smaller photo / PDF.',TOO_MANY_FILES:'At most 6 proof files per Debit Note.',
+  DEBIT_PENDING:'A Debit Note is waiting for the Accountant. Verify it first.',DEBIT_NO_REQUIRED:'Enter the Debit No.',
+  AMOUNT_REQUIRED:'Enter the Debit amount (more than 0).',BAD_STATUS:'This choice is not possible on this step.'
+};
+const scsOf_=r=>scsMap[srsKey_(r)]||null;
+const scsStep_=(r,code)=>((scsOf_(r)||{}).steps||{})[code]||null;
+const scsDebit_=r=>{const d=(scsOf_(r)||{}).debit;return d&&d.status!=='WITHDRAWN'?d:null;};   // a withdrawn one is history only
+const scsLabelOf_=code=>code==='DEBIT'?'Debit Note':((scsFlow.find(s=>s.code===code)||{}).label||code);
+function scsMissingErr_(e){
+  const m=String((e&&e.message)||e||'');
+  return /scs_|store_check|store_debit/i.test(m)&&/does not exist|could not find|schema cache|not found/i.test(m);
+}
+async function scsRpc_(fn,args){
+  const r=await SB.rpc(fn,Object.assign({p_token:srsToken_()},args||{}));
+  if(r.error)throw r.error;
+  const d=r.data||{};
+  if(d.success===false){
+    const c=String(d.error||'');
+    const er=new Error((SCS_ERR[c]||c||'Unknown error').replace('{x}',d.detail||'this step'));er.code=c;throw er;
+  }
+  return d;
+}
+/* First step that is not OKAY = where the record is now. */
+function scsStage_(r){
+  for(const s of scsFlow){const x=scsStep_(r,s.code);if(!x||x.status!=='OKAY')return {step:s,hold:!!x&&x.status==='HOLD'};}
+  return {step:null,hold:false};
+}
+function scsPrevOk_(r,code){
+  for(const s of scsFlow){if(s.code===code)return {ok:true};const x=scsStep_(r,s.code);if(!x||x.status!=='OKAY')return {ok:false,label:s.label};}
+  return {ok:true};
+}
+function scsCanRight_(code,store){
+  if(scsMissing)return false;
+  if(scsCan&&scsCan[code]&&typeof scsCan[code][store]==='boolean')return scsCan[code][store];
+  const key=code==='DEBIT_RAISE'||code==='DEBIT_VERIFY'?'RPT_'+code:'RPT_CHK_'+code;   // page rule by role only; the server also narrows MD-1 / MD-2 by Emp Code
+  return typeof sarvStoreTabVisible==='function'?sarvStoreTabVisible(store,key):sarvTabVisible(key);
+}
+/* One bucket per record, for the filter and the counts. */
+function scsBucket_(r){
+  const o=scsOf_(r);
+  if(!o||!Object.keys(o.steps||{}).length)return 'NEW';
+  const st=scsStage_(r);
+  return !st.step?'DONE':st.hold?'HOLD':'AT_'+st.step.code;
+}
+function scsFilterPass_(r,f){
+  if(!f||f==='ALL'||scsMissing)return true;
+  const b=scsBucket_(r),d=scsDebit_(r);
+  if(f==='MINE'){const st=scsStage_(r);return !r.cancelled&&!!st.step&&scsCanRight_(st.step.code,srsStoreOf_())&&scsPrevOk_(r,st.step.code).ok;}
+  if(f==='DEBIT_RAISED')return !!d&&d.status==='RAISED';
+  if(f==='DEBIT_VERIFIED')return !!d&&d.status==='VERIFIED';
+  return b===f;
+}
+function scsFilterLabel_(f){
+  if(f.indexOf('AT_')===0)return 'at '+scsLabelOf_(f.slice(3));
+  return ({MINE:'waiting for me',NEW:'not started',HOLD:'on hold',DONE:'all checks done',DEBIT_RAISED:'debit to verify',DEBIT_VERIFIED:'debit verified'})[f]||f;
+}
+function scsCountsText_(list){
+  if(scsMissing||!list.length)return '';
+  let nw=0,hold=0,done=0,prog=0,dr=0,dv=0;
+  list.forEach(r=>{const b=scsBucket_(r),d=scsDebit_(r);
+    if(b==='NEW')nw++;else if(b==='HOLD')hold++;else if(b==='DONE')done++;else prog++;
+    if(d)d.status==='RAISED'?dr++:dv++;});
+  return ' · Not started '+nw+' · In progress '+prog+' · Hold '+hold+' · Done '+done+(dr||dv?' · Debit '+dr+' to verify, '+dv+' verified':'');
+}
+/* Pipeline as small boxes: green OKAY, amber HOLD, blue = the step it waits at, grey = later. */
+function scsCellHtml_(r,big){
+  if(scsMissing)return srsChipHtml_(r,big);
+  const o=scsOf_(r),stage=scsStage_(r),fs=big?'11px':'9px',pd=big?'3px 8px':'1px 4px';
+  const boxes=scsFlow.map(s=>{
+    const x=scsStep_(r,s.code);
+    const k=x?x.status:(stage.step&&stage.step.code===s.code?'NEXT':'WAIT'),c=SCS_LOOK[k]||SCS_LOOK.WAIT;
+    const tip=s.label+': '+(x?x.status+(x.remarks?' "'+x.remarks+'"':'')+(x.by?' · '+x.by:'')+(x.at?' · '+pStamp(x.at):''):(k==='NEXT'?'waiting here':'not reached'));
+    return '<span title="'+escText(tip)+'" style="display:inline-block;background:'+c.bg+';color:'+c.fg+';border:1px solid '+c.bd+';border-radius:4px;padding:'+pd+';font-size:'+fs+';font-weight:800;white-space:nowrap;">'
+      +escText(s.short||s.code)+(k==='OKAY'?' ✓':k==='HOLD'?' !':'')+'</span>';}).join('');
+  const d=scsDebit_(r);
+  const db=d?'<span title="'+escText('Debit Note '+d.status+(d.reason?': '+d.reason:'')+(d.amount!=null?' · Rs '+d.amount:'')+(d.status==='VERIFIED'?' · verified by '+(d.verifiedBy||''):' · waiting for the Accountant'))
+      +'" style="display:inline-block;background:'+(d.status==='VERIFIED'?'#991b1b':'#fee2e2')+';color:'+(d.status==='VERIFIED'?'#fff':'#991b1b')+';border:1px solid #fca5a5;border-radius:4px;padding:'+pd+';font-size:'+fs+';font-weight:800;white-space:nowrap;">DEBIT'
+      +(d.status==='VERIFIED'?' ✓':' · verify')+'</span>':'';
+  const old=!o&&srsOf_(r)?'<span style="opacity:.8;">'+srsChipHtml_(r,big)+'</span>':'';
+  return '<span style="display:inline-flex;gap:2px;flex-wrap:wrap;justify-content:center;align-items:center;max-width:'+(big?'none':'190px')+';">'+boxes+db+old+'</span>';
+}
+/* The pipelines of the listed records (one call), the flow and what this user may do. */
+async function scsLoad_(list){
+  if(!SB_READY||!list||!list.length)return;
+  const keys=[...new Set(list.map(srsKey_))];
+  try{
+    const d=await scsRpc_('scs_get',{p_keys:keys});
+    scsMissing=false;
+    if(Array.isArray(d.flow)&&d.flow.length)scsFlow=d.flow;
+    const got=new Set();
+    (d.rows||[]).forEach(x=>{scsMap[x.key]=x;got.add(x.key);});
+    keys.forEach(k=>{if(!got.has(k))delete scsMap[k];});
+    if(d.can&&typeof d.can==='object')scsCan=d.can;
+  }catch(e){
+    if(scsMissingErr_(e)){
+      scsMissing=true;
+      if(!scsMissingWarned){scsMissingWarned=true;console.warn('[SARV] Bill check pipeline is not set up yet. Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql');}
+    }else console.warn('[SARV] Bill check pipeline not loaded:',e.message||e);
+  }
+  scsFillFilter_();
+}
+function scsFillFilter_(){
+  const sel=byId('searchStatusFilter');if(!sel)return;
+  const was=sel.value||'ALL';
+  sel.innerHTML='<option value="ALL">All Status</option><option value="MINE">Waiting for me</option><option value="NEW">Not started</option>'
+    +scsFlow.map(s=>'<option value="AT_'+escText(s.code)+'">At '+escText(s.label)+'</option>').join('')
+    +'<option value="HOLD">On hold</option><option value="DONE">All checks done</option>'
+    +'<option value="DEBIT_RAISED">Debit: to verify</option><option value="DEBIT_VERIFIED">Debit: verified</option>';
+  sel.value=[...sel.options].some(o=>o.value===was)?was:'ALL';
+  if(sel.dataset.scs)return;
+  sel.dataset.scs='1';
   sel.addEventListener('change',()=>{
-    if(srsMissing&&sel.value!=='ALL'){sel.value='ALL';return showToast('Record status is not set up yet. Admin: run <code>sql/STORE_RECORD_STATUS_MIGRATION.sql</code>.','warn');}
+    if(scsMissing&&sel.value!=='ALL'){sel.value='ALL';return showToast('The bill check pipeline is not set up yet. Admin: run <code>sql/STORE_CHECK_PIPELINE_MIGRATION.sql</code>.','warn');}
     sarvRenderReports_();
   });
 }
-window.addEventListener('DOMContentLoaded',srsFillFilter_);
-if(document.readyState!=='loading')srsFillFilter_();
+window.addEventListener('DOMContentLoaded',scsFillFilter_);
+if(document.readyState!=='loading')scsFillFilter_();
 
 /* ── Preview viewer ────────────────────────────────────────────────── */
 /* SRV.i is a POSITION in srvVis_() (the arranged, not-hidden slides, Status
@@ -31540,6 +31760,7 @@ const SRV={seq:0,rec:null,row:null,slides:[],i:0,zoom:false,pick:'',hist:null,hi
   mode:'slide',order:[],hidden:new Set(),layouts:{},drag:null,io:null};
 const SRV_SOURCES=[
   {id:'STORE',label:r=>r.kind==='inward'?'In PDF':'Out PDF',when:()=>true,load:srvSrcStorePdf_},
+  {id:'ACCOUNT',label:()=>'Accountant Copy',when:()=>true,load:srvSrcAccount_},
   {id:'BILL',label:r=>r.kind==='inward'?'Actual Bill':'Attachments',when:()=>true,load:srvSrcBill_},
   {id:'UNLOAD',label:()=>'Unloader',when:r=>r.kind==='inward',load:srvSrcUnload_},
   {id:'FIELD',label:()=>'Field Boy',when:r=>r.kind==='inward',load:srvSrcFieldBoy_}
@@ -31627,6 +31848,35 @@ function srvCss_(){
   #srvView .st .hist h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b}
   #srvView .st .hist div{font-size:11.5px;color:#334155;padding:4px 0;border-bottom:1px solid #f1f5f9}
   #srvView .st .hist small{color:#94a3b8}
+  #srvView .st{max-width:700px}
+  #srvView .st .prog{height:7px;border-radius:5px;background:#e2e8f0;overflow:hidden;margin:2px 0 4px}
+  #srvView .st .prog i{display:block;height:100%;background:#16a34a}
+  #srvView .st .seen{font-size:11.5px;color:#334155;margin-bottom:12px}
+  #srvView .st .seen button{border:1px solid #93c5fd;background:#eff6ff;color:#1d4ed8;border-radius:6px;font-size:11px;font-weight:700;padding:2px 8px;cursor:pointer;margin-left:6px}
+  #srvView .st .pl{border:1px solid #e2e8f0;border-radius:11px;margin-bottom:10px;overflow:hidden}
+  #srvView .st .pl .row{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border-bottom:1px solid #f1f5f9;font-size:12px}
+  #srvView .st .pl .row:last-child{border-bottom:0}
+  #srvView .st .pl .row.mine{background:#f8fafc}
+  #srvView .st .pl .n{flex:0 0 22px;height:22px;border-radius:50%;background:#e2e8f0;color:#475569;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center}
+  #srvView .st .pl .bd{flex:1;min-width:0}
+  #srvView .st .pl .bd b{font-size:12.5px}
+  #srvView .st .pl .bd small{display:block;color:#64748b;font-size:11px;margin-top:1px}
+  #srvView .st .pl .tag{font-size:9.5px;font-weight:800;border-radius:4px;padding:1px 6px;border:1px solid;margin-left:6px;white-space:nowrap}
+  #srvView .st .pl .me{font-size:9.5px;font-weight:800;color:#fff;background:#0f172a;border-radius:4px;padding:1px 6px;margin-left:6px}
+  #srvView .st .pl .sel{border:1px solid #0f172a;background:#fff;color:#0f172a;border-radius:6px;font-size:11px;font-weight:700;padding:3px 9px;cursor:pointer;white-space:nowrap}
+  #srvView .st .pl .act{margin-top:8px}
+  #srvView .st .dn{border:1px solid #fecaca;background:#fffafa;border-radius:11px;padding:10px 12px;margin-bottom:10px;font-size:12px}
+  #srvView .st .dn h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#991b1b}
+  #srvView .st .dn input[type=text],#srvView .st .dn input[type=number]{width:100%;box-sizing:border-box;border:1px solid #cbd5e1;border-radius:8px;padding:7px 9px;font-size:13px;margin-top:6px}
+  #srvView .st .dn .sb2{border:1px solid #991b1b;background:#991b1b;color:#fff;border-radius:8px;font-weight:800;font-size:12.5px;padding:8px 14px;cursor:pointer;margin-top:8px}
+  #srvView .st .dn .sb2.alt{background:#fff;color:#991b1b}
+  #srvView .st .dn .sb2:disabled{opacity:.4;cursor:not-allowed}
+  #srvView .st .pf{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+  #srvView .st .pf .it{position:relative;width:92px;border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden;text-align:center;font-size:10px;color:#475569}
+  #srvView .st .pf .it img{display:block;width:100%;height:70px;object-fit:cover;cursor:zoom-in}
+  #srvView .st .pf .it .pdf{height:70px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#991b1b;background:#fef2f2;cursor:pointer}
+  #srvView .st .pf .it span{display:block;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #srvView .st .pf .it button{position:absolute;top:2px;right:2px;border:0;background:rgba(15,23,42,.75);color:#fff;border-radius:50%;width:18px;height:18px;font-size:11px;line-height:18px;cursor:pointer;padding:0}
   #srvView .st .pv{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:12px}
   #srvView .st .pv span{font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px;background:#f1f5f9;color:#475569;border:1px solid #e2e8f0}
   #srvView .st .pv span.ok{background:#f0fdf4;color:#166534;border-color:#bbf7d0}
@@ -31640,7 +31890,8 @@ window.srvOpen=async function(key){
   const r=srvReportRow_(key);if(!r)return showToast('Record not found in the list. Reload it.','warn');
   srvCss_();
   const seq=++SRV.seq;
-  Object.assign(SRV,{row:r,rec:null,slides:[],i:0,zoom:false,pick:'',hist:null,histErr:'',order:[],hidden:new Set()});
+  Object.assign(SRV,{row:r,rec:null,slides:[],i:0,zoom:false,pick:'',hist:null,histErr:'',order:[],hidden:new Set(),
+    seen:new Set(),stepSel:null,dbOpen:false,proofs:null,proofsBusy:false});
   let v=byId('srvView');
   if(!v){
     v=document.createElement('div');v.id='srvView';v.setAttribute('role','dialog');v.setAttribute('aria-label','Record preview');
@@ -31661,7 +31912,7 @@ window.srvOpen=async function(key){
   const $v=k=>v.querySelector('[data-v="'+k+'"]');
   $v('t').textContent=r.type+' · '+(r.no||'—');
   $v('s').textContent=[r.party,r.invoice&&r.invoice!=='—'?(r.kind==='inward'?'Invoice ':'Gate Pass ')+r.invoice:'',r.date?pDate(r.date):'',sarvStoreLabel()].filter(Boolean).join(' · ');
-  $v('chip').innerHTML=srsChipHtml_(r,true);
+  $v('chip').innerHTML=scsCellHtml_(r,true);
   $v('dl').innerHTML=srvDownloadsHtml_(r);
   $v('chips').innerHTML='';$v('n').textContent='';
   $v('slide').innerHTML='<div class="msg"><b>Loading…</b>Collecting the PDF, bill and photos of this record.</div>';
@@ -31761,10 +32012,17 @@ function srvBind_(v){
     if(zb){const z=zb.dataset.zoom;return srvZoomTo_(z==='in'?SRV.pct*1.25:z==='out'?SRV.pct/1.25:100);}
     // A click on the page: 200 % at that point, or back to Fit. Not at the end of a pan.
     if(t.closest('.sl')&&(t.tagName==='IMG'||t.tagName==='CANVAS')){if(SRV._panned)return;return srvZoomTo_(SRV.pct>100?100:200,e.clientX,e.clientY);}
-    const sb=t.closest('[data-srs]');if(sb&&!sb.disabled){SRV.pick=sb.dataset.srs;return srvPaintStatus_();}
+    // Check slide (bill check pipeline + Debit Note)
+    const pk=t.closest('[data-scs-pick]');if(pk&&!pk.disabled){SRV.pick=pk.dataset.scsPick;return srvPaintStatus_();}
+    const sl=t.closest('[data-scs-sel]');if(sl){SRV.stepSel=sl.dataset.scsSel;SRV.pick='';return srvPaintStatus_();}
+    if(t.closest('[data-scs-unseen]'))return srvGoUnseen_();
+    const da=t.closest('[data-scs-db]');if(da&&!da.disabled)return srvDebitAct_(da.dataset.scsDb);
+    const pd=t.closest('[data-scs-pdel]');if(pd)return srvProofDel_(pd.dataset.scsPdel);
+    const pw=t.closest('[data-scs-pview]');if(pw)return srvProofView_(pw.dataset.scsPview);
     if(t.closest('[data-v="save"]'))return srvSaveStatus_();
   });
   v.addEventListener('input',e=>{if(e.target.matches('[data-v="rm"]'))srvPaintStatusBtn_();});
+  v.addEventListener('change',e=>{if(e.target.matches('[data-v="proof"]')){const f=e.target.files;srvProofFiles_(f);}});
   document.addEventListener('keydown',e=>{
     if(v.style.display==='none')return;
     const typing=e.target&&/^(TEXTAREA|INPUT|SELECT)$/.test(e.target.tagName);
@@ -31818,6 +32076,7 @@ function srvGo_(i){
   if(i<0)i=0;                                   // a chip whose slides are all hidden: stay at the start
   i=Math.max(0,Math.min(vis.length-1,i));
   SRV.i=i;SRV.zoom=false;SRV.pct=100;
+  SRV.seen.add(vis[i]);                         // a check step's OKAY needs every page / photo looked at
   const $v=k=>v.querySelector('[data-v="'+k+'"]');
   const s=SRV.slides[vis[i]];
   $v('n').textContent=(i+1)+' / '+vis.length+(SRV.hidden.size?' · '+SRV.hidden.size+' hidden':'');
@@ -31902,6 +32161,7 @@ function srvGrid_(){
   const p=srvGridPref_(),vis=SRV.order.filter(ix=>!SRV.hidden.has(ix)),hid=SRV.order.filter(ix=>SRV.hidden.has(ix));
   const nm=s=>s.label+(s.of>1?' '+s.pos+'/'+s.of:'');
   v.querySelector('[data-v="n"]').textContent=vis.length+' shown'+(hid.length?' · '+hid.length+' hidden':'');
+  vis.forEach(ix=>SRV.seen.add(ix));            // all of them are on screen side by side
   srvPaintChips_('');
   const moved=SRV.order.some((ix,k)=>ix!==k);
   const cols=p.cols==='AUTO'?'repeat(auto-fit,minmax(min(320px,100%),1fr))':'repeat('+(+p.cols||2)+',minmax(0,1fr))';
@@ -32137,6 +32397,21 @@ async function srvSrcStorePdf_(r){
   for(let p=1;p<=n;p++)slides.push({type:'pdf',doc,page:p,open:url,caption:(r.pdfSingle?'Store entry PDF':'Store entry PDF (two-page)')+(n>1?' · page '+p+' of '+n:'')});
   return {slides};
 }
+/* The Accountant Copy: built clean at submit, then stamped by the Bill Check app (GM, MD-1, MD-2 sign +
+   time + check remarks), each step on the latest version. Nothing to show until the GM has checked. */
+async function srvSrcAccount_(r){
+  const d=await srsRpc_('acc_get',{p_kind:r.kind,p_record_id:String(r.id)}).catch(e=>{
+    if(/acc_get|store_account_copy|schema cache|could not find|does not exist/i.test(e.message||''))return {missing:true};
+    throw e;
+  });
+  if(d.missing)return {slides:[],empty:'The Accountant Copy is not set up yet. Admin: run sql/STORE_ACCOUNT_COPY_MIGRATION.sql.'};
+  const a=d.row||{};
+  if(!a.currentUrl)return {slides:[],empty:a.hasBase?'Not generated yet: it is made when the GM checks this bill in the Bill Check app.':'No Accountant Copy base was saved for this record (an entry from before this step).'};
+  const doc=await srvPdfDoc_(a.currentUrl),slides=[];
+  const who=Object.keys(a.stamps||{}).map(k=>k+' '+((a.stamps[k]||{}).by||'')).join(', ');
+  for(let p=1;p<=doc.numPages;p++)slides.push({type:'pdf',doc,page:p,open:a.currentUrl,caption:'Accountant Copy'+(who?' · signed: '+who:'')+(doc.numPages>1?' · page '+p+' of '+doc.numPages:'')});
+  return {slides};
+}
 async function srvSrcBill_(r,ctx){
   const url=r.pdfInvoice;
   const what=r.kind==='inward'?'bill':'attachment';
@@ -32206,14 +32481,14 @@ async function srvSrcFieldBoy_(r,ctx){
   });
   return {slides,empty:'Field Boy PR '+prs.map(p=>p.req_no).join(', ')+': no item photo for the items on this Inward.'};
 }
-/* ── The Status slide ── */
+/* ── The Check slide (last slide): pipeline + own step + debit note + history ── */
 async function srvLoadHistory_(seq){
-  if(srsMissing||!SB_READY||!SRV.row)return;
+  if(scsMissing||!SB_READY||!SRV.row)return;
   try{
-    const d=await srsRpc_('srs_status_history',{p_kind:SRV.row.kind,p_record_id:String(SRV.row.id)});
+    const d=await scsRpc_('scs_history',{p_kind:SRV.row.kind,p_record_id:String(SRV.row.id)});
     if(seq!==SRV.seq)return;
     SRV.hist=d.rows||[];SRV.histErr='';
-  }catch(e){if(seq!==SRV.seq)return;if(srsMissingErr_(e))srsMissing=true;SRV.hist=[];SRV.histErr=e.message||String(e);}
+  }catch(e){if(seq!==SRV.seq)return;if(scsMissingErr_(e))scsMissing=true;SRV.hist=[];SRV.histErr=e.message||String(e);}
   if(SRV.slides[SRV.i]&&SRV.slides[SRV.i].type==='status')srvPaintStatus_();
 }
 function srvStatusEl_(){
@@ -32221,67 +32496,246 @@ function srvStatusEl_(){
   setTimeout(srvPaintStatus_,0);
   return el;
 }
+/* Slides that must have been looked at before OKAY: every PDF page / photo. */
+const srvNeedSeen_=()=>SRV.slides.map((s,ix)=>(s.type==='img'||s.type==='pdf')?ix:-1).filter(ix=>ix>=0);
+function srvSeenCount_(){const need=srvNeedSeen_();return {n:need.filter(ix=>SRV.seen.has(ix)).length,total:need.length};}
+/* Jump to the first page / photo not looked at yet (a hidden one is shown again). */
+function srvGoUnseen_(){
+  const ix=srvNeedSeen_().find(k=>!SRV.seen.has(k));if(ix==null)return;
+  SRV.hidden.delete(ix);
+  srvGo_(srvVis_().indexOf(ix));
+}
 function srvPaintStatus_(){
   const box=byId('srvView')?.querySelector('[data-v="stbox"]');if(!box||!SRV.row)return;
-  const r=SRV.row,cur=srsOf_(r),can=srsCanSet_()&&!r.cancelled&&!srsMissing;
-  const keepRm=box.querySelector('[data-v="rm"]')?.value;
-  // What was looked at: one tag per source, green when it had something.
-  const seen=[];SRV.slides.forEach(s=>{if(s.type==='status')return;let g=seen.find(x=>x.id===s.group);if(!g)seen.push(g={id:s.group,label:s.label,n:0});if(!s.none)g.n++;});
-  const pick=SRV.pick||(cur&&cur.status)||'';
-  const note=srsMissing?'Record status is not set up yet. Admin: run sql/STORE_RECORD_STATUS_MIGRATION.sql in the Supabase SQL Editor.'
-    :r.cancelled?'This record is cancelled; its status cannot be changed.'
-    :!srsCanSet_()?'You can see the status, but not change it. The Admin can give the right in Admin Panel › Users › Manage access › Change record status.'
-    :'';
-  box.innerHTML='<h3>Record status</h3><div class="sub">'+escText(r.type+' · '+(r.no||'—')+' · '+(r.party||''))+'</div>'
-    +'<div class="pv">'+seen.map(g=>'<span class="'+(g.n?'ok':'no')+'">'+escText(g.label)+': '+(g.n?g.n+' slide'+(g.n>1?'s':''):'none')+'</span>').join('')+'</div>'
-    +'<div class="cur">Now: '+srsChipHtml_(r,true)+(cur?'<span>'+escText([cur.remarks?'“'+cur.remarks+'”':'',cur.by?'by '+cur.by+(cur.emp?' ('+cur.emp+')':''):'',cur.at?pStamp(cur.at):''].filter(Boolean).join(' · '))+'</span>':'')+'</div>'
-    +(note?'<div class="note">'+escText(note)+'</div>':'')
-    +'<div class="btns">'+SRS_STATUSES.map(s=>{const on=pick===s.v;
-      return '<button type="button" class="sb" data-srs="'+escText(s.v)+'"'+(can?'':' disabled')
-        +' style="'+(on?'border-color:'+s.fg+';background:'+s.bg+';':'')+'"><b style="color:'+s.fg+'">'+escText(s.l.toUpperCase())+'</b><small>'+escText(s.hint)+'</small></button>';}).join('')+'</div>'
-    +(can?'<textarea data-v="rm" placeholder="Remarks'+(srsDef_(pick)&&srsDef_(pick).remark?' (needed for '+escText(srsLabel_(pick))+')':' (optional for Okay)')+'"></textarea>'
-      +'<button type="button" class="go" data-v="save">Confirm status</button>':'')
-    +'<div class="hist"><h4>History</h4>'+(SRV.hist==null?'<div><small>Loading…</small></div>'
-      :SRV.histErr?'<div><small>'+escText(SRV.histErr)+'</small></div>'
-      :SRV.hist.length?SRV.hist.map(h=>'<div><b>'+escText(srsLabel_(h.status))+'</b>'+(h.old?' <small>(was '+escText(srsLabel_(h.old))+')</small>':'')
-        +(h.remarks?' · “'+escText(h.remarks)+'”':'')+'<br><small>'+escText([h.by?h.by+(h.emp?' ('+h.emp+')':''):'',h.at?pStamp(h.at):''].filter(Boolean).join(' · '))+'</small></div>').join('')
-      :'<div><small>No status set yet.</small></div>')+'</div>';
-  const rm=box.querySelector('[data-v="rm"]');
-  if(rm)rm.value=keepRm!=null?keepRm:'';
+  const r=SRV.row,store=srsStoreOf_(),cancelled=!!r.cancelled;
+  const keep={};box.querySelectorAll('[data-keep]').forEach(el=>{keep[el.dataset.keep]=el.value;});
+  const sc=srvSeenCount_(),allSeen=sc.n>=sc.total;
+  // What the record has: one tag per source, green when it had something.
+  const seenTags=[];SRV.slides.forEach(s=>{if(s.type==='status')return;let g=seenTags.find(x=>x.id===s.group);if(!g)seenTags.push(g={id:s.group,label:s.label,n:0});if(!s.none)g.n++;});
+  let html='<h3>Bill check pipeline</h3><div class="sub">'+escText(r.type+' · '+(r.no||'—')+' · '+(r.party||''))+'</div>'
+    +'<div class="pv">'+seenTags.map(g=>'<span class="'+(g.n?'ok':'no')+'">'+escText(g.label)+': '+(g.n?g.n+' slide'+(g.n>1?'s':''):'none')+'</span>').join('')+'</div>';
+  if(scsMissing){
+    box.innerHTML=html+'<div class="note">The bill check pipeline is not set up yet. Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql in the Supabase SQL Editor (after STORE_RECORD_STATUS_MIGRATION.sql).</div>';
+    return;
+  }
+  // Has every page / photo been looked at?
+  html+='<div class="seen"><b>Looked at '+sc.n+' of '+sc.total+' pages / photos</b>'
+    +(allSeen?' · all seen':'<button type="button" data-scs-unseen="1">Show the next one not seen</button>')
+    +'<div class="prog"><i style="width:'+(sc.total?Math.round(sc.n*100/sc.total):100)+'%"></i></div>'
+    +(allSeen?'':'<small style="color:#b45309">OKAY is possible only after every page and photo of this record has been looked at (HOLD any time).</small>')+'</div>';
+  const stage=scsStage_(r);
+  if(SRV.stepSel==null){
+    const mineNow=stage.step&&scsCanRight_(stage.step.code,store)&&scsPrevOk_(r,stage.step.code).ok;
+    SRV.stepSel=mineNow?stage.step.code:'';
+  }
+  // The pipeline: everybody sees every step, a person acts only on his / her own.
+  html+='<div class="pl">'+scsFlow.map((s,k)=>{
+    const x=scsStep_(r,s.code),can=scsCanRight_(s.code,store)&&!cancelled,pv=scsPrevOk_(r,s.code);
+    const kind=x?x.status:(stage.step&&stage.step.code===s.code?'NEXT':'WAIT'),c=SCS_LOOK[kind];
+    const tag=x?x.status:(kind==='NEXT'?'WAITING HERE':'NOT REACHED');
+    const sel=SRV.stepSel===s.code;
+    let act='';
+    if(can&&sel){
+      if(!pv.ok)act='<div class="note" style="margin:8px 0 0">Waiting for '+escText(pv.label)+' to be OKAY first.</div>';
+      else{
+        const pick=SRV.pick;
+        act='<div class="act"><div class="btns" style="grid-template-columns:1fr 1fr;margin-bottom:8px">'
+          +['OKAY','HOLD'].map(v=>{const l=SCS_LOOK[v];const on=pick===v;
+            return '<button type="button" class="sb" data-scs-pick="'+v+'"'+(v==='OKAY'&&!allSeen?' disabled title="Look at every page / photo first"':'')
+              +' style="'+(on?'border-color:'+l.fg+';background:'+l.bg+';':'')+'"><b style="color:'+l.fg+'">'+v+'</b><small>'+(v==='OKAY'?'Bill and papers match':'Something to sort out first')+'</small></button>';}).join('')+'</div>'
+          +'<textarea data-v="rm" data-keep="rm" placeholder="Remarks'+(pick==='HOLD'?' (needed for HOLD)':' (optional for OKAY)')+'"></textarea>'
+          +'<button type="button" class="go" data-v="save">Confirm</button></div>';
+      }
+    }
+    return '<div class="row'+(can?' mine':'')+'"><span class="n">'+(k+1)+'</span><div class="bd"><b>'+escText(s.label)+'</b>'
+      +'<span class="tag" style="background:'+c.bg+';color:'+c.fg+';border-color:'+c.bd+'">'+escText(tag)+'</span>'+(can?'<span class="me">YOUR STEP</span>':'')
+      +(x?'<small>'+escText([x.remarks?'“'+x.remarks+'”':'',x.by?'by '+x.by+(x.emp?' ('+x.emp+')':''):'',x.at?pStamp(x.at):'',x.total!=null?'looked at '+x.seen+' of '+x.total:''].filter(Boolean).join(' · '))+'</small>':'')
+      +act+'</div>'
+      +(can&&!sel&&pv.ok?'<button type="button" class="sel" data-scs-sel="'+escText(s.code)+'">'+(x?'Change':'Check')+'</button>':'')+'</div>';
+  }).join('')+'</div>';
+  html+=srvDebitHtml_(r,store,cancelled);
+  if(cancelled)html+='<div class="note">This record is cancelled; it cannot be checked.</div>';
+  html+='<div class="hist"><h4>History</h4>'+(SRV.hist==null?'<div><small>Loading…</small></div>'
+    :SRV.histErr?'<div><small>'+escText(SRV.histErr)+'</small></div>'
+    :SRV.hist.length?SRV.hist.map(h=>'<div><b>'+escText(scsLabelOf_(h.step))+'</b> → '+escText(h.status)+(h.old?' <small>(was '+escText(h.old)+')</small>':'')
+      +(h.remarks?' · “'+escText(h.remarks)+'”':'')+'<br><small>'+escText([h.by?h.by+(h.emp?' ('+h.emp+')':''):'',h.at?pStamp(h.at):'',h.total!=null?'looked at '+h.seen+' of '+h.total:''].filter(Boolean).join(' · '))+'</small></div>').join('')
+    :'<div><small>No check done yet.</small></div>')+'</div>';
+  box.innerHTML=html;
+  box.querySelectorAll('[data-keep]').forEach(el=>{if(keep[el.dataset.keep]!=null)el.value=keep[el.dataset.keep];});
   srvPaintStatusBtn_();
+  srvLoadProofs_();
+}
+/* Debit Note block: raise (MD-1 / MD-2) → proof + verify (Accountant). */
+function srvDebitHtml_(r,store,cancelled){
+  const d=scsDebit_(r),old=(scsOf_(r)||{}).debit;
+  const canR=scsCanRight_('DEBIT_RAISE',store)&&!cancelled,canV=scsCanRight_('DEBIT_VERIFY',store)&&!cancelled;
+  let h='<div class="dn"><h4>Debit Note</h4>';
+  const proofs=()=>{
+    if(!d||!d.proofs)return '<div style="color:#64748b;margin-top:6px">No proof attached yet.</div>';
+    if(SRV.proofs==null)return '<div style="color:#64748b;margin-top:6px">Loading proofs…</div>';
+    return '<div class="pf">'+SRV.proofs.map(p=>'<div class="it" title="'+escText(p.name||'')+'">'
+      +(/^image\//.test(p.mime)?'<img src="'+escText(p.data)+'" alt="" data-scs-pview="'+p.id+'">':'<div class="pdf" data-scs-pview="'+p.id+'">PDF</div>')
+      +'<span>'+escText(p.name||'proof')+'</span>'
+      +(canV&&d.status==='RAISED'?'<button type="button" data-scs-pdel="'+p.id+'" title="Remove this proof">×</button>':'')+'</div>').join('')+'</div>';
+  };
+  if(!d){
+    if(old&&old.status==='WITHDRAWN')h+='<div style="color:#64748b;margin-bottom:6px">Earlier Debit Note withdrawn by '+escText(old.withdrawnBy||'')+(old.withdrawReason?': “'+escText(old.withdrawReason)+'”':'')+'.</div>';
+    if(!canR)h+='<div style="color:#64748b">No Debit Note. Only MD-1 / MD-2 can raise one.</div>';
+    else if(!SRV.dbOpen)h+='<button type="button" class="sb2 alt" data-scs-db="open">Raise a Debit Note</button>';
+    else h+='<div>Why is a Debit Note needed?</div><input type="text" data-keep="dbReason" maxlength="500" placeholder="Reason (needed)">'
+      +'<input type="number" data-keep="dbAmt" min="0" step="0.01" placeholder="Amount, Rs (optional)">'
+      +'<button type="button" class="sb2" data-scs-db="raise">Raise Debit Note</button> <button type="button" class="sb2 alt" data-scs-db="close">Cancel</button>';
+    return h+'</div>';
+  }
+  h+='<div><span class="tag" style="font-weight:800;color:'+(d.status==='VERIFIED'?'#fff':'#991b1b')+';background:'+(d.status==='VERIFIED'?'#991b1b':'#fee2e2')+';border:1px solid #fca5a5;border-radius:4px;padding:1px 7px;font-size:10.5px">'
+    +(d.status==='VERIFIED'?'VERIFIED':'RAISED · WAITING FOR ACCOUNTANT')+(d.debitNo?' · No. '+escText(d.debitNo):'')+'</span></div>'
+    +'<div style="margin-top:6px"><b>“'+escText(d.reason||'')+'”</b>'+(d.amount!=null?' · Rs '+escText(String(d.amount)):'')+'<br><small style="color:#64748b">Raised by '
+    +escText((d.raisedBy||'')+(d.raisedEmp?' ('+d.raisedEmp+')':''))+(d.raisedAt?' · '+escText(pStamp(d.raisedAt)):'')+'</small></div>'+proofs();
+  if(d.status==='VERIFIED'){
+    h+='<div style="margin-top:6px"><small style="color:#166534">Verified by '+escText((d.verifiedBy||'')+(d.verifiedEmp?' ('+d.verifiedEmp+')':''))+(d.verifiedAt?' · '+escText(pStamp(d.verifiedAt)):'')
+      +(d.verifyRemarks?' · “'+escText(d.verifyRemarks)+'”':'')+'</small></div>';
+  }else{
+    if(canV)h+='<div style="margin-top:8px"><b>Verify (Accountant):</b> attach the proof, then verify.</div>'
+      +'<input type="file" data-v="proof" accept="image/*,application/pdf" multiple style="margin-top:6px;font-size:12px">'
+      +(SRV.proofsBusy?'<div style="color:#64748b">Uploading…</div>':'')
+      +'<input type="text" data-keep="dbNo" maxlength="60" placeholder="Debit No. (needed)">'
+      +'<input type="number" data-keep="dbVAmt" min="0" step="0.01" placeholder="Amount, Rs (needed)">'
+      +'<input type="text" data-keep="dbVer" maxlength="500" placeholder="Remarks (optional)">'
+      +'<button type="button" class="sb2" data-scs-db="verify"'+(d.proofs?'':' disabled title="Attach at least one proof"')+'>Verify Debit Note</button>';
+    else h+='<div style="margin-top:6px;color:#64748b">The Accountant attaches the proof and verifies it.</div>';
+    if(canR)h+=' <button type="button" class="sb2 alt" data-scs-db="withdraw">Withdraw</button>';
+  }
+  return h+'</div>';
 }
 function srvPaintStatusBtn_(){
   const box=byId('srvView')?.querySelector('[data-v="stbox"]');if(!box)return;
   const go=box.querySelector('[data-v="save"]');if(!go)return;
-  const d=srsDef_(SRV.pick),rm=(box.querySelector('[data-v="rm"]')?.value||'').trim();
-  const cur=srsOf_(SRV.row);
-  go.disabled=!d||(d.remark&&rm.length<3)||(cur&&cur.status===SRV.pick&&rm===(cur.remarks||''));
-  go.textContent=!d?'Pick Okay, Hold or Debit':(d.remark&&rm.length<3)?'Write the reason for '+d.l:'Confirm: '+d.l.toUpperCase();
+  const rm=(box.querySelector('[data-v="rm"]')?.value||'').trim(),pick=SRV.pick;
+  go.disabled=!pick||(pick==='HOLD'&&rm.length<3);
+  go.textContent=!pick?'Pick OKAY or HOLD':(pick==='HOLD'&&rm.length<3)?'Write the reason for HOLD':'Confirm: '+pick;
 }
-async function srvSaveStatus_(){
-  const r=SRV.row,d=srsDef_(SRV.pick);if(!r||!d)return;
-  const box=byId('srvView')?.querySelector('[data-v="stbox"]');
-  const rm=(box?.querySelector('[data-v="rm"]')?.value||'').trim();
-  if(d.remark&&rm.length<3)return showToast(SRS_ERR.REMARK_REQUIRED,'warn');
-  const cur=srsOf_(r);
-  if(!confirm('Set '+r.type+' '+(r.no||'')+' to '+d.l.toUpperCase()+'?'+(cur?'\n(Now: '+srsLabel_(cur.status)+')':'')+(rm?'\n\nRemark: '+rm:'')))return;
-  const go=box?.querySelector('[data-v="save"]');if(go){go.disabled=true;go.textContent='Saving…';}
+/* One RPC, then the returned pipeline replaces the local one everywhere it is shown. */
+async function srvScsAct_(fn,args,doneMsg){
+  const r=SRV.row;if(!r)return false;
   const seq=SRV.seq;
   try{
-    const res=await srsRpc_('srs_status_save',{p_kind:r.kind,p_record_id:String(r.id),p_status:d.v,p_remarks:rm});
-    if(res.row)srsMap[res.row.key||srsKey_(r)]=res.row;
-    SRV.pick='';
-    if(box?.querySelector('[data-v="rm"]'))box.querySelector('[data-v="rm"]').value='';
-    showToast(escText(r.no||'Record')+' marked <b>'+escText(d.l.toUpperCase())+'</b>.');
+    const res=await scsRpc_(fn,Object.assign({p_kind:r.kind,p_record_id:String(r.id)},args));
+    if(res.row)scsMap[res.row.key||srsKey_(r)]=res.row;
+    if(doneMsg)showToast(escText(r.no||'Record')+': '+doneMsg);
     sarvRenderReports_();
     if(seq===SRV.seq){
-      const c=byId('srvView')?.querySelector('[data-v="chip"]');if(c)c.innerHTML=srsChipHtml_(r,true);
-      SRV.hist=null;srvPaintStatus_();srvLoadHistory_(seq);
+      const c=byId('srvView')?.querySelector('[data-v="chip"]');if(c)c.innerHTML=scsCellHtml_(r,true);
+      SRV.hist=null;SRV.proofs=null;SRV._proofLoad="";srvPaintStatus_();srvLoadHistory_(seq);
     }
+    return true;
   }catch(e){
-    if(srsMissingErr_(e)){srsMissing=true;srvPaintStatus_();}
-    if(e.code==='NOT_ALLOWED'&&srsCan)srsCan[srsStoreOf_()]=false;
-    showToast('Status not saved: '+escText(e.message||e),'error');
+    if(scsMissingErr_(e)){scsMissing=true;}
+    showToast('Not saved: '+escText(e.message||e),'error');
     if(seq===SRV.seq)srvPaintStatus_();
+    return false;
   }
+}
+async function srvSaveStatus_(){
+  const r=SRV.row,step=scsFlow.find(s=>s.code===SRV.stepSel),st=SRV.pick;if(!r||!step||!st)return;
+  const box=byId('srvView')?.querySelector('[data-v="stbox"]');
+  const rm=(box?.querySelector('[data-v="rm"]')?.value||'').trim(),sc=srvSeenCount_();
+  if(st==='OKAY'&&sc.n<sc.total)return showToast('Look at every page and photo first ('+sc.n+' of '+sc.total+' seen).','warn');
+  if(st==='HOLD'&&rm.length<3)return showToast(SRS_ERR.REMARK_REQUIRED,'warn');
+  const cur=scsStep_(r,step.code);
+  if(!confirm(step.label+': mark '+r.type+' '+(r.no||'')+' as '+st+'?'+(cur?'\n(Now: '+cur.status+')':'')+(rm?'\n\nRemark: '+rm:'')))return;
+  const go=box?.querySelector('[data-v="save"]');if(go){go.disabled=true;go.textContent='Saving…';}
+  const ok=await srvScsAct_('scs_check_save',{p_step:step.code,p_status:st,p_remarks:rm,p_seen:sc.n,p_total:sc.total},step.label+' <b>'+escText(st)+'</b>.');
+  if(ok){SRV.pick='';SRV.stepSel=null;SRV.dbOpen=false;srvPaintStatus_();}
+}
+/* ── Debit Note actions ── */
+async function srvDebitAct_(a){
+  const r=SRV.row,box=byId('srvView')?.querySelector('[data-v="stbox"]');if(!r||!box)return;
+  const val=k=>(box.querySelector('[data-keep="'+k+'"]')?.value||'').trim();
+  if(a==='open'){SRV.dbOpen=true;return srvPaintStatus_();}
+  if(a==='close'){SRV.dbOpen=false;return srvPaintStatus_();}
+  if(a==='raise'){
+    const why=val('dbReason'),amt=val('dbAmt');
+    if(why.length<3)return showToast(SRS_ERR.REMARK_REQUIRED,'warn');
+    if(!confirm('Raise a Debit Note on '+r.type+' '+(r.no||'')+'?\n\nReason: '+why+(amt?'\nAmount: Rs '+amt:'')+'\n\nThe Accountant will verify it with a proof.'))return;
+    if(await srvScsAct_('scs_debit_raise',{p_reason:why,p_amount:amt===''?null:Number(amt)},'Debit Note <b>raised</b>.'))SRV.dbOpen=false;
+    return srvPaintStatus_();
+  }
+  if(a==='withdraw'){
+    const why=(prompt('Reason for withdrawing this Debit Note?')||'').trim();
+    if(!why)return;
+    return void await srvScsAct_('scs_debit_withdraw',{p_reason:why},'Debit Note <b>withdrawn</b>.');
+  }
+  if(a==='verify'){
+    const dno=val('dbNo'),vamt=Number(val('dbVAmt'));
+    if(!dno)return showToast(SCS_ERR.DEBIT_NO_REQUIRED,'warn');
+    if(!(vamt>0))return showToast(SCS_ERR.AMOUNT_REQUIRED,'warn');
+    if(!confirm('Verify the Debit Note on '+r.type+' '+(r.no||'')+'?\nDebit No. '+dno+', Rs '+vamt+', with the attached proof.'))return;
+    return void await srvScsAct_('scs_debit_verify',{p_remarks:val('dbVer'),p_debit_no:dno,p_amount:vamt},'Debit Note <b>verified</b>.');
+  }
+}
+/* Proofs are fetched (with their data) only when the Debit Note has some. */
+async function srvLoadProofs_(){
+  const r=SRV.row,d=r&&scsDebit_(r);
+  if(!d||!d.proofs||SRV.proofs!=null)return;
+  if(SRV._proofLoad===SRV.seq+':'+d.proofs)return;
+  SRV._proofLoad=SRV.seq+':'+d.proofs;
+  const seq=SRV.seq;
+  try{
+    const res=await scsRpc_('scs_debit_proofs',{p_kind:r.kind,p_record_id:String(r.id)});
+    if(seq!==SRV.seq)return;
+    SRV.proofs=res.rows||[];
+  }catch(e){if(seq!==SRV.seq)return;SRV.proofs=[];showToast('Proofs not loaded: '+escText(e.message||e),'error');}
+  if(SRV.slides[SRV.i]&&SRV.slides[SRV.i].type==='status')srvPaintStatus_();
+}
+/* A photo is shrunk to about 1600 px JPEG (fits the 2.5 MB server limit); a PDF is sent as it is (max 1.8 MB). */
+function srvReadProof_(file){
+  return new Promise((resolve,reject)=>{
+    if(file.type==='application/pdf'){
+      if(file.size>1800000)return reject(new Error(file.name+': the PDF is too big (max 1.8 MB).'));
+      const fr=new FileReader();fr.onload=()=>resolve({name:file.name,mime:file.type,data:fr.result});fr.onerror=()=>reject(new Error(file.name+': not readable.'));fr.readAsDataURL(file);return;
+    }
+    if(!/^image\//.test(file.type))return reject(new Error(file.name+': only a photo or a PDF can be attached.'));
+    const img=new Image(),url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const k=Math.min(1,1600/Math.max(img.width,img.height)),c=document.createElement('canvas');
+      c.width=Math.max(1,Math.round(img.width*k));c.height=Math.max(1,Math.round(img.height*k));
+      c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);
+      let q=.82,d=c.toDataURL('image/jpeg',q);
+      while(d.length>2000000&&q>.4){q-=.12;d=c.toDataURL('image/jpeg',q);}
+      resolve({name:file.name.replace(/\.[^.]+$/,'')+'.jpg',mime:'image/jpeg',data:d});
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error(file.name+': this photo format cannot be read here.'));};
+    img.src=url;
+  });
+}
+async function srvProofFiles_(files){
+  const r=SRV.row;if(!r||!files||!files.length)return;
+  SRV.proofsBusy=true;srvPaintStatus_();
+  const seq=SRV.seq;
+  for(const f of [...files]){
+    try{
+      const p=await srvReadProof_(f);
+      const res=await scsRpc_('scs_debit_proof_add',{p_kind:r.kind,p_record_id:String(r.id),p_name:p.name,p_mime:p.mime,p_data:p.data});
+      if(res.row)scsMap[res.row.key||srsKey_(r)]=res.row;
+    }catch(e){showToast('Proof not added: '+escText(e.message||e),'error');if(e.code==='TOO_MANY_FILES')break;}
+  }
+  SRV.proofsBusy=false;SRV.proofs=null;SRV._proofLoad='';
+  if(seq===SRV.seq){srvPaintStatus_();sarvRenderReports_();}
+}
+async function srvProofDel_(id){
+  const r=SRV.row;if(!r||!confirm('Remove this proof?'))return;
+  try{
+    const res=await scsRpc_('scs_debit_proof_remove',{p_proof_id:Number(id)});
+    if(res.row)scsMap[res.row.key||srsKey_(r)]=res.row;
+    SRV.proofs=null;SRV._proofLoad='';srvPaintStatus_();
+  }catch(e){showToast('Not removed: '+escText(e.message||e),'error');}
+}
+/* A data: URL cannot be opened as a page by the browser, so it goes through a blob. */
+function srvProofView_(id){
+  const p=(SRV.proofs||[]).find(x=>String(x.id)===String(id));if(!p)return;
+  try{
+    const b=p.data.split(','),bin=atob(b[1]||''),u=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    window.open(URL.createObjectURL(new Blob([u],{type:p.mime})),'_blank','noopener');
+  }catch(e){showToast('Proof could not be opened.','error');}
 }

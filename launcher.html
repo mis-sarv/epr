@@ -779,6 +779,17 @@ const APPS = [
   { key:'HOME_ISSUER', href:'issuer.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>', accent:'#8b5cf6',
     defRoles:['ADMIN_PIN'],
     title:'Issue Supervisor', sub:'Approve Issue: photos + PIN, auto PDF' },
+  /* Bill Check inbox: the records waiting for the user's own step of the bill
+     check pipeline (GM > EA > MD-1 > MD-2 > Accounts, then Debit Note), with
+     Pending / Done lists and a Preview of every attachment. Default = the roles
+     that own a step; the EA is ticked per user. Which STEP a person may do is
+     decided by the RPT_CHK_* rights (STORE_CHECK_PIPELINE_MIGRATION.sql). */
+  { key:'HOME_BILL_CHECK', href:'bill-check.html', ico:'<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3h9l4 4v14H6z"/><path d="M15 3v4h4M9 12h7M9 16h4"/><path d="M9.5 8.5l1 1 2-2"/></svg>', accent:'#0a84ff',
+    defRoles:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN','USER_AC_PIN'],
+    // A user with any bill check step / Debit Note right ticked (Manage access) gets the app too: the
+    // step right is what the Admin switches ON, and the Users form writes HOME_BILL_CHECK as an explicit OFF beside it.
+    alsoIfAny:['RPT_CHK_','RPT_DEBIT_'],
+    title:'Bill Check', sub:'Pending & done bill checks, preview' },
   /* Box-wise yarn weights at the godown. OFF for everyone (no defRoles, Admin
      included) until the Admin switches it ON in Tab Visibility or Users ›
      Apps; same default as HOME_YARN_UNLOADING in store-core.js's SARV_TABS.
@@ -915,6 +926,9 @@ const srvMsg = c => SRV_MSG[c] || ('Failed: ' + esc(c || 'unknown'));
    nowhere is shown, so this page never reduces anyone's existing access. */
 function appAllowed(key, roles, appAccess){
   const ov = appAccess && typeof appAccess === 'object' ? appAccess[key] : undefined;
+  const own = APPS.find(a => a.key === key);
+  if (own && own.alsoIfAny && appAccess && typeof appAccess === 'object' &&
+      Object.keys(appAccess).some(k => appAccess[k] === true && own.alsoIfAny.some(p => k.indexOf(p) === 0 || k.indexOf('S1_' + p) === 0 || k.indexOf('S2_' + p) === 0))) return true;
   if (typeof ov === 'boolean') return ov;                 // 1. per-user
   const row = TABVIS && TABVIS[key];
   if (row && roles.length){                               // 2. role-wise (JOD)
@@ -1605,6 +1619,16 @@ window.addEventListener('pageshow', e => {
 async function addNewAppsToSession(tok, su){
   const have = Array.isArray(su.allowed_apps) ? su.allowed_apps : [];
   if (!have.length) return;   // an old session without a list: renderHome already works it out
+  /* su.app_access / roles are the copy taken at login. An app the Admin
+     switched ON for this user afterwards (Admin Panel › Users › Apps) is only
+     in the live user row, so that row (USERS, just read by loadMasters) is
+     used when it is there; otherwise the button never appeared before the
+     next login for a user whose role is not in the app's defRoles. */
+  const live = USERS.find(x => String(x.id) === String(su.id));
+  if (live){
+    if (live.app_access && typeof live.app_access === 'object') su.app_access = live.app_access;
+    if (Array.isArray(live.roles) && live.roles.length) su.roles = live.roles;
+  }
   const roles = (su.roles && su.roles.length ? su.roles : [su.primary_role]).filter(Boolean);
   const add = allowedAppKeys(roles, su.app_access || {}).filter(k => have.indexOf(k) < 0 && k !== 'HOME_ORDER_FORM');
   if (!add.length) return;

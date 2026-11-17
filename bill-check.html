@@ -1,0 +1,1258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="offline-sync.js"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Bill Check</title>
+<!-- First, so a logged-in user never sees a flash of anything else. -->
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+<!--
+  BILL CHECK: the inbox of the bill check pipeline
+  GM > EA > MD-1 > MD-2 > Accounts, then a Debit Note (raised by MD-1 / MD-2,
+  verified by the Accountant with proof files).
+
+  The same data as ERP › Print History / Reports › Preview, in its own app:
+    - To Check  the records waiting at a step THIS user may do, shown on their
+                own (grouped by step; a step needs every earlier one OKAY).
+    - Done      the records this user has passed.
+    - Debit     Debit Notes: waiting for verification / verified.
+    - All       every record and where it stands (read only unless it is theirs).
+  Tapping a record opens the pipeline sheet: attachments strip (Store PDF,
+  Actual Bill, Unloader photos, Field Boy photos), the whole pipeline, the
+  user's own step and the Debit Note. OKAY is possible only after every page /
+  photo has been looked at in the viewer (HOLD any time).
+
+  LOGIN = ERP LOGIN (launcher.html), app key HOME_BILL_CHECK. Everything that
+  changes data goes through the token-checked scs_* functions of
+  sql/STORE_CHECK_PIPELINE_MIGRATION.sql, which decide the rights again on the
+  server (RPT_CHK_<step>, RPT_DEBIT_RAISE / RPT_DEBIT_VERIFY). The list itself
+  is read like the ERP reads it (inward_entries / outward_entries with the
+  anon key); nothing here can check a step the server does not allow.
+
+  LOOK = iOS: grouped inset lists, large title, segmented control, card
+  sheets with the page scaling behind, action sheets and alerts, springs,
+  light / dark with the device. The pipeline (codes, labels, order) and the
+  rights come from the server (scs_get), so a new step needs no change here.
+  This page loads no caps-input.js on purpose: remarks keep the case typed.
+
+  ACCOUNTANT COPY: a Store entry saves only its Supplier Copy; the ERP keeps a clean
+  Accountant Copy base aside (store_account_copy, sql/STORE_ACCOUNT_COPY_MIGRATION.sql).
+  A step that signs (GM, MD-1, MD-2: 'sign' in the server's flow) asks the checker's OWN
+  PIN when passing the bill (OKAY / DEBIT), and then stamps their saved signature, name +
+  time and the check remark onto the LATEST copy with pdf-lib (CHECK REMARKS box under the
+  signatures); the next step receives that updated copy, and ERP › Preview shows it.
+  HOLD signs nothing. A bill from before this feature has no base: it is checked as before.
+-->
+<style>
+:root{
+  --bg:#f2f2f7;--card:#fff;--card2:#f9f9fb;--label:#000;--label2:rgba(60,60,67,.6);--label3:rgba(60,60,67,.3);
+  --sep:rgba(60,60,67,.18);--fill:rgba(120,120,128,.12);--fill2:rgba(120,120,128,.2);
+  --blue:#007aff;--green:#34c759;--orange:#ff9500;--red:#ff3b30;--purple:#af52de;--teal:#30b0c7;--gray:#8e8e93;
+  --blur:saturate(180%) blur(22px);--bar:rgba(249,249,249,.82);--scrim:rgba(0,0,0,.4);
+  --spring:cubic-bezier(.32,.72,0,1);
+  --sat:env(safe-area-inset-top,0px);--sab:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#000;--card:#1c1c1e;--card2:#2c2c2e;--label:#fff;--label2:rgba(235,235,245,.6);--label3:rgba(235,235,245,.3);
+  --sep:rgba(84,84,88,.6);--fill:rgba(120,120,128,.24);--fill2:rgba(120,120,128,.36);
+  --blue:#0a84ff;--green:#30d158;--orange:#ff9f0a;--red:#ff453a;--purple:#bf5af2;--teal:#40c8e0;--gray:#98989d;
+  --bar:rgba(29,29,31,.82);--scrim:rgba(0,0,0,.6);}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#000;color:var(--label);overscroll-behavior:none}
+body{font:17px/1.3 -apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display","Helvetica Neue","Segoe UI",system-ui,Roboto,sans-serif;
+  -webkit-font-smoothing:antialiased;letter-spacing:-.011em;user-select:none;-webkit-user-select:none}
+button{font:inherit;color:inherit;letter-spacing:inherit;border:0;background:none;padding:0;cursor:pointer}
+input,textarea{font:inherit;color:inherit;letter-spacing:inherit;user-select:text;-webkit-user-select:text}
+svg{display:block}
+#app{position:fixed;inset:0;background:var(--bg);overflow:hidden;transform-origin:50% 0;
+  transition:transform .5s var(--spring),border-radius .5s var(--spring),filter .5s var(--spring)}
+body.sheeted #app{transform:translateY(calc(var(--sat) + 8px)) scale(.925);border-radius:12px;filter:brightness(.82)}
+@media (prefers-reduced-motion:reduce){*{animation-duration:.01ms!important;transition-duration:.01ms!important}}
+
+/* ── navigation bar + large title ── */
+.nav{position:absolute;top:0;left:0;right:0;z-index:5;padding-top:var(--sat);background:var(--bar);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)}
+.nav .row{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 8px;max-width:760px;margin:0 auto}
+.nav .ttl{position:absolute;left:0;right:0;text-align:center;font-weight:600;font-size:17px;pointer-events:none}
+.nbtn{display:flex;align-items:center;gap:2px;color:var(--blue);font-size:17px;padding:8px;border-radius:10px;min-width:44px;transition:opacity .15s}
+.nbtn:active{opacity:.35}
+.avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(180deg,#a2a2a8,#7d7d83);color:#fff;font-weight:600;font-size:14px;display:flex;align-items:center;justify-content:center;margin:0 4px}
+.scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;padding-top:calc(var(--sat) + 44px + var(--ctrl-h,172px));padding-bottom:calc(var(--sab) + 40px)}
+.wrap{max-width:760px;margin:0 auto;padding:0 16px}
+.large{font-size:34px;font-weight:700;letter-spacing:.012em;margin:2px 0 6px;transition:opacity .2s}
+.sub{color:var(--label2);font-size:15px;margin:0 0 12px}
+.ptr{height:0;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;color:var(--label2)}
+.spin{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--fill2);border-top-color:var(--label2);animation:sp .8s linear infinite;margin-bottom:8px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── search + segmented control ── */
+.search{display:flex;align-items:center;gap:6px;background:var(--fill);border-radius:10px;height:36px;padding:0 8px;color:var(--label2);margin-bottom:10px}
+.search input{flex:1;min-width:0;border:0;outline:0;background:none;font-size:17px}
+.search input::placeholder{color:var(--label2)}
+.search .x{width:18px;height:18px;border-radius:50%;background:var(--label3);color:var(--bg);display:none;align-items:center;justify-content:center}
+.search.has .x{display:flex}
+.seg{position:relative;display:grid;background:var(--fill);border-radius:9px;padding:2px;height:32px}
+.seg .thumb{position:absolute;top:2px;bottom:2px;left:2px;border-radius:7px;background:var(--card);box-shadow:0 3px 8px rgba(0,0,0,.12),0 3px 1px rgba(0,0,0,.04);transition:transform .35s var(--spring)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .seg .thumb{background:#636366}}
+.seg button{position:relative;z-index:1;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px;border-radius:7px;white-space:nowrap}
+.seg button.on{font-weight:600}
+.seg .bdg{min-width:17px;height:17px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
+.seg .bdg.q{background:var(--label3)}
+.ctrl{position:absolute;left:0;right:0;top:calc(var(--sat) + 44px);z-index:4;background:var(--bar);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:0 .5px 0 var(--sep);padding:8px 0 10px}
+.ctrl .in{max-width:760px;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;gap:8px}
+.ctrl .chips{padding:0 16px;margin:0 -16px}
+.ctrl .search{margin:0}
+.chips{display:flex;gap:8px;overflow-x:auto;padding:10px 16px 2px;margin:0 -16px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;height:30px;padding:0 13px;border-radius:15px;background:var(--fill);font-size:14px;font-weight:500;display:flex;align-items:center;transition:background .2s,color .2s,transform .15s}
+.chip:active{transform:scale(.95)}
+.chip.on{background:var(--blue);color:#fff}
+.chip.sp{width:1px;padding:0;background:var(--sep);height:20px;align-self:center;border-radius:0}
+
+/* ── grouped inset lists ── */
+.sec{margin:22px 0 0}
+.sec>h3{margin:0 0 6px 16px;font-size:13px;font-weight:400;text-transform:uppercase;color:var(--label2);letter-spacing:-.003em;display:flex;align-items:center;gap:8px}
+.sec>h3 .n{background:var(--fill);border-radius:9px;padding:0 7px;font-size:12px;color:var(--label2)}
+.sec>.foot{margin:6px 16px 0;font-size:13px;color:var(--label2)}
+.grp{background:var(--card);border-radius:12px;overflow:hidden}
+.cell{position:relative;display:flex;align-items:center;gap:12px;padding:11px 16px;min-height:44px;width:100%;text-align:left;transition:background .15s}
+button.cell:active,.cell.tap:active{background:var(--fill)}
+.cell+.cell::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--sep)}
+.cell.rec{padding-left:14px;animation:rise .45s var(--spring) both;animation-delay:calc(var(--i,0)*28ms)}
+.cell.rec+.cell.rec::before{left:62px}
+@keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.ico{flex:none;width:38px;height:38px;border-radius:9px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;letter-spacing:.02em}
+.mid{flex:1;min-width:0}
+.mid .t{font-weight:600;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mid .s{color:var(--label2);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:1px}
+.end{flex:none;text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+.end .d{color:var(--label2);font-size:13px}
+.end .a{font-size:14px;font-weight:500}
+.chev{flex:none;color:var(--label3)}
+.dbn{margin-top:6px;padding:4px 8px;border-radius:7px;background:rgba(255,59,48,.12);color:var(--red);font-size:12.5px;font-weight:600;white-space:normal;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.pdots{display:flex;gap:3px;margin-top:5px}
+.pdots i{width:15px;height:4px;border-radius:2px;background:var(--fill2)}
+.pdots i.ok{background:var(--green)}.pdots i.hold{background:var(--orange)}.pdots i.next{background:var(--blue)}
+.pill{display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:10px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.pill.ok{background:rgba(52,199,89,.16);color:var(--green)}.pill.hold{background:rgba(255,149,0,.16);color:var(--orange)}
+.pill.red{background:rgba(255,59,48,.14);color:var(--red)}.pill.blue{background:rgba(0,122,255,.14);color:var(--blue)}.pill.gray{background:var(--fill);color:var(--label2)}
+.empty{text-align:center;padding:64px 24px;color:var(--label2);animation:rise .5s var(--spring) both}
+.empty .ring{width:76px;height:76px;margin:0 auto 14px;border-radius:50%;background:var(--fill);display:flex;align-items:center;justify-content:center;color:var(--label2)}
+.empty b{display:block;font-size:20px;color:var(--label);margin-bottom:4px}
+.more{display:block;margin:14px auto 0;color:var(--blue);font-size:15px;padding:8px 16px}
+.skel .cell{pointer-events:none}
+.sk{background:linear-gradient(90deg,var(--fill) 25%,var(--fill2) 37%,var(--fill) 63%);background-size:400% 100%;animation:sh 1.3s ease infinite;border-radius:6px}
+@keyframes sh{0%{background-position:100% 50%}100%{background-position:0 50%}}
+.banner{display:flex;gap:10px;align-items:flex-start;background:var(--card);border-radius:12px;padding:12px 14px;margin-top:12px;font-size:14px;color:var(--label2)}
+.banner b{color:var(--label)}
+
+/* ── sheets ── */
+.layer{position:fixed;inset:0;z-index:50;pointer-events:none}
+.layer>*{pointer-events:auto}
+.scrim{position:fixed;inset:0;background:var(--scrim);opacity:0;transition:opacity .4s var(--spring)}
+.scrim.in{opacity:1}
+.sheet{position:fixed;left:50%;bottom:0;width:min(100%,680px);height:calc(100% - var(--sat) - 10px);background:var(--bg);border-radius:12px 12px 0 0;
+  display:flex;flex-direction:column;overflow:hidden;transform:translate(-50%,100%);transition:transform .5s var(--spring);box-shadow:0 -2px 20px rgba(0,0,0,.25)}
+.sheet.in{transform:translate(-50%,0)}
+.sheet.drag{transition:none}
+.sheet.small{height:auto;max-height:calc(100% - var(--sat) - 40px);background:var(--bg)}
+.shead{flex:none;position:relative;padding:8px 8px 0;background:var(--bar);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:0 .5px 0 var(--sep);touch-action:none;z-index:2}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--label3);margin:0 auto 4px}
+.shead .row{height:44px;display:flex;align-items:center;justify-content:space-between}
+.shead .row .tt{position:absolute;left:70px;right:70px;text-align:center;font-weight:600;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sbody{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px 16px calc(var(--sab) + 28px)}
+.hero{background:var(--card);border-radius:14px;padding:16px;display:flex;gap:14px;align-items:center}
+.hero .ico{width:52px;height:52px;border-radius:12px;font-size:13px}
+.hero .no{font-size:22px;font-weight:700;letter-spacing:.01em}
+.hero .pt{color:var(--label2);font-size:15px;margin-top:2px}
+.kv{display:flex;justify-content:space-between;gap:16px;padding:10px 16px;font-size:15px;position:relative}
+.kv+.kv::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--sep)}
+.kv span:first-child{color:var(--label2);flex:none}.kv span:last-child{text-align:right;min-width:0;overflow-wrap:anywhere}
+.film{display:flex;gap:10px;overflow-x:auto;padding:12px 14px;scroll-snap-type:x proximity;scrollbar-width:none}
+.film::-webkit-scrollbar{display:none}
+.th{flex:none;width:92px;scroll-snap-align:start;text-align:center;font-size:11px;color:var(--label2);transition:transform .15s}
+.th:active{transform:scale(.94)}
+.th .im{position:relative;width:92px;height:116px;border-radius:9px;background:var(--fill);overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px var(--sep)}
+.th .im img,.th .im canvas{width:100%;height:100%;object-fit:cover}
+.th .tick{position:absolute;right:5px;bottom:5px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;display:none;align-items:center;justify-content:center;animation:pop .35s var(--spring)}
+.th.seen .tick{display:flex}
+.th .lb{margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+@keyframes pop{from{transform:scale(.3);opacity:0}to{transform:none;opacity:1}}
+.prog{padding:4px 16px 14px}
+.prog .tx{display:flex;justify-content:space-between;font-size:14px;margin-bottom:7px}
+.bar{height:6px;border-radius:3px;background:var(--fill2);overflow:hidden}
+.bar i{display:block;height:100%;background:var(--green);border-radius:3px;transition:width .6s var(--spring)}
+.btn{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:50px;border-radius:13px;background:var(--blue);color:#fff;font-weight:600;font-size:17px;transition:transform .15s,opacity .2s,filter .15s}
+.btn:active{transform:scale(.97);filter:brightness(.9)}
+.btn:disabled{opacity:.4;pointer-events:none}
+.btn.gray{background:var(--fill);color:var(--blue)}.btn.green{background:var(--green)}.btn.red{background:var(--red)}.btn.orange{background:var(--orange)}
+.btn.sm{height:36px;font-size:15px;border-radius:10px;width:auto;padding:0 16px}
+.gap{height:10px}
+/* timeline */
+.tl{padding:6px 0}
+.step{position:relative;display:flex;gap:13px;padding:10px 16px}
+.step .dot{position:relative;flex:none;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--fill2);z-index:1}
+.step .dot.ok{background:var(--green)}.step .dot.hold{background:var(--orange)}.step .dot.next{background:var(--blue)}.step .dot.red{background:var(--red)}
+.step .dot.next::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid var(--blue);opacity:.5;animation:pulse 1.8s ease-out infinite}
+@keyframes pulse{0%{transform:scale(.8);opacity:.7}100%{transform:scale(1.5);opacity:0}}
+.step:not(:last-child)::before{content:"";position:absolute;left:29px;top:36px;bottom:-8px;width:2px;background:var(--fill2)}
+.step.done:not(:last-child)::before{background:var(--green)}
+.step .bd{flex:1;min-width:0;padding-top:3px}
+.step .bd b{font-size:16px;font-weight:600}
+.step .bd small{display:block;color:var(--label2);font-size:13px;margin-top:2px;overflow-wrap:anywhere}
+.me{margin-left:6px;vertical-align:1px}
+.pf{display:flex;flex-wrap:wrap;gap:10px;padding:4px 16px 14px}
+.pf .it{position:relative;width:84px;border-radius:9px;background:var(--fill);overflow:hidden;font-size:10.5px;color:var(--label2);text-align:center}
+.pf .it img{display:block;width:100%;height:84px;object-fit:cover}
+.pf .it .pd{height:84px;display:flex;align-items:center;justify-content:center;font-weight:700;color:var(--red);font-size:16px}
+.pf .it span{display:block;padding:3px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pf .it .rm{position:absolute;top:4px;right:4px;width:20px;height:20px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;display:flex;align-items:center;justify-content:center}
+.pad{padding:12px 16px}
+.field{width:100%;border:0;outline:0;background:var(--fill);border-radius:10px;padding:11px 12px;font-size:17px;resize:none}
+.field+.field{margin-top:8px}
+.seg2{position:relative;display:grid;grid-template-columns:1fr 1fr;background:var(--fill);border-radius:10px;padding:2px;height:44px}
+.seg2 .thumb{position:absolute;top:2px;bottom:2px;left:2px;width:calc(50% - 2px);border-radius:8px;transition:transform .35s var(--spring),background .25s}
+.seg2 button{position:relative;z-index:1;font-weight:600;font-size:16px;opacity:.6;transition:opacity .2s,color .2s}
+.seg2 button.on{opacity:1;color:#fff}
+.seg2 button:disabled{opacity:.25}
+.note{font-size:13px;color:var(--label2);margin:8px 4px 0;line-height:1.35}
+.note.warn{color:var(--orange)}
+
+/* ── viewer ── */
+.viewer{position:fixed;inset:0;z-index:80;background:#000;color:#fff;display:flex;flex-direction:column;opacity:0;transform:scale(1.04);transition:opacity .3s var(--spring),transform .4s var(--spring)}
+.viewer.in{opacity:1;transform:none}
+.vbar{flex:none;padding:calc(var(--sat) + 4px) 8px 8px;display:flex;align-items:center;justify-content:space-between;background:rgba(28,28,30,.78);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);position:relative;z-index:3}
+.vbar .nbtn{color:#0a84ff}
+.vbar .vt{position:absolute;left:84px;right:84px;text-align:center;min-width:0}
+.vbar .vt b{display:block;font-size:15px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vbar .vt small{display:block;font-size:12px;color:rgba(235,235,245,.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.car{flex:1;display:flex;overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scrollbar-width:none;-webkit-overflow-scrolling:touch;scroll-behavior:smooth}
+.car::-webkit-scrollbar{display:none}
+.car.lock{overflow-x:hidden}
+.vs{flex:none;width:100%;height:100%;scroll-snap-align:center;scroll-snap-stop:always;display:flex;align-items:center;justify-content:center;overflow:hidden;touch-action:pan-x;position:relative}
+.vs.zoomed{touch-action:none}
+.vs>.vi{max-width:100%;max-height:100%;object-fit:contain;background:#fff;border-radius:2px;transform-origin:50% 50%;will-change:transform;-webkit-user-drag:none}
+.vs.anim>.vi{transition:transform .35s var(--spring)}
+.vs .msg{max-width:320px;text-align:center;color:rgba(235,235,245,.7);font-size:15px;padding:20px}
+.vs .msg b{display:block;color:#fff;font-size:19px;margin-bottom:6px}
+.vs .ld{position:absolute;inset:0;display:flex;align-items:center;justify-content:center}
+.vs .ld .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff;width:28px;height:28px}
+.vnav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;border-radius:50%;background:rgba(60,60,67,.7);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);color:#fff;display:none;align-items:center;justify-content:center}
+.vnav.l{left:12px}.vnav.r{right:12px}
+@media (hover:hover) and (pointer:fine){.vnav{display:flex}.vnav:disabled{opacity:.25}}
+.vfoot{flex:none;background:rgba(28,28,30,.78);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);padding:8px 0 calc(var(--sab) + 8px)}
+.vcap{padding:0 16px 8px;font-size:13px;color:rgba(235,235,245,.7);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.vcap .open{color:#0a84ff;margin-left:8px;text-decoration:none}
+.vfilm{display:flex;gap:6px;overflow-x:auto;padding:0 12px;scrollbar-width:none}
+.vfilm::-webkit-scrollbar{display:none}
+.vf{flex:none;position:relative;width:38px;height:50px;border-radius:5px;overflow:hidden;background:#2c2c2e;opacity:.55;transition:opacity .2s,transform .25s var(--spring);box-shadow:0 0 0 1.5px transparent}
+.vf.on{opacity:1;transform:scale(1.12);box-shadow:0 0 0 2px #0a84ff}
+.vf img,.vf canvas{width:100%;height:100%;object-fit:cover}
+.vf .tk{position:absolute;right:2px;bottom:2px;width:12px;height:12px;border-radius:50%;background:#30d158;display:none}
+.vf.seen .tk{display:block}
+
+/* ── alerts, action sheets, toast ── */
+.al-scrim{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.4);display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .25s}
+.al-scrim.in{opacity:1}
+.alert{width:270px;border-radius:14px;background:rgba(246,246,246,.92);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);text-align:center;overflow:hidden;transform:scale(1.12);opacity:0;transition:transform .3s var(--spring),opacity .25s;color:#000}
+.al-scrim.in .alert{transform:none;opacity:1}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .alert{background:rgba(44,44,46,.92);color:#fff}}
+.alert .tx{padding:18px 16px 14px}.alert .tx b{display:block;font-size:17px;font-weight:600}.alert .tx p{margin:4px 0 0;font-size:13px;white-space:pre-wrap;overflow-wrap:anywhere}
+.alert input{width:100%;margin-top:12px;border:.5px solid var(--sep);border-radius:6px;padding:6px 8px;font-size:15px;background:rgba(255,255,255,.7);outline:0;color:#000;text-align:left}
+.alert .bt{display:flex;border-top:.5px solid var(--sep)}
+.alert .bt.col{flex-direction:column}
+.alert .bt button{flex:1;height:44px;font-size:17px;color:var(--blue);transition:background .1s}
+.alert .bt button+button{border-left:.5px solid var(--sep)}
+.alert .bt.col button+button{border-left:0;border-top:.5px solid var(--sep)}
+.alert .bt button:active{background:rgba(120,120,128,.2)}
+.alert .bt .b{font-weight:600}.alert .bt .d{color:var(--red)}
+.as-scrim{position:fixed;inset:0;z-index:120;background:rgba(0,0,0,.4);opacity:0;transition:opacity .3s var(--spring)}
+.as-scrim.in{opacity:1}
+.asheet{position:fixed;left:50%;bottom:calc(var(--sab) + 8px);width:min(calc(100% - 16px),420px);transform:translate(-50%,calc(100% + 30px));transition:transform .45s var(--spring);display:flex;flex-direction:column;gap:8px}
+.as-scrim.in .asheet{transform:translate(-50%,0)}
+.asheet .g{background:rgba(246,246,246,.94);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border-radius:14px;overflow:hidden;color:#000}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .asheet .g{background:rgba(44,44,46,.94);color:#fff}}
+.asheet .hd{padding:14px 16px;text-align:center;font-size:13px;color:var(--label2);border-bottom:.5px solid var(--sep)}
+.asheet .hd b{display:block;color:inherit;font-size:13px;font-weight:600}
+.asheet button{display:block;width:100%;height:57px;font-size:20px;color:var(--blue);border-top:.5px solid var(--sep);transition:background .1s}
+.asheet button:first-child{border-top:0}
+.asheet button:active{background:rgba(120,120,128,.2)}
+.asheet button.d{color:var(--red)}.asheet .cx button{font-weight:600}
+.toast{position:fixed;left:50%;top:calc(var(--sat) + 10px);z-index:140;transform:translate(-50%,-90px);transition:transform .5s var(--spring);max-width:min(92%,420px);
+  background:rgba(60,60,67,.92);color:#fff;-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);border-radius:22px;padding:11px 18px;font-size:15px;font-weight:500;display:flex;gap:8px;align-items:center;box-shadow:0 8px 28px rgba(0,0,0,.3)}
+.toast.in{transform:translate(-50%,0)}
+.toast.err{background:rgba(255,59,48,.95)}
+.busy{position:fixed;inset:0;z-index:150;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.2)}
+.busy.on{display:flex}
+.busy .bx{width:84px;height:84px;border-radius:16px;background:rgba(60,60,67,.9);display:flex;align-items:center;justify-content:center}
+.busy .spin{border-color:rgba(255,255,255,.25);border-top-color:#fff;width:32px;height:32px;margin:0}
+</style>
+</head>
+<body>
+<div id="app">
+  <div class="nav" id="nav">
+    <div class="row">
+      <button class="nbtn" id="bkBtn" aria-label="Apps"><svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2L2 10l8 8"/></svg><span>Apps</span></button>
+      <div class="ttl">Bill Check</div>
+      <button class="avatar" id="meBtn" aria-label="Account"></button>
+    </div>
+  </div>
+  <!-- Frozen under the bar, always in this order: stores, types, tabs, search -->
+  <div class="ctrl" id="ctrl"><div class="in">
+    <div class="chips" id="chipsStore"></div>
+    <div class="chips" id="chips"></div>
+    <div class="seg" id="seg"></div>
+    <label class="search" id="searchBox">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search record, party, invoice" autocomplete="off">
+      <button class="x" id="qx" aria-label="Clear"><svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M1 1l8 8M9 1l-8 8"/></svg></button>
+    </label>
+  </div></div>
+  <div class="scroll" id="scroll">
+    <div class="ptr" id="ptr"><div class="spin"></div></div>
+    <div class="wrap">
+      <p class="sub" id="subline"></p>
+      <div id="list"></div>
+    </div>
+  </div>
+</div>
+<div class="layer" id="layer"></div>
+<div class="toast" id="toast"></div>
+<div class="busy" id="busy"><div class="bx"><div class="spin"></div></div></div>
+
+<script>
+'use strict';
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_BILL_CHECK';
+/* Only records saved on or after this day are checked here; older ones stay hidden (Print History in the ERP still has them).
+   One place to change it. Saved time (created_at), India time, so a back-dated entry saved today still shows. */
+const CHECK_FROM = '2026-11-17T00:00:00+05:30';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const buzz = (n) => { try { navigator.vibrate && navigator.vibrate(n || 8); } catch (e) {} };
+
+/* ── Icons (SF Symbols look: thin round strokes) ── */
+const IC = {
+  chev:'<svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg>',
+  back:'<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2L2 10l8 8"/></svg>',
+  check:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
+  bang:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round"><path d="M12 5v9M12 19v.5"/></svg>',
+  x:'<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M2 2l8 8M10 2l-8 8"/></svg>',
+  doc:'<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h8l5 5v13H6z"/><path d="M14 3v5h5M9 13h7M9 17h5"/></svg>',
+  inbox:'<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13l3-8h12l3 8v6H3z"/><path d="M3 13h5l1 3h6l1-3h5"/></svg>',
+  done:'<svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/></svg>',
+  plus:'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+  eye:'<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>'
+};
+
+/* ══ State ═════════════════════════════════════════════════════════════ */
+const FLOW0 = [{code:'GM',label:'GM Bill Check',short:'GM'},{code:'EA',label:'EA Bill Check',short:'EA'},{code:'MD1',label:'MD-1 Bill Check',short:'MD1'},{code:'MD2',label:'MD-2 Bill Check',short:'MD2'},{code:'AC',label:'Accounts Check',short:'AC'}];
+const S = {
+  user:null, flow:FLOW0, can:null, missing:false, rows:[], loaded:false, loading:false,
+  seg:'TODO', type:'ALL', store:'ALL', q:'', days:60, show:{},
+  map:{},                 // 'inward:12' -> pipeline row from scs_get
+  att:{},                 // key -> {state, slides, errs}
+  seen:{}                 // key -> Set of slide numbers looked at in the viewer
+};
+const TYPE_LOOK = { 'INWARD':['IN','#0a84ff'], 'INWARD NB':['NB','#ff3b30'], 'OUTWARD':['OUT','#34c759'], 'ISSUE':['ISS','#af52de'] };
+const ERR = {
+  NOT_ALLOWED:'You do not have the right for this ({x}). Ask the Admin (Admin Panel › Users › Manage access).',
+  WAIT_PREV:'Not yet: {x} must be OKAY first.', REMARK_REQUIRED:'Write a reason of at least 3 letters.',
+  CANCELLED:'This record is cancelled.', NOT_FOUND:'This record was not found. Refresh the list.',
+  DEBIT_EXISTS:'A Debit Note is already raised on this record.', WRONG_STATE:'The Debit Note is not in the state this needs. Refresh.',
+  PROOF_REQUIRED:'Attach at least one proof (photo / PDF) first.', DEBIT_PENDING:'A Debit Note is waiting for the Accountant. Verify it first.', PIN_INVALID:'Incorrect PIN.', NO_BASE:'This bill has no Accountant Copy to stamp.',
+  DEBIT_NO_REQUIRED:'Enter the Debit No.', AMOUNT_REQUIRED:'Enter the Debit amount (more than 0).', BAD_STATUS:'This choice is not possible on this step.', BAD_FILE:'Only a photo or a PDF can be attached.',
+  FILE_TOO_BIG:'That file is too big. Use a smaller photo / PDF.', TOO_MANY_FILES:'At most 6 proof files per Debit Note.'
+};
+const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1 };
+
+/* ══ Server ════════════════════════════════════════════════════════════ */
+async function rest(path, extra){
+  let r;
+  try { r = await fetch(SUPABASE_URL + '/rest/v1/' + path, { headers: Object.assign({ apikey:SUPABASE_ANON, Authorization:'Bearer ' + SUPABASE_ANON }, extra || {}) }); }
+  catch (e) { throw new Error('Could not reach the server. Check the internet connection.'); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) { const e = new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status)); e.code = d && d.code; throw e; }
+  return d || [];
+}
+async function restAll(path, max){          // PostgREST stops at 1000 rows a response: page it
+  let all = [];
+  for (let from = 0; from < (max || 1400); from += 1000) {
+    const part = await rest(path, { 'Range-Unit':'items', Range: from + '-' + (from + 999) });
+    all = all.concat(part);
+    if (part.length < 1000) break;
+  }
+  return all;
+}
+async function rpc(fn, args){
+  let r;
+  try { r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method:'POST',
+      headers:{ 'Content-Type':'application/json', apikey:SUPABASE_ANON, Authorization:'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify(Object.assign({ p_token: SARV_GATE.token }, args || {})) }); }
+  catch (e) { throw new Error('Could not reach the server. Check the internet connection.'); }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) {
+    const e = new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
+    e.code = d && d.code; e.missing = e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01'; throw e;
+  }
+  if (d && d.success === false) {
+    const c = String(d.error || '');
+    if (SESSION_ERR[c]) { location.replace('launcher.html?why=' + c); return new Promise(() => {}); }
+    const e = new Error((ERR[c] || c || 'Unknown error').replace('{x}', d.detail || 'this step')); e.code = c; throw e;
+  }
+  return d;
+}
+
+/* ══ Pipeline rules (same as ERP › Print History) ══════════════════════ */
+const rowOf = r => S.map[r.key] || null;
+const stepOf = (r, code) => ((rowOf(r) || {}).steps || {})[code] || null;
+const debitOf = r => { const d = (rowOf(r) || {}).debit; return d && d.status !== 'WITHDRAWN' ? d : null; };
+const labelOf = c => c === 'DEBIT' ? 'Debit Note' : ((S.flow.find(s => s.code === c) || {}).label || c);
+const canDo = (code, store) => !!(S.can && S.can[code] && S.can[code][store || 'STORE 2']);
+function stageOf(r){ for (const s of S.flow) { const x = stepOf(r, s.code); if (!x || x.status !== 'OKAY') return { step:s, hold:!!x && x.status === 'HOLD' }; } return { step:null, hold:false }; }
+function prevOk(r, code){ for (const s of S.flow) { if (s.code === code) return { ok:true }; const x = stepOf(r, s.code); if (!x || x.status !== 'OKAY') return { ok:false, label:s.label }; } return { ok:true }; }
+function mineStep(r){                         // the step this record waits at, when it is this user's
+  if (r.cancelled) return null;
+  const st = stageOf(r);
+  return st.step && canDo(st.step.code, r.store) ? st : null;
+}
+function doneStep(r){                         // the latest step of this user's that is OKAY
+  let hit = null;
+  S.flow.forEach(s => { const x = stepOf(r, s.code); if (x && x.status === 'OKAY' && canDo(s.code, r.store)) hit = s; });
+  return hit;
+}
+
+/* ══ Data ══════════════════════════════════════════════════════════════ */
+const isCancelled = n => String(n || '').startsWith('CANCELLED');
+async function loadList(){
+  if (S.loading) return; S.loading = true;
+  try {
+    const since = encodeURIComponent(new Date(CHECK_FROM).toISOString());
+    const inSel = 'id,document_no,entry_type,receiving_date,invoice_no,supplier_name,po_number,notes,created_at,inward_lines(qty,line_total,items(name))';
+    const outSel = 'id,document_no,entry_type,outward_date,gate_pass_no,party_name,receiver_name,notes,created_at,outward_lines(qty,items(name))';
+    const get = async (table, sel, extra) => {
+      const base = (s) => table + '?select=' + s + '&created_at=gte.' + since + '&order=created_at.desc';
+      try { return await restAll(base(sel.replace('created_at,', 'created_at,store,'))); }      // store column (STORE1_MIGRATION)
+      catch (e) { return await restAll(base(sel)); }
+    };
+    const [ins, outs] = await Promise.all([get('inward_entries', inSel), get('outward_entries', outSel)]);
+    const rows = [];
+    ins.forEach(e => { const L = e.inward_lines || [];
+      rows.push({ kind:'inward', id:e.id, key:'inward:' + e.id, type:e.entry_type || 'INWARD', no:e.document_no, invoice:e.invoice_no || '', date:e.receiving_date || (e.created_at || '').slice(0, 10),
+        party:e.supplier_name || e.po_number || '', amount:L.reduce((s, l) => s + (+l.line_total || 0), 0), qty:L.reduce((s, l) => s + (+l.qty || 0), 0),
+        items:L.map(l => l.items && l.items.name).filter(Boolean).slice(0, 3).join(', '), store:e.store || 'STORE 2', cancelled:isCancelled(e.notes), created:e.created_at || '' }); });
+    outs.forEach(e => { const L = e.outward_lines || [];
+      rows.push({ kind:'outward', id:e.id, key:'outward:' + e.id, type:e.entry_type || 'OUTWARD', no:e.document_no, invoice:e.gate_pass_no || '', date:e.outward_date || (e.created_at || '').slice(0, 10),
+        party:e.party_name || e.receiver_name || '', amount:0, qty:L.reduce((s, l) => s + (+l.qty || 0), 0),
+        items:L.map(l => l.items && l.items.name).filter(Boolean).slice(0, 3).join(', '), store:e.store || 'STORE 2', cancelled:isCancelled(e.notes), created:e.created_at || '' }); });
+    rows.sort((a, b) => (b.created || '').localeCompare(a.created || ''));
+    S.rows = rows.slice(0, 2800);
+    await loadPipelines();
+    S.loaded = true;
+  } catch (e) { S.loadErr = e.message || String(e); S.loaded = true; }
+  finally { S.loading = false; }
+  paintAll();
+}
+async function loadPipelines(){
+  try {
+    const keys = S.rows.map(r => r.key);
+    const d = await rpc('scs_get', { p_keys: keys });
+    S.missing = false;
+    if (Array.isArray(d.flow) && d.flow.length) S.flow = d.flow;
+    S.map = {}; (d.rows || []).forEach(x => { S.map[x.key] = x; });
+    if (d.can) S.can = d.can;
+    S.loadErr = '';
+  } catch (e) {
+    if (e.missing || /scs_get|store_check/i.test(e.message || '')) S.missing = true; else S.loadErr = e.message;
+  }
+}
+
+/* ══ Attachments (the same sources as ERP › Print History › Preview) ═══ */
+let PDFJS_P = null;
+function pdfJs(){
+  if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+  if (PDFJS_P) return PDFJS_P;
+  PDFJS_P = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    s.onload = () => {
+      const src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      const w = document.createElement('script'); w.src = src;
+      w.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = src; res(window.pdfjsLib); } catch (e) { rej(e); } };
+      w.onerror = () => { PDFJS_P = null; rej(new Error('The page viewer could not be loaded (internet?).')); };
+      document.head.appendChild(w);
+    };
+    s.onerror = () => { PDFJS_P = null; rej(new Error('The page viewer could not be loaded (internet?).')); };
+    document.head.appendChild(s);
+  });
+  return PDFJS_P;
+}
+async function pdfDoc(url){ const lib = await pdfJs(); return lib.getDocument({ url, withCredentials:false }).promise; }
+const ATT_LABEL = { STORE:r => r.kind === 'inward' ? 'Supplier Copy' : 'Receiver Copy', ACCOUNT:() => 'Accountant Copy', BILL:r => r.kind === 'inward' ? 'Actual Bill' : 'Attachments', UNLOAD:() => 'Unloader', FIELD:() => 'Field Boy' };
+
+async function loadAttachments(r, force){
+  let a = S.att[r.key];
+  if (a && !force && a.state !== 'error') return a;
+  a = S.att[r.key] = { state:'loading', slides:[], errs:[] };
+  paintSheet();
+  try {
+    const q = await rest((r.kind === 'inward' ? 'inward_entries' : 'outward_entries') + '?select=*&id=eq.' + encodeURIComponent(r.id));
+    const rec = q[0] || {};
+    const pd = {};
+    try { (await rest('pdf_documents?select=document_no,variant,public_url&document_no=eq.' + encodeURIComponent(r.no))).forEach(p => { if (p.public_url) pd[p.variant] = p.public_url; }); } catch (e) {}
+    const ctx = { rec, invUnload:[], pd };
+    const run = (id, fn) => fn(r, ctx).then(x => ({ id, x }), e => ({ id, e: e.message || String(e) }));
+    const out = {};
+    const first = await Promise.all([run('STORE', attStore), run('ACCOUNT', attAccount), run('BILL', attBill), r.kind === 'inward' ? run('FIELD', attField) : Promise.resolve(null)]);
+    first.forEach(o => { if (o) out[o.id] = o; });
+    if (r.kind === 'inward') { const u = await run('UNLOAD', attUnload); out.UNLOAD = u; }
+    const slides = [];
+    ['STORE', 'ACCOUNT', 'BILL', 'UNLOAD', 'FIELD'].forEach(id => {
+      const o = out[id]; if (!o) return;
+      const label = ATT_LABEL[id](r);
+      if (o.e) { a.errs.push(label + ': ' + o.e); return; }
+      if (o.x == null) return;                                    // does not apply (Field Boy on a normal receipt)
+      const list = o.x.slides || [];
+      if (!list.length) a.empty = (a.empty || []).concat({ label, text:o.x.empty || 'Nothing attached.' });
+      list.forEach((s, i) => slides.push(Object.assign({ group:id, label, pos:i + 1, of:list.length }, s)));
+    });
+    slides.forEach((s, i) => { s.n = i; });
+    a.slides = slides; a.state = a.errs.length ? 'error' : 'ready'; a.accUrl = (ctx.acc && ctx.acc.currentUrl) || '';
+    if (CUR && CUR.r === r && ctx.acc) CUR.acc = ctx.acc;
+  } catch (e) { a.state = 'error'; a.errs.push(e.message || String(e)); }
+  paintSheet();
+  return a;
+}
+async function attStore(r, ctx){
+  const url = ctx.pd.SINGLE || ctx.pd.TWO_PAGE;
+  if (!url) return { slides:[], empty:'The ' + (r.kind === 'inward' ? 'Supplier' : 'Receiver') + ' Copy PDF is not in the index yet.' };
+  const doc = await pdfDoc(url), slides = [];
+  for (let p = 1; p <= doc.numPages; p++) slides.push({ type:'pdf', doc, page:p, open:url, caption:(r.kind === 'inward' ? 'Supplier Copy' : 'Receiver Copy') + (doc.numPages > 1 ? ' · page ' + p + ' of ' + doc.numPages : '') });
+  return { slides };
+}
+/* The Accountant Copy as the latest step left it (GM / MD-1 / MD-2 sign + remarks). Nothing before the GM checks. */
+async function attAccount(r, ctx){
+  let d;
+  try { d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) }); }
+  catch (e) { if (e.missing || /acc_get|store_account_copy|schema cache/i.test(e.message || '')) return { slides:[], empty:'The Accountant Copy is not set up yet (Admin: run sql/STORE_ACCOUNT_COPY_MIGRATION.sql).' }; throw e; }
+  const a = ctx.acc = d.row || {};
+  if (!a.currentUrl) return { slides:[], empty:a.hasBase ? 'Not generated yet: it is made when the GM checks this bill.' : 'No Accountant Copy for this bill (saved before this step existed).' };
+  const doc = await pdfDoc(a.currentUrl), slides = [];
+  const who = S.flow.filter(s => a.stamps && a.stamps[s.code]).map(s => s.short + ' ' + (a.stamps[s.code].by || '')).join(', ');
+  for (let p = 1; p <= doc.numPages; p++) slides.push({ type:'pdf', doc, page:p, open:a.currentUrl, caption:'Accountant Copy' + (who ? ' · signed: ' + who : '') + (doc.numPages > 1 ? ' · page ' + p + ' of ' + doc.numPages : '') });
+  return { slides };
+}
+async function attBill(r, ctx){
+  const url = ctx.pd.INVOICE, what = r.kind === 'inward' ? 'bill' : 'attachment';
+  if (!url) return { slides:[], empty:'No ' + what + ' photo was attached when this record was saved.' };
+  const doc = await pdfDoc(url), slides = [];
+  for (let p = 1; p <= doc.numPages; p++) {
+    let txt = '';                                                  // the Unloader's photos are appended; their footer names them
+    try { const pg = await doc.getPage(p); const tc = await pg.getTextContent(); txt = tc.items.map(x => x.str).join(' '); } catch (e) {}
+    const cap = ((txt.match(/((?:UNLOADING PHOTO|Photo)[^·]*?)\s+·\s+Printed:/i) || [])[1] || '').trim();
+    const s = { type:'pdf', doc, page:p, open:url, caption:(r.kind === 'inward' ? 'Actual bill' : 'Attachment') + ' · page ' + p + ' of ' + doc.numPages + (cap ? ' · ' + cap : '') };
+    if (/UNLOADING PHOTO/i.test(txt) && r.kind === 'inward') { ctx.invUnload.push(Object.assign({}, s, { caption:cap || ('Unloading photo · invoice page ' + p) })); continue; }
+    slides.push(s);
+  }
+  return { slides, empty:"The Original Invoice PDF holds only the Unloader's photos; no bill photo of its own." };
+}
+async function attUnload(r, ctx){
+  const src = ctx.rec.unload_info, a = src && typeof src === 'object' ? ((src.approver && typeof src.approver === 'object') ? src.approver : src) : null;
+  const who = a && a.name ? a.name + (a.emp_code ? ' (' + a.emp_code + ')' : '') : '';
+  const aid = src && (src.approval_id || (src.approver ? src.id : null));
+  let photos = [];
+  if (aid) {
+    try { photos = (await rest('inward_unload_photos?select=seq,image_data&approval_id=eq.' + encodeURIComponent(aid) + '&order=seq')).filter(p => String(p.image_data || '').startsWith('data:image')); }
+    catch (e) { if (ctx.invUnload.length) return { slides:ctx.invUnload }; throw e; }
+  }
+  if (photos.length) return { slides:photos.map((p, i) => ({ type:'img', src:p.image_data, caption:'Unloading photo ' + (i + 1) + ' of ' + photos.length + (who ? ' · verified by ' + who : '') })) };
+  if (ctx.invUnload.length) return { slides:ctx.invUnload };
+  return { slides:[], empty:a ? ('Verified by ' + who + ', but no photo was saved.') : 'This Inward was not verified by an Unloader Supervisor (older entry or Admin edit).' };
+}
+async function attField(r, ctx){
+  const nos = String(ctx.rec.req_no || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (!nos.length) return null;
+  const prs = (await rest('purchase_requirements?select=id,req_no,purchaser_name,pdf_snapshot&req_no=in.(' + nos.map(n => '"' + n.replace(/"/g, '') + '"').join(',') + ')'))
+    .filter(p => p.pdf_snapshot && p.pdf_snapshot.fieldChecklist);          // only a Field Boy purchase has this
+  if (!prs.length) return null;
+  const lines = await rest('purchase_requirement_lines?select=*&requirement_id=in.(' + prs.map(p => p.id).join(',') + ')&order=id');
+  let mine = null;
+  try { const il = await rest('inward_lines?select=item_id&inward_id=eq.' + encodeURIComponent(r.id)); mine = new Set(il.map(x => String(x.item_id || '')).filter(Boolean)); } catch (e) {}
+  const use = lines.filter(l => !mine || !mine.size || mine.has(String(l.item_id || '')));
+  const ids = [...new Set(use.map(l => l.item_id).filter(Boolean))], names = {};
+  if (ids.length) { try { (await rest('items?select=id,name&id=in.(' + ids.join(',') + ')')).forEach(i => { names[i.id] = i.name; }); } catch (e) {} }
+  const slides = [];
+  use.forEach(l => {
+    const pr = prs.find(p => p.id === l.requirement_id), fc = (pr.pdf_snapshot || {}).fieldChecklist || {}, ln = (fc.lines || {})[String(l.id)] || {};
+    const ph = ln.photo && typeof ln.photo === 'object' ? ln.photo : null;
+    if (!ph || !ph.url) return;
+    slides.push({ type:'img', src:ph.url, open:/^https?:/i.test(ph.url) ? ph.url : '',
+      caption:(names[l.item_id] || l.item_name || 'Item') + ' · Qty ' + (l.qty != null ? l.qty : '-') + (l.uom ? ' ' + l.uom : '') + ' · ' + (pr.req_no || '') + ' · ' + (pr.purchaser_name || 'Field Boy') });
+  });
+  return { slides, empty:'Field Boy PR ' + prs.map(p => p.req_no).join(', ') + ': no item photo for the items on this Inward.' };
+}
+/* A PDF page as a canvas: small for the strip, sharp for the viewer. */
+async function pdfCanvas(s, cssW){
+  const page = await s.doc.getPage(s.page), vp1 = page.getViewport({ scale:1 });
+  const dpr = Math.min(2.5, Math.max(1.5, window.devicePixelRatio || 1));
+  const scale = Math.min(cssW * dpr / vp1.width, 4000 / Math.max(vp1.width, vp1.height)), vp = page.getViewport({ scale });
+  const c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height);
+  await page.render({ canvasContext:c.getContext('2d'), viewport:vp }).promise;
+  return c;
+}
+async function fillThumb(box, s){
+  if (s.type === 'img') { const im = new Image(); im.src = s.src; im.alt = ''; im.draggable = false; box.prepend(im); return; }
+  if (s.type === 'pdf') { try { const c = await (s._th || (s._th = pdfCanvas(s, 110))); const k = document.createElement('canvas'); k.width = c.width; k.height = c.height; k.getContext('2d').drawImage(c, 0, 0); box.prepend(k); } catch (e) {} }
+}
+const seenSet = k => S.seen[k] || (S.seen[k] = new Set());
+const needSeen = a => a ? a.slides.filter(s => s.type === 'img' || s.type === 'pdf') : [];
+function seenInfo(r){ const a = S.att[r.key], need = needSeen(a), ss = seenSet(r.key); return { n:need.filter(s => ss.has(s.n)).length, total:need.length, ready:!!a && a.state === 'ready', err:!!a && a.state === 'error', loading:!a || a.state === 'loading' }; }
+
+/* ══ List ══════════════════════════════════════════════════════════════ */
+const fmtDate = d => { if (!d) return ''; const t = new Date(String(d).length <= 10 ? d + 'T00:00:00' : d); return isNaN(t) ? d : t.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }); };
+const fmtStamp = d => { const t = new Date(d); return isNaN(t) ? '' : t.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'numeric', minute:'2-digit' }); };
+const fmtAmt = n => n > 0 ? '₹' + n.toLocaleString('en-IN', { maximumFractionDigits:2 }) : '';
+function matchQ(r, q){
+  if (!q) return true;
+  const hay = [r.no, r.party, r.invoice, r.items, r.type].join(' ').toLowerCase();
+  return q.toLowerCase().split(/\s+/).filter(Boolean).every(w => hay.indexOf(w) >= 0);
+}
+function baseRows(){ return S.rows.filter(r => (S.type === 'ALL' || r.type === S.type) && (S.store === 'ALL' || r.store === S.store) && matchQ(r, S.q)); }
+function segData(rows){
+  const todo = {}, done = {}, deb = { RAISED:[], VERIFIED:[] }, all = {};
+  rows.forEach(r => {
+    const m = mineStep(r); if (m) (todo[m.step.code] = todo[m.step.code] || []).push({ r, hold:m.hold });
+    const d = doneStep(r); if (d) (done[d.code] = done[d.code] || []).push({ r });
+    const db = debitOf(r); if (db) deb[db.status].push({ r });
+    const st = rowOf(r) && Object.keys(rowOf(r).steps || {}).length ? stageOf(r) : null;
+    const k = !st ? 'NEW' : !st.step ? 'DONE' : st.hold ? 'HOLD' : st.step.code;
+    (all[k] = all[k] || []).push({ r });
+  });
+  Object.keys(todo).forEach(k => todo[k].sort((a, b) => (a.hold ? 1 : 0) - (b.hold ? 1 : 0)));   // fresh ones first, held ones after
+  return { todo, done, deb, all };
+}
+function rowHtml(x, i){
+  const r = x.r, look = TYPE_LOOK[r.type] || ['REC', '#8e8e93'], st = stageOf(r), has = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
+  const dots = S.flow.map(s => { const y = stepOf(r, s.code); const c = y ? (y.status === 'OKAY' ? 'ok' : 'hold') : (st.step && st.step.code === s.code && has ? 'next' : ''); return '<i class="' + c + '" title="' + esc(s.label) + '"></i>'; }).join('');
+  const db = debitOf(r);
+  const tags = (x.hold ? '<span class="pill hold">On hold</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
+    + (db ? '<span class="pill red">' + (db.status === 'VERIFIED' ? 'Debit ✓' : 'Debit') + '</span>' : '');
+  const hl = db && db.status === 'RAISED' ? '<div class="dbn">Debit: ' + esc(db.reason || '') + (db.amount != null ? ' · ₹' + esc(String(db.amount)) : '') + '</div>' : '';
+  return '<button class="cell rec" style="--i:' + Math.min(i, 14) + '" data-open="' + esc(r.key) + '">'
+    + '<span class="ico" style="background:' + look[1] + '">' + look[0] + '</span>'
+    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(r.party || r.items || '—') + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
+    + '<span class="end"><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (fmtAmt(r.amount) ? '<span class="a">' + esc(fmtAmt(r.amount)) + '</span>' : '') + tags + '</span>'
+    + '<span class="chev">' + IC.chev + '</span></button>';
+}
+function sectionHtml(id, title, list, foot){
+  const lim = S.show[id] || 40, shown = list.slice(0, lim);
+  return '<div class="sec"><h3>' + esc(title) + '<span class="n">' + list.length + '</span></h3><div class="grp">' + shown.map(rowHtml.bind(null)).join('') + '</div>'
+    + (list.length > lim ? '<button class="more" data-more="' + esc(id) + '">Show ' + Math.min(40, list.length - lim) + ' more</button>' : '')
+    + (foot ? '<div class="foot">' + esc(foot) + '</div>' : '') + '</div>';
+}
+function emptyHtml(icon, title, text){ return '<div class="empty"><div class="ring">' + icon + '</div><b>' + esc(title) + '</b>' + esc(text) + '</div>'; }
+function skeleton(){ let h = '<div class="sec skel"><div class="grp">'; for (let i = 0; i < 6; i++) h += '<div class="cell"><div class="sk" style="width:38px;height:38px;border-radius:9px"></div><div class="mid"><div class="sk" style="height:14px;width:' + (50 + i * 6) + '%"></div><div class="sk" style="height:11px;width:70%;margin-top:8px"></div></div></div>'; return h + '</div></div>'; }
+
+function paintAll(){ paintHeader(); paintList(); }
+function paintHeader(){
+  const mine = S.flow.filter(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2')).map(s => s.label);
+  $('subline').textContent = S.missing ? '' : mine.length ? 'Your steps: ' + mine.join(' · ') : (S.loaded ? 'You can view the pipeline; no step is assigned to you.' : '');
+  $('meBtn').textContent = ((S.user && (S.user.user_name || S.user.name)) || '?').trim().charAt(0).toUpperCase();
+  const d = segData(baseRows()), cnt = o => Object.keys(o).reduce((n, k) => n + o[k].length, 0);
+  const defs = [['TODO', 'To Check', cnt(d.todo), 1], ['DONE', 'Done', cnt(d.done), 0], ['DEBIT', 'Debit', d.deb.RAISED.length, 1], ['ALL', 'All', 0, 0]];
+  const i = Math.max(0, defs.findIndex(x => x[0] === S.seg));
+  $('seg').style.gridTemplateColumns = 'repeat(' + defs.length + ',1fr)';
+  $('seg').innerHTML = '<div class="thumb" style="width:calc(' + (100 / defs.length) + '% - 2px);transform:translateX(' + (i * 100) + '%)"></div>'
+    + defs.map(x => '<button class="' + (S.seg === x[0] ? 'on' : '') + '" data-seg="' + x[0] + '">' + x[1] + (x[2] ? '<span class="bdg' + (x[3] ? '' : ' q') + '">' + x[2] + '</span>' : '') + '</button>').join('');
+  const types = ['ALL', 'INWARD', 'INWARD NB', 'OUTWARD', 'ISSUE'], stores = ['ALL', 'STORE 1', 'STORE 2'];
+  $('chips').innerHTML = types.map(t => '<button class="chip' + (S.type === t ? ' on' : '') + '" data-type="' + esc(t) + '">' + (t === 'ALL' ? 'All types' : t.charAt(0) + t.slice(1).toLowerCase()) + '</button>').join('')
+  $('chipsStore').innerHTML = stores.map(s => '<button class="chip' + (S.store === s ? ' on' : '') + '" data-store="' + esc(s) + '">' + (s === 'ALL' ? 'Both stores' : s.charAt(0) + s.slice(1).toLowerCase()) + '</button>').join('');
+}
+function paintList(){
+  const L = $('list');
+  if (!S.loaded) { L.innerHTML = skeleton(); return; }
+  if (S.missing) { L.innerHTML = emptyHtml(IC.doc, 'Not set up yet', 'Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql in the Supabase SQL Editor (after STORE_RECORD_STATUS_MIGRATION.sql).'); return; }
+  if (S.loadErr && !S.rows.length) { L.innerHTML = emptyHtml(IC.bang, 'Could not load', S.loadErr); return; }
+  const d = segData(baseRows());
+  let h = '';
+  const noStep = !S.flow.some(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2'));
+  if (S.seg === 'TODO') {
+    S.flow.forEach(s => { if (d.todo[s.code]) h += sectionHtml('t' + s.code, s.label, d.todo[s.code], 'Waiting for your check'); });
+    if (!h) h = emptyHtml(IC.inbox, noStep ? 'No step assigned' : 'All caught up', noStep ? 'The Admin gives a bill check step in Manage access. You can still browse All.' : 'Nothing is waiting for your check. New bills appear here on their own.');
+  } else if (S.seg === 'DONE') {
+    S.flow.slice().reverse().forEach(s => { if (d.done[s.code]) h += sectionHtml('d' + s.code, s.label + ' · done', d.done[s.code]); });
+    if (!h) h = emptyHtml(IC.done, 'Nothing done yet', 'The bills you check show up here.');
+  } else if (S.seg === 'DEBIT') {
+    if (d.deb.RAISED.length) h += sectionHtml('dbR', 'Waiting for the Accountant', d.deb.RAISED, 'Debit Notes raised by MD-1 / MD-2, to be verified with proof');
+    if (d.deb.VERIFIED.length) h += sectionHtml('dbV', 'Verified', d.deb.VERIFIED);
+    if (!h) h = emptyHtml(IC.doc, 'No Debit Notes', 'MD-1 / MD-2 raise a Debit Note from a bill; the Accountant verifies it with proof.');
+  } else {
+    const order = ['NEW'].concat(S.flow.map(s => s.code), ['HOLD', 'DONE']);
+    order.forEach(k => { if (d.all[k]) h += sectionHtml('a' + k, k === 'NEW' ? 'Not started' : k === 'HOLD' ? 'On hold' : k === 'DONE' ? 'All checks done' : 'At ' + labelOf(k), d.all[k]); });
+    if (!h) h = emptyHtml(IC.doc, 'No records', 'Nothing matches. Try another filter.');
+  }
+  h += '<div style="text-align:center;margin-top:18px;font-size:13px;color:var(--label2)">Showing bills saved from ' + fmtDate(CHECK_FROM.slice(0, 10)) + ' onwards.</div>';
+  L.innerHTML = h;
+}
+
+/* ══ Layers (sheets, viewer) with the Back button / swipe-back ═════════ */
+const LAYERS = [];
+function pushLayer(l){ LAYERS.push(l); try { history.pushState({ bc:LAYERS.length }, ''); l.hist = true; } catch (e) {} document.body.classList.toggle('sheeted', LAYERS.some(x => x.kind === 'sheet')); }
+function closeLayer(l){ if (!l || l.closed) return; if (l.hist) { l.closing = true; try { history.back(); return; } catch (e) {} } doClose(l); }
+function doClose(l){
+  if (!l || l.closed) return; l.closed = true;
+  const i = LAYERS.indexOf(l); if (i >= 0) LAYERS.splice(i, 1);
+  l.el.classList.remove('in'); if (l.scrim) l.scrim.classList.remove('in');
+  document.body.classList.toggle('sheeted', LAYERS.some(x => x.kind === 'sheet'));
+  setTimeout(() => { l.el.remove(); if (l.scrim) l.scrim.remove(); if (l.onClose) l.onClose(); }, 520);
+}
+window.addEventListener('popstate', () => { const l = LAYERS[LAYERS.length - 1]; if (l) doClose(l); });
+function openSheet(opts){
+  const layer = $('layer'), scrim = document.createElement('div'); scrim.className = 'scrim';
+  const el = document.createElement('div'); el.className = 'sheet' + (opts.small ? ' small' : '');
+  el.innerHTML = '<div class="shead"><div class="grab"></div><div class="row"><button class="nbtn" data-x="1">' + esc(opts.left || 'Close') + '</button><div class="tt"></div><span data-r="1"></span></div></div><div class="sbody"></div>';
+  scrim.style.zIndex = el.style.zIndex = String(50 + LAYERS.length * 2);
+  layer.appendChild(scrim); layer.appendChild(el);
+  const l = { kind:'sheet', el, scrim, body:el.querySelector('.sbody'), onClose:opts.onClose };
+  scrim.addEventListener('click', () => closeLayer(l));
+  el.querySelector('[data-x]').addEventListener('click', () => closeLayer(l));
+  pushLayer(l);
+  requestAnimationFrame(() => requestAnimationFrame(() => { el.classList.add('in'); scrim.classList.add('in'); }));
+  // Drag the head down to dismiss (the iOS card gesture).
+  const head = el.querySelector('.shead'); let y0 = null, dy = 0, t0 = 0;
+  head.addEventListener('pointerdown', e => { if (e.target.closest('button')) return; y0 = e.clientY; dy = 0; t0 = Date.now(); el.classList.add('drag'); head.setPointerCapture(e.pointerId); });
+  head.addEventListener('pointermove', e => { if (y0 == null) return; dy = Math.max(0, e.clientY - y0); el.style.transform = 'translate(-50%,' + dy + 'px)'; });
+  const end = () => { if (y0 == null) return; y0 = null; el.classList.remove('drag'); const fast = dy / Math.max(1, Date.now() - t0) > .6; el.style.transform = ''; if (dy > 110 || (fast && dy > 30)) closeLayer(l); };
+  head.addEventListener('pointerup', end); head.addEventListener('pointercancel', end);
+  return l;
+}
+
+/* ══ iOS alert / action sheet / toast ══════════════════════════════════ */
+function iosAlert(o){
+  return new Promise(res => {
+    const sc = document.createElement('div'); sc.className = 'al-scrim';
+    const btns = o.buttons || [{ t:'OK', s:'b' }];
+    sc.innerHTML = '<div class="alert" role="alertdialog"><div class="tx"><b>' + esc(o.title || '') + '</b>' + (o.message ? '<p>' + esc(o.message) + '</p>' : '')
+      + (o.input ? '<input data-in="1" placeholder="' + esc(o.input) + '" maxlength="500"' + (o.inputType === 'password' ? ' type="password" inputmode="numeric" autocomplete="off"' : '') + '>' : '') + '</div><div class="bt' + (btns.length > 2 ? ' col' : '') + '">'
+      + btns.map((b, i) => '<button data-i="' + i + '" class="' + (b.s || '') + '">' + esc(b.t) + '</button>').join('') + '</div></div>';
+    document.body.appendChild(sc); requestAnimationFrame(() => sc.classList.add('in'));
+    const inp = sc.querySelector('[data-in]'); if (inp) setTimeout(() => inp.focus(), 300);
+    const done = i => { sc.classList.remove('in'); setTimeout(() => sc.remove(), 260); res({ i, value:inp ? inp.value.trim() : '' }); };
+    sc.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) done(+b.dataset.i); });
+    if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { const bi = btns.findIndex(b => /b/.test(b.s || '')); done(bi < 0 ? 0 : bi); } });
+  });
+}
+function iosMenu(o){
+  return new Promise(res => {
+    const sc = document.createElement('div'); sc.className = 'as-scrim';
+    sc.innerHTML = '<div class="asheet"><div class="g">' + (o.title ? '<div class="hd"><b>' + esc(o.title) + '</b>' + esc(o.message || '') + '</div>' : '')
+      + o.items.map((b, i) => '<button data-i="' + i + '" class="' + (b.s || '') + '">' + esc(b.t) + '</button>').join('') + '</div><div class="g cx"><button data-i="-1">Cancel</button></div></div>';
+    document.body.appendChild(sc); requestAnimationFrame(() => sc.classList.add('in'));
+    const done = i => { sc.classList.remove('in'); setTimeout(() => sc.remove(), 450); res(i); };
+    sc.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) return done(+b.dataset.i); if (e.target === sc) done(-1); });
+  });
+}
+let toastT = null;
+function toast(msg, err){
+  const t = $('toast'); t.className = 'toast' + (err ? ' err' : ''); t.innerHTML = (err ? IC.bang : '<span style="color:#30d158">' + IC.check + '</span>') + '<span>' + esc(msg) + '</span>';
+  requestAnimationFrame(() => t.classList.add('in')); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('in'), err ? 4200 : 2400); buzz(err ? [12, 40, 12] : 10);
+}
+const busy = on => $('busy').classList.toggle('on', !!on);
+
+/* ══ The record sheet: attachments, pipeline, own step, Debit Note ═════ */
+let CUR = null;            // {r, layer, hist, proofs}
+async function openRecord(key){
+  const r = S.rows.find(x => x.key === key); if (!r) return;
+  if (CUR && CUR.layer && !CUR.layer.closed) { CUR.r = r; CUR.hist = null; CUR.proofs = null; paintSheet(); }
+  else { CUR = { r, hist:null, proofs:null, acc:null, dbOpen:false, layer:openSheet({ left:'Close', onClose:() => { CUR = null; paintList(); paintHeader(); } }) }; paintSheet(); }
+  refreshAtt(r);
+  loadHistory(r);
+  loadProofs(r);
+}
+/* A step before this one may have stamped a newer Accountant Copy since the attachments were cached:
+   the cached set is dropped (and "looked at" starts again) when the copy's file is not the same. */
+async function refreshAtt(r){
+  const a = S.att[r.key];
+  if (!a || a.state !== 'ready') return loadAttachments(r, !!a);
+  try {
+    const d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) });
+    if (CUR && CUR.r === r) CUR.acc = d.row || null;
+    if (((d.row || {}).currentUrl || '') !== (a.accUrl || '')) { S.seen[r.key] = new Set(); return loadAttachments(r, true); }
+  } catch (e) {}
+  paintSheet();
+}
+async function loadHistory(r){ try { const d = await rpc('scs_history', { p_kind:r.kind, p_record_id:String(r.id) }); if (CUR && CUR.r === r) { CUR.hist = d.rows || []; paintSheet(); } } catch (e) { if (CUR && CUR.r === r) { CUR.hist = []; } } }
+async function loadProofs(r){
+  const d = debitOf(r); if (!d || !d.proofs) { if (CUR && CUR.r === r) CUR.proofs = []; return; }
+  try { const x = await rpc('scs_debit_proofs', { p_kind:r.kind, p_record_id:String(r.id) }); if (CUR && CUR.r === r) { CUR.proofs = x.rows || []; paintSheet(); } } catch (e) { if (CUR && CUR.r === r) CUR.proofs = []; }
+}
+function nextTodo(){ const d = segData(baseRows()); const list = []; S.flow.forEach(s => (d.todo[s.code] || []).forEach(x => { if (!x.hold) list.push(x.r); })); const i = list.findIndex(x => CUR && x.key === CUR.r.key); return list.find((x, k) => k !== i && (i < 0 || k > i)) || list.find(x => !CUR || x.key !== CUR.r.key) || null; }
+function paintSheet(){
+  if (!CUR || CUR.layer.closed) return;
+  const r = CUR.r, a = S.att[r.key], look = TYPE_LOOK[r.type] || ['REC', '#8e8e93'], el = CUR.layer.el, body = CUR.layer.body;
+  const keepScroll = body.scrollTop, keep = {}; body.querySelectorAll('[data-keep]').forEach(i => { keep[i.dataset.keep] = i.value; });
+  const si = seenInfo(r), store = r.store, mine = mineStep(r), db = debitOf(r);
+  el.querySelector('.tt').textContent = r.no || 'Bill Check';
+  const nx = nextTodo(), rb = el.querySelector('[data-r]');
+  rb.outerHTML = nx && S.seg === 'TODO' && mine ? '<button class="nbtn" data-r="1" data-next="' + esc(nx.key) + '">Next' + '<span style="margin-left:4px;display:inline-flex">' + IC.chev + '</span></button>' : '<span data-r="1" style="width:60px"></span>';
+  let h = '<div class="hero"><span class="ico" style="background:' + look[1] + '">' + look[0] + '</span><div style="min-width:0"><div class="no">' + esc(r.no || '—') + '</div><div class="pt">' + esc(r.party || '—') + '</div></div></div><div class="gap"></div>'
+    + '<div class="grp">'
+    + [['Type', r.type], ['Date', fmtDate(r.date)], [r.kind === 'inward' ? 'Invoice No.' : 'Gate Pass', r.invoice || '—'], ['Store', r.store], r.amount > 0 ? ['Amount', fmtAmt(r.amount)] : null, ['Quantity', String(r.qty || 0)], r.items ? ['Items', r.items] : null]
+      .filter(Boolean).map(x => '<div class="kv"><span>' + esc(x[0]) + '</span><span>' + esc(x[1]) + '</span></div>').join('') + '</div>';
+  // Attachments
+  h += '<div class="sec"><h3>Attachments' + (a && a.slides.length ? '<span class="n">' + a.slides.length + '</span>' : '') + '</h3><div class="grp">';
+  if (!a || a.state === 'loading') h += '<div class="film">' + [0, 1, 2, 3].map(() => '<div class="th"><div class="im sk"></div></div>').join('') + '</div><div class="note" style="padding:0 16px 12px">Collecting the PDF, bill and photos…</div>';
+  else {
+    if (a.slides.length) h += '<div class="film">' + a.slides.map(s => '<button class="th' + (seenSet(r.key).has(s.n) ? ' seen' : '') + '" data-view="' + s.n + '"><div class="im" data-th="' + s.n + '"><span class="tick">' + IC.check + '</span></div><div class="lb">' + esc(s.label + (s.of > 1 ? ' ' + s.pos : '')) + '</div></button>').join('') + '</div>';
+    (a.empty || []).forEach(e => { h += '<div class="kv"><span>' + esc(e.label) + '</span><span style="color:var(--orange)">' + esc(e.text) + '</span></div>'; });
+    a.errs.forEach(e => { h += '<div class="kv"><span style="color:var(--red)">Not loaded</span><span>' + esc(e) + '</span></div>'; });
+    if (si.total) h += '<div class="prog"><div class="tx"><span>Looked at <b>' + si.n + '</b> of ' + si.total + '</span><span style="color:' + (si.n >= si.total ? 'var(--green)' : 'var(--label2)') + '">' + (si.n >= si.total ? 'All seen' : (si.total - si.n) + ' to go') + '</span></div><div class="bar"><i style="width:' + Math.round(si.n * 100 / si.total) + '%"></i></div></div>'
+      + '<div class="pad" style="padding-top:0"><button class="btn gray" data-view="next">' + IC.eye + (si.n >= si.total ? 'View attachments again' : si.n ? 'Continue reviewing' : 'Review attachments') + '</button></div>';
+    else if (!a.errs.length) h += '<div class="note" style="padding:0 16px 12px">This record has no PDF or photo to look at.</div>';
+    if (a.state === 'error') h += '<div class="pad" style="padding-top:0"><button class="btn gray" data-retry="1">Try loading again</button></div>';
+  }
+  h += '</div></div>';
+  // Pipeline
+  const stage = stageOf(r), started = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
+  h += '<div class="sec"><h3>Bill check pipeline</h3><div class="grp tl">' + S.flow.map(s => {
+    const x = stepOf(r, s.code), can = canDo(s.code, store) && !r.cancelled, cls = x ? (x.status === 'OKAY' ? 'ok' : 'hold') : (stage.step && stage.step.code === s.code ? 'next' : '');
+    const onCopy = CUR.acc && CUR.acc.stamps && CUR.acc.stamps[s.code];
+    const sub = x ? [x.remarks ? '“' + x.remarks + '”' : '', onCopy ? 'signed on the Accountant Copy' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : '', x.total != null ? 'looked at ' + x.seen + ' of ' + x.total : ''].filter(Boolean).join(' · ')
+      : (cls === 'next' ? 'Waiting here' : 'Not reached yet');
+    return '<div class="step' + (x && x.status === 'OKAY' ? ' done' : '') + '"><span class="dot ' + cls + '">' + (cls === 'ok' ? IC.check : cls === 'hold' ? IC.bang : '') + '</span><div class="bd"><b>' + esc(s.label) + '</b>'
+      + (x ? '<span class="pill ' + (x.status === 'OKAY' ? 'ok' : 'hold') + ' me">' + esc(x.status) + '</span>' : '') + (can ? '<span class="pill blue me">Your step</span>' : '') + '<small>' + esc(sub) + '</small></div></div>';
+  }).join('') + '</div>';
+  if (r.cancelled) h += '<div class="foot">This record is cancelled; it cannot be checked.</div>';
+  // Own step
+  const myStage = mine && prevOk(r, mine.step.code).ok ? mine : null;
+  const mineAny = S.flow.filter(s => canDo(s.code, store) && !r.cancelled && prevOk(r, s.code).ok && stepOf(r, s.code) && !(myStage && myStage.step.code === s.code));
+  if (myStage || mineAny.length) {
+    h += '<div class="gap"></div>';
+    if (myStage) h += '<button class="btn ' + (myStage.hold ? 'orange' : '') + '" data-check="' + esc(myStage.step.code) + '">' + (myStage.hold ? 'Re-check: ' : 'Check: ') + esc(myStage.step.label) + '</button>';
+    mineAny.forEach(s => { h += '<div class="gap"></div><button class="btn gray" data-check="' + esc(s.code) + '">Change: ' + esc(s.label) + '</button>'; });
+  } else if (!r.cancelled && stage.step && !canDo(stage.step.code, store) && started !== undefined) {
+    h += '<div class="note">Waiting for ' + esc(stage.step.label) + '.</div>';
+  }
+  h += '</div>';
+  // A signing step of mine that is OKAY but not on the Accountant Copy yet (the stamp failed, or the PIN was skipped)
+  const miss = S.flow.filter(s => signOf(s) && canDo(s.code, store) && stepOf(r, s.code) && stepOf(r, s.code).status === 'OKAY' && CUR.acc && CUR.acc.hasBase && !(CUR.acc.stamps && CUR.acc.stamps[s.code]) && meIs(stepOf(r, s.code)));
+  miss.forEach(s => { h += '<div class="gap"></div><button class="btn gray" data-restamp="' + esc(s.code) + '">Sign Accountant Copy: ' + esc(s.label) + '</button>'; });
+  // Debit Note
+  h += debitHtml(r, store, db);
+  // History
+  h += '<div class="sec"><h3>History</h3><div class="grp">' + (CUR.hist == null ? '<div class="kv"><span>Loading…</span><span></span></div>'
+    : CUR.hist.length ? CUR.hist.map(x => '<div class="kv" style="display:block"><b>' + esc(labelOf(x.step)) + '</b> → ' + esc(x.status) + (x.old ? ' <span style="color:var(--label2)">(was ' + esc(x.old) + ')</span>' : '')
+        + '<div style="color:var(--label2);font-size:13px;margin-top:2px">' + esc([x.remarks ? '“' + x.remarks + '”' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : ''].filter(Boolean).join(' · ')) + '</div></div>').join('')
+    : '<div class="kv"><span>No check done yet</span><span></span></div>') + '</div></div>';
+  body.innerHTML = h;
+  body.scrollTop = keepScroll;
+  body.querySelectorAll('[data-keep]').forEach(i => { if (keep[i.dataset.keep] != null) i.value = keep[i.dataset.keep]; });
+  if (a && a.slides.length) body.querySelectorAll('[data-th]').forEach(b => { const s = a.slides[+b.dataset.th]; if (s) fillThumb(b, s); });
+}
+function debitHtml(r, store, d){
+  const old = (rowOf(r) || {}).debit, canR = canDo('DEBIT_RAISE', store) && !r.cancelled, canV = canDo('DEBIT_VERIFY', store) && !r.cancelled;
+  let h = '<div class="sec"><h3>Debit Note</h3><div class="grp">';
+  const proofs = () => {
+    if (!d || !d.proofs) return '<div class="kv"><span>Proof</span><span style="color:var(--label2)">None attached yet</span></div>';
+    if (CUR.proofs == null) return '<div class="kv"><span>Proof</span><span>Loading…</span></div>';
+    return '<div class="pf">' + CUR.proofs.map(p => '<div class="it" data-pview="' + p.id + '">' + (/^image\//.test(p.mime) ? '<img src="' + esc(p.data) + '" alt="">' : '<div class="pd">PDF</div>') + '<span>' + esc(p.name || 'proof') + '</span>'
+      + (canV && d.status === 'RAISED' ? '<button class="rm" data-pdel="' + p.id + '" aria-label="Remove">' + IC.x + '</button>' : '') + '</div>').join('') + '</div>';
+  };
+  if (!d) {
+    if (old && old.status === 'WITHDRAWN') h += '<div class="kv"><span>Earlier</span><span>Withdrawn by ' + esc(old.withdrawnBy || '') + (old.withdrawReason ? ': “' + esc(old.withdrawReason) + '”' : '') + '</span></div>';
+    h += '<div class="kv"><span>Status</span><span style="color:var(--label2)">No Debit Note</span></div></div>';
+    if (canR) h += '<div class="gap"></div><button class="btn gray" data-debit="raise">Raise a Debit Note</button>'; else h += '<div class="foot">Only MD-1 / MD-2 can raise a Debit Note.</div>';
+    return h + '</div>';
+  }
+  h += '<div class="kv"><span>Status</span><span><span class="pill ' + (d.status === 'VERIFIED' ? 'ok' : 'red') + '">' + (d.status === 'VERIFIED' ? 'Verified' : 'Raised · waiting for Accountant') + '</span></span></div>'
+    + '<div class="kv"><span>' + (d.status === 'RAISED' ? 'Remarks for Accountant' : 'Reason') + '</span><span style="' + (d.status === 'RAISED' ? 'color:var(--red);font-weight:600' : '') + '">' + esc(d.reason || '') + '</span></div>' + (d.raisedStep ? '<div class="kv"><span>Raised at</span><span>' + esc(labelOf(d.raisedStep)) + '</span></div>' : '') + (d.debitNo ? '<div class="kv"><span>Debit No.</span><span>' + esc(d.debitNo) + '</span></div>' : '') + (d.amount != null ? '<div class="kv"><span>Amount</span><span>' + esc(fmtAmt(+d.amount) || '₹' + d.amount) + '</span></div>' : '')
+    + '<div class="kv"><span>Raised by</span><span>' + esc((d.raisedBy || '') + (d.raisedEmp ? ' (' + d.raisedEmp + ')' : '') + (d.raisedAt ? ' · ' + fmtStamp(d.raisedAt) : '')) + '</span></div>'
+    + (d.status === 'VERIFIED' ? '<div class="kv"><span>Verified by</span><span>' + esc((d.verifiedBy || '') + (d.verifiedEmp ? ' (' + d.verifiedEmp + ')' : '') + (d.verifiedAt ? ' · ' + fmtStamp(d.verifiedAt) : '')) + '</span></div>' + (d.verifyRemarks ? '<div class="kv"><span>Remarks</span><span>' + esc(d.verifyRemarks) + '</span></div>' : '') : '')
+    + proofs() + '</div>';
+  if (d.status === 'RAISED') {
+    if (canV) h += '<div class="gap"></div><button class="btn green" data-debit="verify">Verify: Debit No., amount, attachment</button>';
+    else h += '<div class="foot">The Accountant attaches the proof and verifies it.</div>';
+    if (canR) h += '<div class="gap"></div><button class="btn gray" style="color:var(--red)" data-debit="withdraw">Withdraw Debit Note</button>';
+  }
+  return h + '</div>';
+}
+
+/* ══ Accountant Copy: PIN, then the sign / time / remark stamped on the latest file ══ */
+const SIGN_FALLBACK = { GM:'gm', MD1:'md', MD2:'md2' };
+const signOf = s => (s && (s.sign || SIGN_FALLBACK[s.code])) || '';
+const BUCKET = 'sarv-pdfs';
+const pubUrl = path => SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
+const two = n => String(n).padStart(2, '0');
+const stampText = d => { d = new Date(d); return two(d.getDate()) + '/' + two(d.getMonth() + 1) + '/' + d.getFullYear() + ' ' + two(d.getHours()) + ':' + two(d.getMinutes()); };
+const winAnsi = t => String(t == null ? '' : t).replace(/₹/g, 'Rs ').replace(/[\u2018\u2019]/g, "'").replace(/[\u201C\u201D]/g, '"').replace(/[\u2013\u2014]/g, '-').replace(/[^\x20-\x7E\xA0-\xFF]/g, '?');
+const meIs = x => { const u = S.user || {}; return !!x && ((u.emp_code && x.emp === u.emp_code) || (!u.emp_code && (x.by || '') === (u.user_name || u.name || ''))); };
+async function accOf(r){ const d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) }); return d.row || {}; }
+/* Own PIN → {name, signature|null}. Null when cancelled; a wrong PIN says so and returns null. */
+async function askPin(step, why){
+  const c = await iosAlert({ title:'Enter your PIN', message:why || ('To sign the Accountant Copy for ' + step.label), input:'PIN', inputType:'password', buttons:[{ t:'Cancel' }, { t:'Sign', s:'b' }] });
+  if (c.i !== 1) return null;
+  if (!c.value) { toast('Enter your PIN.', true); return null; }
+  busy(true);
+  try { const d = await rpc('acc_sign_pin', { p_pin:c.value }); busy(false); return { name:d.name || '', signature:d.signature || null }; }
+  catch (e) { busy(false); toast(e.message || String(e), true); return null; }
+}
+function wrapText(text, font, size, maxW){
+  const out = []; let line = '';
+  String(text).split(/\s+/).forEach(w => {
+    const t = line ? line + ' ' + w : w;
+    if (font.widthOfTextAtSize(t, size) <= maxW) line = t;
+    else { if (line) out.push(line); line = w; while (font.widthOfTextAtSize(line, size) > maxW && line.length > 1) { let k = line.length - 1; while (k > 1 && font.widthOfTextAtSize(line.slice(0, k), size) > maxW) k--; out.push(line.slice(0, k)); line = line.slice(k); } }
+  });
+  if (line) out.push(line); return out;
+}
+/* Adds this step's sign (image, NAME, time) into its cell and rewrites the CHECK REMARKS box with every
+   step's remark so far, on the latest copy; uploads it over the copy and records it. Geometry = the ERP's
+   SIG_SLOT_LAYOUT (image box 8 mm above the line, name 3.4 mm, time 1 mm) as the mobile app stamps it. */
+async function stampCopy(r, step, sig, remarks){
+  if (!window.PDFLib) throw new Error('pdf-lib did not load (check the internet connection).');
+  const a = await accOf(r);
+  if (!a.hasBase) return false;                                    // a bill from before the Accountant Copy existed
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib, MM = 72 / 25.4;
+  const src = a.currentPath || a.basePath;
+  const res = await fetch(pubUrl(src) + '?v=' + Date.now(), { cache:'no-store' });
+  if (!res.ok) throw new Error('The Accountant Copy could not be downloaded (' + res.status + ').');
+  const pdf = await PDFDocument.load(await res.arrayBuffer());
+  const bold = await pdf.embedFont(StandardFonts.HelveticaBold), reg = await pdf.embedFont(StandardFonts.Helvetica), ink = rgb(30 / 255, 58 / 255, 138 / 255);
+  const pages = pdf.getPages(), slots = (a.layout && a.layout.slots) || [], now = new Date(), at = stampText(now);
+  let img = null;
+  if (sig.signature) { try { img = /^data:image\/jpe?g/i.test(sig.signature) ? await pdf.embedJpg(sig.signature) : await pdf.embedPng(sig.signature); } catch (e) { img = null; } }
+  slots.filter(s => s.st === signOf(step)).forEach(s => {
+    const page = pages[s.p - 1]; if (!page) return;
+    const H = page.getHeight();
+    page.drawRectangle({ x:s.x * MM, y:H - (s.y - 0.3) * MM, width:s.w * MM, height:14 * MM, color:rgb(1, 1, 1) });   // a re-check never prints over an older sign
+    if (img) { const boxH = 8, top = s.y - 13.5, k = Math.min(s.w / img.width, boxH / img.height), iw = img.width * k, ih = img.height * k;
+      page.drawImage(img, { x:(s.x + (s.w - iw) / 2) * MM, y:H - (top + (boxH - ih) / 2 + ih) * MM, width:iw * MM, height:ih * MM }); }
+    const line = (txt, font, yMm) => { let t = winAnsi(txt), size = 5; while (font.widthOfTextAtSize(t, size) > s.w * MM && size > 3) size -= .25;
+      page.drawText(t, { x:(s.x + s.w / 2) * MM - font.widthOfTextAtSize(t, size) / 2, y:H - yMm * MM, size, font, color:ink }); };
+    line(String(sig.name || '').toUpperCase(), bold, s.y - 3.4); line(at, reg, s.y - 1);
+  });
+  // CHECK REMARKS: one line per step that has checked, oldest step first, rewritten as a whole
+  const stamps = Object.assign({}, a.stamps || {}); stamps[step.code] = { by:sig.name, at:now.toISOString(), remarks:remarks || '' };
+  const rb = slots.find(s => s.st === 'remarks');
+  if (rb && pages[rb.p - 1]) {
+    const page = pages[rb.p - 1], H = page.getHeight(), size = 5.5, lh = size * 1.28, maxW = (rb.w - 4) * MM;
+    page.drawRectangle({ x:(rb.x + .4) * MM, y:H - (rb.y + rb.h - .4) * MM, width:(rb.w - .8) * MM, height:(rb.h - 3.6) * MM, color:rgb(1, 1, 1) });
+    let y = rb.y + 3.6 + size * .3528 + .9; const maxY = rb.y + rb.h - .6;
+    S.flow.forEach(s => {
+      const x = stamps[s.code]; if (!x) return;
+      const txt = s.short + ': ' + (String(x.remarks || '').replace(/^\[DEBIT\]\s*/, 'DEBIT - ') || 'Checked') + '  (' + String(x.by || '').toUpperCase() + ', ' + stampText(x.at) + ')';
+      wrapText(winAnsi(txt), reg, size, maxW).forEach((ln, i) => {
+        if (y > maxY) return;
+        page.drawText(ln, { x:(rb.x + 2) * MM + (i ? 6 : 0), y:H - y * MM, size, font:reg, color:ink }); y += lh * .3528;
+      });
+    });
+  }
+  const blob = new Blob([await pdf.save()], { type:'application/pdf' });
+  const path = /_ACCOUNT_BASE\.pdf$/.test(a.basePath) ? a.basePath.replace(/_ACCOUNT_BASE\.pdf$/, '_ACCOUNT.pdf') : a.basePath + '.account.pdf';
+  const up = await fetch(SUPABASE_URL + '/storage/v1/object/' + BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/'),
+    { method:'POST', headers:{ apikey:SUPABASE_ANON, Authorization:'Bearer ' + SUPABASE_ANON, 'Content-Type':'application/pdf', 'x-upsert':'true', 'cache-control':'3600' }, body:blob });
+  if (!up.ok) throw new Error('The stamped copy could not be saved (' + up.status + ').');
+  const d = await rpc('acc_stamp_save', { p_kind:r.kind, p_record_id:String(r.id), p_step:step.code, p_path:path, p_url:pubUrl(path) + '?v=' + Date.now(), p_remarks:remarks || '', p_signed:!!img });
+  if (CUR && CUR.r === r) CUR.acc = d.row || CUR.acc;
+  S.seen[r.key] = new Set(); loadAttachments(r, true);
+  return true;
+}
+
+/* ── Check form: a small sheet. OKAY forwards the bill, HOLD keeps it at this step (the next step
+   never sees it), DEBIT forwards it too and raises a highlighted Debit Note with a remark for the
+   Accountant (not on the last step, which is the Accountant's own). ── */
+function openCheck(code){
+  const r = CUR && CUR.r, step = S.flow.find(s => s.code === code); if (!r || !step) return;
+  const f = { pick:'' }, last = S.flow[S.flow.length - 1].code === code;
+  const opts = last ? ['OKAY', 'HOLD'] : ['OKAY', 'HOLD', 'DEBIT'];
+  const COL = { OKAY:'var(--green)', HOLD:'var(--orange)', DEBIT:'var(--red)' };
+  const SAYS = { OKAY:'The bill goes on to the next step.', HOLD:'The bill stays at this step; the next step does not see it until you pass it.', DEBIT:'The bill goes on, and the Accountant gets a highlighted Debit Note with your remark.' };
+  const l = openSheet({ small:true, left:'Cancel' });
+  const val = k => ((l.body.querySelector('[data-keep="' + k + '"]') || {}).value || '');
+  const paint = () => {
+    const wasRm = val('rm'), wasAmt = val('amt');
+    const si2 = seenInfo(r), ok = si2.ready && si2.n >= si2.total, cur = stepOf(r, code), d = debitOf(r);
+    const okBlocked = last && d && d.status === 'RAISED', debBlocked = !!d;
+    l.el.querySelector('.tt').textContent = step.label;
+    const idx = Math.max(0, opts.indexOf(f.pick));
+    l.body.innerHTML = '<div class="grp"><div class="kv"><span>Bill</span><span>' + esc(r.no) + '</span></div><div class="kv"><span>Party</span><span>' + esc(r.party || '—') + '</span></div>'
+      + '<div class="kv"><span>Looked at</span><span style="color:' + (ok ? 'var(--green)' : 'var(--orange)') + '">' + (si2.ready ? si2.n + ' of ' + si2.total : si2.err ? 'Not loaded' : 'Loading…') + '</span></div></div>'
+      + (ok ? '' : '<div class="note warn">OKAY and DEBIT are possible only after every page and photo of this bill has been looked at. HOLD can be given any time.</div><div class="gap"></div><button class="btn gray" data-fview="1">' + IC.eye + 'Review attachments</button>')
+      + (okBlocked ? '<div class="note warn">A Debit Note is waiting for you. Verify it (Debit No., amount, attachment) before passing this step.</div>' : '')
+      + '<div class="gap"></div><div class="seg2" style="grid-template-columns:repeat(' + opts.length + ',1fr)"><div class="thumb" style="width:calc(' + (100 / opts.length) + '% - 2px);background:' + (COL[f.pick] || 'var(--green)') + ';transform:translateX(' + (idx * 100) + '%);opacity:' + (f.pick ? 1 : 0) + '"></div>'
+      + opts.map(o => '<button data-p="' + o + '" class="' + (f.pick === o ? 'on' : '') + '"' + (((o === 'OKAY' || o === 'DEBIT') && !ok) || (o === 'OKAY' && okBlocked) || (o === 'DEBIT' && debBlocked) ? ' disabled' : '') + '>' + o + '</button>').join('') + '</div>'
+      + (f.pick ? '<div class="note">' + esc(SAYS[f.pick]) + '</div>' : '') + (debBlocked && !last ? '<div class="note">A Debit Note is already raised on this bill.</div>' : '')
+      + '<div class="gap"></div><textarea class="field" data-keep="rm" rows="3" placeholder="' + (f.pick === 'DEBIT' ? 'Debit: remarks for the Accountant (needed)' : f.pick === 'HOLD' ? 'Reason (needed for HOLD)' : 'Remarks (optional)') + '"></textarea>'
+      + (f.pick === 'DEBIT' ? '<input class="field" data-keep="amt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Debit amount, ₹ (optional)">' : '')
+      + '<div class="gap"></div><button class="btn ' + (f.pick === 'HOLD' ? 'orange' : f.pick === 'DEBIT' ? 'red' : 'green') + '" data-go="1" disabled>' + (f.pick ? 'Confirm ' + f.pick : 'Pick ' + opts.join(', ').replace(/, ([A-Z]+)$/, ' or $1')) + '</button>'
+      + (cur ? '<div class="note">Now: ' + esc(cur.status) + (cur.by ? ' by ' + esc(cur.by) : '') + '</div>' : '');
+    const a = l.body.querySelector('[data-keep="rm"]'); if (a) a.value = wasRm;
+    const b = l.body.querySelector('[data-keep="amt"]'); if (b) b.value = wasAmt;
+    sync();
+  };
+  const sync = () => { const go = l.body.querySelector('[data-go]'); if (go) go.disabled = !f.pick || ((f.pick === 'HOLD' || f.pick === 'DEBIT') && val('rm').trim().length < 3); };
+  l.body.addEventListener('input', sync);
+  l.body.addEventListener('click', async e => {
+    const p = e.target.closest('[data-p]');
+    if (p && !p.disabled) { f.pick = p.dataset.p; paint(); return buzz(); }
+    if (e.target.closest('[data-fview]')) { openViewer(r, 'next', () => paint()); return; }
+    if (e.target.closest('[data-go]')) {
+      const rm = val('rm').trim(), amt = val('amt'), si3 = seenInfo(r);
+      const c = await iosAlert({ title:step.label + ': ' + f.pick + '?', message:(r.no || '') + (rm ? '\n“' + rm + '”' : '') + (f.pick === 'DEBIT' && amt ? '\n₹' + amt : ''), buttons:[{ t:'Cancel' }, { t:'Confirm', s:'b' }] });
+      if (c.i !== 1) return;
+      /* A signing step passing the bill asks the checker's own PIN FIRST (a wrong PIN saves nothing); the
+         Accountant Copy is stamped after the check is saved. A bill without a copy base is checked as before. */
+      let sig = null;
+      if (signOf(step) && f.pick !== 'HOLD') {
+        let has = false; try { has = !!(await accOf(r)).hasBase; } catch (e) {}
+        if (has) { sig = await askPin(step); if (!sig) return; }
+      }
+      busy(true);
+      try {
+        const res = await rpc('scs_check_save', Object.assign({ p_kind:r.kind, p_record_id:String(r.id), p_step:code, p_status:f.pick, p_remarks:rm, p_seen:si3.n, p_total:si3.total }, f.pick === 'DEBIT' ? { p_amount:amt === '' ? null : Number(amt) } : {}));
+        if (res.row) S.map[res.row.key] = res.row;
+        let stampErr = '';
+        if (sig) { busy(true); try { await stampCopy(r, step, sig, f.pick === 'DEBIT' ? '[DEBIT] ' + rm : rm); } catch (se) { stampErr = se.message || String(se); } }
+        busy(false); closeLayer(l);
+        if (stampErr) toast('Checked, but the Accountant Copy could not be signed: ' + stampErr + ' Open the bill and press Sign Accountant Copy.', true); else toast(step.label + ' · ' + f.pick + (sig ? ' · Accountant Copy signed' : ''));
+        CUR.hist = null; CUR.proofs = null; loadHistory(r); loadProofs(r); paintSheet(); paintAll();
+      } catch (er) { busy(false); toast(er.message || String(er), true); }
+    }
+  });
+  CHECK_FORM = { l, paint };
+  l.onClose = () => { if (CHECK_FORM && CHECK_FORM.l === l) CHECK_FORM = null; };
+  paint();
+}
+let CHECK_FORM = null, VF = null;
+
+/* ── Debit Note actions ── */
+async function debitAct(a){
+  const r = CUR && CUR.r; if (!r) return;
+  const act = async (fn, args, msg) => { busy(true); try { const res = await rpc(fn, Object.assign({ p_kind:r.kind, p_record_id:String(r.id) }, args)); if (res.row) S.map[res.row.key] = res.row; busy(false); toast(msg); CUR.hist = null; CUR.proofs = null; loadHistory(r); loadProofs(r); paintSheet(); paintAll(); return true; } catch (e) { busy(false); toast(e.message || String(e), true); return false; } };
+  if (a === 'raise') {
+    const l = openSheet({ small:true, left:'Cancel' }); l.el.querySelector('.tt').textContent = 'Debit Note';
+    l.body.innerHTML = '<div class="grp"><div class="kv"><span>Bill</span><span>' + esc(r.no) + '</span></div></div><div class="gap"></div><textarea class="field" id="dbWhy" rows="3" maxlength="500" placeholder="Why is a Debit Note needed? (needed)"></textarea>'
+      + '<input class="field" id="dbAmt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Amount, ₹ (optional)"><div class="gap"></div><button class="btn red" id="dbGo" disabled>Raise Debit Note</button><div class="note">The Accountant verifies it with a proof.</div>';
+    const why = l.body.querySelector('#dbWhy'), go = l.body.querySelector('#dbGo');
+    why.addEventListener('input', () => { go.disabled = why.value.trim().length < 3; });
+    go.addEventListener('click', async () => {
+      const amt = l.body.querySelector('#dbAmt').value;
+      const c = await iosAlert({ title:'Raise a Debit Note?', message:r.no + '\n' + why.value.trim() + (amt ? '\n₹' + amt : ''), buttons:[{ t:'Cancel' }, { t:'Raise', s:'d' }] });
+      if (c.i === 1 && await act('scs_debit_raise', { p_reason:why.value.trim(), p_amount:amt === '' ? null : Number(amt) }, 'Debit Note raised')) closeLayer(l);
+    });
+    return;
+  }
+  if (a === 'withdraw') {
+    const c = await iosAlert({ title:'Withdraw this Debit Note?', message:'Give the reason.', input:'Reason', buttons:[{ t:'Cancel' }, { t:'Withdraw', s:'d' }] });
+    if (c.i !== 1) return; if (c.value.length < 3) return toast('Write a reason of at least 3 letters.', true);
+    return void await act('scs_debit_withdraw', { p_reason:c.value }, 'Debit Note withdrawn');
+  }
+  if (a === 'verify') {
+    const d = debitOf(r); if (!d) return;
+    const l = openSheet({ small:true, left:'Cancel' }); l.el.querySelector('.tt').textContent = 'Verify Debit Note';
+    const val = k => ((l.body.querySelector('[data-keep="' + k + '"]') || {}).value || '').trim();
+    const paint = () => {
+      const keep = { no:val('no'), amt:val('amt'), rm:val('rm') }, n = (debitOf(r) || {}).proofs || 0;
+      l.body.innerHTML = '<div class="grp"><div class="kv"><span>Bill</span><span>' + esc(r.no) + '</span></div><div class="kv"><span>Remarks</span><span>' + esc(d.reason || '') + '</span></div></div><div class="gap"></div>'
+        + '<input class="field" data-keep="no" maxlength="60" placeholder="Debit No. (needed)"><input class="field" data-keep="amt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Amount, ₹ (needed)">'
+        + '<input class="field" data-keep="rm" maxlength="500" placeholder="Remarks (optional)"><div class="gap"></div>'
+        + '<div class="grp"><div class="kv"><span>Attachment</span><span style="color:' + (n ? 'var(--green)' : 'var(--red)') + '">' + (n ? n + ' attached' : 'Needed') + '</span></div></div><div class="gap"></div>'
+        + '<label class="btn gray" style="cursor:pointer">' + IC.plus + 'Attach proof (photo / PDF)<input type="file" data-proof="1" accept="image/*,application/pdf" multiple hidden></label>'
+        + '<div class="gap"></div><button class="btn green" data-vgo="1" disabled>Verify Debit Note</button>';
+      const first = !keep.no && !keep.amt && !keep.rm;
+      [['no', keep.no], ['amt', keep.amt || (first && d.amount != null ? String(d.amount) : '')], ['rm', keep.rm]].forEach(([k, v]) => { const i = l.body.querySelector('[data-keep="' + k + '"]'); if (i) i.value = v; });
+      sync();
+    };
+    const sync = () => { const g = l.body.querySelector('[data-vgo]'), nn = (debitOf(r) || {}).proofs || 0; if (g) g.disabled = !val('no') || !(Number(val('amt')) > 0) || nn < 1; };
+    l.body.addEventListener('input', sync);
+    l.body.addEventListener('click', async e => {
+      if (!e.target.closest('[data-vgo]')) return;
+      const c = await iosAlert({ title:'Verify the Debit Note?', message:'Debit No. ' + val('no') + '\n₹' + val('amt'), buttons:[{ t:'Cancel' }, { t:'Verify', s:'b' }] });
+      if (c.i === 1 && await act('scs_debit_verify', { p_remarks:val('rm'), p_debit_no:val('no'), p_amount:Number(val('amt')) }, 'Debit Note verified')) closeLayer(l);
+    });
+    VF = { l, paint }; l.onClose = () => { if (VF && VF.l === l) VF = null; };
+    paint(); return;
+  }
+}
+/* A photo is shrunk to about 1600 px JPEG (the server takes 2.5 MB); a PDF goes as it is (max 1.8 MB). */
+function readProof(file){
+  return new Promise((resolve, reject) => {
+    if (file.type === 'application/pdf') {
+      if (file.size > 1800000) return reject(new Error(file.name + ': the PDF is too big (max 1.8 MB).'));
+      const fr = new FileReader(); fr.onload = () => resolve({ name:file.name, mime:file.type, data:fr.result }); fr.onerror = () => reject(new Error(file.name + ': not readable.')); return fr.readAsDataURL(file);
+    }
+    if (!/^image\//.test(file.type)) return reject(new Error(file.name + ': only a photo or a PDF.'));
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      let q = .82, d = c.toDataURL('image/jpeg', q); while (d.length > 2000000 && q > .4) { q -= .12; d = c.toDataURL('image/jpeg', q); }
+      resolve({ name:file.name.replace(/\.[^.]+$/, '') + '.jpg', mime:'image/jpeg', data:d });
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error(file.name + ': this photo format cannot be read.')); };
+    img.src = url;
+  });
+}
+async function addProofs(files){
+  const r = CUR && CUR.r; if (!r || !files || !files.length) return;
+  busy(true);
+  for (const f of [...files]) {
+    try { const p = await readProof(f); const res = await rpc('scs_debit_proof_add', { p_kind:r.kind, p_record_id:String(r.id), p_name:p.name, p_mime:p.mime, p_data:p.data }); if (res.row) S.map[res.row.key] = res.row; }
+    catch (e) { toast(e.message || String(e), true); if (e.code === 'TOO_MANY_FILES') break; }
+  }
+  busy(false); CUR.proofs = null; await loadProofs(r); paintSheet(); paintAll(); if (VF) VF.paint();
+}
+async function delProof(id){
+  const r = CUR && CUR.r; const c = await iosAlert({ title:'Remove this proof?', buttons:[{ t:'Cancel' }, { t:'Remove', s:'d' }] }); if (c.i !== 1) return;
+  try { const res = await rpc('scs_debit_proof_remove', { p_proof_id:Number(id) }); if (res.row) S.map[res.row.key] = res.row; CUR.proofs = null; await loadProofs(r); paintSheet(); paintAll(); }
+  catch (e) { toast(e.message || String(e), true); }
+}
+function viewProof(id){            // a data: URL cannot be opened as a page, so it goes through a blob
+  const p = ((CUR && CUR.proofs) || []).find(x => String(x.id) === String(id)); if (!p) return;
+  try { const b = p.data.split(','), bin = atob(b[1] || ''), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); window.open(URL.createObjectURL(new Blob([u], { type:p.mime })), '_blank', 'noopener'); }
+  catch (e) { toast('The proof could not be opened.', true); }
+}
+
+/* ══ Viewer: swipe through every page / photo, pinch to zoom ═══════════ */
+function openViewer(r, start, onDone){
+  const a = S.att[r.key]; if (!a || !a.slides.length) return;
+  const slides = a.slides, ss = seenSet(r.key);
+  let idx = typeof start === 'number' ? start : Math.max(0, slides.findIndex(s => !ss.has(s.n)));
+  if (start === 'next' && slides.every(s => ss.has(s.n))) idx = 0;
+  if (idx < 0) idx = 0;
+  const el = document.createElement('div'); el.className = 'viewer'; el.style.zIndex = String(80 + LAYERS.length * 2);
+  el.innerHTML = '<div class="vbar"><button class="nbtn" data-x="1">' + IC.back + '<span>Done</span></button><div class="vt"><b data-t="1"></b><small data-s="1"></small></div><span style="width:70px"></span></div>'
+    + '<div class="car" id="car">' + slides.map(s => '<div class="vs" data-n="' + s.n + '"></div>').join('') + '</div>'
+    + '<button class="vnav l" data-nv="-1" aria-label="Previous">' + IC.back + '</button><button class="vnav r" data-nv="1" aria-label="Next" style="transform:translateY(-50%) scaleX(-1)">' + IC.back + '</button>'
+    + '<div class="vfoot"><div class="vcap" data-c="1"></div><div class="vfilm">' + slides.map(s => '<button class="vf' + (ss.has(s.n) ? ' seen' : '') + '" data-f="' + s.n + '"><span class="tk"></span></button>').join('') + '</div></div>';
+  $('layer').appendChild(el);
+  const l = { kind:'viewer', el, onClose:() => { if (onDone) onDone(); if (CUR) paintSheet(); } };
+  pushLayer(l); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
+  const car = el.querySelector('#car'), boxes = [...el.querySelectorAll('.vs')], films = [...el.querySelectorAll('.vf')], zooms = new Map();
+  films.forEach((b, i) => fillThumb(b, slides[i]));
+  const mount = async i => {
+    const s = slides[i], box = boxes[i]; if (!s || box.dataset.m) return; box.dataset.m = '1';
+    box.innerHTML = '<div class="ld"><div class="spin"></div></div>';
+    try {
+      let node;
+      if (s.type === 'img') { node = new Image(); node.alt = ''; node.draggable = false; await new Promise((ok, no) => { node.onload = ok; node.onerror = () => no(new Error('This photo could not be shown.')); node.src = s.src; }); }
+      else if (s.type === 'pdf') node = await pdfCanvas(s, Math.min(window.innerWidth, 900));
+      else throw new Error('Nothing to show.');
+      node.className = 'vi'; box.innerHTML = ''; box.appendChild(node); zooms.set(i, attachZoom(box, car));
+    } catch (e) { box.innerHTML = '<div class="msg"><b>Could not show this</b>' + esc(e.message || '') + '</div>'; }
+  };
+  let cur = -1;
+  const show = (i, jump) => {
+    if (i === cur) return; cur = i; const s = slides[i];
+    ss.add(s.n); films[i].classList.add('seen');
+    films.forEach((f, k) => f.classList.toggle('on', k === i));
+    films[i].scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' });
+    el.querySelector('[data-t]').textContent = s.label + (s.of > 1 ? ' ' + s.pos + ' / ' + s.of : '');
+    el.querySelector('[data-s]').textContent = (i + 1) + ' of ' + slides.length + ' · looked at ' + slides.filter(x => ss.has(x.n)).length + ' of ' + slides.length;
+    el.querySelector('[data-c]').innerHTML = esc(s.caption || '') + (s.open ? '<a class="open" href="' + esc(s.open) + '" target="_blank" rel="noopener">Open original</a>' : '');
+    [i - 1, i, i + 1].forEach(k => { if (k >= 0 && k < slides.length) mount(k); });
+    zooms.forEach((z, k) => { if (k !== i) z.reset(); });
+    el.querySelectorAll('.vnav').forEach(b => { b.disabled = (+b.dataset.nv < 0 && i === 0) || (+b.dataset.nv > 0 && i === slides.length - 1); });
+    if (jump) car.scrollTo({ left:i * car.clientWidth, behavior:'auto' });
+  };
+  let st = null;
+  car.addEventListener('scroll', () => { clearTimeout(st); st = setTimeout(() => { const i = Math.round(car.scrollLeft / Math.max(1, car.clientWidth)); if (i >= 0 && i < slides.length) show(i); }, 60); }, { passive:true });
+  el.addEventListener('click', e => {
+    if (e.target.closest('[data-x]')) return closeLayer(l);
+    const nv = e.target.closest('[data-nv]'); if (nv && !nv.disabled) return car.scrollTo({ left:(cur + +nv.dataset.nv) * car.clientWidth, behavior:'smooth' });
+    const f = e.target.closest('[data-f]'); if (f) { const i = +f.dataset.f; car.scrollTo({ left:i * car.clientWidth, behavior:'smooth' }); }
+  });
+  const key = e => { if (l.closed || LAYERS[LAYERS.length - 1] !== l) return; if (e.key === 'ArrowRight') car.scrollTo({ left:(cur + 1) * car.clientWidth, behavior:'smooth' }); else if (e.key === 'ArrowLeft') car.scrollTo({ left:(cur - 1) * car.clientWidth, behavior:'smooth' }); else if (e.key === 'Escape') closeLayer(l); };
+  document.addEventListener('keydown', key); const oc = l.onClose; l.onClose = () => { document.removeEventListener('keydown', key); oc(); };
+  show(idx, true); setTimeout(() => car.scrollTo({ left:idx * car.clientWidth, behavior:'auto' }), 30);
+  return l;
+}
+/* Pinch, double-tap and wheel zoom on one slide; a one-finger drag pans only while zoomed
+   (otherwise the browser swipes the carousel). */
+function attachZoom(box, car){
+  const el = box.firstElementChild; let s = 1, tx = 0, ty = 0, last = 0, startD = 0, startS = 1; const ptrs = new Map();
+  const apply = () => { el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')'; box.classList.toggle('zoomed', s > 1.01); car.classList.toggle('lock', s > 1.01); };
+  const clamp = () => { const r = box.getBoundingClientRect(), w = el.offsetWidth * s, h = el.offsetHeight * s, mx = Math.max(0, (w - r.width) / 2), my = Math.max(0, (h - r.height) / 2); tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty)); };
+  const zoomAt = (ns, cx, cy) => { ns = Math.max(1, Math.min(6, ns)); const r = box.getBoundingClientRect(), ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2); tx = ox - (ox - tx) * ns / s; ty = oy - (oy - ty) * ns / s; s = ns; if (s <= 1.01) { s = 1; tx = ty = 0; } clamp(); apply(); };
+  box.addEventListener('pointerdown', e => {
+    ptrs.set(e.pointerId, { x:e.clientX, y:e.clientY });
+    if (ptrs.size === 2) { const [p, q] = [...ptrs.values()]; startD = Math.hypot(p.x - q.x, p.y - q.y); startS = s; }
+    const now = Date.now();
+    if (ptrs.size === 1 && now - last < 300) { box.classList.add('anim'); zoomAt(s > 1.01 ? 1 : 2.6, e.clientX, e.clientY); setTimeout(() => box.classList.remove('anim'), 380); last = 0; } else last = now;
+  });
+  box.addEventListener('pointermove', e => {
+    const p = ptrs.get(e.pointerId); if (!p) return;
+    if (ptrs.size === 2) { p.x = e.clientX; p.y = e.clientY; const [a, b] = [...ptrs.values()]; zoomAt(startS * Math.hypot(a.x - b.x, a.y - b.y) / Math.max(1, startD), (a.x + b.x) / 2, (a.y + b.y) / 2); }
+    else if (s > 1.01) { tx += e.clientX - p.x; ty += e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; clamp(); apply(); }
+    else { p.x = e.clientX; p.y = e.clientY; }
+  });
+  const up = e => { ptrs.delete(e.pointerId); };
+  box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); box.addEventListener('pointerleave', up);
+  box.addEventListener('wheel', e => { e.preventDefault(); zoomAt(s * Math.exp(-e.deltaY * .0016), e.clientX, e.clientY); }, { passive:false });
+  return { reset:() => { if (s !== 1) { s = 1; tx = ty = 0; apply(); } } };
+}
+
+/* ══ Events ════════════════════════════════════════════════════════════ */
+document.addEventListener('click', async e => {
+  const t = e.target;
+  const open = t.closest('[data-open]'); if (open) return openRecord(open.dataset.open);
+  const sg = t.closest('[data-seg]'); if (sg) { S.seg = sg.dataset.seg; paintAll(); return buzz(6); }
+  const ty = t.closest('[data-type]'); if (ty) { S.type = ty.dataset.type; return paintAll(); }
+  const so = t.closest('[data-store]'); if (so) { S.store = so.dataset.store; return paintAll(); }
+  const more = t.closest('[data-more]'); if (more) { S.show[more.dataset.more] = (S.show[more.dataset.more] || 40) + 40; return paintList(); }
+  if (t.closest('#bkBtn')) { location.href = 'launcher.html'; return; }
+  if (t.closest('#meBtn')) return meMenu();
+  if (t.closest('#qx')) { $('q').value = ''; S.q = ''; $('searchBox').classList.remove('has'); return paintAll(); }
+  // record sheet
+  const nxt = t.closest('[data-next]'); if (nxt) return openRecord(nxt.dataset.next);
+  const vw = t.closest('[data-view]'); if (vw && CUR) { const v = vw.dataset.view; return openViewer(CUR.r, v === 'next' ? 'next' : +v); }
+  if (t.closest('[data-retry]') && CUR) return loadAttachments(CUR.r, true);
+  const ck = t.closest('[data-check]'); if (ck) return openCheck(ck.dataset.check);
+  const rs = t.closest('[data-restamp]');
+  if (rs && CUR) {
+    const stp = S.flow.find(s => s.code === rs.dataset.restamp), x = stp && stepOf(CUR.r, stp.code); if (!stp || !x) return;
+    const sg = await askPin(stp); if (!sg) return;
+    busy(true); try { await stampCopy(CUR.r, stp, sg, x.remarks || ''); busy(false); toast('Accountant Copy signed'); paintSheet(); } catch (er) { busy(false); toast(er.message || String(er), true); }
+    return;
+  }
+  const dbt = t.closest('[data-debit]'); if (dbt && !dbt.disabled) return debitAct(dbt.dataset.debit);
+  const pd = t.closest('[data-pdel]'); if (pd) { e.stopPropagation(); return delProof(pd.dataset.pdel); }
+  const pv = t.closest('[data-pview]'); if (pv) return viewProof(pv.dataset.pview);
+});
+document.addEventListener('change', e => { if (e.target.matches('[data-proof]')) { const f = e.target.files; addProofs(f); e.target.value = ''; } });
+$('q').addEventListener('input', e => { S.q = e.target.value.trim(); $('searchBox').classList.toggle('has', !!e.target.value); paintAll(); });
+async function meMenu(){
+  const u = S.user || {};
+  const i = await iosMenu({ title:u.user_name || u.name || 'Account', message:[u.emp_code, u.role].filter(Boolean).join(' · '), items:[{ t:'Refresh' }, { t:'Open ERP' }, { t:'Log out', s:'d' }] });
+  if (i === 0) refresh(true); else if (i === 1) location.href = 'index.html';
+  else if (i === 2) { const c = await iosAlert({ title:'Log out?', message:'This ends the session in every app.', buttons:[{ t:'Cancel' }, { t:'Log out', s:'d' }] }); if (c.i === 1) SARV_GATE.logout({ url:SUPABASE_URL, key:SUPABASE_ANON }); }
+}
+async function refresh(manual){ if (manual) toast('Refreshing…'); await loadList(); }
+
+/* Large title collapses into the bar; pull down to refresh. */
+(function(){
+  const sc = $('scroll'), ctrl = $('ctrl'), ptr = $('ptr');
+  const fit = () => document.documentElement.style.setProperty('--ctrl-h', ctrl.offsetHeight + 'px');
+  fit(); if (window.ResizeObserver) new ResizeObserver(fit).observe(ctrl); else window.addEventListener('resize', fit);
+  let y0 = null, pull = 0;
+  sc.addEventListener('touchstart', e => { if (sc.scrollTop <= 0) y0 = e.touches[0].clientY; }, { passive:true });
+  sc.addEventListener('touchmove', e => { if (y0 == null) return; pull = Math.max(0, (e.touches[0].clientY - y0) * .45); if (pull > 0) { ptr.style.transition = 'none'; ptr.style.height = Math.min(pull, 70) + 'px'; } }, { passive:true });
+  sc.addEventListener('touchend', () => { if (y0 == null) return; ptr.style.transition = 'height .4s cubic-bezier(.32,.72,0,1)'; if (pull > 56) { ptr.style.height = '44px'; refresh().finally(() => { ptr.style.height = '0'; }); buzz(10); } else ptr.style.height = '0'; y0 = null; pull = 0; });
+})();
+
+/* ══ Boot ══════════════════════════════════════════════════════════════ */
+(async function boot(){
+  S.user = await SARV_GATE.boot({ url:SUPABASE_URL, key:SUPABASE_ANON, app:APP_KEY, label:'Bill Check' });
+  paintAll();
+  try { await loadList(); } finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  // New bills show up on their own; never while a sheet is open, so nothing moves under the checker.
+  setInterval(() => { if (!LAYERS.length && document.visibilityState === 'visible') loadList(); }, 60000);
+  document.addEventListener('visibilitychange', () => { if (!LAYERS.length && document.visibilityState === 'visible') loadList(); });
+})();
+</script>
+</body>
+</html>

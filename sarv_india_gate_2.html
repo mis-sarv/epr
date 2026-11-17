@@ -1,0 +1,2802 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SARV INDIA GATE-2</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- QRCode.js for Digital Gate Pass QR Generation -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        html, body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+            background-color: #F2F2F7; /* iOS System Grouped Background */
+            overflow-x: hidden !important;
+            width: 100%;
+            max-width: 100vw;
+            margin: 0;
+            padding: 0;
+            scroll-behavior: smooth;
+        }
+
+        /* iOS Spring & Cubic-Bezier Animations */
+        @keyframes iosSpringPop {
+            0% { transform: scale(0.85); opacity: 0; }
+            60% { transform: scale(1.03); opacity: 1; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes iosAlertPop {
+            0% { transform: scale(1.18); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes iosSheetSlideUp {
+            0% { transform: translateY(100%); opacity: 0.5; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes iosCardSlideUp {
+            0% { transform: translateY(28px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes iosFadeIn {
+            0% { opacity: 0; }
+            100% { opacity: 1; }
+        }
+
+        .ios-spring { animation: iosSpringPop 0.42s cubic-bezier(0.175, 0.885, 0.32, 1.275) both; }
+        .ios-alert { animation: iosAlertPop 0.28s cubic-bezier(0.2, 0.9, 0.3, 1.05) both; }
+        .ios-sheet { animation: iosSheetSlideUp 0.38s cubic-bezier(0.32, 0.72, 0, 1) both; }
+        .ios-card { animation: iosCardSlideUp 0.4s cubic-bezier(0.25, 1, 0.5, 1) both; }
+        .ios-backdrop { animation: iosFadeIn 0.25s ease-out both; }
+
+        /* iOS Tactile Button Press */
+        .ios-btn {
+            transition: transform 0.18s cubic-bezier(0.32, 0.72, 0, 1), background-color 0.2s ease, opacity 0.2s ease;
+        }
+        .ios-btn:active {
+            transform: scale(0.94);
+            opacity: 0.85;
+        }
+
+        /* iOS Frosted Glass */
+        .ios-glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+        }
+        .ios-glass-dark {
+            background: rgba(28, 28, 30, 0.88);
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+        }
+
+        /* View Switching */
+        .view-section { display: none; }
+        .view-section.active { display: block; }
+
+        /* Hide Scrollbar for clean look */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+
+        /* Print Styles */
+        @media print {
+            body * { visibility: hidden; }
+            #printablePass, #printablePass * { visibility: visible; }
+            #printablePass {
+                position: fixed;
+                left: 0;
+                top: 0;
+                width: 100%;
+                background: white;
+                padding: 20px;
+            }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body class="text-gray-900 antialiased select-none">
+
+    <!-- iOS Top Navigation Bar -->
+    <header class="ios-glass border-b border-gray-200/80 sticky top-0 z-30 w-full">
+        <div class="max-w-3xl mx-auto px-4 py-2.5 flex items-center justify-between gap-2">
+            <!-- Brand & Live Shift Badge -->
+            <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-9 h-9 rounded-[11px] bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-sm shrink-0 ios-spring">
+                    <i class="fa-solid fa-shield-halved text-base"></i>
+                </div>
+                <div class="min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <h1 class="text-[16px] font-bold tracking-tight text-gray-900 leading-tight truncate">SARV INDIA <span class="text-blue-600">GATE-2</span></h1>
+                        <button onclick="openSettingsModal()" id="activeShiftBadge" class="ios-btn text-[10px] font-bold bg-emerald-500/10 text-emerald-700 px-2 py-0.5 rounded-full truncate max-w-[110px]" title="Change Guard / Shift">
+                            <i class="fa-solid fa-user-shield text-[9px] mr-0.5"></i> Day Shift
+                        </button>
+                    </div>
+                    <p id="liveClockSub" class="text-[11px] font-medium text-gray-500 truncate">Loading time...</p>
+                </div>
+            </div>
+
+            <!-- Right Utility Actions -->
+            <div class="flex items-center gap-1.5 shrink-0">
+                <!-- Quick QR / Pass Verify Button -->
+                <button onclick="openQrVerifyModal()" class="ios-btn w-9 h-9 rounded-full bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm" title="Quick Verify / Scan Pass">
+                    <i class="fa-solid fa-qrcode"></i>
+                </button>
+                <!-- Master Data Manager (Parties & Store Passes) -->
+                <button onclick="openMasterModal()" class="ios-btn w-9 h-9 rounded-full bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm" title="Manage Parties & Passes">
+                    <i class="fa-solid fa-database"></i>
+                </button>
+                <!-- Settings, Storage & JSON Backup -->
+                <button onclick="openSettingsModal()" class="ios-btn w-9 h-9 rounded-full bg-gray-200/70 text-gray-700 flex items-center justify-center text-sm" title="Settings & Backup">
+                    <i class="fa-solid fa-gear"></i>
+                </button>
+                <!-- Export CSV -->
+                <button onclick="exportToCSV()" class="ios-btn bg-blue-600 text-white font-semibold text-xs px-3 py-2 rounded-full flex items-center gap-1.5 shadow-sm">
+                    <i class="fa-solid fa-arrow-up-from-bracket"></i>
+                    <span class="hidden sm:inline">CSV</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- iOS Dynamic Island / Banner Notification Container -->
+    <div id="toastContainer" class="fixed top-3 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-2 w-[92%] max-w-sm pointer-events-none"></div>
+
+    <!-- Main Mobile-First Vertical Container (Only Gate Operations Menu) -->
+    <main class="max-w-xl w-full mx-auto px-4 pt-6 pb-16">
+
+        <!-- Dynamic Operations Container (iOS Views) -->
+        <section id="operationsWrapper">
+
+            <!-- VIEW 1: Main Gate Operations Control Center -->
+            <div id="view-actionMenu" class="view-section active bg-white rounded-[24px] p-4 shadow-[0_4px_20px_rgba(0,0,0,0.04)] ios-spring">
+                <div class="flex items-center justify-between mb-3.5 px-1">
+                    <h2 class="text-[15px] font-bold text-gray-900">Gate Operations</h2>
+                    <span class="text-[11px] font-medium text-gray-400">Select Action</span>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <!-- INWARD BUTTON -->
+                    <button onclick="showView('inwardForm')" class="ios-btn bg-blue-500/10 border border-blue-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-blue-600">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30">
+                            <i class="fa-solid fa-box-open"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase">INWARD</span>
+                    </button>
+
+                    <!-- OUTWARD BUTTON -->
+                    <button onclick="showView('outwardMenu')" class="ios-btn bg-orange-500/10 border border-orange-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-orange-600">
+                        <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl shadow-md shadow-orange-500/30">
+                            <i class="fa-solid fa-truck-fast"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase">OUTWARD</span>
+                    </button>
+
+                    <!-- TRANSFER BUTTON -->
+                    <button onclick="showComingSoon('Transfer Module')" class="ios-btn bg-purple-500/10 border border-purple-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-purple-600">
+                        <div class="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-xl shadow-md shadow-purple-500/30">
+                            <i class="fa-solid fa-right-left"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase">TRANSFER</span>
+                    </button>
+
+                    <!-- VISITOR BUTTON -->
+                    <button onclick="showView('visitorForm')" class="ios-btn bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-emerald-600">
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-500/30">
+                            <i class="fa-solid fa-user-tie"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase">VISITOR</span>
+                    </button>
+
+                    <!-- DHARAM KANTA BUTTON -->
+                    <button onclick="showView('dharamKantaForm')" class="ios-btn bg-cyan-500/10 border border-cyan-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-cyan-700">
+                        <div class="w-12 h-12 rounded-2xl bg-cyan-600 text-white flex items-center justify-center text-xl shadow-md shadow-cyan-500/30">
+                            <i class="fa-solid fa-weight-scale"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase">DHARAM KANTA</span>
+                    </button>
+
+                    <!-- HYDRA / JCB INWARD BUTTON (Placed right after Dharam Kanta) -->
+                    <button onclick="showView('hydraForm')" class="ios-btn relative bg-amber-500/10 border border-amber-500/25 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-amber-800">
+                        <span id="hydraMenuLiveBadge" class="hidden absolute top-2.5 right-2.5 bg-amber-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs animate-pulse">1 ACTIVE</span>
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-md shadow-amber-500/30">
+                            <i class="fa-solid fa-truck-monster"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase text-center leading-tight">HYDRA / JCB INWARD</span>
+                    </button>
+
+                    <!-- NEW EMPLOYEE BUTTON -->
+                    <button onclick="showComingSoon('New Employee Onboarding')" class="ios-btn col-span-2 bg-slate-800 text-white rounded-[20px] p-3.5 flex items-center justify-center gap-3 shadow-md">
+                        <div class="w-10 h-10 rounded-xl bg-white/15 flex items-center justify-center text-lg">
+                            <i class="fa-solid fa-id-card-clip"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase">NEW EMPLOYEE</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 2: INWARD ENTRY FORM -->
+            <div id="view-inwardForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Inward Material Entry</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <form id="formInward" class="space-y-4">
+                    <!-- Inward No Input -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Inward No *</label>
+                            <span class="text-[10px] font-semibold text-blue-600">Editable Gate No</span>
+                        </div>
+                        <input type="text" id="inwardNo" required placeholder="e.g. IN-1001" class="w-full px-3.5 py-3 bg-blue-50/60 border border-blue-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                    </div>
+
+                    <!-- Entry Type: New Entry / Store Pending Entry -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1.5">Entry Against *</label>
+                        <div class="grid grid-cols-2 gap-2 bg-gray-100 p-1 rounded-xl">
+                            <label class="cursor-pointer">
+                                <input type="radio" name="inwardType" value="New Entry" checked class="peer hidden">
+                                <div class="text-center py-2 rounded-lg text-xs font-bold text-gray-600 peer-checked:bg-white peer-checked:text-blue-600 peer-checked:shadow-sm transition-all">
+                                    New Entry
+                                </div>
+                            </label>
+                            <label class="cursor-pointer">
+                                <input type="radio" name="inwardType" value="Store Pending Entry" class="peer hidden">
+                                <div class="text-center py-2 rounded-lg text-xs font-bold text-gray-600 peer-checked:bg-white peer-checked:text-blue-600 peer-checked:shadow-sm transition-all">
+                                    Store Pending Entry
+                                </div>
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Dynamic Party Name Dropdown + Quick Add -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Party Name *</label>
+                            <button type="button" onclick="openMasterModal('parties')" class="ios-btn text-[11px] font-bold text-blue-600 flex items-center gap-1">
+                                <i class="fa-solid fa-plus-circle"></i> Add Party
+                            </button>
+                        </div>
+                        <select id="inPartyName" required class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                            <!-- Populated dynamically via JS -->
+                        </select>
+                    </div>
+
+                    <!-- PO No ya PR No (Required) -->
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Ref Type *</label>
+                            <select id="inRefType" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-blue-600 focus:outline-none">
+                                <option value="PO">PO No</option>
+                                <option value="PR">PR No</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">PO / PR Number *</label>
+                            <input type="text" id="inRefNo" required placeholder="e.g. PO-2026-884" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                        </div>
+                    </div>
+
+                    <!-- Vehicle No -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle Number</label>
+                        <input type="text" id="inVehicle" placeholder="HR-20-AB-1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                    </div>
+
+                    <!-- Bill Photo & Item Photo (Compressed & Saved with Preview) -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Bill Photo *</label>
+                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
+                                <i class="fa-solid fa-file-invoice text-blue-500 text-lg mb-1"></i>
+                                <span id="inBillLabel" class="text-[11px] font-semibold text-blue-700 truncate w-full">Upload Bill</span>
+                                <input type="file" id="inBillPhoto" accept="image/*" capture="environment" required class="hidden" onchange="handleCompressedUpload(this, 'inBillLabel', 'inBillPreview', 'inBill', 'inwardPreviewRow')">
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item Photo *</label>
+                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
+                                <i class="fa-solid fa-camera text-blue-500 text-lg mb-1"></i>
+                                <span id="inItemLabel" class="text-[11px] font-semibold text-blue-700 truncate w-full">Upload Item</span>
+                                <input type="file" id="inItemPhoto" accept="image/*" capture="environment" required class="hidden" onchange="handleCompressedUpload(this, 'inItemLabel', 'inItemPreview', 'inItem', 'inwardPreviewRow')">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Inward Live Photo Thumbnails Preview -->
+                    <div id="inwardPreviewRow" class="hidden grid grid-cols-2 gap-3">
+                        <div class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
+                            <img id="inBillPreview" class="w-full h-full object-cover hidden" alt="Bill">
+                            <span class="text-[10px] text-gray-400 font-medium">No Bill Photo</span>
+                        </div>
+                        <div class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
+                            <img id="inItemPreview" class="w-full h-full object-cover hidden" alt="Item">
+                            <span class="text-[10px] text-gray-400 font-medium">No Item Photo</span>
+                        </div>
+                    </div>
+
+                    <!-- Dharam Kanta Option Button inside Inward Form -->
+                    <div class="pt-0.5">
+                        <button type="button" id="toggleInwardDkBtn" onclick="toggleInwardDharamKanta()" class="ios-btn w-full py-3 px-4 bg-cyan-500/10 border border-cyan-500/25 rounded-2xl flex items-center justify-between text-cyan-800">
+                            <span class="flex items-center gap-2.5 text-xs font-extrabold uppercase tracking-wide">
+                                <span class="w-7 h-7 rounded-lg bg-cyan-600 text-white flex items-center justify-center text-xs shadow-sm">
+                                    <i class="fa-solid fa-weight-scale"></i>
+                                </span>
+                                <span>Dharam Kanta (Weighbridge)</span>
+                            </span>
+                            <span id="inDkToggleBadge" class="text-[10px] font-bold bg-cyan-600 text-white px-2.5 py-1 rounded-full">+ Add Slip</span>
+                        </button>
+
+                        <!-- Expandable Dharam Kanta Fields for Inward (Net Weight Locked & Auto-Calculated) -->
+                        <div id="inwardDkFields" class="hidden mt-2.5 p-3.5 bg-cyan-50/60 border border-cyan-200/80 rounded-2xl space-y-3 ios-spring">
+                            <div>
+                                <label class="block text-[11px] font-bold text-cyan-800 uppercase mb-1">Dharam Kanta Slip No *</label>
+                                <input type="text" id="inDkSlipNo" placeholder="e.g. DK-4501" class="w-full px-3.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                            </div>
+
+                            <div class="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gross Wt (Kg)</label>
+                                    <input type="number" step="0.01" id="inDkGross" oninput="calcInwardNetWeight()" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tare Wt (Kg)</label>
+                                    <input type="number" step="0.01" id="inDkTare" oninput="calcInwardNetWeight()" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                </div>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                                    <input type="number" step="0.01" id="inDkNet" readonly tabindex="-1" placeholder="Auto" class="w-full px-2.5 py-2.5 bg-cyan-100/90 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed select-none focus:outline-none">
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle Photo (Weighbridge)</label>
+                                <label class="ios-btn flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-cyan-300 rounded-xl cursor-pointer text-center">
+                                    <i class="fa-solid fa-truck-front text-cyan-600 text-sm"></i>
+                                    <span id="inDkPhotoLabel" class="text-[11px] font-semibold text-cyan-800 truncate">Upload Vehicle Photo</span>
+                                    <input type="file" id="inDkVehiclePhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'inDkPhotoLabel', 'inDkPreviewImg', 'inDkVehicle', 'inDkPhotoBox')">
+                                </label>
+                                <div id="inDkPhotoBox" class="hidden mt-2 rounded-xl overflow-hidden border border-cyan-200 h-20 bg-white">
+                                    <img id="inDkPreviewImg" class="w-full h-full object-cover" alt="Inward Weighbridge Vehicle">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Auto Generated Store Entry No -->
+                    <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-3.5 rounded-2xl border border-blue-100 flex items-center justify-between">
+                        <div>
+                            <span class="block text-[10px] font-bold text-blue-500 uppercase">Auto-Generated From Store</span>
+                            <span class="text-xs font-semibold text-gray-700">Store Entry No:</span>
+                        </div>
+                        <span id="autoStoreNo" class="font-mono text-sm font-extrabold bg-white text-blue-700 px-3 py-1.5 rounded-xl shadow-sm border border-blue-100">STR-IN-0000</span>
+                    </div>
+
+                    <button type="submit" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
+                        <i class="fa-solid fa-check-circle"></i> Submit Inward Entry
+                    </button>
+                </form>
+            </div>
+
+            <!-- VIEW 3: OUTWARD SUB-MENU (3 Buttons) -->
+            <div id="view-outwardMenu" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Select Outward Department</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <div class="space-y-3">
+                    <!-- OUT FROM STORE -->
+                    <button onclick="showView('outwardStoreForm')" class="ios-btn w-full p-4 bg-orange-500/10 border border-orange-500/20 rounded-2xl flex items-center justify-between">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-11 h-11 rounded-xl bg-orange-500 text-white flex items-center justify-center text-lg shadow-sm">
+                                <i class="fa-solid fa-warehouse"></i>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="text-sm font-extrabold text-gray-900">OUT FROM STORE</h3>
+                                <p class="text-[11px] text-gray-500">Verify Store Gate Pass & Exit</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-orange-500"></i>
+                    </button>
+
+                    <!-- OUT FROM DISPATCH -->
+                    <button onclick="showView('outwardDispatchForm')" class="ios-btn w-full p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-between">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg shadow-sm">
+                                <i class="fa-solid fa-truck-ramp-box"></i>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="text-sm font-extrabold text-gray-900">OUT FROM DISPATCH</h3>
+                                <p class="text-[11px] text-gray-500">Generate Packing Slip & Weighment</p>
+                            </div>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-indigo-600"></i>
+                    </button>
+
+                    <!-- OUT FROM ADMIN OFFICE -->
+                    <button onclick="showComingSoon('Out From Admin Office')" class="ios-btn w-full p-4 bg-gray-100/80 border border-gray-200/70 rounded-2xl flex items-center justify-between">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-11 h-11 rounded-xl bg-gray-600 text-white flex items-center justify-center text-lg">
+                                <i class="fa-solid fa-building-user"></i>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="text-sm font-extrabold text-gray-800">OUT FROM ADMIN OFFICE</h3>
+                                <p class="text-[11px] text-gray-500">Coming Soon</p>
+                            </div>
+                        </div>
+                        <span class="text-[10px] font-bold bg-gray-200 text-gray-600 px-2.5 py-1 rounded-full">SOON</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 4: OUT FROM STORE FORM -->
+            <div id="view-outwardStoreForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('outwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Out From Store</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <form id="formOutwardStore" class="space-y-4">
+                    <!-- Outward No Input -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Outward No *</label>
+                            <span class="text-[10px] font-semibold text-orange-600">Editable Gate No</span>
+                        </div>
+                        <input type="text" id="outStoreOutwardNo" required placeholder="e.g. OUT-1001" class="w-full px-3.5 py-3 bg-orange-50/60 border border-orange-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white">
+                    </div>
+
+                    <!-- Dynamic Store Gate Pass No Selection + Quick Add -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Store Gate Pass No *</label>
+                            <button type="button" onclick="openMasterModal('passes')" class="ios-btn text-[11px] font-bold text-orange-600 flex items-center gap-1">
+                                <i class="fa-solid fa-plus-circle"></i> New Pass
+                            </button>
+                        </div>
+                        <select id="storePassSelect" onchange="fetchStoreGatePassDetails()" required class="w-full px-3.5 py-3 bg-orange-50/60 border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <!-- Populated dynamically via JS -->
+                        </select>
+                    </div>
+
+                    <!-- Auto-Fetched Details Card from Store -->
+                    <div id="storeFetchedBox" class="hidden bg-gray-50 rounded-2xl p-3.5 border border-gray-200/80 space-y-2.5 ios-spring">
+                        <div class="flex items-center justify-between border-b border-gray-200/70 pb-2">
+                            <span class="text-[10px] font-bold uppercase text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md">Auto-Fetched From Store</span>
+                            <span id="fetchedPassBadge" class="font-mono text-xs font-bold text-gray-700">SGP-XXX</span>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-semibold text-gray-400 uppercase">Party Name</p>
+                            <p id="fetchedPartyName" class="text-sm font-bold text-gray-900">-</p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 pt-1">
+                            <div class="col-span-2">
+                                <p class="text-[10px] font-semibold text-gray-400 uppercase">Item Name</p>
+                                <p id="fetchedItemName" class="text-xs font-bold text-gray-800">-</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-semibold text-gray-400 uppercase">Quantity</p>
+                                <p id="fetchedItemQty" class="text-xs font-extrabold text-blue-600">-</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mandatory Gate Pass Photo & Item Photo (Compressed & Saved) -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gate Pass Photo *</label>
+                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-orange-50/70 border-2 border-dashed border-orange-200 rounded-2xl cursor-pointer text-center">
+                                <i class="fa-solid fa-receipt text-orange-500 text-lg mb-1"></i>
+                                <span id="outPassLabel" class="text-[11px] font-semibold text-orange-700 truncate w-full">Mandatory Photo</span>
+                                <input type="file" id="outPassPhoto" accept="image/*" capture="environment" required class="hidden" onchange="handleOutwardPhotoChange(this, 'outPassLabel', 'outPassPreview', 'outPass')">
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item Photo *</label>
+                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-orange-50/70 border-2 border-dashed border-orange-200 rounded-2xl cursor-pointer text-center">
+                                <i class="fa-solid fa-box text-orange-500 text-lg mb-1"></i>
+                                <span id="outItemLabel" class="text-[11px] font-semibold text-orange-700 truncate w-full">Mandatory Photo</span>
+                                <input type="file" id="outItemPhoto" accept="image/*" capture="environment" required class="hidden" onchange="handleOutwardPhotoChange(this, 'outItemLabel', 'outItemPreview', 'outItem')">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Outward Live Thumbnails Preview -->
+                    <div id="outwardPreviewRow" class="hidden grid grid-cols-2 gap-3">
+                        <div class="relative rounded-xl overflow-hidden border border-orange-200 bg-gray-50 h-20 flex items-center justify-center">
+                            <img id="outPassPreview" class="w-full h-full object-cover hidden" alt="Gate Pass">
+                            <span class="text-[10px] text-gray-400 font-medium">No Pass Photo</span>
+                        </div>
+                        <div class="relative rounded-xl overflow-hidden border border-orange-200 bg-gray-50 h-20 flex items-center justify-center">
+                            <img id="outItemPreview" class="w-full h-full object-cover hidden" alt="Outward Item">
+                            <span class="text-[10px] text-gray-400 font-medium">No Item Photo</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" id="outwardSubmitBtn" disabled class="ios-btn w-full bg-gray-300 text-gray-500 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm transition-all">
+                        <i class="fa-solid fa-lock"></i> Upload Both Photos to Exit
+                    </button>
+                </form>
+            </div>
+
+            <!-- VIEW 4B: OUT FROM DISPATCH (PACKING SLIP FORM) -->
+            <div id="view-outwardDispatchForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('outwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Dispatch Packing Slip</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <form id="formOutwardDispatch" class="space-y-4">
+                    <!-- Outward No Input -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Outward No *</label>
+                            <span class="text-[10px] font-semibold text-indigo-600">Editable Gate No</span>
+                        </div>
+                        <input type="text" id="dispOutwardNo" required placeholder="e.g. OUT-1002" class="w-full px-3.5 py-3 bg-indigo-50/60 border border-indigo-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
+                    </div>
+
+                    <!-- Auto-Generated Packing Slip Number -->
+                    <div class="bg-gradient-to-r from-indigo-50 to-blue-50 p-3.5 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                        <div>
+                            <span class="block text-[10px] font-bold text-indigo-500 uppercase">Auto-Generated Slip</span>
+                            <span class="text-xs font-semibold text-gray-700">Packing Slip No:</span>
+                        </div>
+                        <span id="autoPackingSlipNo" class="font-mono text-sm font-extrabold bg-white text-indigo-700 px-3 py-1.5 rounded-xl shadow-sm border border-indigo-100">PKG-0000</span>
+                    </div>
+
+                    <!-- Dharam Kanta Slip No Input (Auto-fetches Tare Weight & Vehicle No) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Dharam Kanta Slip No *</label>
+                            <span id="dispDkMatchBadge" class="text-[10px] font-bold text-gray-400">Enter Slip to Fetch Tare</span>
+                        </div>
+                        <div class="relative">
+                            <input type="text" id="dispDkSlipNo" list="dispDkSlipDatalist" oninput="lookupDispatchDkSlip()" required placeholder="e.g. DK-4501" class="w-full px-3.5 py-3 bg-cyan-50/60 border border-cyan-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
+                            <datalist id="dispDkSlipDatalist"></datalist>
+                        </div>
+                        <!-- Quick-Select Available Dharam Kanta Slips -->
+                        <div id="dispDkQuickChips" class="flex flex-wrap gap-1.5 mt-2"></div>
+                    </div>
+
+                    <!-- Auto-Fetched Vehicle Number (Locked) -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle Number <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                        <input type="text" id="dispVehicleNo" readonly tabindex="-1" placeholder="Auto-fetched from Dharam Kanta Slip" class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-700 cursor-not-allowed select-none focus:outline-none">
+                    </div>
+
+                    <!-- Weighment Grid: Tare (Auto-Fetched & Locked), Gross (User Input), Net (Auto-Calculated & Locked) -->
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <div>
+                            <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Tare Wt (Kg) <i class="fa-solid fa-lock text-[9px]"></i></label>
+                            <input type="number" step="0.01" id="dispTareWeight" readonly tabindex="-1" required placeholder="Auto" class="w-full px-2.5 py-3 bg-cyan-100/80 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed select-none focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-indigo-600 uppercase mb-1">Gross Wt (Kg) *</label>
+                            <input type="number" step="0.01" id="dispGrossWeight" oninput="calcDispatchNetWeight()" disabled required placeholder="Enter Slip 1st" class="w-full px-2.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-xs font-extrabold text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white disabled:opacity-60 disabled:cursor-not-allowed">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-emerald-700 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px]"></i></label>
+                            <input type="number" step="0.01" id="dispNetWeight" readonly tabindex="-1" required placeholder="Auto" class="w-full px-2.5 py-3 bg-emerald-100/80 border border-emerald-300 rounded-xl text-xs font-extrabold text-emerald-950 cursor-not-allowed select-none focus:outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Loaded Vehicle Live Camera Capture -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Loaded Vehicle Photo (Live Camera) *</label>
+                        <label class="ios-btn flex flex-col items-center justify-center p-4 bg-indigo-50/70 border-2 border-dashed border-indigo-200 rounded-2xl cursor-pointer text-center">
+                            <div class="w-10 h-10 rounded-full bg-indigo-600 text-white flex items-center justify-center text-base mb-1.5 shadow-sm">
+                                <i class="fa-solid fa-camera"></i>
+                            </div>
+                            <span id="dispVehiclePhotoLabel" class="text-xs font-bold text-indigo-800 truncate w-full">Tap to Open Live Camera</span>
+                            <span class="text-[10px] text-indigo-500 mt-0.5">Capture loaded vehicle rear/number plate</span>
+                            <input type="file" id="dispVehiclePhotoInput" accept="image/*" capture="environment" required class="hidden" onchange="handleCompressedUpload(this, 'dispVehiclePhotoLabel', 'dispVehiclePreviewImg', 'dispVehicle', 'dispVehiclePreviewBox')">
+                        </label>
+
+                        <!-- Live Camera Photo Preview -->
+                        <div id="dispVehiclePreviewBox" class="hidden mt-2.5 relative rounded-2xl overflow-hidden border border-indigo-200 bg-gray-50 h-32">
+                            <img id="dispVehiclePreviewImg" class="w-full h-full object-cover" alt="Loaded Vehicle Preview">
+                            <span class="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+                                <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Loaded Vehicle Captured
+                            </span>
+                        </div>
+                    </div>
+
+                    <!-- Verify and Submit Button -->
+                    <button type="submit" id="dispSubmitBtn" class="ios-btn w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 text-sm mt-2">
+                        <i class="fa-solid fa-circle-check"></i> Verify and Submit
+                    </button>
+                </form>
+            </div>
+
+            <!-- VIEW 5: VISITOR ENTRY FORM -->
+            <div id="view-visitorForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">New Visitor Pass</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <form id="entryForm" class="space-y-3.5">
+                    <!-- 1st Input: Mobile No (Strictly 10-Digit Numeric & Auto-loads previous visitor record) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Mobile No (10-Digit Numeric) *</label>
+                            <span id="visLookupBadge" class="text-[10px] font-bold text-gray-400">Auto-fill on 10 digits</span>
+                        </div>
+                        <input type="tel" id="mobileNo" list="visitorMobileDatalist" onkeydown="restrictMobileKeydown(event)" onpaste="handleMobilePaste(event)" oninput="lookupVisitorByMobile()" inputmode="numeric" required pattern="\d{10}" minlength="10" maxlength="10" placeholder="Enter 10-digit mobile number" class="w-full px-3.5 py-3 bg-emerald-50/60 border border-emerald-200 rounded-xl text-sm font-mono font-bold tracking-wide text-gray-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        <datalist id="visitorMobileDatalist"></datalist>
+                    </div>
+
+                    <!-- Visitor Name & Vehicle No -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Full Name *</label>
+                            <input type="text" id="visitorName" required placeholder="Enter visitor name" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No</label>
+                            <input type="text" id="vehicleNo" placeholder="Optional" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Whom to Meet / Department *</label>
+                        <input type="text" id="hostName" required placeholder="e.g. Mr. Sharma (HR)" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Purpose of Visit *</label>
+                        <input type="text" id="purpose" required placeholder="Meeting, Interview, Delivery..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                    </div>
+
+                    <!-- Visitor Photo & Vehicle Photo (Compressed) -->
+                    <div class="grid grid-cols-2 gap-3 pt-1">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Photo *</label>
+                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-emerald-50/70 border-2 border-dashed border-emerald-200 rounded-2xl cursor-pointer text-center">
+                                <i class="fa-solid fa-user-check text-emerald-500 text-lg mb-1"></i>
+                                <span id="visPersonLabel" class="text-[11px] font-semibold text-emerald-700 truncate w-full">Capture Visitor</span>
+                                <input type="file" id="visPersonPhoto" accept="image/*" capture="user" required class="hidden" onchange="handleCompressedUpload(this, 'visPersonLabel', 'visPersonPreview', 'visPerson', 'visitorPreviewRow')">
+                            </label>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle Photo</label>
+                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-emerald-50/70 border-2 border-dashed border-emerald-200 rounded-2xl cursor-pointer text-center">
+                                <i class="fa-solid fa-car text-emerald-500 text-lg mb-1"></i>
+                                <span id="visVehicleLabel" class="text-[11px] font-semibold text-emerald-700 truncate w-full">Capture Vehicle</span>
+                                <input type="file" id="visVehiclePhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'visVehicleLabel', 'visVehiclePreview', 'visVehicle', 'visitorPreviewRow')">
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- Live Photo Thumbnails Preview -->
+                    <div id="visitorPreviewRow" class="hidden grid grid-cols-2 gap-3 pt-1">
+                        <div class="relative rounded-xl overflow-hidden border border-emerald-200 bg-gray-50 h-20 flex items-center justify-center">
+                            <img id="visPersonPreview" class="w-full h-full object-cover hidden" alt="Visitor">
+                            <span class="text-[10px] text-gray-400 font-medium">No Visitor Photo</span>
+                        </div>
+                        <div class="relative rounded-xl overflow-hidden border border-emerald-200 bg-gray-50 h-20 flex items-center justify-center">
+                            <img id="visVehiclePreview" class="w-full h-full object-cover hidden" alt="Vehicle">
+                            <span class="text-[10px] text-gray-400 font-medium">No Vehicle Photo</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="ios-btn w-full bg-emerald-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 text-sm mt-2">
+                        <i class="fa-solid fa-id-badge"></i> Generate Visitor Pass
+                    </button>
+                </form>
+            </div>
+
+            <!-- VIEW 6: DHARAM KANTA (WEIGHBRIDGE) ENTRY FORM -->
+            <div id="view-dharamKantaForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Dharam Kanta Slip</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <form id="formDharamKanta" class="space-y-3.5">
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Slip No *</label>
+                            <input type="text" id="dkSlipNo" required placeholder="e.g. DK-4501" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No *</label>
+                            <input type="text" id="dkVehicleNo" required placeholder="HR-20-AB-1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                        </div>
+                    </div>
+
+                    <!-- Gross Weight, Tare Weight & LOCKED Auto-Calculated Net Weight -->
+                    <div class="grid grid-cols-3 gap-2.5">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gross Wt (Kg) *</label>
+                            <input type="number" step="0.01" id="dkGrossWeight" oninput="calculateNetWeight()" required placeholder="0.00" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Tare Wt (Kg) *</label>
+                            <input type="number" step="0.01" id="dkTareWeight" oninput="calculateNetWeight()" required placeholder="0.00" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-cyan-600 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                            <input type="number" step="0.01" id="dkNetWeight" readonly tabindex="-1" required placeholder="Auto" class="w-full px-3 py-3 bg-cyan-100/80 border border-cyan-300 rounded-xl text-sm font-extrabold text-cyan-900 cursor-not-allowed select-none focus:outline-none">
+                        </div>
+                    </div>
+
+                    <!-- Vehicle Photo (Compressed) -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle Photo *</label>
+                        <label class="ios-btn flex flex-col items-center justify-center p-3.5 bg-cyan-50/70 border-2 border-dashed border-cyan-200 rounded-2xl cursor-pointer text-center">
+                            <i class="fa-solid fa-truck-front text-cyan-600 text-xl mb-1"></i>
+                            <span id="dkVehicleLabel" class="text-[11px] font-semibold text-cyan-800 truncate w-full">Capture / Upload Vehicle Photo</span>
+                            <input type="file" id="dkVehiclePhoto" accept="image/*" capture="environment" required class="hidden" onchange="handleCompressedUpload(this, 'dkVehicleLabel', 'dkVehiclePreview', 'dkVehicle', 'dkPreviewBox')">
+                        </label>
+                        <div id="dkPreviewBox" class="hidden mt-2.5 rounded-xl overflow-hidden border border-cyan-200 h-28 bg-gray-50">
+                            <img id="dkVehiclePreview" class="w-full h-full object-cover" alt="Vehicle Preview">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="ios-btn w-full bg-cyan-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-cyan-500/30 flex items-center justify-center gap-2 text-sm mt-2">
+                        <i class="fa-solid fa-scale-balanced"></i> Save Dharam Kanta Entry
+                    </button>
+                </form>
+            </div>
+
+            <!-- VIEW 7: HYDRA / JCB INWARD & LIVE MINUTE TIMER WORKFLOW -->
+            <div id="view-hydraForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet space-y-5">
+                <div class="flex items-center justify-between pb-3.5 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Hydra / JCB Inward</h2>
+                    <span class="w-10"></span>
+                </div>
+
+                <!-- ACTIVE / IN-PROGRESS HYDRA SESSIONS (Running Timer -> Stop -> Store Entry -> Gate Out) -->
+                <div id="activeHydraSessionsBox" class="hidden space-y-3">
+                    <div class="flex items-center justify-between px-1">
+                        <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
+                            Active Hydra / JCB Sessions
+                        </span>
+                        <span id="activeHydraCountBadge" class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">0 Active</span>
+                    </div>
+                    <div id="activeHydraList" class="space-y-3"></div>
+                </div>
+
+                <!-- NEW HYDRA / JCB INWARD ENTRY FORM -->
+                <form id="formHydraInward" class="space-y-3.5">
+                    <div class="flex items-center justify-between px-0.5">
+                        <span class="text-xs font-extrabold text-gray-800 uppercase tracking-wide">New Hydra / JCB Entry</span>
+                        <span class="text-[10px] font-semibold text-amber-600">Auto-Starts Minute Timer</span>
+                    </div>
+
+                    <!-- Supplier Name (Fixed Party Dropdown) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Supplier Name *</label>
+                            <button type="button" onclick="openMasterModal('parties')" class="ios-btn text-[11px] font-bold text-amber-700 flex items-center gap-1">
+                                <i class="fa-solid fa-plus-circle"></i> Add Party
+                            </button>
+                        </div>
+                        <select id="hydraSupplierName" required class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
+                            <!-- Populated dynamically from fixed partiesList -->
+                        </select>
+                    </div>
+
+                    <!-- Hydra / Crane Vehicle No (Optional) -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Hydra / Vehicle No (Optional)</label>
+                        <input type="text" id="hydraVehicleNo" placeholder="e.g. HR-20-CR-4510" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
+                    </div>
+
+                    <!-- Auto Date & Time Stamp -->
+                    <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-3.5 rounded-2xl border border-amber-200/80 flex items-center justify-between">
+                        <div>
+                            <span class="block text-[10px] font-bold text-amber-600 uppercase">Date & Time Stamp (Auto)</span>
+                            <span class="text-[11px] font-semibold text-gray-600">Timer starts on submit</span>
+                        </div>
+                        <span id="hydraAutoDateTime" class="font-mono text-xs font-extrabold bg-white text-amber-800 px-3 py-1.5 rounded-xl shadow-2xs border border-amber-200">--</span>
+                    </div>
+
+                    <!-- Hydra Live Photo Capture -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Hydra Live Photo *</label>
+                        <label class="ios-btn flex flex-col items-center justify-center p-4 bg-amber-50/70 border-2 border-dashed border-amber-300 rounded-2xl cursor-pointer text-center">
+                            <div class="w-10 h-10 rounded-full bg-amber-500 text-white flex items-center justify-center text-base mb-1.5 shadow-sm">
+                                <i class="fa-solid fa-camera"></i>
+                            </div>
+                            <span id="hydraInPhotoLabel" class="text-xs font-bold text-amber-900 truncate w-full">Tap to Capture Hydra Live Photo</span>
+                            <span class="text-[10px] text-amber-700 mt-0.5">Live camera photo required at entry</span>
+                            <input type="file" id="hydraInPhotoInput" accept="image/*" capture="environment" required class="hidden" onchange="handleCompressedUpload(this, 'hydraInPhotoLabel', 'hydraInPreviewImg', 'hydraIn', 'hydraInPreviewBox')">
+                        </label>
+                        <div id="hydraInPreviewBox" class="hidden mt-2.5 relative rounded-2xl overflow-hidden border border-amber-200 bg-gray-50 h-28">
+                            <img id="hydraInPreviewImg" class="w-full h-full object-cover" alt="Hydra Inward Photo">
+                            <span class="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+                                <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Inward Photo Ready
+                            </span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="ios-btn w-full bg-amber-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 text-sm mt-2">
+                        <i class="fa-solid fa-play"></i> Submit & Start Minute Timer
+                    </button>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- MODAL 1: iOS Bottom Sheet Digital Gate Pass Modal (With QR & All Photos) -->
+    <div id="passModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closePassModal()"></div>
+        
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[92vh] flex flex-col overflow-hidden shadow-2xl relative z-10 ios-sheet">
+            <!-- iOS Sheet Drag Handle -->
+            <div class="w-full flex justify-center pt-3 pb-1 sm:hidden no-print shrink-0">
+                <div class="w-10 h-1.5 bg-gray-300 rounded-full"></div>
+            </div>
+
+            <div class="px-5 py-3 flex justify-between items-center border-b border-gray-100 no-print shrink-0">
+                <span class="text-sm font-bold text-gray-900">Digital Gate Pass</span>
+                <button onclick="closePassModal()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Printable Scrollable Area -->
+            <div id="printablePass" class="p-5 space-y-4 overflow-y-auto">
+                <div class="flex items-center justify-between border-b border-dashed border-gray-200 pb-3.5 gap-3">
+                    <div class="text-left">
+                        <h2 class="text-lg font-extrabold tracking-tight text-gray-900">SARV INDIA GATE-2</h2>
+                        <p class="text-[10px] text-gray-400 uppercase tracking-widest">Official Entry / Exit Slip</p>
+                        <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span class="inline-block bg-gray-900 text-white font-mono text-xs font-bold px-3 py-1 rounded-lg" id="modalPassId">GP-0000</span>
+                            <span id="modalApprovalBadge" class="hidden inline-flex items-center gap-1 bg-amber-500/15 text-amber-700 border border-amber-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase">
+                                <i class="fa-solid fa-clock"></i> APPROVAL PENDING
+                            </span>
+                        </div>
+                    </div>
+                    <!-- Scannable QR Code Container -->
+                    <div id="modalQrContainer" class="p-1.5 bg-white border border-gray-200 rounded-xl shadow-xs shrink-0 flex items-center justify-center"></div>
+                </div>
+
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-400 text-xs">Category</span>
+                        <span id="modalCategory" class="font-bold text-blue-600 text-xs uppercase">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400 text-xs">Name / Party</span>
+                        <span id="modalName" class="font-bold text-gray-900 text-right">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400 text-xs">Details / Ref</span>
+                        <span id="modalHost" class="font-semibold text-gray-800 text-right text-xs">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400 text-xs">Vehicle / Info</span>
+                        <span id="modalSubInfo" class="font-mono text-xs font-semibold text-gray-700">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400 text-xs">Entry Time</span>
+                        <span id="modalInTime" class="text-xs font-semibold text-gray-800">-</span>
+                    </div>
+                    <div id="modalOutTimeRow" class="hidden flex justify-between">
+                        <span class="text-gray-400 text-xs">Exit Time</span>
+                        <span id="modalOutTime" class="text-xs font-bold text-emerald-600">-</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-gray-400 text-xs">Duty Guard</span>
+                        <span id="modalGuardInfo" class="text-xs font-semibold text-gray-600">-</span>
+                    </div>
+                </div>
+
+                <div class="bg-gray-50 p-3 rounded-xl text-center border border-gray-100">
+                    <p id="modalPurpose" class="text-xs text-gray-700 font-medium">-</p>
+                </div>
+
+                <!-- Dynamic Photo Gallery inside Pass Modal -->
+                <div id="modalPhotosBox" class="hidden grid grid-cols-2 gap-2.5 pt-1"></div>
+            </div>
+
+            <div class="p-4 bg-gray-50 flex gap-2.5 no-print shrink-0 border-t border-gray-100">
+                <button id="modalMarkOutBtn" onclick="" class="hidden ios-btn flex-1 py-3 rounded-2xl bg-amber-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-right-from-bracket"></i> Mark Out
+                </button>
+                <button onclick="window.print()" class="ios-btn flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5">
+                    <i class="fa-solid fa-print"></i> Print Pass
+                </button>
+                <button onclick="closePassModal()" class="ios-btn px-4 py-3 rounded-2xl bg-gray-200/80 text-gray-700 font-bold text-xs">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: Quick QR / Pass ID Verification & Instant Exit -->
+    <div id="qrVerifyModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeQrVerifyModal()"></div>
+        
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md p-5 space-y-4 relative z-10 ios-sheet shadow-2xl">
+            <div class="flex items-center justify-between border-b border-gray-100 pb-3">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-600 flex items-center justify-center">
+                        <i class="fa-solid fa-qrcode"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-gray-900">Quick Pass Verify & Exit</h3>
+                </div>
+                <button onclick="closeQrVerifyModal()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div>
+                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1.5">Search Pass ID, Name, Mobile or Vehicle</label>
+                <input type="text" id="qrSearchInput" oninput="lookupPassForVerify()" placeholder="e.g. VIS-3091, PKG-..., HYD-..., HR-20..." class="w-full px-3.5 py-3 bg-gray-100 rounded-xl text-sm font-mono font-bold uppercase focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
+            </div>
+
+            <!-- Live Lookup Result -->
+            <div id="qrLookupResult" class="bg-gray-50 rounded-2xl p-4 border border-gray-200/80 text-center max-h-72 overflow-y-auto">
+                <p class="text-xs text-gray-400">Type a Pass ID, Mobile, or Vehicle No above to verify or mark exit.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: Dynamic Master Data Manager (Parties & Store Passes) -->
+    <div id="masterModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeMasterModal()"></div>
+        
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[88vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 flex items-center justify-between border-b border-gray-100 shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-xl bg-purple-500/10 text-purple-600 flex items-center justify-center">
+                        <i class="fa-solid fa-database"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-gray-900">Master Data Manager</h3>
+                </div>
+                <button onclick="closeMasterModal()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <!-- Tabs -->
+            <div class="px-5 pt-3 shrink-0">
+                <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl">
+                    <button id="tabMasterParties" onclick="switchMasterTab('parties')" class="bg-white text-gray-900 shadow-sm py-1.5 rounded-lg text-xs font-bold transition-all">Parties / Vendors</button>
+                    <button id="tabMasterPasses" onclick="switchMasterTab('passes')" class="text-gray-500 py-1.5 rounded-lg text-xs font-bold transition-all">Store Gate Passes</button>
+                </div>
+            </div>
+
+            <div class="p-5 overflow-y-auto space-y-4">
+                <!-- Section A: Parties Manager -->
+                <div id="masterPartiesSection" class="space-y-3">
+                    <form onsubmit="addNewPartyMaster(event)" class="flex gap-2">
+                        <input type="text" id="newPartyNameInput" required placeholder="Enter new vendor/party name..." class="flex-1 px-3.5 py-2.5 bg-gray-100 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white">
+                        <button type="submit" class="ios-btn bg-purple-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shrink-0">Add</button>
+                    </form>
+                    <div id="masterPartiesList" class="space-y-2 max-h-60 overflow-y-auto"></div>
+                </div>
+
+                <!-- Section B: Store Gate Passes Manager -->
+                <div id="masterPassesSection" class="hidden space-y-3">
+                    <form onsubmit="addNewStorePassMaster(event)" class="space-y-2 bg-orange-50/60 p-3 rounded-2xl border border-orange-200/70">
+                        <div class="grid grid-cols-2 gap-2">
+                            <input type="text" id="newSgpCode" required placeholder="Pass No (e.g. SGP-105)" class="px-3 py-2 bg-white border border-orange-200 rounded-xl text-xs font-bold uppercase focus:outline-none">
+                            <input type="text" id="newSgpQty" required placeholder="Qty (e.g. 50 Pcs)" class="px-3 py-2 bg-white border border-orange-200 rounded-xl text-xs font-semibold focus:outline-none">
+                        </div>
+                        <input type="text" id="newSgpParty" required placeholder="Party / Receiver Name" class="w-full px-3 py-2 bg-white border border-orange-200 rounded-xl text-xs font-semibold focus:outline-none">
+                        <div class="flex gap-2">
+                            <input type="text" id="newSgpItem" required placeholder="Material / Item Description" class="flex-1 px-3 py-2 bg-white border border-orange-200 rounded-xl text-xs font-semibold focus:outline-none">
+                            <button type="submit" class="ios-btn bg-orange-500 text-white font-bold text-xs px-4 py-2 rounded-xl shrink-0">Create</button>
+                        </div>
+                    </form>
+                    <div id="masterPassesList" class="space-y-2 max-h-52 overflow-y-auto"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 4: Settings, Guard Shift, Storage Health & JSON Backup/Restore -->
+    <div id="settingsModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeSettingsModal()"></div>
+        
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 flex items-center justify-between border-b border-gray-100 shrink-0">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-xl bg-gray-800 text-white flex items-center justify-center text-xs">
+                        <i class="fa-solid fa-gear"></i>
+                    </div>
+                    <h3 class="text-base font-bold text-gray-900">System Settings & Backup</h3>
+                </div>
+                <button onclick="closeSettingsModal()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="p-5 overflow-y-auto space-y-4">
+                <!-- 1. Storage Health Meter -->
+                <div class="bg-gray-50 p-3.5 rounded-2xl border border-gray-200/80 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-gray-800"><i class="fa-solid fa-hard-drive text-blue-600 mr-1.5"></i>Local Storage Health</span>
+                        <span id="storageUsageText" class="font-mono text-[11px] font-bold text-blue-600">0 KB / 5 MB</span>
+                    </div>
+                    <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div id="storageProgressBar" class="h-full bg-emerald-500 rounded-full transition-all duration-300" style="width: 5%"></div>
+                    </div>
+                    <p class="text-[10px] text-gray-500">Auto-image compression is active to maximize capacity.</p>
+                </div>
+
+                <!-- 2. Duty Guard & Shift Configuration -->
+                <div class="bg-gray-50 p-3.5 rounded-2xl border border-gray-200/80 space-y-2.5">
+                    <span class="block text-xs font-bold text-gray-800"><i class="fa-solid fa-user-shield text-emerald-600 mr-1.5"></i>Active Guard & Shift</span>
+                    <div class="grid grid-cols-2 gap-2">
+                        <input type="text" id="settingGuardName" placeholder="Guard Name" class="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-semibold focus:outline-none">
+                        <select id="settingShiftName" class="px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-bold text-gray-800 focus:outline-none">
+                            <option value="Day Shift">Day Shift</option>
+                            <option value="Night Shift">Night Shift</option>
+                            <option value="General Shift">General Shift</option>
+                        </select>
+                    </div>
+                    <button onclick="saveGuardSettings()" class="ios-btn w-full py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl">Update Duty Guard</button>
+                </div>
+
+                <!-- 3. Admin 4-Digit Delete PIN -->
+                <div class="bg-gray-50 p-3.5 rounded-2xl border border-gray-200/80 space-y-2">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-gray-800"><i class="fa-solid fa-key text-amber-500 mr-1.5"></i>Admin Delete PIN (4-Digit)</span>
+                        <span class="text-[10px] font-semibold text-gray-400">Default: 1234</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <input type="password" id="settingAdminPin" maxlength="4" pattern="[0-9]{4}" placeholder="New 4-digit PIN" class="flex-1 px-3 py-2 bg-white border border-gray-200 rounded-xl text-xs font-mono font-bold tracking-widest focus:outline-none">
+                        <button onclick="saveAdminPin()" class="ios-btn px-4 py-2 bg-gray-900 text-white font-bold text-xs rounded-xl">Save PIN</button>
+                    </div>
+                </div>
+
+                <!-- 4. Full JSON Backup & Restore -->
+                <div class="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-200/80 space-y-2.5">
+                    <span class="block text-xs font-bold text-blue-900"><i class="fa-solid fa-cloud-arrow-down text-blue-600 mr-1.5"></i>Full Data Backup & Restore (JSON)</span>
+                    <p class="text-[11px] text-blue-700/80 leading-snug">Export complete records including photos & master lists to transfer across devices.</p>
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="downloadJsonBackup()" class="ios-btn py-2.5 bg-blue-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 shadow-sm">
+                            <i class="fa-solid fa-download"></i> Backup JSON
+                        </button>
+                        <label class="ios-btn py-2.5 bg-white border border-blue-300 text-blue-700 font-bold text-xs rounded-xl flex items-center justify-center gap-1.5 cursor-pointer">
+                            <i class="fa-solid fa-upload"></i> Restore JSON
+                            <input type="file" accept=".json" class="hidden" onchange="restoreJsonBackup(this)">
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- iOS Center Alert Dialog (For PIN Delete & Coming Soon) -->
+    <div id="iosAlertModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6">
+        <div class="absolute inset-0 bg-black/35 backdrop-blur-sm ios-backdrop" onclick="closeIosAlert()"></div>
+        
+        <div class="ios-glass rounded-[22px] max-w-[290px] w-full shadow-2xl text-center relative z-10 ios-alert overflow-hidden border border-white/40">
+            <div class="p-5">
+                <h3 id="iosAlertTitle" class="text-[17px] font-bold text-gray-900">Title</h3>
+                <p id="iosAlertMsg" class="text-[13px] text-gray-600 mt-1.5 leading-snug">Message goes here</p>
+                <!-- Optional PIN Input Container -->
+                <div id="iosAlertPinBox" class="hidden mt-3">
+                    <input type="password" id="deletePinInput" maxlength="4" inputmode="numeric" placeholder="••••" class="w-32 mx-auto text-center tracking-[0.5em] font-mono text-lg font-extrabold py-2 px-3 bg-white/90 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500">
+                </div>
+            </div>
+            <div id="iosAlertButtons" class="flex border-t border-gray-300/60">
+                <!-- Buttons injected dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. STATE & DEFAULT MASTER DATA
+        // ==========================================
+        const DEFAULT_PARTIES = [
+            'Apex Steel & Alloys Ltd',
+            'Bharat Electricals Pvt Ltd',
+            'Shree Balaji Packaging',
+            'Haryana Industrial Hardware',
+            'Metro Polymers & Chemicals'
+        ];
+
+        const DEFAULT_STORE_PASSES = {
+            'SGP-101': { party: 'Apex Steel & Alloys Ltd', item: 'MS Bright Bars (20mm)', qty: '450 Kg' },
+            'SGP-102': { party: 'Bharat Electricals Pvt Ltd', item: '3-Phase Copper Motor 5HP', qty: '2 Units' },
+            'SGP-103': { party: 'Shree Balaji Packaging', item: 'Corrugated Export Boxes', qty: '300 Pcs' },
+            'SGP-104': { party: 'Haryana Industrial Hardware', item: 'Hydraulic Valve Assembly', qty: '12 Sets' }
+        };
+
+        let partiesList = JSON.parse(localStorage.getItem('iosGateParties_v2')) || [...DEFAULT_PARTIES];
+        let storeGatePassesDB = JSON.parse(localStorage.getItem('iosGateStorePasses_v2')) || { ...DEFAULT_STORE_PASSES };
+        let appSettings = JSON.parse(localStorage.getItem('iosGateSettings_v2')) || {
+            guardName: 'Ramesh Singh',
+            shiftName: 'Day Shift',
+            adminPin: '1234'
+        };
+
+        let gateEntries = JSON.parse(localStorage.getItem('iosGateEntries_v1')) || [
+            {
+                id: 'IN-8492',
+                category: 'INWARD',
+                name: 'Apex Steel & Alloys Ltd',
+                mobile: 'Store Inward',
+                vehicle: 'HR-20-GA-4512',
+                host: 'PO: PO-2026-410 | STR-IN-8492',
+                purpose: 'New Entry • Bill & Item Photos Verified',
+                guard: 'Ramesh Singh (Day Shift)',
+                inTime: new Date(Date.now() - 3600000 * 2).toISOString(),
+                outTime: null,
+                status: 'IN'
+            },
+            {
+                id: 'VIS-3091',
+                category: 'VISITOR',
+                name: 'Rajesh Kumar',
+                mobile: '9876543210',
+                vehicle: 'HR-26-DK-9901',
+                host: 'Mr. Verma (Purchase Head)',
+                purpose: 'Vendor quotation discussion',
+                guard: 'Ramesh Singh (Day Shift)',
+                inTime: new Date(Date.now() - 3600000 * 1).toISOString(),
+                outTime: null,
+                status: 'IN'
+            },
+            {
+                id: 'DK-4501',
+                category: 'DHARAM KANTA',
+                name: 'HR-20-GA-4512',
+                mobile: 'Slip: DK-4501',
+                vehicle: 'HR-20-GA-4512',
+                tareWeight: 8250,
+                grossWeight: 8250,
+                netWeight: 0,
+                host: 'Gross: 8250.00 Kg | Tare: 8250.00 Kg',
+                purpose: 'Net Weight: 0.00 Kg • Empty Tare Slip',
+                guard: 'Ramesh Singh (Day Shift)',
+                inTime: new Date(Date.now() - 3600000 * 3).toISOString(),
+                outTime: null,
+                status: 'IN'
+            }
+        ];
+
+        // Temporary Photo Buffers (Compressed Base64 Data URLs)
+        let tempPhotos = {
+            inBill: null,
+            inItem: null,
+            inDkVehicle: null,
+            outPass: null,
+            outItem: null,
+            dispVehicle: null,
+            visPerson: null,
+            visVehicle: null,
+            dkVehicle: null,
+            hydraIn: null
+        };
+
+        let generatedStoreNo = '';
+        let generatedPackingSlipNo = '';
+        let matchedDispatchDkEntry = null;
+        let isInwardDkActive = false;
+
+        // ==========================================
+        // 2. INITIALIZATION & CLOCK
+        // ==========================================
+        document.addEventListener('DOMContentLoaded', () => {
+            updateClock();
+            updateHydraLiveUI();
+            setInterval(() => {
+                updateClock();
+                updateHydraLiveUI();
+            }, 1000);
+            refreshMasterDropdowns();
+            updateShiftBadgeUI();
+        });
+
+        function updateClock() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' });
+            const timeStr = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            const clockEl = document.getElementById('liveClockSub');
+            if (clockEl) {
+                clockEl.textContent = `${dateStr} • ${timeStr}`;
+            }
+        }
+
+        function saveEntries() {
+            try {
+                localStorage.setItem('iosGateEntries_v1', JSON.stringify(gateEntries));
+            } catch (err) {
+                showIosBanner('Storage limit reached! Export JSON backup & clear old entries.', 'error');
+            }
+        }
+
+        function saveMasters() {
+            localStorage.setItem('iosGateParties_v2', JSON.stringify(partiesList));
+            localStorage.setItem('iosGateStorePasses_v2', JSON.stringify(storeGatePassesDB));
+            refreshMasterDropdowns();
+        }
+
+        function updateShiftBadgeUI() {
+            const badge = document.getElementById('activeShiftBadge');
+            if (badge) {
+                badge.innerHTML = `<i class="fa-solid fa-user-shield text-[9px] mr-0.5"></i> ${appSettings.shiftName}`;
+            }
+        }
+
+        // ==========================================
+        // 3. AUTOMATIC IMAGE COMPRESSION ENGINE
+        // ==========================================
+        function compressImageFile(file, maxDimension = 800, quality = 0.65) {
+            return new Promise((resolve, reject) => {
+                if (!file) {
+                    resolve(null);
+                    return;
+                }
+                const reader = new FileReader();
+                reader.onerror = () => reject(new Error('File read error'));
+                reader.onload = function(event) {
+                    const img = new Image();
+                    img.onerror = () => reject(new Error('Image load error'));
+                    img.onload = function() {
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > maxDimension || height > maxDimension) {
+                            if (width > height) {
+                                height = Math.round((height * maxDimension) / width);
+                                width = maxDimension;
+                            } else {
+                                width = Math.round((width * maxDimension) / height);
+                                height = maxDimension;
+                            }
+                        }
+
+                        const canvas = document.createElement('canvas');
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+
+                        const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                        resolve(compressedDataUrl);
+                    };
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        }
+
+        async function handleCompressedUpload(input, labelId, previewImgId, bufferKey, previewContainerId = null) {
+            const labelEl = document.getElementById(labelId);
+            if (!input.files || !input.files[0]) return;
+
+            if (labelEl) labelEl.textContent = 'Compressing...';
+            try {
+                const compressed = await compressImageFile(input.files[0]);
+                tempPhotos[bufferKey] = compressed;
+                if (labelEl) labelEl.textContent = '✓ ' + input.files[0].name;
+
+                if (previewImgId) {
+                    const imgEl = document.getElementById(previewImgId);
+                    if (imgEl) {
+                        imgEl.src = compressed;
+                        imgEl.classList.remove('hidden');
+                    }
+                }
+                if (previewContainerId) {
+                    const containerEl = document.getElementById(previewContainerId);
+                    if (containerEl) containerEl.classList.remove('hidden');
+                }
+            } catch (err) {
+                if (labelEl) labelEl.textContent = 'Upload Failed';
+                showIosBanner('Could not process image', 'error');
+            }
+        }
+
+        // ==========================================
+        // 4. VIEW SWITCHING & NAVIGATION
+        // ==========================================
+        function showView(viewId) {
+            const views = [
+                'view-actionMenu',
+                'view-inwardForm',
+                'view-outwardMenu',
+                'view-outwardStoreForm',
+                'view-outwardDispatchForm',
+                'view-visitorForm',
+                'view-dharamKantaForm',
+                'view-hydraForm'
+            ];
+            views.forEach(v => {
+                const el = document.getElementById(v);
+                if (el) el.classList.remove('active');
+            });
+
+            const target = document.getElementById('view-' + viewId);
+            if (target) {
+                void target.offsetWidth;
+                target.classList.add('active');
+            }
+
+            if (viewId === 'inwardForm') {
+                const randIn = Math.floor(1000 + Math.random() * 9000);
+                document.getElementById('inwardNo').value = 'IN-' + randIn;
+                generatedStoreNo = 'STR-IN-' + randIn;
+                document.getElementById('autoStoreNo').textContent = generatedStoreNo;
+            }
+
+            if (viewId === 'outwardStoreForm') {
+                document.getElementById('formOutwardStore').reset();
+                document.getElementById('outStoreOutwardNo').value = 'OUT-' + Math.floor(1000 + Math.random() * 9000);
+                document.getElementById('storeFetchedBox').classList.add('hidden');
+                document.getElementById('outPassLabel').textContent = 'Mandatory Photo';
+                document.getElementById('outItemLabel').textContent = 'Mandatory Photo';
+                document.getElementById('outPassPreview').classList.add('hidden');
+                document.getElementById('outItemPreview').classList.add('hidden');
+                document.getElementById('outwardPreviewRow').classList.add('hidden');
+                tempPhotos.outPass = null;
+                tempPhotos.outItem = null;
+                validateOutwardForm();
+            }
+
+            if (viewId === 'outwardDispatchForm') {
+                initDispatchPackingSlipForm();
+            }
+
+            if (viewId === 'visitorForm') {
+                initVisitorForm();
+            }
+
+            if (viewId === 'hydraForm') {
+                initHydraView();
+            }
+        }
+
+        // ==========================================
+        // 5. INWARD ENTRY & INWARD DHARAM KANTA
+        // ==========================================
+        function toggleInwardDharamKanta() {
+            isInwardDkActive = !isInwardDkActive;
+            const box = document.getElementById('inwardDkFields');
+            const badge = document.getElementById('inDkToggleBadge');
+            const slipInput = document.getElementById('inDkSlipNo');
+
+            if (isInwardDkActive) {
+                box.classList.remove('hidden');
+                badge.textContent = '✓ Added';
+                badge.className = 'text-[10px] font-bold bg-emerald-500 text-white px-2.5 py-1 rounded-full';
+                slipInput.required = true;
+            } else {
+                box.classList.add('hidden');
+                badge.textContent = '+ Add Slip';
+                badge.className = 'text-[10px] font-bold bg-cyan-600 text-white px-2.5 py-1 rounded-full';
+                slipInput.required = false;
+            }
+        }
+
+        function calcInwardNetWeight() {
+            const gross = parseFloat(document.getElementById('inDkGross').value) || 0;
+            const tare = parseFloat(document.getElementById('inDkTare').value) || 0;
+            const netEl = document.getElementById('inDkNet');
+            if (gross > 0 || tare > 0) {
+                netEl.value = Math.max(0, gross - tare).toFixed(2);
+            } else {
+                netEl.value = '';
+            }
+        }
+
+        document.getElementById('formInward').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const customInwardNo = document.getElementById('inwardNo').value.trim().toUpperCase() || ('IN-' + Math.floor(1000 + Math.random() * 9000));
+            const inwardType = document.querySelector('input[name="inwardType"]:checked').value;
+            const partyName = document.getElementById('inPartyName').value;
+            const refType = document.getElementById('inRefType').value;
+            const refNo = document.getElementById('inRefNo').value.trim();
+            const vehicle = document.getElementById('inVehicle').value.trim().toUpperCase() || 'N/A';
+
+            let dkSummary = '';
+            if (isInwardDkActive) {
+                const grossVal = parseFloat(document.getElementById('inDkGross').value) || 0;
+                const tareVal = parseFloat(document.getElementById('inDkTare').value) || 0;
+                if (tareVal > grossVal) {
+                    showIosBanner('Tare Weight cannot exceed Gross Weight!', 'error');
+                    return;
+                }
+                const dkSlip = document.getElementById('inDkSlipNo').value.trim().toUpperCase();
+                const dkNet = document.getElementById('inDkNet').value || '0.00';
+                dkSummary = ` | DK Slip: ${dkSlip} (G:${grossVal}, T:${tareVal}, Net:${dkNet} Kg)`;
+            }
+
+            const newEntry = {
+                id: customInwardNo,
+                category: 'INWARD',
+                name: partyName,
+                mobile: 'Store Inward',
+                vehicle: vehicle,
+                host: `${refType}: ${refNo} | ${generatedStoreNo}`,
+                purpose: `${inwardType} • Bill & Item Photo Attached${dkSummary}`,
+                billPhoto: tempPhotos.inBill,
+                itemPhoto: tempPhotos.inItem,
+                vehiclePhoto: isInwardDkActive ? tempPhotos.inDkVehicle : null,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: new Date().toISOString(),
+                outTime: null,
+                status: 'IN'
+            };
+
+            gateEntries.unshift(newEntry);
+            saveEntries();
+            this.reset();
+
+            tempPhotos.inBill = null;
+            tempPhotos.inItem = null;
+            tempPhotos.inDkVehicle = null;
+            document.getElementById('inBillLabel').textContent = 'Upload Bill';
+            document.getElementById('inItemLabel').textContent = 'Upload Item';
+            document.getElementById('inBillPreview').classList.add('hidden');
+            document.getElementById('inItemPreview').classList.add('hidden');
+            document.getElementById('inwardPreviewRow').classList.add('hidden');
+            document.getElementById('inDkPhotoLabel').textContent = 'Upload Vehicle Photo';
+            document.getElementById('inDkPhotoBox').classList.add('hidden');
+            if (isInwardDkActive) toggleInwardDharamKanta();
+
+            showView('actionMenu');
+            showIosBanner(`Inward ${customInwardNo} Saved (${generatedStoreNo})`, 'success');
+            openPassModal(newEntry.id);
+        });
+
+        // ==========================================
+        // 6. OUTWARD FROM STORE
+        // ==========================================
+        function fetchStoreGatePassDetails() {
+            const passNo = document.getElementById('storePassSelect').value;
+            const box = document.getElementById('storeFetchedBox');
+
+            if (passNo && storeGatePassesDB[passNo]) {
+                const data = storeGatePassesDB[passNo];
+                document.getElementById('fetchedPassBadge').textContent = passNo;
+                document.getElementById('fetchedPartyName').textContent = data.party;
+                document.getElementById('fetchedItemName').textContent = data.item;
+                document.getElementById('fetchedItemQty').textContent = data.qty;
+                box.classList.remove('hidden');
+            } else {
+                box.classList.add('hidden');
+            }
+            validateOutwardForm();
+        }
+
+        async function handleOutwardPhotoChange(input, labelId, previewImgId, bufferKey) {
+            await handleCompressedUpload(input, labelId, previewImgId, bufferKey, 'outwardPreviewRow');
+            validateOutwardForm();
+        }
+
+        function validateOutwardForm() {
+            const passSelected = document.getElementById('storePassSelect').value !== '';
+            const hasPassPhoto = Boolean(tempPhotos.outPass);
+            const hasItemPhoto = Boolean(tempPhotos.outItem);
+            const btn = document.getElementById('outwardSubmitBtn');
+
+            if (passSelected && hasPassPhoto && hasItemPhoto) {
+                btn.disabled = false;
+                btn.className = 'ios-btn w-full bg-orange-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-orange-500/30 flex items-center justify-center gap-2 text-sm';
+                btn.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i> Confirm Store Exit';
+            } else {
+                btn.disabled = true;
+                btn.className = 'ios-btn w-full bg-gray-300 text-gray-500 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm transition-all';
+                btn.innerHTML = '<i class="fa-solid fa-lock"></i> Upload Both Photos to Exit';
+            }
+        }
+
+        document.getElementById('formOutwardStore').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const customOutwardNo = document.getElementById('outStoreOutwardNo').value.trim().toUpperCase() || ('OUT-' + Math.floor(1000 + Math.random() * 9000));
+            const passNo = document.getElementById('storePassSelect').value;
+            const data = storeGatePassesDB[passNo];
+            if (!data) return;
+
+            const newOutward = {
+                id: customOutwardNo,
+                category: 'OUTWARD',
+                name: data.party,
+                mobile: 'Store Exit',
+                vehicle: 'N/A',
+                host: `Store Pass: ${passNo} | Qty: ${data.qty}`,
+                purpose: `${data.item} • Pass & Item Photos Verified`,
+                passPhoto: tempPhotos.outPass,
+                itemPhoto: tempPhotos.outItem,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: new Date().toISOString(),
+                outTime: new Date().toISOString(),
+                status: 'OUT'
+            };
+
+            gateEntries.unshift(newOutward);
+            saveEntries();
+            this.reset();
+            tempPhotos.outPass = null;
+            tempPhotos.outItem = null;
+            showView('actionMenu');
+            showIosBanner(`Store Exit ${customOutwardNo} Recorded (${passNo})`, 'success');
+            openPassModal(newOutward.id);
+        });
+
+        // ==========================================
+        // 6B. OUTWARD FROM DISPATCH (PACKING SLIP)
+        // ==========================================
+        function getAllDharamKantaSlips() {
+            return gateEntries.filter(e => e.category === 'DHARAM KANTA');
+        }
+
+        function parseTareFromDkEntry(dkEntry) {
+            if (typeof dkEntry.tareWeight === 'number' && !isNaN(dkEntry.tareWeight)) {
+                return dkEntry.tareWeight;
+            }
+            const hostMatch = (dkEntry.host || '').match(/Tare:\s*([\d.]+)/i);
+            if (hostMatch) return parseFloat(hostMatch[1]);
+            const grossMatch = (dkEntry.host || '').match(/Gross:\s*([\d.]+)/i);
+            if (grossMatch) return parseFloat(grossMatch[1]);
+            return 0;
+        }
+
+        function initDispatchPackingSlipForm() {
+            const form = document.getElementById('formOutwardDispatch');
+            form.reset();
+            matchedDispatchDkEntry = null;
+            tempPhotos.dispVehicle = null;
+
+            document.getElementById('dispOutwardNo').value = 'OUT-' + Math.floor(1000 + Math.random() * 9000);
+            generatedPackingSlipNo = 'PKG-' + Math.floor(1000 + Math.random() * 9000);
+            document.getElementById('autoPackingSlipNo').textContent = generatedPackingSlipNo;
+
+            const badge = document.getElementById('dispDkMatchBadge');
+            badge.textContent = 'Enter Slip to Fetch Tare';
+            badge.className = 'text-[10px] font-bold text-gray-400';
+
+            document.getElementById('dispVehicleNo').value = '';
+            document.getElementById('dispTareWeight').value = '';
+            document.getElementById('dispNetWeight').value = '';
+
+            const grossInput = document.getElementById('dispGrossWeight');
+            grossInput.value = '';
+            grossInput.disabled = true;
+            grossInput.placeholder = 'Enter Slip 1st';
+
+            document.getElementById('dispVehiclePhotoLabel').textContent = 'Tap to Open Live Camera';
+            document.getElementById('dispVehiclePreviewBox').classList.add('hidden');
+            document.getElementById('dispVehiclePreviewImg').classList.add('hidden');
+
+            // Populate datalist and quick-select chips from recorded Dharam Kanta slips
+            const dkSlips = getAllDharamKantaSlips();
+            const datalist = document.getElementById('dispDkSlipDatalist');
+            const chipsBox = document.getElementById('dispDkQuickChips');
+
+            datalist.innerHTML = dkSlips.map(s => `<option value="${s.id}">${s.vehicle} (Tare: ${parseTareFromDkEntry(s)} Kg)</option>`).join('');
+
+            if (dkSlips.length > 0) {
+                chipsBox.innerHTML = `<span class="text-[10px] font-bold text-gray-400 self-center mr-1">Recent Slips:</span>` +
+                    dkSlips.slice(0, 4).map(s => `
+                        <button type="button" onclick="selectDispatchDkChip('${s.id}')" class="ios-btn text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-800 border border-cyan-200 px-2.5 py-1 rounded-full">
+                            ${s.id} (${s.vehicle})
+                        </button>
+                    `).join('');
+            } else {
+                chipsBox.innerHTML = `<span class="text-[10px] text-amber-600 font-semibold">No Dharam Kanta slip found. Create one in Dharam Kanta first.</span>`;
+            }
+        }
+
+        function selectDispatchDkChip(slipId) {
+            document.getElementById('dispDkSlipNo').value = slipId;
+            lookupDispatchDkSlip();
+        }
+
+        function lookupDispatchDkSlip() {
+            const rawVal = document.getElementById('dispDkSlipNo').value.trim().toUpperCase();
+            const badge = document.getElementById('dispDkMatchBadge');
+            const vehicleInput = document.getElementById('dispVehicleNo');
+            const tareInput = document.getElementById('dispTareWeight');
+            const grossInput = document.getElementById('dispGrossWeight');
+            const netInput = document.getElementById('dispNetWeight');
+
+            if (!rawVal) {
+                matchedDispatchDkEntry = null;
+                badge.textContent = 'Enter Slip to Fetch Tare';
+                badge.className = 'text-[10px] font-bold text-gray-400';
+                vehicleInput.value = '';
+                tareInput.value = '';
+                grossInput.value = '';
+                grossInput.disabled = true;
+                netInput.value = '';
+                return;
+            }
+
+            const normalizedId = rawVal.startsWith('DK-') ? rawVal : 'DK-' + rawVal;
+            const dkSlips = getAllDharamKantaSlips();
+            const found = dkSlips.find(s => s.id.toUpperCase() === rawVal || s.id.toUpperCase() === normalizedId);
+
+            if (found) {
+                matchedDispatchDkEntry = found;
+                const tareVal = parseTareFromDkEntry(found);
+                badge.innerHTML = `<i class="fa-solid fa-circle-check mr-0.5"></i> Tare Fetched (${tareVal} Kg)`;
+                badge.className = 'text-[10px] font-extrabold text-emerald-600';
+
+                vehicleInput.value = found.vehicle || 'N/A';
+                tareInput.value = tareVal.toFixed(2);
+                grossInput.disabled = false;
+                grossInput.placeholder = 'Enter Gross Wt';
+                calcDispatchNetWeight();
+            } else {
+                matchedDispatchDkEntry = null;
+                badge.textContent = 'Slip Not Found';
+                badge.className = 'text-[10px] font-bold text-red-500';
+                vehicleInput.value = '';
+                tareInput.value = '';
+                grossInput.value = '';
+                grossInput.disabled = true;
+                grossInput.placeholder = 'Enter Slip 1st';
+                netInput.value = '';
+            }
+        }
+
+        function calcDispatchNetWeight() {
+            const tare = parseFloat(document.getElementById('dispTareWeight').value) || 0;
+            const gross = parseFloat(document.getElementById('dispGrossWeight').value) || 0;
+            const netInput = document.getElementById('dispNetWeight');
+
+            if (gross > 0) {
+                netInput.value = Math.max(0, gross - tare).toFixed(2);
+            } else {
+                netInput.value = '';
+            }
+        }
+
+        document.getElementById('formOutwardDispatch').addEventListener('submit', function(e) {
+            e.preventDefault();
+            if (!matchedDispatchDkEntry) {
+                showIosBanner('Please enter a valid Dharam Kanta Slip No!', 'error');
+                return;
+            }
+
+            const tare = parseFloat(document.getElementById('dispTareWeight').value) || 0;
+            const gross = parseFloat(document.getElementById('dispGrossWeight').value) || 0;
+            if (gross <= 0 || gross < tare) {
+                showIosBanner('Gross Weight must be greater than or equal to Tare Weight!', 'error');
+                return;
+            }
+
+            if (!tempPhotos.dispVehicle) {
+                showIosBanner('Please capture Loaded Vehicle Photo from Live Camera!', 'error');
+                return;
+            }
+
+            const customOutwardNo = document.getElementById('dispOutwardNo').value.trim().toUpperCase() || ('OUT-' + Math.floor(1000 + Math.random() * 9000));
+            const net = Math.max(0, gross - tare).toFixed(2);
+            const vehicleNo = matchedDispatchDkEntry.vehicle || 'N/A';
+            const dkSlipId = matchedDispatchDkEntry.id;
+
+            const newDispatchEntry = {
+                id: generatedPackingSlipNo,
+                outwardNo: customOutwardNo,
+                category: 'DISPATCH PACKING',
+                name: `Vehicle: ${vehicleNo}`,
+                mobile: `Outward: ${customOutwardNo}`,
+                vehicle: vehicleNo,
+                approvalStatus: 'APPROVAL PENDING',
+                host: `Outward: ${customOutwardNo} | DK: ${dkSlipId} | Tare: ${tare.toFixed(2)} Kg`,
+                purpose: `Gross: ${gross.toFixed(2)} Kg • Net Wt: ${net} Kg • APPROVAL PENDING`,
+                vehiclePhoto: tempPhotos.dispVehicle,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: new Date().toISOString(),
+                outTime: null,
+                status: 'IN'
+            };
+
+            gateEntries.unshift(newDispatchEntry);
+            saveEntries();
+            this.reset();
+            tempPhotos.dispVehicle = null;
+            matchedDispatchDkEntry = null;
+
+            showView('actionMenu');
+            showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) • Approval Pending`, 'info');
+            openPassModal(newDispatchEntry.id);
+        });
+
+        // ==========================================
+        // 7. VISITOR PASS (STRICT 10-DIGIT NUMERIC MOBILE AUTO-LOOKUP)
+        // ==========================================
+        function restrictMobileKeydown(e) {
+            const allowedKeys = ['Backspace', 'Delete', 'Tab', 'Escape', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            if (allowedKeys.includes(e.key) || ((e.ctrlKey || e.metaKey) && ['a', 'c', 'v', 'x'].includes(e.key.toLowerCase()))) {
+                return;
+            }
+            if (!/^[0-9]$/.test(e.key)) {
+                e.preventDefault();
+            }
+        }
+
+        function handleMobilePaste(e) {
+            e.preventDefault();
+            const pastedText = (e.clipboardData || window.clipboardData).getData('text') || '';
+            const digitsOnly = pastedText.replace(/\D/g, '').slice(0, 10);
+            const input = e.target;
+            input.value = digitsOnly;
+            lookupVisitorByMobile();
+        }
+
+        function initVisitorForm() {
+            const form = document.getElementById('entryForm');
+            form.reset();
+            tempPhotos.visPerson = null;
+            tempPhotos.visVehicle = null;
+
+            const badge = document.getElementById('visLookupBadge');
+            badge.textContent = 'Auto-fill on 10 digits';
+            badge.className = 'text-[10px] font-bold text-gray-400';
+
+            document.getElementById('visPersonLabel').textContent = 'Capture Visitor';
+            document.getElementById('visVehicleLabel').textContent = 'Capture Vehicle';
+            document.getElementById('visPersonPreview').classList.add('hidden');
+            document.getElementById('visVehiclePreview').classList.add('hidden');
+            document.getElementById('visitorPreviewRow').classList.add('hidden');
+            document.getElementById('visPersonPhoto').required = true;
+
+            const datalist = document.getElementById('visitorMobileDatalist');
+            const seenMobiles = new Set();
+            const optionsHtml = [];
+            gateEntries.forEach(entry => {
+                if (entry.category === 'VISITOR' && /^\d{10}$/.test(entry.mobile) && !seenMobiles.has(entry.mobile)) {
+                    seenMobiles.add(entry.mobile);
+                    optionsHtml.push(`<option value="${entry.mobile}">${entry.name} (${entry.vehicle !== 'N/A' ? entry.vehicle : 'Visitor'})</option>`);
+                }
+            });
+            datalist.innerHTML = optionsHtml.join('');
+
+            setTimeout(() => {
+                const mobEl = document.getElementById('mobileNo');
+                if (mobEl) mobEl.focus();
+            }, 120);
+        }
+
+        function lookupVisitorByMobile() {
+            const mobileInput = document.getElementById('mobileNo');
+            const cleanDigits = mobileInput.value.replace(/\D/g, '').slice(0, 10);
+            if (mobileInput.value !== cleanDigits) {
+                mobileInput.value = cleanDigits;
+            }
+            const mobile = cleanDigits;
+            const badge = document.getElementById('visLookupBadge');
+
+            if (mobile.length < 10) {
+                badge.textContent = `${mobile.length}/10 digits`;
+                badge.className = 'text-[10px] font-bold text-gray-400';
+                return;
+            }
+
+            const prevEntry = gateEntries.find(e => e.category === 'VISITOR' && e.mobile === mobile);
+            if (prevEntry) {
+                document.getElementById('visitorName').value = prevEntry.name || '';
+                document.getElementById('vehicleNo').value = (prevEntry.vehicle && prevEntry.vehicle !== 'N/A') ? prevEntry.vehicle : '';
+                document.getElementById('hostName').value = prevEntry.host || '';
+                const cleanPurpose = (prevEntry.purpose || '').split('•')[0].trim();
+                document.getElementById('purpose').value = cleanPurpose;
+
+                const previewRow = document.getElementById('visitorPreviewRow');
+                const personImg = document.getElementById('visPersonPreview');
+                const vehicleImg = document.getElementById('visVehiclePreview');
+                let loadedAnyPhoto = false;
+
+                if (prevEntry.visitorPhoto) {
+                    tempPhotos.visPerson = prevEntry.visitorPhoto;
+                    personImg.src = prevEntry.visitorPhoto;
+                    personImg.classList.remove('hidden');
+                    document.getElementById('visPersonLabel').textContent = '✓ Saved Photo Loaded';
+                    document.getElementById('visPersonPhoto').required = false;
+                    loadedAnyPhoto = true;
+                }
+                if (prevEntry.vehiclePhoto) {
+                    tempPhotos.visVehicle = prevEntry.vehiclePhoto;
+                    vehicleImg.src = prevEntry.vehiclePhoto;
+                    vehicleImg.classList.remove('hidden');
+                    document.getElementById('visVehicleLabel').textContent = '✓ Saved Vehicle Loaded';
+                    loadedAnyPhoto = true;
+                }
+                if (loadedAnyPhoto) {
+                    previewRow.classList.remove('hidden');
+                }
+
+                badge.innerHTML = '<i class="fa-solid fa-circle-check mr-0.5"></i> Previous Record Loaded';
+                badge.className = 'text-[10px] font-extrabold text-emerald-600';
+                showIosBanner(`Welcome back, ${prevEntry.name}! Details loaded.`, 'info');
+            } else {
+                document.getElementById('visPersonPhoto').required = true;
+                badge.textContent = 'New Visitor';
+                badge.className = 'text-[10px] font-bold text-blue-600';
+            }
+        }
+
+        document.getElementById('entryForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const mobile = document.getElementById('mobileNo').value.replace(/\D/g, '');
+            if (!/^\d{10}$/.test(mobile)) {
+                showIosBanner('Please enter a valid 10-digit numeric mobile number!', 'error');
+                document.getElementById('mobileNo').focus();
+                return;
+            }
+            const name = document.getElementById('visitorName').value.trim();
+            const vehicle = document.getElementById('vehicleNo').value.trim().toUpperCase() || 'N/A';
+            const host = document.getElementById('hostName').value.trim();
+            const purpose = document.getElementById('purpose').value.trim();
+
+            const photoTags = [];
+            if (tempPhotos.visPerson) photoTags.push('Visitor Photo ✓');
+            if (tempPhotos.visVehicle) photoTags.push('Vehicle Photo ✓');
+
+            const newVisitor = {
+                id: 'VIS-' + Math.floor(1000 + Math.random() * 9000),
+                category: 'VISITOR',
+                name,
+                mobile,
+                vehicle,
+                host,
+                purpose: photoTags.length ? `${purpose} • ${photoTags.join(' | ')}` : purpose,
+                visitorPhoto: tempPhotos.visPerson,
+                vehiclePhoto: tempPhotos.visVehicle,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: new Date().toISOString(),
+                outTime: null,
+                status: 'IN'
+            };
+
+            gateEntries.unshift(newVisitor);
+            saveEntries();
+            this.reset();
+            tempPhotos.visPerson = null;
+            tempPhotos.visVehicle = null;
+            document.getElementById('visPersonPhoto').required = true;
+            document.getElementById('visPersonLabel').textContent = 'Capture Visitor';
+            document.getElementById('visVehicleLabel').textContent = 'Capture Vehicle';
+            document.getElementById('visPersonPreview').classList.add('hidden');
+            document.getElementById('visVehiclePreview').classList.add('hidden');
+            document.getElementById('visitorPreviewRow').classList.add('hidden');
+
+            showView('actionMenu');
+            showIosBanner('Visitor Gate Pass Generated', 'success');
+            openPassModal(newVisitor.id);
+        });
+
+        // ==========================================
+        // 8. DHARAM KANTA STANDALONE (LOCKED AUTO NET WEIGHT)
+        // ==========================================
+        function calculateNetWeight() {
+            const gross = parseFloat(document.getElementById('dkGrossWeight').value) || 0;
+            const tare = parseFloat(document.getElementById('dkTareWeight').value) || 0;
+            const netInput = document.getElementById('dkNetWeight');
+            if (gross > 0 || tare > 0) {
+                netInput.value = Math.max(0, gross - tare).toFixed(2);
+            } else {
+                netInput.value = '';
+            }
+        }
+
+        document.getElementById('formDharamKanta').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const grossVal = parseFloat(document.getElementById('dkGrossWeight').value) || 0;
+            const tareVal = parseFloat(document.getElementById('dkTareWeight').value) || 0;
+
+            if (tareVal > grossVal) {
+                showIosBanner('Tare Weight cannot be greater than Gross Weight!', 'error');
+                return;
+            }
+
+            const slipNo = document.getElementById('dkSlipNo').value.trim().toUpperCase();
+            const vehicleNo = document.getElementById('dkVehicleNo').value.trim().toUpperCase();
+            const netVal = Math.max(0, grossVal - tareVal).toFixed(2);
+            const formattedId = slipNo.startsWith('DK-') ? slipNo : 'DK-' + slipNo;
+
+            const newDkEntry = {
+                id: formattedId,
+                category: 'DHARAM KANTA',
+                name: vehicleNo,
+                mobile: `Slip: ${formattedId}`,
+                vehicle: vehicleNo,
+                grossWeight: grossVal,
+                tareWeight: tareVal,
+                netWeight: parseFloat(netVal),
+                host: `Gross: ${grossVal.toFixed(2)} Kg | Tare: ${tareVal.toFixed(2)} Kg`,
+                purpose: `Net Weight: ${netVal} Kg • Vehicle Photo ✓`,
+                vehiclePhoto: tempPhotos.dkVehicle,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: new Date().toISOString(),
+                outTime: null,
+                status: 'IN'
+            };
+
+            gateEntries.unshift(newDkEntry);
+            saveEntries();
+            this.reset();
+            tempPhotos.dkVehicle = null;
+            document.getElementById('dkVehicleLabel').textContent = 'Capture / Upload Vehicle Photo';
+            document.getElementById('dkPreviewBox').classList.add('hidden');
+
+            showView('actionMenu');
+            showIosBanner(`Dharam Kanta Slip ${formattedId} Saved`, 'success');
+            openPassModal(newDkEntry.id);
+        });
+
+        // ==========================================
+        // 8B. HYDRA / JCB INWARD, MINUTE TIMER, STORE APPROVAL & GATE OUT
+        // ==========================================
+        let tempHydraStopPhotos = {};
+
+        function getActiveHydraEntries() {
+            return gateEntries.filter(e => e.category === 'HYDRA / JCB' && e.status !== 'OUT');
+        }
+
+        function formatElapsedMinutesAndClock(startIso, endIso = null) {
+            const startMs = new Date(startIso).getTime();
+            const endMs = endIso ? new Date(endIso).getTime() : Date.now();
+            const diffSec = Math.max(0, Math.floor((endMs - startMs) / 1000));
+            const totalMins = Math.max(1, Math.ceil(diffSec / 60));
+            const exactMins = Math.floor(diffSec / 60);
+            const hrs = Math.floor(diffSec / 3600);
+            const mins = Math.floor((diffSec % 3600) / 60);
+            const secs = diffSec % 60;
+            const clockStr = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            return { diffSec, totalMins, exactMins, clockStr };
+        }
+
+        function updateHydraLiveUI() {
+            const now = new Date();
+            const stampEl = document.getElementById('hydraAutoDateTime');
+            if (stampEl) {
+                stampEl.textContent = now.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) +
+                    ' • ' + now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            }
+
+            const activeList = getActiveHydraEntries();
+            const menuBadge = document.getElementById('hydraMenuLiveBadge');
+            if (menuBadge) {
+                if (activeList.length > 0) {
+                    const runningOne = activeList.find(h => h.hydraStage === 'RUNNING');
+                    if (runningOne) {
+                        const { exactMins } = formatElapsedMinutesAndClock(runningOne.inTime);
+                        menuBadge.textContent = `${activeList.length} LIVE • ${exactMins}m`;
+                    } else {
+                        menuBadge.textContent = `${activeList.length} PENDING`;
+                    }
+                    menuBadge.classList.remove('hidden');
+                } else {
+                    menuBadge.classList.add('hidden');
+                }
+            }
+
+            activeList.forEach(h => {
+                if (h.hydraStage === 'RUNNING') {
+                    const timerEl = document.getElementById(`hydraTimer_${h.id}`);
+                    if (timerEl) {
+                        const { exactMins, clockStr } = formatElapsedMinutesAndClock(h.inTime);
+                        timerEl.textContent = `${exactMins} Min (${clockStr})`;
+                    }
+                }
+            });
+        }
+
+        function initHydraView() {
+            const form = document.getElementById('formHydraInward');
+            form.reset();
+            tempPhotos.hydraIn = null;
+            document.getElementById('hydraInPhotoLabel').textContent = 'Tap to Capture Hydra Live Photo';
+            document.getElementById('hydraInPreviewBox').classList.add('hidden');
+            document.getElementById('hydraInPreviewImg').classList.add('hidden');
+
+            refreshMasterDropdowns();
+
+            renderActiveHydraSessions();
+            updateHydraLiveUI();
+        }
+
+        function renderActiveHydraSessions() {
+            const box = document.getElementById('activeHydraSessionsBox');
+            const list = document.getElementById('activeHydraList');
+            const countBadge = document.getElementById('activeHydraCountBadge');
+            if (!box || !list) return;
+
+            const active = getActiveHydraEntries();
+            if (active.length === 0) {
+                box.classList.add('hidden');
+                list.innerHTML = '';
+                return;
+            }
+
+            box.classList.remove('hidden');
+            if (countBadge) countBadge.textContent = `${active.length} Active`;
+
+            list.innerHTML = active.map(h => {
+                const { exactMins, clockStr } = formatElapsedMinutesAndClock(h.inTime, h.stopTime || null);
+                const stage = h.hydraStage || 'RUNNING';
+
+                if (stage === 'RUNNING') {
+                    return `
+                        <div class="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-3 ios-spring">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="inline-block font-mono text-[10px] font-extrabold bg-amber-600 text-white px-2 py-0.5 rounded-md">${h.id}</span>
+                                    <h4 class="text-sm font-extrabold text-gray-900 mt-1">${h.name}</h4>
+                                    <p class="text-[11px] font-semibold text-gray-600">Vehicle: ${h.vehicle} • In: ${formatDateTimeShort(h.inTime)}</p>
+                                </div>
+                                ${h.inwardPhoto ? `<img src="${h.inwardPhoto}" class="w-12 h-12 rounded-xl object-cover border border-amber-300 shrink-0" alt="Hydra In">` : ''}
+                            </div>
+
+                            <div class="bg-white p-3 rounded-xl border border-amber-200 flex items-center justify-between">
+                                <span class="text-[11px] font-bold text-gray-500 uppercase">Running Time</span>
+                                <span id="hydraTimer_${h.id}" class="font-mono text-sm font-extrabold text-amber-700">${exactMins} Min (${clockStr})</span>
+                            </div>
+
+                            <div>
+                                <label class="block text-[10px] font-bold text-amber-900 uppercase mb-1">Work Complete Live Photo *</label>
+                                <label class="ios-btn flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer text-center">
+                                    <i class="fa-solid fa-camera text-amber-600 text-sm"></i>
+                                    <span id="hydraStopLabel_${h.id}" class="text-[11px] font-bold text-amber-900 truncate">Capture Work Complete Photo</span>
+                                    <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleHydraStopPhoto(this, '${h.id}')">
+                                </label>
+                                <div id="hydraStopPreviewBox_${h.id}" class="hidden mt-2 rounded-xl overflow-hidden border border-amber-200 h-24 bg-white">
+                                    <img id="hydraStopPreviewImg_${h.id}" class="w-full h-full object-cover" alt="Work Complete">
+                                </div>
+                            </div>
+
+                            <button type="button" onclick="stopHydraWork('${h.id}')" class="ios-btn w-full py-3 bg-red-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-stop"></i> STOP HYDRA WORK & TIMER
+                            </button>
+                        </div>
+                    `;
+                }
+
+                if (stage === 'STOPPED_STORE_PENDING') {
+                    const suggestedStoreNo = 'STR-HYD-' + h.id.replace(/\D/g, '').slice(-4).padStart(4, '0');
+                    return `
+                        <div class="p-4 rounded-2xl bg-blue-50/90 border border-blue-200 space-y-3 ios-spring">
+                            <div class="flex items-start justify-between gap-2">
+                                <div>
+                                    <span class="inline-block font-mono text-[10px] font-extrabold bg-blue-600 text-white px-2 py-0.5 rounded-md">${h.id} • STORE ENTRY PENDING</span>
+                                    <h4 class="text-sm font-extrabold text-gray-900 mt-1">${h.name}</h4>
+                                    <p class="text-[11px] font-bold text-blue-800">Total Worked: ${h.totalMinutes || exactMins} Minutes</p>
+                                </div>
+                                <div class="flex gap-1.5 shrink-0">
+                                    ${h.inwardPhoto ? `<img src="${h.inwardPhoto}" class="w-11 h-11 rounded-xl object-cover border border-blue-200" alt="In">` : ''}
+                                    ${h.stopPhoto ? `<img src="${h.stopPhoto}" class="w-11 h-11 rounded-xl object-cover border border-blue-200" alt="Stop">` : ''}
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block text-[10px] font-bold text-blue-800 uppercase mb-1">Store Entry No (For Approval) *</label>
+                                <input type="text" id="hydraStoreNo_${h.id}" value="${suggestedStoreNo}" class="w-full px-3 py-2.5 bg-white border border-blue-300 rounded-xl text-xs font-mono font-extrabold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <button type="button" onclick="approveHydraStoreEntry('${h.id}')" class="ios-btn w-full py-3 bg-blue-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
+                                <i class="fa-solid fa-check-double"></i> Submit Store Entry & Approve
+                            </button>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-300 space-y-3 ios-spring">
+                        <div class="flex items-start justify-between gap-2">
+                            <div>
+                                <span class="inline-block font-mono text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-md">${h.id} • STORE APPROVED</span>
+                                <h4 class="text-sm font-extrabold text-gray-900 mt-1">${h.name}</h4>
+                                <p class="text-[11px] font-bold text-emerald-800">Store Ref: ${h.storeEntryNo || 'Approved'} • ${h.totalMinutes || exactMins} Mins</p>
+                            </div>
+                            <button type="button" onclick="openPassModal('${h.id}')" class="ios-btn w-8 h-8 rounded-full bg-white text-emerald-700 border border-emerald-200 flex items-center justify-center text-xs" title="View Slip">
+                                <i class="fa-solid fa-receipt"></i>
+                            </button>
+                        </div>
+
+                        <button type="button" onclick="gateOutHydraEntry('${h.id}')" class="ios-btn w-full py-3 bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-right-from-bracket"></i> Gate Out Hydra Now
+                        </button>
+                    </div>
+                `;
+            }).join('');
+        }
+
+        document.getElementById('formHydraInward').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const supplier = document.getElementById('hydraSupplierName').value;
+            if (!supplier) {
+                showIosBanner('Please select a Supplier from the dropdown!', 'error');
+                return;
+            }
+            if (!tempPhotos.hydraIn) {
+                showIosBanner('Please capture Hydra Live Photo first!', 'error');
+                return;
+            }
+
+            const vehicle = document.getElementById('hydraVehicleNo').value.trim().toUpperCase() || 'HYDRA-CRANE';
+            const hydId = 'HYD-' + Math.floor(1000 + Math.random() * 9000);
+            const nowIso = new Date().toISOString();
+
+            const newHydra = {
+                id: hydId,
+                category: 'HYDRA / JCB',
+                name: supplier,
+                mobile: 'Hydra / JCB Crane',
+                vehicle: vehicle,
+                hydraStage: 'RUNNING',
+                host: `Hydra Inward • Timer Running`,
+                purpose: `Started at ${formatDateTimeShort(nowIso)} • Live Photo Captured`,
+                inwardPhoto: tempPhotos.hydraIn,
+                stopPhoto: null,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: nowIso,
+                stopTime: null,
+                outTime: null,
+                status: 'IN'
+            };
+
+            gateEntries.unshift(newHydra);
+            saveEntries();
+            this.reset();
+            tempPhotos.hydraIn = null;
+            document.getElementById('hydraInPhotoLabel').textContent = 'Tap to Capture Hydra Live Photo';
+            document.getElementById('hydraInPreviewBox').classList.add('hidden');
+            document.getElementById('hydraInPreviewImg').classList.add('hidden');
+
+            renderActiveHydraSessions();
+            updateHydraLiveUI();
+            showIosBanner(`Hydra ${hydId} Inward Saved • Timer Started!`, 'success');
+        });
+
+        async function handleHydraStopPhoto(input, id) {
+            const labelEl = document.getElementById(`hydraStopLabel_${id}`);
+            if (!input.files || !input.files[0]) return;
+            if (labelEl) labelEl.textContent = 'Compressing...';
+            try {
+                const compressed = await compressImageFile(input.files[0]);
+                tempHydraStopPhotos[id] = compressed;
+                if (labelEl) labelEl.textContent = '✓ ' + input.files[0].name;
+                const imgEl = document.getElementById(`hydraStopPreviewImg_${id}`);
+                const boxEl = document.getElementById(`hydraStopPreviewBox_${id}`);
+                if (imgEl) imgEl.src = compressed;
+                if (boxEl) boxEl.classList.remove('hidden');
+            } catch (err) {
+                if (labelEl) labelEl.textContent = 'Photo Failed';
+                showIosBanner('Could not process completion photo', 'error');
+            }
+        }
+
+        function stopHydraWork(id) {
+            const entry = gateEntries.find(e => e.id === id);
+            if (!entry) return;
+            if (!tempHydraStopPhotos[id]) {
+                showIosBanner('Please capture Work Complete Live Photo before stopping!', 'error');
+                return;
+            }
+
+            const stopIso = new Date().toISOString();
+            const { totalMins, clockStr } = formatElapsedMinutesAndClock(entry.inTime, stopIso);
+
+            entry.stopTime = stopIso;
+            entry.totalMinutes = totalMins;
+            entry.totalDurationText = `${totalMins} Min (${clockStr})`;
+            entry.stopPhoto = tempHydraStopPhotos[id];
+            entry.hydraStage = 'STOPPED_STORE_PENDING';
+            entry.host = `Total Time: ${totalMins} Mins • Store Entry Pending`;
+            entry.purpose = `Work Completed (${clockStr}) • Completion Photo Verified`;
+
+            delete tempHydraStopPhotos[id];
+            saveEntries();
+            renderActiveHydraSessions();
+            updateHydraLiveUI();
+            showIosBanner(`Timer Stopped at ${totalMins} Mins • Enter Store No`, 'info');
+        }
+
+        function approveHydraStoreEntry(id) {
+            const entry = gateEntries.find(e => e.id === id);
+            if (!entry) return;
+
+            const inputEl = document.getElementById(`hydraStoreNo_${id}`);
+            const storeNo = (inputEl ? inputEl.value.trim().toUpperCase() : '') || ('STR-HYD-' + Math.floor(1000 + Math.random() * 9000));
+
+            entry.storeEntryNo = storeNo;
+            entry.hydraStage = 'STORE_APPROVED';
+            entry.approvalStatus = 'STORE APPROVED';
+            entry.host = `Store Ref: ${storeNo} • Total Time: ${entry.totalMinutes || 1} Mins`;
+            entry.purpose = `Store Approved (${storeNo}) • Ready for Gate Out`;
+
+            saveEntries();
+            renderActiveHydraSessions();
+            updateHydraLiveUI();
+            showIosBanner(`Store Approved (${storeNo}) • Ready for Gate Out`, 'success');
+        }
+
+        function gateOutHydraEntry(id) {
+            const entry = gateEntries.find(e => e.id === id);
+            if (!entry) return;
+
+            entry.status = 'OUT';
+            entry.hydraStage = 'EXITED';
+            entry.outTime = new Date().toISOString();
+            entry.purpose = `${entry.purpose} • Exited Gate-2`;
+
+            saveEntries();
+            renderActiveHydraSessions();
+            updateHydraLiveUI();
+            showIosBanner(`Hydra ${entry.id} Gate Out Completed`, 'success');
+            openPassModal(entry.id);
+        }
+
+        // ==========================================
+        // 9. MASTER DATA DROPDOWNS & MANAGER MODAL
+        // ==========================================
+        function refreshMasterDropdowns() {
+            const partySelect = document.getElementById('inPartyName');
+            if (partySelect) {
+                const currentParty = partySelect.value;
+                partySelect.innerHTML = `<option value="">-- Select Party / Vendor --</option>` +
+                    partiesList.map(p => `<option value="${p}">${p}</option>`).join('');
+                if (partiesList.includes(currentParty)) partySelect.value = currentParty;
+            }
+
+            const hydraPartySelect = document.getElementById('hydraSupplierName');
+            if (hydraPartySelect) {
+                const currentHydraParty = hydraPartySelect.value;
+                hydraPartySelect.innerHTML = `<option value="">-- Select Fixed Supplier / Party --</option>` +
+                    partiesList.map(p => `<option value="${p}">${p}</option>`).join('');
+                if (partiesList.includes(currentHydraParty)) hydraPartySelect.value = currentHydraParty;
+            }
+
+            const passSelect = document.getElementById('storePassSelect');
+            if (passSelect) {
+                const currentPass = passSelect.value;
+                const keys = Object.keys(storeGatePassesDB);
+                passSelect.innerHTML = `<option value="">-- Select Store Gate Pass --</option>` +
+                    keys.map(code => `<option value="${code}">${code} (${storeGatePassesDB[code].party})</option>`).join('');
+                if (storeGatePassesDB[currentPass]) passSelect.value = currentPass;
+            }
+        }
+
+        function openMasterModal(initialTab = 'parties') {
+            document.getElementById('masterModal').classList.remove('hidden');
+            switchMasterTab(initialTab);
+            renderMasterLists();
+        }
+
+        function closeMasterModal() {
+            document.getElementById('masterModal').classList.add('hidden');
+        }
+
+        function switchMasterTab(tab) {
+            const tabParties = document.getElementById('tabMasterParties');
+            const tabPasses = document.getElementById('tabMasterPasses');
+            const secParties = document.getElementById('masterPartiesSection');
+            const secPasses = document.getElementById('masterPassesSection');
+
+            if (tab === 'parties') {
+                tabParties.className = 'bg-white text-gray-900 shadow-sm py-1.5 rounded-lg text-xs font-bold transition-all';
+                tabPasses.className = 'text-gray-500 py-1.5 rounded-lg text-xs font-bold transition-all';
+                secParties.classList.remove('hidden');
+                secPasses.classList.add('hidden');
+            } else {
+                tabPasses.className = 'bg-white text-gray-900 shadow-sm py-1.5 rounded-lg text-xs font-bold transition-all';
+                tabParties.className = 'text-gray-500 py-1.5 rounded-lg text-xs font-bold transition-all';
+                secPasses.classList.remove('hidden');
+                secParties.classList.add('hidden');
+            }
+        }
+
+        function renderMasterLists() {
+            const partiesContainer = document.getElementById('masterPartiesList');
+            if (partiesContainer) {
+                partiesContainer.innerHTML = partiesList.map((p, idx) => `
+                    <div class="flex items-center justify-between bg-gray-50 px-3.5 py-2.5 rounded-xl border border-gray-200/70">
+                        <span class="text-xs font-bold text-gray-800 truncate pr-2">${p}</span>
+                        <button type="button" onclick="deletePartyMaster(${idx})" class="ios-btn text-red-500 hover:text-red-700 text-xs px-2 py-1">
+                            <i class="fa-solid fa-trash"></i>
+                        </button>
+                    </div>
+                `).join('');
+            }
+
+            const passesContainer = document.getElementById('masterPassesList');
+            if (passesContainer) {
+                const codes = Object.keys(storeGatePassesDB);
+                passesContainer.innerHTML = codes.map(code => {
+                    const item = storeGatePassesDB[code];
+                    return `
+                        <div class="flex items-center justify-between bg-gray-50 px-3.5 py-2.5 rounded-xl border border-gray-200/70 gap-2">
+                            <div class="min-w-0">
+                                <span class="font-mono text-xs font-extrabold text-orange-600">${code}</span>
+                                <span class="text-xs font-bold text-gray-800 ml-1.5">${item.party}</span>
+                                <p class="text-[11px] text-gray-500 truncate">${item.item} • <strong>${item.qty}</strong></p>
+                            </div>
+                            <button type="button" onclick="deleteStorePassMaster('${code}')" class="ios-btn text-red-500 text-xs px-2 py-1 shrink-0">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            }
+        }
+
+        function addNewPartyMaster(e) {
+            e.preventDefault();
+            const input = document.getElementById('newPartyNameInput');
+            const name = input.value.trim();
+            if (!name) return;
+            if (!partiesList.some(p => p.toLowerCase() === name.toLowerCase())) {
+                partiesList.unshift(name);
+                saveMasters();
+                renderMasterLists();
+                showIosBanner(`Party "${name}" Added`, 'success');
+            } else {
+                showIosBanner('Party already exists', 'info');
+            }
+            input.value = '';
+        }
+
+        function deletePartyMaster(idx) {
+            partiesList.splice(idx, 1);
+            saveMasters();
+            renderMasterLists();
+            showIosBanner('Party Removed', 'info');
+        }
+
+        function addNewStorePassMaster(e) {
+            e.preventDefault();
+            const code = document.getElementById('newSgpCode').value.trim().toUpperCase();
+            const qty = document.getElementById('newSgpQty').value.trim();
+            const party = document.getElementById('newSgpParty').value.trim();
+            const item = document.getElementById('newSgpItem').value.trim();
+            if (!code || !party || !item) return;
+
+            storeGatePassesDB[code] = { party, item, qty };
+            saveMasters();
+            renderMasterLists();
+            e.target.reset();
+            showIosBanner(`Store Pass ${code} Created`, 'success');
+        }
+
+        function deleteStorePassMaster(code) {
+            delete storeGatePassesDB[code];
+            saveMasters();
+            renderMasterLists();
+            showIosBanner(`Pass ${code} Removed`, 'info');
+        }
+
+        // ==========================================
+        // 10. DIGITAL GATE PASS MODAL (WITH QR & PHOTOS)
+        // ==========================================
+        function openPassModal(id) {
+            const entry = gateEntries.find(e => e.id === id);
+            if (!entry) return;
+
+            document.getElementById('modalPassId').textContent = entry.id;
+            document.getElementById('modalCategory').textContent = entry.category;
+            document.getElementById('modalName').textContent = entry.name;
+            document.getElementById('modalHost').textContent = entry.host;
+            document.getElementById('modalSubInfo').textContent = `${entry.vehicle} | ${entry.mobile}`;
+            document.getElementById('modalInTime').textContent = formatDateTimeShort(entry.inTime);
+            document.getElementById('modalGuardInfo').textContent = entry.guard || `${appSettings.guardName} (${appSettings.shiftName})`;
+            document.getElementById('modalPurpose').textContent = entry.purpose;
+
+            const approvalBadge = document.getElementById('modalApprovalBadge');
+            if (entry.approvalStatus === 'APPROVAL PENDING') {
+                approvalBadge.innerHTML = `<i class="fa-solid fa-clock"></i> APPROVAL PENDING`;
+                approvalBadge.className = 'inline-flex items-center gap-1 bg-amber-500/15 text-amber-700 border border-amber-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase';
+                approvalBadge.classList.remove('hidden');
+            } else if (entry.approvalStatus === 'STORE APPROVED') {
+                approvalBadge.innerHTML = `<i class="fa-solid fa-circle-check"></i> STORE APPROVED`;
+                approvalBadge.className = 'inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-700 border border-emerald-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase';
+                approvalBadge.classList.remove('hidden');
+            } else {
+                approvalBadge.classList.add('hidden');
+            }
+
+            const outRow = document.getElementById('modalOutTimeRow');
+            if (entry.outTime) {
+                document.getElementById('modalOutTime').textContent = formatDateTimeShort(entry.outTime);
+                outRow.classList.remove('hidden');
+            } else {
+                outRow.classList.add('hidden');
+            }
+
+            // Generate QR Code
+            const qrContainer = document.getElementById('modalQrContainer');
+            qrContainer.innerHTML = '';
+            if (typeof QRCode !== 'undefined') {
+                new QRCode(qrContainer, {
+                    text: `${entry.id}|${entry.category}|${entry.vehicle}|${entry.status}`,
+                    width: 68,
+                    height: 68,
+                    colorDark: '#111827',
+                    colorLight: '#ffffff'
+                });
+            }
+
+            // Collect all attached photos
+            const photoList = [];
+            if (entry.billPhoto) photoList.push({ label: 'Bill Photo', src: entry.billPhoto });
+            if (entry.itemPhoto) photoList.push({ label: 'Item Photo', src: entry.itemPhoto });
+            if (entry.passPhoto) photoList.push({ label: 'Gate Pass Photo', src: entry.passPhoto });
+            if (entry.visitorPhoto) photoList.push({ label: 'Visitor Photo', src: entry.visitorPhoto });
+            if (entry.vehiclePhoto) photoList.push({ label: 'Vehicle Photo', src: entry.vehiclePhoto });
+            if (entry.inwardPhoto) photoList.push({ label: 'Hydra Inward Photo', src: entry.inwardPhoto });
+            if (entry.stopPhoto) photoList.push({ label: 'Work Complete Photo', src: entry.stopPhoto });
+
+            const photosBox = document.getElementById('modalPhotosBox');
+            if (photoList.length > 0) {
+                photosBox.classList.remove('hidden');
+                photosBox.innerHTML = photoList.map(p => `
+                    <div class="text-center">
+                        <img src="${p.src}" class="w-full h-24 object-cover rounded-xl border border-gray-200" alt="${p.label}">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase mt-1 block">${p.label}</span>
+                    </div>
+                `).join('');
+            } else {
+                photosBox.classList.add('hidden');
+                photosBox.innerHTML = '';
+            }
+
+            // Mark Out button in modal if still inside
+            const markOutBtn = document.getElementById('modalMarkOutBtn');
+            if (entry.status === 'IN') {
+                markOutBtn.classList.remove('hidden');
+                if (entry.category === 'HYDRA / JCB' && entry.hydraStage !== 'STORE_APPROVED') {
+                    markOutBtn.innerHTML = `<i class="fa-solid fa-truck-monster"></i> Manage Hydra`;
+                    markOutBtn.onclick = () => {
+                        closePassModal();
+                        showView('hydraForm');
+                    };
+                } else {
+                    markOutBtn.innerHTML = `<i class="fa-solid fa-right-from-bracket"></i> Mark Out`;
+                    markOutBtn.onclick = () => {
+                        if (entry.category === 'HYDRA / JCB') {
+                            gateOutHydraEntry(entry.id);
+                        } else {
+                            quickMarkOutFromVerify(entry.id);
+                            closePassModal();
+                        }
+                    };
+                }
+            } else {
+                markOutBtn.classList.add('hidden');
+            }
+
+            document.getElementById('passModal').classList.remove('hidden');
+        }
+
+        function closePassModal() {
+            document.getElementById('passModal').classList.add('hidden');
+        }
+
+        // ==========================================
+        // 11. QUICK QR / PASS VERIFY & INSTANT EXIT
+        // ==========================================
+        function openQrVerifyModal() {
+            document.getElementById('qrVerifyModal').classList.remove('hidden');
+            const input = document.getElementById('qrSearchInput');
+            input.value = '';
+            lookupPassForVerify();
+            setTimeout(() => input.focus(), 100);
+        }
+
+        function closeQrVerifyModal() {
+            document.getElementById('qrVerifyModal').classList.add('hidden');
+        }
+
+        function lookupPassForVerify() {
+            const q = document.getElementById('qrSearchInput').value.trim().toLowerCase();
+            const resultBox = document.getElementById('qrLookupResult');
+
+            const matches = q
+                ? gateEntries.filter(e =>
+                    e.id.toLowerCase().includes(q) ||
+                    (e.name || '').toLowerCase().includes(q) ||
+                    (e.mobile || '').toLowerCase().includes(q) ||
+                    (e.vehicle || '').toLowerCase().includes(q) ||
+                    (e.outwardNo || '').toLowerCase().includes(q)
+                )
+                : gateEntries.slice(0, 6);
+
+            if (matches.length === 0) {
+                resultBox.innerHTML = `<p class="text-xs text-red-500 font-semibold">No matching gate record found.</p>`;
+                return;
+            }
+
+            resultBox.innerHTML = `<div class="space-y-2.5 text-left">` + matches.slice(0, 10).map(item => {
+                const isInside = item.status === 'IN';
+                return `
+                    <div class="bg-white p-3 rounded-xl border border-gray-200/80 flex items-center justify-between gap-2">
+                        <div class="min-w-0">
+                            <div class="flex items-center gap-1.5">
+                                <span class="font-mono text-[11px] font-extrabold text-gray-900 bg-gray-100 px-2 py-0.5 rounded">${item.id}</span>
+                                <span class="text-[10px] font-bold text-blue-600 uppercase">${item.category}</span>
+                                ${isInside
+                                    ? `<span class="text-[9px] font-extrabold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">INSIDE</span>`
+                                    : `<span class="text-[9px] font-extrabold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">EXITED</span>`
+                                }
+                            </div>
+                            <p class="text-xs font-bold text-gray-900 truncate mt-1">${item.name}</p>
+                            <p class="text-[10px] text-gray-500 truncate">${item.host}</p>
+                        </div>
+                        <div class="flex items-center gap-1.5 shrink-0">
+                            <button onclick="closeQrVerifyModal(); openPassModal('${item.id}')" class="ios-btn px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[11px] font-bold">Slip</button>
+                            ${isInside ? (
+                                item.category === 'HYDRA / JCB'
+                                    ? `<button onclick="closeQrVerifyModal(); showView('hydraForm')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Hydra</button>`
+                                    : `<button onclick="quickMarkOutFromVerify('${item.id}')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Mark Out</button>`
+                            ) : ''}
+                            <button onclick="closeQrVerifyModal(); confirmDeleteEntry('${item.id}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center" title="Delete">
+                                <i class="fa-solid fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('') + `</div>`;
+        }
+
+        function quickMarkOutFromVerify(id) {
+            const entry = gateEntries.find(e => e.id === id);
+            if (!entry) return;
+            entry.status = 'OUT';
+            entry.outTime = new Date().toISOString();
+            saveEntries();
+            lookupPassForVerify();
+            showIosBanner(`${entry.name} (${entry.id}) Marked Out`, 'success');
+        }
+
+        // ==========================================
+        // 12. SETTINGS, STORAGE HEALTH & JSON BACKUP
+        // ==========================================
+        function openSettingsModal() {
+            document.getElementById('settingGuardName').value = appSettings.guardName;
+            document.getElementById('settingShiftName').value = appSettings.shiftName;
+            document.getElementById('settingAdminPin').value = '';
+            updateStorageMeter();
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        function updateStorageMeter() {
+            let totalBytes = 0;
+            for (let key in localStorage) {
+                if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
+                    totalBytes += (localStorage[key].length + key.length) * 2;
+                }
+            }
+            const usedKB = (totalBytes / 1024).toFixed(1);
+            const maxBytes = 5 * 1024 * 1024;
+            const pct = Math.min(100, Math.max(2, Math.round((totalBytes / maxBytes) * 100)));
+
+            const textEl = document.getElementById('storageUsageText');
+            const barEl = document.getElementById('storageProgressBar');
+            if (textEl) textEl.textContent = `${usedKB} KB / 5 MB (${pct}%)`;
+            if (barEl) {
+                barEl.style.width = `${pct}%`;
+                barEl.className = pct > 80
+                    ? 'h-full bg-red-500 rounded-full transition-all duration-300'
+                    : pct > 55
+                        ? 'h-full bg-amber-500 rounded-full transition-all duration-300'
+                        : 'h-full bg-emerald-500 rounded-full transition-all duration-300';
+            }
+        }
+
+        function saveGuardSettings() {
+            const guard = document.getElementById('settingGuardName').value.trim();
+            const shift = document.getElementById('settingShiftName').value;
+            if (guard) appSettings.guardName = guard;
+            appSettings.shiftName = shift;
+            localStorage.setItem('iosGateSettings_v2', JSON.stringify(appSettings));
+            updateShiftBadgeUI();
+            showIosBanner(`Duty Guard Updated: ${appSettings.guardName}`, 'success');
+        }
+
+        function saveAdminPin() {
+            const newPin = document.getElementById('settingAdminPin').value.trim();
+            if (!/^\d{4}$/.test(newPin)) {
+                showIosBanner('Enter a valid 4-digit numeric PIN', 'error');
+                return;
+            }
+            appSettings.adminPin = newPin;
+            localStorage.setItem('iosGateSettings_v2', JSON.stringify(appSettings));
+            document.getElementById('settingAdminPin').value = '';
+            showIosBanner('Admin Delete PIN Updated', 'success');
+        }
+
+        function downloadJsonBackup() {
+            const payload = {
+                software: 'SARV INDIA GATE-2',
+                exportedAt: new Date().toISOString(),
+                settings: appSettings,
+                parties: partiesList,
+                storePasses: storeGatePassesDB,
+                entries: gateEntries
+            };
+            const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `SARV_INDIA_GATE2_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+            URL.revokeObjectURL(url);
+            showIosBanner('Full JSON Backup Downloaded', 'success');
+        }
+
+        function restoreJsonBackup(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                try {
+                    const data = JSON.parse(ev.target.result);
+                    if (Array.isArray(data.entries)) {
+                        gateEntries = data.entries;
+                        saveEntries();
+                    }
+                    if (Array.isArray(data.parties)) {
+                        partiesList = data.parties;
+                    }
+                    if (data.storePasses && typeof data.storePasses === 'object') {
+                        storeGatePassesDB = data.storePasses;
+                    }
+                    saveMasters();
+                    if (data.settings) {
+                        appSettings = { ...appSettings, ...data.settings };
+                        localStorage.setItem('iosGateSettings_v2', JSON.stringify(appSettings));
+                        updateShiftBadgeUI();
+                    }
+                    updateStorageMeter();
+                    updateHydraLiveUI();
+                    showIosBanner('Backup Restored Successfully!', 'success');
+                } catch (err) {
+                    showIosBanner('Invalid JSON Backup File', 'error');
+                }
+            };
+            reader.readAsText(file);
+            input.value = '';
+        }
+
+        // ==========================================
+        // 13. PIN DELETE, ALERTS, CSV & HELPERS
+        // ==========================================
+        function confirmDeleteEntry(id) {
+            document.getElementById('iosAlertTitle').textContent = 'Admin PIN Required';
+            document.getElementById('iosAlertMsg').textContent = `Enter 4-digit Admin PIN to delete record ${id}:`;
+            document.getElementById('iosAlertPinBox').classList.remove('hidden');
+            const pinInput = document.getElementById('deletePinInput');
+            pinInput.value = '';
+
+            document.getElementById('iosAlertButtons').innerHTML = `
+                <button onclick="closeIosAlert()" class="flex-1 py-3 text-[15px] font-medium text-blue-600 border-r border-gray-300/60 active:bg-gray-200/60">Cancel</button>
+                <button onclick="executePinDelete('${id}')" class="flex-1 py-3 text-[15px] font-bold text-red-600 active:bg-gray-200/60">Delete</button>
+            `;
+            document.getElementById('iosAlertModal').classList.remove('hidden');
+            setTimeout(() => pinInput.focus(), 100);
+        }
+
+        function executePinDelete(id) {
+            const enteredPin = document.getElementById('deletePinInput').value.trim();
+            if (enteredPin !== appSettings.adminPin) {
+                showIosBanner('Incorrect Admin PIN!', 'error');
+                return;
+            }
+            gateEntries = gateEntries.filter(e => e.id !== id);
+            saveEntries();
+            updateHydraLiveUI();
+            closeIosAlert();
+            showIosBanner(`Record ${id} Deleted`, 'info');
+        }
+
+        function showComingSoon(moduleName) {
+            document.getElementById('iosAlertTitle').textContent = moduleName;
+            document.getElementById('iosAlertMsg').textContent = 'This module is scheduled for the next SARV INDIA GATE-2 update.';
+            document.getElementById('iosAlertPinBox').classList.add('hidden');
+            document.getElementById('iosAlertButtons').innerHTML = `
+                <button onclick="closeIosAlert()" class="w-full py-3 text-[15px] font-bold text-blue-600 active:bg-gray-200/60">OK</button>
+            `;
+            document.getElementById('iosAlertModal').classList.remove('hidden');
+        }
+
+        function closeIosAlert() {
+            document.getElementById('iosAlertModal').classList.add('hidden');
+            document.getElementById('iosAlertPinBox').classList.add('hidden');
+        }
+
+        function exportToCSV() {
+            if (gateEntries.length === 0) {
+                showIosBanner('No records to export', 'info');
+                return;
+            }
+            const headers = ['Pass ID', 'Category', 'Name/Party', 'Details/Ref', 'Vehicle', 'Purpose', 'In Time', 'Out Time', 'Status', 'Guard'];
+            const rows = gateEntries.map(e => [
+                e.id,
+                e.category,
+                `"${(e.name || '').replace(/"/g, '""')}"`,
+                `"${(e.host || '').replace(/"/g, '""')}"`,
+                e.vehicle || 'N/A',
+                `"${(e.purpose || '').replace(/"/g, '""')}"`,
+                formatDateTimeShort(e.inTime),
+                e.outTime ? formatDateTimeShort(e.outTime) : 'Inside',
+                e.status,
+                `"${(e.guard || '').replace(/"/g, '""')}"`
+            ]);
+
+            const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement('a');
+            link.setAttribute('href', encodedUri);
+            link.setAttribute('download', `SARV_INDIA_GATE2_${new Date().toISOString().slice(0, 10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            showIosBanner('CSV Register Downloaded', 'success');
+        }
+
+        function formatDateTimeShort(iso) {
+            if (!iso) return '-';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return iso;
+            return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', ' +
+                   d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function showIosBanner(message, type = 'success') {
+            const container = document.getElementById('toastContainer');
+            if (!container) return;
+
+            const banner = document.createElement('div');
+            const iconMap = {
+                success: '<i class="fa-solid fa-circle-check text-emerald-400"></i>',
+                error: '<i class="fa-solid fa-circle-exclamation text-red-400"></i>',
+                info: '<i class="fa-solid fa-circle-info text-blue-400"></i>'
+            };
+
+            banner.className = 'ios-glass-dark text-white px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2.5 text-xs font-semibold tracking-wide ios-spring border border-white/10';
+            banner.innerHTML = `${iconMap[type] || iconMap.info} <span class="truncate">${message}</span>`;
+
+            container.appendChild(banner);
+            setTimeout(() => {
+                banner.style.opacity = '0';
+                banner.style.transform = 'translateY(-10px)';
+                banner.style.transition = 'all 0.25s ease';
+                setTimeout(() => banner.remove(), 260);
+            }, 2600);
+        }
+    </script>
+</body>
+</html>
