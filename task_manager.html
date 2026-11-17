@@ -288,10 +288,7 @@
             <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (<span id="taskProofNeed">Required</span>) <span id="taskProofCount" class="text-slate-400 normal-case font-semibold"></span></label>
             <!-- Two pickers: "capture" forces the camera on Android, so the
                  gallery / file manager needs its own input without it. -->
-            <div class="grid grid-cols-2 gap-2 mb-3">
-                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-bold cursor-pointer hover:bg-indigo-100 transition-colors"><i class="ph-bold ph-camera text-lg"></i> Camera<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addProofFiles('task', this)"></label>
-                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-bold cursor-pointer hover:bg-indigo-100 transition-colors"><i class="ph-bold ph-images text-lg"></i> Gallery<input type="file" accept="image/*" multiple class="hidden" onchange="addProofFiles('task', this)"></label>
-            </div>
+            <div id="taskProofPick" class="mb-3"></div>
             <div id="taskProofThumbs" class="flex flex-wrap gap-2 mb-4"></div>
             <!-- What the doer wants to say about the work (optional); saved with the tick (done_remarks). -->
             <label for="taskDoneRemarks" class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Remarks <span class="text-slate-400 normal-case font-semibold">(optional)</span></label>
@@ -310,10 +307,7 @@
             <h3 class="text-xl font-extrabold text-center text-slate-800 mb-2" id="lateTaskPinTitle">Approve Late Task</h3>
             <p class="text-slate-500 text-sm font-medium text-center mb-4" id="lateTaskPinDesc">The penalty applies. The approval is saved under your name.</p>
             <label class="block text-xs font-bold text-slate-700 mb-1.5 uppercase tracking-wider">Upload Proof (Required) <span id="lateProofCount" class="text-slate-400 normal-case font-semibold"></span></label>
-            <div class="grid grid-cols-2 gap-2 mb-3">
-                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold cursor-pointer hover:bg-red-100 transition-colors"><i class="ph-bold ph-camera text-lg"></i> Camera<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addProofFiles('late', this)"></label>
-                <label class="flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-red-200 bg-red-50 text-red-700 text-sm font-bold cursor-pointer hover:bg-red-100 transition-colors"><i class="ph-bold ph-images text-lg"></i> Gallery<input type="file" accept="image/*" multiple class="hidden" onchange="addProofFiles('late', this)"></label>
-            </div>
+            <div id="lateProofPick" class="mb-3"></div>
             <div id="lateProofThumbs" class="flex flex-wrap gap-2 mb-6"></div>
             <div class="flex gap-3">
                 <button onclick="closeLateTaskPinModal()" class="w-1/2 bg-white border border-slate-300 hover:bg-slate-50 py-3 rounded-xl font-bold transition-colors">Cancel</button>
@@ -634,7 +628,7 @@
                                     <div class="absolute top-0 left-0 w-full h-1.5 bg-yellow-400"></div>
                                     <h4 class="font-extrabold mb-4 text-slate-800 flex items-center uppercase tracking-wider text-sm"><i class="ph-fill ph-gear mr-2 text-slate-400 group-hover:animate-spin"></i> ${c} TASK</h4>
                                     <div class="grid grid-cols-2 gap-3 mb-4">
-                                        <div><label class="${smLb}">Grace (hours)</label><input type="number" min="0" max="48" step="0.5" id="penGraceH_${c}" class="${smIn}" placeholder="3"></div>
+                                        <div><label class="${smLb}">Grace (minutes)</label><input type="number" min="0" max="2880" step="1" id="penGraceM_${c}" class="${smIn}" placeholder="180"></div>
                                         <div><label class="${smLb}">Grace cut (pts)</label><input type="number" min="0" id="penGraceP_${c}" class="${smIn}" placeholder="20"></div>
                                     </div>
                                     <label class="${smLb}">After grace: penalty per</label>
@@ -646,6 +640,11 @@
                                     ${c==='ea'?`<label class="block text-xs font-extrabold text-rose-600 mb-1.5 mt-4 uppercase tracking-wide">Extra penalty per postpone</label><input type="number" min="0" id="penAmount_ea_postpone" class="w-full px-3 py-2.5 border border-rose-300 rounded-xl bg-rose-50 text-rose-700 font-bold outline-none focus:ring-2 focus:ring-rose-500 transition-all" placeholder="e.g. 10">`:''}
                                     <label class="${smLb} mt-4">Lowest points (blank = no limit)</label>
                                     <input type="number" step="1" id="penMin_${c}" class="${smIn}" placeholder="No limit, e.g. -100">
+                                    <label class="${smLb} mt-4">Completion photo</label>
+                                    <select id="penProof_${c}" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 font-medium text-sm transition-all">
+                                        <option value="any">Camera or Gallery (upload)</option><option value="gallery">Gallery upload only</option><option value="camera">Phone camera only</option><option value="live">Live camera only (in the app)</option>
+                                    </select>
+                                    <p class="text-[10px] font-bold text-slate-400 mt-1">A photo is always needed to complete. The source applies at once to every task of this type.</p>
                                     <p id="penExample_${c}" class="text-[11px] font-bold text-slate-500 mt-4 leading-relaxed"></p>
                                 </div>`);
                             });
@@ -683,12 +682,17 @@
                         <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Starting time (new rows)</label><select id="liveSetHour" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></select>
                             <div class="text-[10px] font-bold text-slate-400 mt-1">Only what a new Live Photo row shows first; change it per employee there.</div></div>
                     </div>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-in grace (minutes)</label><input type="number" min="0" max="2880" step="1" id="liveSetGraceIn" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800">
+                            <div class="text-[10px] font-bold text-slate-400 mt-1">After the Check-in time, full points are cut once inside this time (the Daily grace cut). Blank = the Daily task grace. Applies from the next day.</div></div>
+                    </div>
                     <!-- Check-out (TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql): hidden until the server sends outOn. -->
                     <div id="liveSetOutBox" class="hidden border-t border-slate-100 pt-4 space-y-3">
                         <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-slate-700"><input type="checkbox" id="liveSetOutOn" class="w-5 h-5 accent-fuchsia-700" checked> <span>Check-out compulsory</span></label>
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out name (new rows)</label><input type="text" id="liveSetOutDesc" placeholder="LIVE PHOTO CHECK-OUT" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></div>
                             <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out starting time (new rows)</label><select id="liveSetOutHour" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></select></div>
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out grace (minutes)</label><input type="number" min="0" max="2880" step="1" id="liveSetGraceOut" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"><div class="text-[10px] font-bold text-slate-400 mt-1">Blank = the Daily task grace.</div></div>
                         </div>
                     </div>
                     <div id="liveSetInfo" class="text-[11px] font-bold text-slate-500 leading-relaxed"></div>
@@ -982,7 +986,7 @@
                     </div>
                     
                     <div class="bg-white rounded-2xl border border-slate-300 overflow-x-auto mb-8 shadow-sm">
-                        <table class="w-full text-left border-collapse min-w-[700px]">
+                        <table class="w-full text-left border-collapse min-w-[900px]">
                             <thead>
                                 <tr class="bg-slate-100 border-b-2 border-slate-300 text-slate-700 text-sm">
                                     <th class="p-4 w-12 text-center font-extrabold">#</th>
@@ -990,6 +994,7 @@
                                     <th class="p-4 w-36 font-extrabold">Frequency</th>
                                     <th class="p-4 w-44 font-extrabold">Schedule Detail</th>
                                     <th class="p-4 w-36 font-extrabold">Target Time</th>
+                                    <th class="p-4 w-48 font-extrabold" title="Which photo this task takes when it is completed. As per type = the Score Master setting of its Frequency.">Completion Photo</th>
                                     <th class="p-4 w-16 text-center font-extrabold">Action</th>
                                 </tr>
                             </thead>
@@ -1464,7 +1469,12 @@
            target time; within 3 hours after it, -20 once; after that another
            -20 for every hour started, going NEGATIVE the later it gets.
            minPoints = the lowest a task can go (null = no limit). */
-        const RULE_DEFAULT = { baseScore: 100, graceHours: 3, gracePenalty: 20, type: 'hour', penalty: 20, minPoints: null };
+        /* proofSrc = which completion photo this task type takes (Score Master › Completion photo):
+           any (Camera or Gallery, as before) / gallery / camera (phone camera only) / live (the in-page live
+           camera, time-stamped, no gallery). graceMin = the grace time in whole minutes; graceHours (what the
+           scoring reads) is always graceMin / 60, so the server's own check of graceHours still holds. */
+        const PROOF_SRC = { any: 'Camera or Gallery', gallery: 'Gallery upload only', camera: 'Phone camera only', live: 'Live camera only' };
+        const RULE_DEFAULT = { baseScore: 100, graceHours: 3, gracePenalty: 20, type: 'hour', penalty: 20, minPoints: null, proofSrc: 'any' };
         const DEFAULT_SCORE = {
             daily: { ...RULE_DEFAULT }, weekly: { ...RULE_DEFAULT }, monthly: { ...RULE_DEFAULT }, yearly: { ...RULE_DEFAULT },
             ea: { ...RULE_DEFAULT, postponePenalty: 10 }
@@ -1611,6 +1621,7 @@
             appState.scoreVersions = (d.scoreVersions || []).map(v => ({ id: v.id, at: new Date(v.effectiveAt), value: v.value || {}, by: v.by || '' })).sort((a, b) => a.at - b.at);
             // "Current" rules = the newest version (or the old single setting / defaults).
             appState.scoreSettings = mergeRules(appState.scoreVersions.length ? appState.scoreVersions[appState.scoreVersions.length - 1].value : d.settings);
+            { const lv = (appState.scoreVersions.length ? appState.scoreVersions[appState.scoreVersions.length - 1].value : d.settings) || {}; const lg = lv.live || {}; appState.liveGrace = { inMin: lg.inMin == null ? null : Number(lg.inMin), outMin: lg.outMin == null ? null : Number(lg.outMin) }; }
             if (appState.viewY == null) { appState.viewY = appState.currentYear; appState.viewM = appState.currentMonth; }
             appState.erpUsers = d.erpUsers || [];
             // Leave / Holiday / Emergency days (TM_DAY_OFF_MIGRATION.sql; missing before it ran = no day off anywhere).
@@ -1735,6 +1746,85 @@
             });
             return cv.toDataURL('image/jpeg', 0.7);
         }
+
+        /* ── WHICH PHOTO a task type takes (Score Master › Completion photo) ─────
+           The latest saved rule of the task's type decides, at once (it is not
+           versioned by when the task was assigned, so a change takes effect
+           for every pending task). A Self Task follows the daily rule.
+           'live' = the in-page camera (getUserMedia): no gallery, each photo
+           stamped with the name and the time. 'camera' = the phone's camera app
+           (capture); 'gallery' = a file picker (a phone may still offer its
+           camera there; a browser cannot forbid that). */
+        function proofSrcFor(t) {
+            if (t && PROOF_SRC[t.proofSrc] && !t.live) return t.proofSrc;   // this task's own choice (Add New Task List › Completion Photo)
+            const cat = !t || t.frequency === 'self' ? 'daily' : (SCORE_CATS.includes(t.frequency) ? t.frequency : 'daily');
+            const m = appState.scoreSettings && appState.scoreSettings[cat] && appState.scoreSettings[cat].proofSrc;
+            return PROOF_SRC[m] ? m : 'any';
+        }
+        function fillProofPick(kind, mode, tone) {
+            const box = document.getElementById(kind + 'ProofPick'); if (!box) return;
+            const cls = `flex items-center justify-center gap-1.5 py-2.5 rounded-xl border border-${tone}-200 bg-${tone}-50 text-${tone}-700 text-sm font-bold cursor-pointer hover:bg-${tone}-100 transition-colors`;
+            const wide = x => x.replace('class="', 'class="col-span-2 ');
+            const cam = `<label class="${cls}"><i class="ph-bold ph-camera text-lg"></i> Camera<input type="file" accept="image/*" capture="environment" class="hidden" onchange="addProofFiles('${kind}', this)"></label>`;
+            const gal = `<label class="${cls}"><i class="ph-bold ph-images text-lg"></i> Gallery<input type="file" accept="image/*" multiple class="hidden" onchange="addProofFiles('${kind}', this)"></label>`;
+            const live = `<button type="button" onclick="openProofCam('${kind}')" class="${cls}"><i class="ph-fill ph-camera text-lg"></i> Open Live Camera</button>`;
+            const html = mode === 'gallery' ? wide(gal) : mode === 'camera' ? wide(cam) : mode === 'live' ? wide(live) : cam + gal;
+            box.innerHTML = `<div class="grid grid-cols-2 gap-2">${html}</div><div class="text-[11px] font-bold text-slate-500 mt-1.5">${esc(PROOF_SRC[mode] || '')}${mode === 'live' ? ': the photo is taken now with the camera and stamped with your name and time.' : ''}</div>`;
+        }
+        const PC = { s: null, facing: 'environment', kind: null, n: 0 };
+        function pcDom() {
+            if (document.getElementById('pcOv')) return;
+            const ov = document.createElement('div');
+            ov.id = 'pcOv'; ov.className = 'fixed inset-0 z-[140] hidden flex-col bg-slate-950 text-white print-hide';
+            ov.innerHTML = `<div class="flex items-center gap-3 px-4 py-3 border-b border-white/10"><button onclick="closeProofCam()" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0" title="Close"><i class="ph-bold ph-x text-xl"></i></button><div class="min-w-0 flex-grow"><div class="font-extrabold truncate">Live Camera</div><div id="pcCount" class="text-[11px] font-bold text-white/60"></div></div><button onclick="pcFlip()" class="w-10 h-10 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center shrink-0" title="Switch camera"><i class="ph-bold ph-camera-rotate text-xl"></i></button></div>`
+                + `<div class="relative flex-grow min-h-0 flex items-center justify-center bg-black overflow-hidden"><video id="pcVideo" playsinline muted autoplay class="max-w-full max-h-full"></video><div id="pcMsg" class="hidden absolute inset-0 flex items-center justify-center p-6 text-center text-sm font-bold text-white/80"></div></div>`
+                + `<div class="px-4 py-3 border-t border-white/10 flex gap-3"><button onclick="pcCapture()" class="flex-1 py-3.5 rounded-xl font-extrabold text-sm bg-fuchsia-600 hover:bg-fuchsia-700"><i class="ph-fill ph-camera"></i> Capture</button><button onclick="closeProofCam()" class="flex-1 py-3.5 rounded-xl font-extrabold text-sm bg-emerald-600 hover:bg-emerald-700"><i class="ph-bold ph-check-circle"></i> Done</button></div>`;
+            document.body.appendChild(ov);
+        }
+        window.openProofCam = function(kind) {
+            if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
+                return showCustomModal('Camera not available', 'The live camera works only when the app is opened over <b>https://</b> in Chrome or Safari (not from a saved file). Ask the Admin for the app link.', true);
+            PC.kind = kind; PC.n = 0; pcDom();
+            const ov = document.getElementById('pcOv'); ov.classList.remove('hidden'); ov.classList.add('flex');
+            pcPaint(); pcStart();
+        };
+        window.closeProofCam = function() {
+            if (PC.s) PC.s.getTracks().forEach(x => x.stop()); PC.s = null;
+            const ov = document.getElementById('pcOv'); if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); }
+            const v = document.getElementById('pcVideo'); if (v) v.srcObject = null;
+        };
+        function pcPaint() { const n = (proofFiles[PC.kind] || []).length; const e = document.getElementById('pcCount'); if (e) e.textContent = n ? n + ' of ' + MAX_PROOF_PHOTOS + ' photo(s) added' : 'Capture the photo of the completed task'; }
+        async function pcStart() {
+            const v = document.getElementById('pcVideo'), msg = document.getElementById('pcMsg');
+            if (PC.s) PC.s.getTracks().forEach(x => x.stop());
+            msg.classList.add('hidden');
+            try {
+                PC.s = await navigator.mediaDevices.getUserMedia({ video: { facingMode: PC.facing, width: { ideal: 1280 }, height: { ideal: 960 } }, audio: false });
+                v.srcObject = PC.s; v.style.transform = PC.facing === 'user' ? 'scaleX(-1)' : ''; await v.play().catch(() => {});
+            } catch (err) {
+                PC.s = null;
+                msg.textContent = err && err.name === 'NotAllowedError' ? 'Camera permission was refused. Allow the camera for this site (lock icon in the address bar), then open this again.'
+                    : err && err.name === 'NotFoundError' ? 'No camera was found on this device.' : 'The camera could not be started: ' + ((err && err.message) || err);
+                msg.classList.remove('hidden');
+            }
+        }
+        window.pcFlip = function() { PC.facing = PC.facing === 'user' ? 'environment' : 'user'; pcStart(); };
+        window.pcCapture = function() {
+            const v = document.getElementById('pcVideo'); if (!PC.s || !v.videoWidth) return;
+            if ((proofFiles[PC.kind] || []).length >= MAX_PROOF_PHOTOS) return showCustomModal('Too many photos', 'Up to ' + MAX_PROOF_PHOTOS + ' photos can be attached.', true);
+            const sc = Math.min(1, 960 / Math.max(v.videoWidth, v.videoHeight)), w = Math.round(v.videoWidth * sc), h = Math.round(v.videoHeight * sc);
+            const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d'); x.drawImage(v, 0, 0, w, h);
+            const when = new Date(), fs = Math.max(13, Math.round(w / 38)), pad = Math.round(fs * 0.6);
+            const lines = [((appState.me && appState.me.name) || '') + ' (' + ((appState.me && appState.me.empCode) || '') + ')', when.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })];
+            const bh = lines.length * fs * 1.3 + pad * 2;
+            x.fillStyle = 'rgba(0,0,0,0.55)'; x.fillRect(0, h - bh, w, bh); x.fillStyle = '#fff'; x.font = 'bold ' + fs + 'px sans-serif'; x.textBaseline = 'top';
+            lines.forEach((l, i) => x.fillText(l, pad, h - bh + pad + i * fs * 1.3, w - pad * 2));
+            cv.toBlob(b => {
+                if (!b) return;
+                const f = new File([b], 'live-' + Date.now() + '.jpg', { type: 'image/jpeg' });
+                proofFiles[PC.kind].push({ file: f, url: URL.createObjectURL(f) }); renderProofThumbs(PC.kind); pcPaint();
+            }, 'image/jpeg', 0.8);
+        };
 
         function setBusy(btnId, busy, label) { const b = document.getElementById(btnId); if (!b) return; if (busy) { b.dataset.label = b.textContent; b.textContent = 'Saving…'; b.disabled = true; b.classList.add('opacity-60'); } else { b.textContent = label || b.dataset.label || b.textContent; b.disabled = false; b.classList.remove('opacity-60'); } }
 
@@ -1905,17 +1995,18 @@
         function initScoreMaster(keepAuto) {
             SCORE_CATS.forEach(c => {
                 const r = appState.scoreSettings[c];
-                document.getElementById(`penGraceH_${c}`).value = r.graceHours; document.getElementById(`penGraceP_${c}`).value = r.gracePenalty;
+                document.getElementById(`penGraceM_${c}`).value = Math.round(r.graceHours * 60); document.getElementById(`penGraceP_${c}`).value = r.gracePenalty;
+                document.getElementById(`penProof_${c}`).value = r.proofSrc || 'any';
                 document.getElementById(`penType_${c}`).value = r.type; document.getElementById(`penAmount_${c}`).value = r.penalty;
                 if (c === 'ea') document.getElementById('penAmount_ea_postpone').value = r.postponePenalty;
                 document.getElementById(`penMin_${c}`).value = r.minPoints == null ? '' : r.minPoints;
-                ['penGraceH_', 'penGraceP_', 'penType_', 'penAmount_', 'penMin_'].forEach(p => { document.getElementById(p + c).oninput = () => smExample(c); document.getElementById(p + c).onchange = () => smExample(c); });
+                ['penGraceM_', 'penGraceP_', 'penType_', 'penAmount_', 'penMin_'].forEach(p => { document.getElementById(p + c).oninput = () => smExample(c); document.getElementById(p + c).onchange = () => smExample(c); });
                 smExample(c);
             });
             const vs = appState.scoreVersions.slice().reverse();
             document.getElementById('scoreHistoryList').innerHTML = vs.length ? vs.map((v, i) => {
                 const r = mergeRules(v.value).daily;
-                return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"><b class="text-slate-800">${esc(v.at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b><span class="text-slate-500 text-xs font-bold">by ${esc(v.by || '-')}</span>${i === 0 ? '<span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wider">In force</span>' : ''}<span class="text-xs text-slate-600 font-medium">Daily: grace ${r.graceHours}h / -${r.gracePenalty}, then -${r.penalty} per ${r.type} · lowest ${r.minPoints == null ? 'no limit' : r.minPoints}</span>${(f => f.on ? `<span class="text-xs text-violet-800 font-bold">· Follow-up cut: ${f.coords.length} coordinator(s), −${f.pts} per task after ${f.graceHours}h${f.maxDay != null ? ', max ' + f.maxDay + '/day' : ''}</span>` : '')(fupRuleOf(v.value))}</div>`;
+                return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5"><b class="text-slate-800">${esc(v.at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }))}</b><span class="text-slate-500 text-xs font-bold">by ${esc(v.by || '-')}</span>${i === 0 ? '<span class="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded uppercase tracking-wider">In force</span>' : ''}<span class="text-xs text-slate-600 font-medium">Daily: grace ${fmtDur(r.graceHours * 3600000)} / -${r.gracePenalty}, then -${r.penalty} per ${r.type} · lowest ${r.minPoints == null ? 'no limit' : r.minPoints} · photo: ${esc(PROOF_SRC[r.proofSrc] || '')}</span>${(f => f.on ? `<span class="text-xs text-violet-800 font-bold">· Follow-up cut: ${f.coords.length} coordinator(s), −${f.pts} per task after ${f.graceHours}h${f.maxDay != null ? ', max ' + f.maxDay + '/day' : ''}</span>` : '')(fupRuleOf(v.value))}</div>`;
             }).join('') : '<div class="text-sm text-slate-400 font-bold">Not saved yet. The default rules apply: grace 3 hours / -20, then -20 per hour, into minus with no limit.</div>';
             fupFill();
             liveSetLoad();   // the Live Photo default card (its own RPC)
@@ -1923,7 +2014,7 @@
         }
         // A worked example under each card, so the effect of a number is obvious before saving.
         function smExample(c) {
-            const gH = num(document.getElementById(`penGraceH_${c}`).value, 0), gP = num(document.getElementById(`penGraceP_${c}`).value, 0);
+            const gH = num(document.getElementById(`penGraceM_${c}`).value, 0) / 60, gP = num(document.getElementById(`penGraceP_${c}`).value, 0);
             const per = num(document.getElementById(`penAmount_${c}`).value, 0), ty = document.getElementById(`penType_${c}`).value;
             const mv = document.getElementById(`penMin_${c}`).value.trim(), mn = mv === '' || !isFinite(Number(mv)) ? null : Math.round(Number(mv));
             const at = n => { const v = 100 - gP - n * per; return mn != null && v < mn ? mn : v; };
@@ -1935,7 +2026,8 @@
         window.saveScoreSettings = async function() {
             const next = {};
             SCORE_CATS.forEach(c => {
-                next[c] = { baseScore: 100, graceHours: Math.min(48, num(document.getElementById(`penGraceH_${c}`).value, 3)), gracePenalty: num(document.getElementById(`penGraceP_${c}`).value, 20),
+                const gm = Math.min(2880, Math.round(num(document.getElementById(`penGraceM_${c}`).value, 180)));
+                next[c] = { baseScore: 100, graceHours: gm / 60, graceMin: gm, proofSrc: document.getElementById(`penProof_${c}`).value, gracePenalty: num(document.getElementById(`penGraceP_${c}`).value, 20),
                             type: document.getElementById(`penType_${c}`).value, penalty: num(document.getElementById(`penAmount_${c}`).value, 0), minPoints: minPts(c) };
                 if (c === 'ea') next.ea.postponePenalty = num(document.getElementById('penAmount_ea_postpone').value, 10);
             });
@@ -2407,9 +2499,10 @@
             if (u) { h.className = 'text-[10px] font-bold mt-1 text-emerald-600'; h.textContent = 'ERP login: ' + u.name; const n = document.getElementById('addEmpName'); if (!n.value.trim()) n.value = u.name; }
             else { h.className = 'text-[10px] font-bold mt-1 text-amber-600'; h.textContent = 'No ERP login has this code yet. The employee can open their sheet only after the Admin sets this Emp Code on their user.'; }
         };
-        window.loadEmployeeForEdit = async function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']).sort((a,b)=>((b.live?1:0)-(a.live?1:0))||((a.liveOut?1:0)-(b.liveOut?1:0))); const noLive = !rec.some(t=>t.live&&!t.liveOut); if(rec.length===0) for(let i=0;i<2;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.live?(t.liveOut?'liveout':'live'):(t.frequency||'daily'); handleFreqChange(r.querySelector('.task-freq')); const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); if(noLive) addLiveRow(); await liveDefLoad(); const noOut = liveEnsureOut(); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.` + (noLive ? '<br><br><b class="text-fuchsia-700">No Live Photo Check-in timing yet:</b> a Check-in row was added at the top. Set the time for this employee and save.' : '') + (noOut ? '<br><br><b class="text-fuchsia-700">No Live Photo Check-out timing yet:</b> a Check-out row was added. Set this employee\'s check-out time and save.' : '')); }
-        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="live">Live Photo Check-in (daily)</option><option value="liveout">Live Photo Check-out (daily)</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4 text-center"><button onclick="removeTaskRow(this)" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
+        window.loadEmployeeForEdit = async function() { const c = document.getElementById('searchLoadEmpCode').value.trim().toUpperCase(); const emp = appState.employees.find(e=>e.empCode===c); if(!emp) return showCustomModal("Not Found", "Employee code not found.", true); currentAddingOrEditingEmpCode=c; document.getElementById('addEmpName').value=emp.empName; document.getElementById('addEmpCode').value=emp.empCode; document.getElementById('addEmpCode').disabled=true; document.getElementById('addEmpPickBtn').disabled=true; document.getElementById('addEmpDept').value=emp.dept||''; document.getElementById('addEmpDesig').value=emp.desig||''; onAddEmpCodeInput(); const tb = document.getElementById('taskInputBody'); tb.innerHTML=''; const rec = emp.tasks.filter(t=>t.active!==false && RECURRING[t.frequency||'daily']).sort((a,b)=>((b.live?1:0)-(a.live?1:0))||((a.liveOut?1:0)-(b.liveOut?1:0))); const noLive = !rec.some(t=>t.live&&!t.liveOut); if(rec.length===0) for(let i=0;i<2;i++) addInputRow(); else rec.forEach(t=>{ addInputRow(t.id); const r=tb.lastElementChild; r.querySelector('.task-desc').value=t.desc; r.querySelector('.task-freq').value=t.live?(t.liveOut?'liveout':'live'):(t.frequency||'daily'); handleFreqChange(r.querySelector('.task-freq')); { const pp=r.querySelector('.task-proof'); if(pp&&t.proofSrc&&!t.live) pp.value=t.proofSrc; } const f=t.frequency||'daily'; if(f==='weekly') r.querySelector('.task-param-week').value=t.freqValue; else if(f==='monthly') r.querySelector('.task-param-month').value=t.freqValue; else if(f==='yearly'){ const [m,d]=String(t.freqValue).split('-'); r.querySelector('.task-param-year-m').value=m; r.querySelector('.task-param-year-d').value=d; } if(t.time){ let[tp,a]=t.time.split(' '); let[h,m]=tp.split(':'); h=parseInt(h,10); if(a==='PM'&&h<12)h+=12; if(a==='AM'&&h===12)h=0; setHour(r.querySelector('.task-time'), `${h.toString().padStart(2,'0')}:${m}`); } }); if(noLive) addLiveRow(); await liveDefLoad(); const noOut = liveEnsureOut(); showCustomModal("Profile Loaded", `Loaded data for ${esc(emp.empName)}.` + (noLive ? '<br><br><b class="text-fuchsia-700">No Live Photo Check-in timing yet:</b> a Check-in row was added at the top. Set the time for this employee and save.' : '') + (noOut ? '<br><br><b class="text-fuchsia-700">No Live Photo Check-out timing yet:</b> a Check-out row was added. Set this employee\'s check-out time and save.' : '')); }
+        function addInputRow(oId='') { const tb = document.getElementById('taskInputBody'); const rc = tb.children.length+1; const tr = document.createElement('tr'); tr.className="border-b border-slate-200 bg-white hover:bg-slate-50 transition-colors"; if(oId) tr.dataset.taskId=oId; tr.innerHTML=`<td class="p-4 text-center text-slate-400 font-extrabold sr-no">${rc}</td><td class="p-4"><input type="text" class="task-desc w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white"></td><td class="p-4"><select class="task-freq w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white" onchange="handleFreqChange(this)"><option value="daily">Daily</option><option value="live">Live Photo Check-in (daily)</option><option value="liveout">Live Photo Check-out (daily)</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></td><td class="p-4 task-param-container"><span class="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-lg border border-slate-200 shadow-inner">Every Day</span></td><td class="p-4"><select class="task-time w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white">${hourOptions('10:00')}</select></td><td class="p-4"><select class="task-proof w-full px-2 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-400 outline-none text-sm font-bold transition-all focus:bg-white disabled:opacity-50"><option value="">As per type</option><option value="any">Camera or Gallery</option><option value="gallery">Gallery only</option><option value="camera">Phone camera only</option><option value="live">Live camera only</option></select></td><td class="p-4 text-center"><button onclick="removeTaskRow(this)" class="text-red-500 hover:bg-red-100 hover:text-red-700 p-2.5 rounded-xl transition-all active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td>`; tb.appendChild(tr); }
         window.handleFreqChange = function(sel) { const c = sel.closest('tr').querySelector('.task-param-container'); const f = sel.value;
+            { const pr = sel.closest('tr').querySelector('.task-proof'); if (pr) { pr.disabled = isLiveFreq(f); if (isLiveFreq(f)) { pr.value = ''; pr.title = 'A Live Photo row always uses the live camera with location'; } else pr.title = ''; } }
             /* Live Photo = a DAILY task done only with a live camera photo + location (tm_mark_live). One row per timing. */
             /* Check-out = the same, marked live_out. Switching between the two swaps a still-default name. */
             if(isLiveFreq(f)){ const d=sel.closest('tr').querySelector('.task-desc'), inN=LIVE_DEF.desc||'LIVE PHOTO CHECK-IN', outN=LIVE_DEF.outDesc||'LIVE PHOTO CHECK-OUT'; if(d&&(!d.value.trim()||[inN,outN,'LIVE PHOTO CHECK-IN','LIVE PHOTO CHECK-OUT'].includes(d.value.trim().toUpperCase()))) d.value=f==='liveout'?outN:inN; c.innerHTML='<span class="text-[10px] font-extrabold text-fuchsia-700 uppercase tracking-widest bg-fuchsia-50 px-3 py-1.5 rounded-lg border border-fuchsia-200 shadow-inner"><i class="ph-bold ph-camera"></i> '+(f==='liveout'?'Check-out':'Check-in')+' · every day · camera + location</span>'; return; }
@@ -2426,7 +2519,7 @@
                 if(f==='weekly')fv=r.querySelector('.task-param-week').value; else if(f==='monthly'){fv=r.querySelector('.task-param-month').value;if(!fv||fv<1||fv>31)valid=false;} else if(f==='yearly'){const ym=r.querySelector('.task-param-year-m').value; const yd=r.querySelector('.task-param-year-d').value; if(!yd||yd<1||yd>31)valid=false; fv=ym+'-'+parseInt(yd,10);}
                 // A Live Photo row is a daily task with the live flag; it needs its time (that is its slot).
                 if(isLiveFreq(f)&&!tm) valid=false;
-                if(desc) tasks.push({ id: r.dataset.taskId ? parseInt(r.dataset.taskId,10) : null, desc, time: tm, frequency: isLiveFreq(f) ? 'daily' : f, freqValue: fv, live: isLiveFreq(f), liveOut: f==='liveout' });
+                if(desc) tasks.push({ id: r.dataset.taskId ? parseInt(r.dataset.taskId,10) : null, desc, time: tm, frequency: isLiveFreq(f) ? 'daily' : f, freqValue: fv, live: isLiveFreq(f), liveOut: f==='liveout', proofSrc: isLiveFreq(f) ? '' : ((r.querySelector('.task-proof')||{}).value||'') });
             });
             if(!valid||!tasks.length) return showCustomModal("Error", "Check task details. Missing inputs.", true);
             // Live Photo: compulsory (the server checks it too), and two timings at the same hour would be one photo twice.
@@ -2775,6 +2868,9 @@
                 r.minPoints = (r.minPoints === null || r.minPoints === '' || r.minPoints === undefined || !isFinite(Number(r.minPoints))) ? null : Math.round(Number(r.minPoints));
                 if (r.type !== 'day') r.type = 'hour';
                 if (!r.baseScore) r.baseScore = 100;
+                if (s.graceMin != null && isFinite(Number(s.graceMin))) r.graceHours = Math.min(48, Math.max(0, Number(s.graceMin)) / 60);   // whole minutes win
+                r.graceMin = Math.round(r.graceHours * 60);
+                if (!PROOF_SRC[r.proofSrc]) r.proofSrc = 'any';
                 out[c] = r;
             });
             return out;
@@ -2804,7 +2900,14 @@
             let v = null;
             for (const x of appState.scoreVersions) { if (x.at <= at) v = x; else break; }
             const r = mergeRules(v ? v.value : null)[cat];
-            return { ...r, cat, since: v ? v.at : null, sinceBy: v ? v.by : '' };
+            const out = { ...r, cat, since: v ? v.at : null, sinceBy: v ? v.by : '' };
+            /* Live Photo Check-in / Check-out have their own grace minutes (Score Master › Live Photo card,
+               kept as `live` {inMin, outMin} inside the same dated version); blank = the daily rule's grace. */
+            if ((t.live || t.liveOut) && v && v.value && v.value.live) {
+                const g = t.liveOut ? v.value.live.outMin : v.value.live.inMin;
+                if (g != null && g !== '' && isFinite(Number(g))) { out.graceMin = Math.round(Math.min(2880, Math.max(0, Number(g)))); out.graceHours = out.graceMin / 60; }
+            }
+            return out;
         }
         // Target moment. A follow-up day uses the follow-up time; no time = end of that day.
         function deadlineOf(t, ds, rec) {
@@ -2823,7 +2926,7 @@
         // Points for this occurrence if it is (or was) done at `when`.
         function scoreAt(t, ds, rec, when) {
             const r = rulesFor(t, ds);
-            const base = r.baseScore, gMs = r.graceHours * 3600000, unitMs = (r.type === 'day' ? 1440 : 60) * 60000;
+            const base = r.baseScore, gMs = Math.round(r.graceHours * 3600000), unitMs = (r.type === 'day' ? 1440 : 60) * 60000;
             const dl = deadlineOf(t, ds, rec), graceEnd = new Date(dl.getTime() + gMs);
             const postpones = (t.frequency === 'ea' && t.isPostponed) ? Math.max(1, (t.postponeHistory || []).length - 1) : 0;
             const extra = postpones * (r.postponePenalty || 0);
@@ -3710,6 +3813,9 @@
             if (!res.ok) { sel.innerHTML = hourOptions('10:00'); info.innerHTML = res.error === 'NO_MIGRATION' ? '<span class="text-amber-700">Needs a server update: Admin, run <code>TM_LIVE_PHOTO_MIGRATION.sql</code> in the Supabase SQL Editor.</span>' : esc(TM_ERR[res.error] || res.error); return; }
             const s = res.data.settings || {}; LIVE_DEF = { ...LIVE_DEF, ...s };
             document.getElementById('liveSetOn').checked = s.on !== false;
+            { const lg = appState.liveGrace || {}, dg = Math.round(((appState.scoreSettings.daily || {}).graceHours || 0) * 60);
+              const gi = document.getElementById('liveSetGraceIn'), go = document.getElementById('liveSetGraceOut');
+              gi.value = lg.inMin == null ? '' : lg.inMin; gi.placeholder = dg + ' (Daily)'; go.value = lg.outMin == null ? '' : lg.outMin; go.placeholder = dg + ' (Daily)'; }
             document.getElementById('liveSetDesc').value = s.desc || 'LIVE PHOTO CHECK-IN';
             sel.innerHTML = hourOptions(to24(s.time || (s.times && s.times[0]) || '10:00 AM') || '10:00');
             const outOk = s.outOn !== undefined;   // only a server with TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql sends it
@@ -3746,9 +3852,28 @@
             setBusy('liveSetSaveBtn', false, 'Save Live Photo settings');
             if (!res.ok) return tmErr(res);
             LIVE_DEF = { ...LIVE_DEF, ...res.data.settings };
+            let graceMsg = '';
+            {
+                const rd = id => { const x = document.getElementById(id); if (!x || x.value.trim() === '') return null; const n = Math.round(Number(x.value)); return isFinite(n) ? Math.min(2880, Math.max(0, n)) : null; };
+                const hasOut = !document.getElementById('liveSetOutBox').classList.contains('hidden');
+                const want = { inMin: rd('liveSetGraceIn'), outMin: hasOut ? rd('liveSetGraceOut') : (appState.liveGrace || {}).outMin };
+                const cur = appState.liveGrace || { inMin: null, outMin: null };
+                if (want.inMin !== cur.inMin || want.outMin !== cur.outMin) {
+                    const lastV = appState.scoreVersions.length ? appState.scoreVersions[appState.scoreVersions.length - 1].value : null;
+                    const next = lastV ? JSON.parse(JSON.stringify(lastV)) : {};
+                    SCORE_CATS.forEach(k => { const r = appState.scoreSettings[k];
+                        next[k] = { baseScore: 100, graceHours: r.graceHours, graceMin: Math.round(r.graceHours * 60), proofSrc: r.proofSrc, gracePenalty: r.gracePenalty, type: r.type, penalty: r.penalty, minPoints: r.minPoints };
+                        if (k === 'ea') next.ea.postponePenalty = r.postponePenalty; });
+                    next.live = {}; if (want.inMin != null) next.live.inMin = want.inMin; if (want.outMin != null) next.live.outMin = want.outMin;
+                    const gr = await tmRpc('tm_save_settings', { p_settings: next });
+                    if (!gr.ok) return tmErr(gr);
+                    graceMsg = ' Grace: Check-in ' + (want.inMin == null ? 'as Daily' : want.inMin + ' min') + ', Check-out ' + (want.outMin == null ? 'as Daily' : want.outMin + ' min') + ' (from the next day).';
+                    await refreshAndRerender();
+                }
+            }
             await liveSetLoad();
             const v = res.data.settings;
-            showCustomModal('Saved', 'Live Photo settings saved. ' + (v.on ? 'Every task list now needs at least one Check-in timing' + (v.outOn ? ' and a Check-out timing.' : '.') : (v.outOn ? 'Check-in is no longer compulsory; every task list still needs a Check-out timing.' : 'Live Photo is no longer compulsory; existing Live Photo tasks stay.')));
+            showCustomModal('Saved', 'Live Photo settings saved. ' + (v.on ? 'Every task list now needs at least one Check-in timing' + (v.outOn ? ' and a Check-out timing.' : '.') : (v.outOn ? 'Check-in is no longer compulsory; every task list still needs a Check-out timing.' : 'Live Photo is no longer compulsory; existing Live Photo tasks stay.') + graceMsg));
         };
 
         // Photos are fetched only when opened, so a month of sheets loads fast.
@@ -3774,6 +3899,7 @@
             pendingTaskConfirm={e,t,d}; resetProof('task'); document.getElementById('taskDoneRemarks').value = '';
             const tk = findTask(e, t), self = !!(tk && tk.isSelfTask), late = d < todayStr();
             pendingTaskConfirm.self = self;
+            pendingTaskConfirm.mode = proofSrcFor(tk); fillProofPick('task', pendingTaskConfirm.mode, 'indigo');
             document.getElementById('taskProofNeed').textContent = self ? 'Optional' : 'Required';
             document.getElementById('taskPinSub').textContent = late
                 ? `Pending from ${fmtDay(d)}. Upload proof to complete; it is scored as late against that day's target.`
@@ -3782,7 +3908,7 @@
         window.closeTaskPinModal = function() { const mod=document.getElementById('taskPinModal'); const con=document.getElementById('taskPinContent'); con.classList.remove('scale-100','opacity-100'); con.classList.add('scale-95','opacity-0'); setTimeout(()=>{mod.classList.add('hidden'); mod.classList.remove('flex'); pendingTaskConfirm=null; resetProof('task');},300); }
         window.verifyTaskPin = async function() {
             if(!pendingTaskConfirm) return;
-            if(!proofFiles.task.length && !pendingTaskConfirm.self) return showCustomModal("Proof Required", "Add at least one photo (Camera or Gallery) to complete.", true);
+            if(!proofFiles.task.length && !pendingTaskConfirm.self) return showCustomModal("Proof Required", "Add at least one photo to complete (" + PROOF_SRC[pendingTaskConfirm.mode || "any"] + ").", true);
             const p = pendingTaskConfirm; setBusy('taskPinConfirmBtn', true);
             try {
                 const b64 = proofFiles.task.length ? await buildProofImage('task') : null;
@@ -3811,12 +3937,12 @@
             pendingLateTask = { eCode, taskId, dateStr, freq }; document.getElementById('lateTaskPinTitle').textContent = freq === 'ea' ? "Approve Late EA Task" : "Approve Late Task";
             const t = findTask(eCode, taskId); const sc = t && taskScore(t, dateStr, recOf(t, dateStr));
             document.getElementById('lateTaskPinDesc').textContent = 'Points if approved now: ' + (sc ? sc.pts : '?') + '. Saved under your name.';
-            resetProof('late'); const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95', 'opacity-0'); c.classList.add('scale-100', 'opacity-100');
+            pendingLateTask.mode = proofSrcFor(t); fillProofPick('late', pendingLateTask.mode, 'red'); resetProof('late'); const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); m.classList.remove('hidden'); m.classList.add('flex'); void m.offsetWidth; c.classList.remove('scale-95', 'opacity-0'); c.classList.add('scale-100', 'opacity-100');
         }
         window.closeLateTaskPinModal = function() { const m = document.getElementById('lateTaskPinModal'); const c = document.getElementById('lateTaskPinContent'); c.classList.remove('scale-100', 'opacity-100'); c.classList.add('scale-95', 'opacity-0'); setTimeout(() => { m.classList.add('hidden'); m.classList.remove('flex'); pendingLateTask = null; resetProof('late'); }, 300); }
         window.verifyLateTaskPin = async function() {
             if(!pendingLateTask) return;
-            if(!proofFiles.late.length) return showCustomModal("Proof Required", "Add at least one photo (Camera or Gallery).", true);
+            if(!proofFiles.late.length) return showCustomModal("Proof Required", "Add at least one photo (" + PROOF_SRC[pendingLateTask.mode || "any"] + ").", true);
             const p = pendingLateTask; setBusy('lateTaskConfirmBtn', true);
             try {
                 const b64 = await buildProofImage('late');

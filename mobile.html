@@ -142,6 +142,10 @@
         <div class="stage-tab" data-tab="POGEN" onclick="switchStageTab('POGEN')">
             <span class="st-ico"></span><span class="st-lbl">PO Generate</span><span class="st-count" id="cnt-POGEN">0</span>
         </div>
+        <!-- Purchaser: POs of type OPEN (rate still 0). Filling the rate updates the SAME PO. -->
+        <div class="stage-tab" data-tab="OPENPO" onclick="switchStageTab('OPENPO')">
+            <span class="st-ico"></span><span class="st-lbl">OPEN PO</span><span class="st-count" id="cnt-OPENPO">0</span>
+        </div>
         <div class="stage-tab" data-tab="MD" onclick="switchStageTab('MD')">
             <span class="st-ico"></span><span class="st-lbl">MD Approval</span><span class="st-count" id="cnt-MD">0</span>
         </div>
@@ -740,6 +744,30 @@
         </div>
     </div>
 
+    <!-- ── OPEN PO: fill the rates, the PO is updated with the same PO No. ── -->
+    <div class="modal-overlay" id="openPoModal" style="z-index:1050;">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span id="opoTitle">OPEN PO</span>
+                <button class="close-btn" onclick="closeOpenPoModal()">×</button>
+            </div>
+            <div class="req-meta-info" id="opoMeta"></div>
+            <div style="font-size:0.72rem; color:#6b7280; margin:6px 0;">Enter each item's Rate (more than 0) and discount. Saving updates this PO with the <b>same PO No.</b>, rebuilds its PDF and keeps its approvals.</div>
+            <div class="table-container">
+                <table class="item-table">
+                    <thead><tr><th>Item</th><th>Qty</th><th>Rate</th><th>Disc%</th><th>GST</th><th>Amount</th></tr></thead>
+                    <tbody id="opoBody"></tbody>
+                </table>
+            </div>
+            <div id="opoTotals" style="font-size:0.78rem; margin:8px 0;"></div>
+            <div class="err-banner" id="opoError" style="display:none;"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="opoSaveBtn" onclick="saveOpenPoRates_()" style="flex:1; width:auto; background:#16a34a;">Update PO</button>
+                <button class="btn" onclick="closeOpenPoModal()" style="flex:1; width:auto; background:#6c757d;">&#10006; Close</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ══ NEW PERSONNEL ITEM REQUIREMENT FORM ═════════════════════════
          The same PR that STORE.html's "PERSONNEL ITEM REQUIREMENT FORM"
          raises, laid out for a phone: the desktop's 11-column item table
@@ -851,7 +879,7 @@
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261113b"></script>
+<script src="mobile-core.js?v=20261118a"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
