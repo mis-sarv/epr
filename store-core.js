@@ -1575,7 +1575,7 @@ async function sarvPrPoLight_(kind,opts){
   }
   if(kind==='PO')return SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
   return limit
-    ?SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(limit)
+    ?SB.from('purchase_requirements').select('*').order('created_at',{ascending:false}).limit(limit)   // never req_no: text order puts PR/…/1001 below PR/…/999
     :SB.from('purchase_requirements').select('*').order('request_date',{ascending:false});
 }
 // The Follow-up Report's form of it: an array, or a throw (as fetchAllRows / fuFetchByIds_).
@@ -23614,8 +23614,9 @@ let PR_TEAL=[13,92,83];
       the person who raised it. */
    let prepSign=null;
    if(!sarvEditingRequirementId){
-     // A NEW PR waits until the store's Rejected PRs are resubmitted or cancelled (REJECTED PR LOAD).
-     if(await sarvRejectedPrBlock_())return;
+     /* A NEW PR no longer waits for the store's Rejected PRs: the gate
+        (sarvRejectedPrBlock_, REJECTED PR LOAD) is switched off by request, and
+        the form's Rejected PRs button / bar are removed from index.html. */
      prepSign=await sarvSubmitPinGate_('Submit Purchase Requirement');
      if(!prepSign)return;
    }
