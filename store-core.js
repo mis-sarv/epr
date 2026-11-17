@@ -1233,7 +1233,12 @@ function syncInwPrField(){
 }
 async function loadPrDropdown_(){
   if(!SB_READY)return;
-  const q=await SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(400);
+  /* No {limit}: the limit form orders by req_no as TEXT, so once the numbers pass
+     999 ("PR/26-27/1001" sorts below "PR/26-27/999") the newest PRs fall off the
+     end of the first 400 and a Field Boy PR approved today never shows. The paged
+     read (request_date order) has no such cut-off. A list: no signature images
+     (PR / PO LIGHT LISTS). */
+  const q=await sarvPrPoLight_('PR');
   if(q.error){console.warn('[SARV] PR dropdown unavailable:',q.error.message);return}
   await sarvLoadFieldBoys_();
   let candidates=(q.data||[]).filter(p=>
@@ -1517,6 +1522,68 @@ function prCompletionDone_(recv){
 
    Best-effort by design. Every caller has already committed its receipt, so a
    failure here is logged and the next list refresh re-grades the PR anyway. */
+/* ── PR / PO LIGHT LISTS (sql/PRPO_LIGHT_LIST_MIGRATION.sql) ─────────────
+   Almost all of a PR / PO row is saved SIGNATURE IMAGES (approvals.<stage>
+   .name, and on a PR pdf_snapshot.signatures / preparedBy too): ~25 MB for
+   the two tables, which the PO desk and the Inward pickers downloaded on
+   every refresh. sarv_pr_light / sarv_po_light return the same rows with each
+   image replaced by 'SIGNED' (+ signImg: true) and _light: true, so a list
+   still sees who signed and when. Nothing is printed or saved from these
+   rows: every PDF build and every PR / PO save reads the full row from the
+   table again (prApplyCompletion_ does so for a _light row). Use these only
+   for LISTS; a new feature that writes approvals / pdf_snapshot or prints
+   from a list row must read the record first. Before the migration (or if
+   the call fails) the old select=* is used. */
+/* opts.limit (PR only): the newest N by PR No. opts.ids: only these rows.
+   opts.fallback: what to read without the migration (default: the old plain
+   select, so a list behaves exactly as before it). Without a limit the rows
+   are read in pages of SARV_LIGHT_PAGE (a single response is capped at 1000
+   rows; the functions order on id last, so pages never overlap), so a list
+   stays complete however many PRs / POs there are. Returns {data, error}. */
+const sarvLightMissing_={},SARV_LIGHT_PAGE=1000;
+async function sarvPrPoLight_(kind,opts){
+  opts=opts||{};
+  const fn=kind==='PO'?'sarv_po_light':'sarv_pr_light',limit=opts.limit,ids=opts.ids;
+  if(Array.isArray(ids)&&!ids.length)return {data:[],error:null};
+  if(!sarvLightMissing_[fn]){
+    const args={};
+    if(kind!=='PO'&&limit)args.p_limit=limit;
+    if(Array.isArray(ids))args.p_ids=ids;
+    let rows=[],err=null;
+    if(limit){
+      const r=await SB.rpc(fn,args);
+      if(r.error)err=r.error;else rows=r.data||[];
+    }else{
+      for(let from=0;;from+=SARV_LIGHT_PAGE){
+        const r=await SB.rpc(fn,args).range(from,from+SARV_LIGHT_PAGE-1);
+        if(r.error){err=r.error;break;}
+        const got=r.data||[];rows=rows.concat(got);
+        if(got.length<SARV_LIGHT_PAGE)break;
+      }
+    }
+    if(!err)return {data:rows,error:null};
+    const c=err.code||'';
+    if(c==='PGRST202'||c==='42883')sarvLightMissing_[fn]=true;
+    else console.warn('[SARV] '+fn+' failed, reading the full rows:',err.message||err);
+  }
+  if(opts.fallback){
+    try{return {data:await opts.fallback(),error:null};}catch(e){return {data:null,error:e};}
+  }
+  const table=kind==='PO'?'purchase_orders':'purchase_requirements';
+  if(Array.isArray(ids)){
+    try{return {data:await fuFetchByIds_(table,'*','id',ids),error:null};}catch(e){return {data:null,error:e};}
+  }
+  if(kind==='PO')return SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
+  return limit
+    ?SB.from('purchase_requirements').select('*').order('req_no',{ascending:false}).limit(limit)
+    :SB.from('purchase_requirements').select('*').order('request_date',{ascending:false});
+}
+// The Follow-up Report's form of it: an array, or a throw (as fetchAllRows / fuFetchByIds_).
+async function sarvPrPoLightRows_(kind,opts){
+  const r=await sarvPrPoLight_(kind,opts);
+  if(r.error)throw r.error;
+  return r.data||[];
+}
 const PR_STATUS_SETTLED=['Cancelled','Rejected'];
 async function prApplyCompletion_(verdicts){
   if(!SB_READY)return 0;
@@ -1529,7 +1596,16 @@ async function prApplyCompletion_(verdicts){
     // Already says the right thing — no write, so this costs nothing on the
     // list refreshes where every PR is already graded correctly.
     if(!!v.done===(cur==='Completed'))continue;
-    const snap={...(pr.pdf_snapshot||{})};
+    /* The list row may be a LIGHT one (sarvPrPoLight_: signature images left
+       out), and this writes the whole snapshot back, so the full snapshot is
+       read first; writing the light one would erase the PR's signatures. */
+    let full=pr.pdf_snapshot||{};
+    if(pr._light){
+      const f=await SB.from('purchase_requirements').select('pdf_snapshot').eq('id',pr.id).maybeSingle();
+      if(f.error||!f.data){console.warn('[SARV] PR '+(pr.req_no||pr.id)+' status write skipped (snapshot not read):',(f.error&&f.error.message)||'not found');continue;}
+      full=f.data.pdf_snapshot||{};
+    }
+    const snap={...full};
     let next;
     if(v.done){
       next='Completed';
@@ -1570,8 +1646,9 @@ async function prPoReceivedByKey_(reqNos){
       .select('req_no,item_name,received_qty,purchase_order_id').in('req_no',reqNos);
     if(pq.error)throw pq.error;
     const dead=new Set();
-    const sq=await SB.from('purchase_orders').select('id,status');
-    if(!sq.error)(sq.data||[]).forEach(p=>{if(['Rejected','Cancelled'].includes(p.status||''))dead.add(p.id)});
+    // Only the dead POs (a short list), not every PO: a plain select stops at 1000 rows.
+    const sq=await SB.from('purchase_orders').select('id').in('status',['Rejected','Cancelled']);
+    if(!sq.error)(sq.data||[]).forEach(p=>dead.add(p.id));
     (pq.data||[]).forEach(x=>{
       if(dead.has(x.purchase_order_id))return;
       const k=String(x.req_no||'')+'|'+String(x.item_name||'').toLowerCase().trim();
@@ -1879,7 +1956,7 @@ async function prpoFilterForStore_(list,idsOf){
 }
 async function loadOpenPoDropdown(){
   if(!SB_READY)return;
-  const q=await SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
+  const q=await sarvPrPoLight_('PO');   // a list: no signature images (PR / PO LIGHT LISTS)
   if(q.error){console.warn('[SARV] PO dropdown unavailable:',q.error.message);return}
   // Open POs, then only those this store receives (its own + ticked categories).
   sarvPoCatalog=await prpoFilterForStore_(await inwOpenPosByBasis_(q.data||[]),po=>po.__itemIds||[]);
@@ -23537,6 +23614,8 @@ let PR_TEAL=[13,92,83];
       the person who raised it. */
    let prepSign=null;
    if(!sarvEditingRequirementId){
+     // A NEW PR waits until the store's Rejected PRs are resubmitted or cancelled (REJECTED PR LOAD).
+     if(await sarvRejectedPrBlock_())return;
      prepSign=await sarvSubmitPinGate_('Submit Purchase Requirement');
      if(!prepSign)return;
    }
@@ -23571,7 +23650,8 @@ let PR_TEAL=[13,92,83];
        // Re-checked against the stored status: the PR may have been approved
        // (on mobile) while it sat open here. Non-Admin may only save a Pending,
        // Rejected or Hold PR.
-       const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot,purchaser_name').eq('id',sarvEditingRequirementId).single();
+       // store: canEditPr_ lets a store's own Rejected PR be corrected (REJECTED PR LOAD).
+       const cur=await SB.from('purchase_requirements').select('status,approvals,pdf_snapshot,purchaser_name,store').eq('id',sarvEditingRequirementId).single();
        if(cur.error)throw cur.error;
        // The Field Boy may have sent the items for approval while this sat open.
        if(prFieldLocked_(cur.data))throw new Error(prEditDeniedMsg_(cur.data));
@@ -23826,6 +23906,7 @@ let PR_TEAL=[13,92,83];
    const tb=byId('p_itemTableBody');if(tb){tb.innerHTML='';addPurchaseMainRow();}
    sarvEditingRequirementId=null;
    const btn=byId('p_submitBtn');if(btn)btn.textContent='Submit & Sync';
+   {const bn=byId('p_editBanner');if(bn)bn.style.display='none';}
    if(SB_READY)nextNo('REQ').then(no=>{if(byId('p_reqNoField'))byId('p_reqNoField').value=no;}).catch(()=>{});
  }
 
@@ -23903,12 +23984,15 @@ let PR_TEAL=[13,92,83];
    if(!SB_READY)return;
    await sarvLoadFieldBoys_();   // prFieldLocked_ / fbLineDeletable_ below need the Field Boy names
    const [rq,lq,iq,pq]=await Promise.all([
-     SB.from('purchase_requirements').select('*').order('request_date',{ascending:false}),
+     sarvPrPoLight_('PR'),   // a list: no signature images (PR / PO LIGHT LISTS)
      // Must match the .order('id') used when pdf_snapshot.items was built
      // (Vendor Rate & Info save / approvePR) — this array's row order is
      // matched to snapshot.items by position below, so a different order
      // here silently pairs each line with the WRONG item's rate/discount.
-     SB.from('purchase_requirement_lines').select('*').order('id'),
+     /* Paged and live (fetchAllRows {live:true}: always the server, never the
+        device copy). A plain select stops at 1000 rows, and at 990 PR lines
+        (Nov 2026) the next PRs would have lost items from this list silently. */
+     fetchAllRows('purchase_requirement_lines','*','id',null,{live:true}).then(data=>({data})).catch(error=>({data:[],error})),
      // fetchAllRows pages past the 1000-row cap — otherwise items beyond
      // #1000 resolve to {} here and show blank Make/Category in the PR
      // and Build-PO tables.
@@ -23922,15 +24006,18 @@ let PR_TEAL=[13,92,83];
      // received_qty rides along with ordered_qty: a PR line whose material has
      // actually come IN is Completed and drops out of this list (see
      // prFullyReceived_ below), which ordered_qty alone cannot tell us.
-     SB.from('purchase_order_lines').select('req_no,item_id,item_name,ordered_qty,received_qty,purchase_order_id')
+     // Paged + live as well: a PO line missed here would make its PR item read as not ordered yet.
+     fetchAllRows('purchase_order_lines','req_no,item_id,item_name,ordered_qty,received_qty,purchase_order_id','id',null,{live:true}).then(data=>({data})).catch(error=>({data:[],error}))
    ]);
-   if(rq.error||lq.error){console.warn('[SARV] Pending PR list unavailable:',rq.error?.message||lq.error?.message);return}
+   // Not drawn on half the picture: without the PO lines every PR item would look not ordered yet.
+   if(rq.error||lq.error||pq.error){console.warn('[SARV] Pending PR list unavailable:',rq.error?.message||lq.error?.message||pq.error?.message);return}
    // A Rejected or Cancelled PO must release its requirement quantities so a
    // fresh PO can be raised against the same PRs.
    const deadPoIds=new Set();
    try{
-     const sq=await SB.from('purchase_orders').select('id,status');
-     if(!sq.error)(sq.data||[]).forEach(p=>{if(['Rejected','Cancelled'].includes(p.status||''))deadPoIds.add(p.id)});
+     // Paged + live (all POs, past 1000).
+     const sq=await fetchAllRows('purchase_orders','id,status','id',null,{live:true});
+     (sq||[]).forEach(p=>{if(['Rejected','Cancelled'].includes(p.status||''))deadPoIds.add(p.id)});
    }catch(e){console.warn('[SARV] PO status lookup skipped:',e.message||e);}
    const itemMap=new Map((iq.data||[]).map(x=>[x.id,x])),poByKey={},poRecvByKey={};
    (pq.data||[]).filter(x=>!deadPoIds.has(x.purchase_order_id)).forEach(x=>{const key=String(x.req_no||'')+'|'+String(x.item_name||'').toLowerCase().trim();poByKey[key]=(poByKey[key]||0)+pNum(x.ordered_qty);poRecvByKey[key]=(poRecvByKey[key]||0)+pNum(x.received_qty)});
@@ -24026,6 +24113,8 @@ let PR_TEAL=[13,92,83];
      });
    });
    renderPendingRequirementsTable();
+   // The entry form's Rejected PRs button / bar (REJECTED PR LOAD); in the background.
+   sarvRefreshRejectedPrBar_().catch(e=>console.warn('[SARV] Rejected PR bar skipped:',e.message||e));
    /* Write the verdicts back, after the table is already on screen — grading a
       PR must never hold up the list it was computed from. prApplyCompletion_
       only writes the ones that disagree, so a list where everything is already
@@ -24079,8 +24168,10 @@ let PR_TEAL=[13,92,83];
  function canEditPr_(req){
    if(prFieldLocked_(req))return false;
    if(isAdmin())return true;
-   if(!sarvCan('EDIT_PR'))return false;
    const st=String((req&&req.status)||'Pending').trim();
+   // A Rejected PR of the user's own store: they must clear it before a New PR, so they may correct it (REJECTED PR LOAD).
+   if(st==='Rejected'&&sarvRejOwnStore_(req))return true;
+   if(!sarvCan('EDIT_PR'))return false;
    /* Rejected and Hold are both the Purchaser handing the PR back for a fix, so
       both are open for correction to anyone at this desk — no Admin login
       needed. Saving the edit sends either one back to Pending (see the
@@ -24088,14 +24179,16 @@ let PR_TEAL=[13,92,83];
       tab; a held PR cannot become a PO until the hold comes off there. */
    return st===''||st==='Pending'||st==='Rejected'||st==='Hold';
  }
- /* ── Field Boy item without a proof photo: delete just that item ─────────
+ /* ── Field Boy item without a proof photo: cancel just that item ─────────
     Once one item of a Field Boy PR is sent to / approved by the requester the
     whole PR is frozen (fb_locked_), so Edit PR cannot take out an item the
     Field Boy could not buy, and the requester can never confirm (that needs
-    EVERY item approved). fb_delete_line (sql/FB_DELETE_LINE_MIGRATION.sql)
-    removes one such item: Field Boy PR, item with no photo and not sent /
-    approved, not on a PO, not the PR's last item, login with EDIT PR; a
-    reason is kept in the PR's Field Boy history. The same checks are made
+    EVERY item approved). fb_cancel_line (sql/FB_CANCEL_LINE_MIGRATION.sql;
+    it replaced fb_delete_line) takes one such item off the PR, so this list
+    and the Field Boy's list no longer show it, and records it as CANCELLED
+    (item, qty, who, when, reason) in the PR's Field Boy history: Field Boy PR, item with no photo and not sent /
+    approved, not on a PO, not the PR's last item, login with EDIT PR, a
+    reason. The same checks are made
     here only to decide whether to show the button. */
  function fbLineDeletable_(x){
    if(!x||!prIsFieldBoy_(x.req)||x.completed||pNum(x.inPo)>0)return false;
@@ -24109,33 +24202,37 @@ let PR_TEAL=[13,92,83];
  }
  const FB_DEL_ERR={NOT_ALLOWED:'Your login does not have the EDIT PR right.',REASON_REQUIRED:'Write a reason of at least 3 letters.',
    NOT_FIELD_BOY:'This is not a Field Boy PR.',PR_CLOSED:'This PR is cancelled.',LINE_NOT_FOUND:'This item is no longer on the PR. Refresh the list.',
-   ALREADY_DONE:'The requester has already confirmed this PR; its items cannot change now.',HAS_PHOTO:'The Field Boy has uploaded a photo for this item, so it cannot be deleted here.',
-   LINE_LOCKED:'This item has been sent for / given approval, so it cannot be deleted.',ON_PO:'This item is already on a PO.',
+   ALREADY_DONE:'The requester has already confirmed this PR; its items cannot change now.',HAS_PHOTO:'The Field Boy has uploaded a photo for this item, so it cannot be cancelled here.',
+   LINE_LOCKED:'This item has been sent for / given approval, so it cannot be cancelled.',ON_PO:'This item is already on a PO.',
    LAST_LINE:'This is the only item of the PR. Cancel the PR instead.',NO_SESSION:'Your login session has ended. Log out and log in again from the launcher.',
    NO_TOKEN:'Your login session was not found. Log out and log in again from the launcher.'};
  async function sarvFbDeleteLine_(i,btn){
    const x=sarvPendingRequirements[i];if(!x)return;
-   if(!fbLineDeletable_(x))return showToast('This item cannot be deleted any more. Refresh the list.','warn');
+   if(!fbLineDeletable_(x))return showToast('This item cannot be cancelled any more. Refresh the list.','warn');
    // In-page box, not prompt(): the ERP's host blocks prompt() (sarvAskText_).
-   const why=await sarvAskText_({title:'Delete item from '+x.req.req_no,
-     message:'Delete "'+x.name+'" ('+pNum(x.requested)+' '+(x.line.uom||x.item.uom||'PCS')+') from '+x.req.req_no+'?\n\nThe Field Boy has not uploaded its proof photo. Only this item is removed; the rest of the PR stays as it is.',
-     label:'Reason',okText:'Delete Item',required:true,minLen:3});
+   // The PR's only item: the server cancels the whole PR (a PR cannot be left with no items).
+   const only=sarvPendingRequirements.filter(y=>y.req.id===x.req.id).length<=1;
+   const why=await sarvAskText_({title:'Cancel item of '+x.req.req_no,
+     message:'Cancel "'+x.name+'" ('+pNum(x.requested)+' '+(x.line.uom||x.item.uom||'PCS')+') of '+x.req.req_no+'?\n\nThe Field Boy has not uploaded its proof photo. '
+       +(only?'This is the only item of the PR, so the WHOLE PR '+x.req.req_no+' is cancelled: it leaves this list and the Field Boy\'s list, with your reason kept on it.'
+             :'Only this item is cancelled: it leaves this list and the Field Boy\'s list, and is kept in the PR\'s history as Cancelled with your reason. The rest of the PR stays as it is.'),
+     label:'Reason',okText:only?'Cancel PR':'Cancel Item',required:true,minLen:3});
    if(why==null)return;
    if(why.trim().length<3)return showToast(FB_DEL_ERR.REASON_REQUIRED,'warn');
    let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
-   if(btn){btn.disabled=true;btn.textContent='Deleting…';}
+   if(btn){btn.disabled=true;btn.textContent='Cancelling…';}
    try{
-     const r=await SB.rpc('fb_delete_line',{p_token:tok,p_req_no:x.req.req_no,p_line_id:x.line.id,p_reason:why.trim()});
+     const r=await SB.rpc('fb_cancel_line',{p_token:tok,p_req_no:x.req.req_no,p_line_id:x.line.id,p_reason:why.trim()});
      if(r.error){
        const c=r.error.code||'';
-       throw new Error((c==='PGRST202'||c==='42883')?'The server is not ready for this yet. Admin: run sql/FB_DELETE_LINE_MIGRATION.sql in the Supabase SQL Editor.':(r.error.message||'Could not delete'));
+       throw new Error((c==='PGRST202'||c==='42883')?'The server is not ready for this yet. Admin: run sql/FB_CANCEL_LINE_MIGRATION.sql in the Supabase SQL Editor.':(r.error.message||'Could not cancel'));
      }
      const d=r.data||{};
-     if(d.success===false)throw new Error(FB_DEL_ERR[d.error]||d.error||'Could not delete');
-     showToast('Deleted "'+(d.item||x.name)+'" from '+x.req.req_no);
+     if(d.success===false)throw new Error(FB_DEL_ERR[d.error]||d.error||'Could not cancel');
+     showToast(d.prCancelled?('PR '+x.req.req_no+' cancelled (its only item "'+(d.item||x.name)+'")'):('Cancelled "'+(d.item||x.name)+'" of '+x.req.req_no));
      await refreshPendingRequirements();
    }catch(e){
-     if(btn){btn.disabled=false;btn.textContent='✕ Delete item';}
+     if(btn){btn.disabled=false;btn.textContent='✕ Cancel item';}
      showToast(e.message||String(e),'error');
    }
  }
@@ -24187,9 +24284,9 @@ let PR_TEAL=[13,92,83];
          +(needsFix?' title="'+pEsc(statusVal)+' PR: correct it and save, and it goes back to PENDING" style="border:1px solid '+sc+';color:'+sc+';font-weight:700;"':'')
          +'>✎ Edit PR'+(needsFix?' ('+pEsc(statusVal)+')':'')+'</button>'
        :'<button type="button" class="btn btn-sm" disabled title="'+pEsc(prEditDeniedMsg_(x.req))+'" style="background:#e2e8f0;color:#94a3b8;cursor:not-allowed;">'+(prFieldLocked_(x.req)?'Locked (approved)':'Edit PR')+'</button>';
-     // A Field Boy item without its proof photo can be taken off the PR on its own (fbLineDeletable_).
+     // A Field Boy item without its proof photo can be cancelled on its own (fbLineDeletable_).
      const fbDel=fbLineDeletable_(x)
-       ?' <button type="button" class="btn btn-sm sarv-fb-del-line" data-index="'+i+'" title="No proof photo from the Field Boy: remove only this item from the PR (a reason is needed)" style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-weight:700;margin-top:3px;">✕ Delete item</button>'
+       ?' <button type="button" class="btn btn-sm sarv-fb-del-line" data-index="'+i+'" title="No proof photo from the Field Boy: cancel only this item (a reason is needed). It leaves this list and the Field Boy list." style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;font-weight:700;margin-top:3px;">✕ Cancel item</button>'
        :'';
      const tr=document.createElement('tr');tr.innerHTML='<td>'+pickCell+'</td><td>'+pEsc(x.req.req_no)+'</td><td>'+x.sr+'</td><td>'+pEsc(x.name)+'</td><td>'+pEsc(x.line.specification||x.item.description||'')+'</td><td>'+pEsc(x.item.make||'')+'</td><td>'+pEsc(x.req.department||'')+'</td><td style="text-align:center;">'+pNum(x.requested)+'</td><td style="text-align:center;">'+pNum(x.inPo)+'</td><td style="text-align:center;">'+pNum(x.available)+'</td><td>'+pEsc(x.line.uom||x.item.uom||'PCS')+'</td><td>'+statusBadge+'</td><td>'+pEsc(x.req.priority||'Normal')+'</td><td style="text-align:center;">'+(x.prPdfUrl?'<a data-doc="PR" href="'+pEsc(x.prPdfUrl)+'" target="_blank" rel="noopener" style="color:#1d4ed8;font-weight:700;text-decoration:none;">PDF</a>':'<span style="color:#cbd5e1;">—</span>')+'</td><td style="text-align:center;"><button type="button" class="btn btn-sm sarv-vendor-info" data-req="'+pEsc(x.req.req_no)+'" style="background:'+vendorBtnBg+';color:#fff;padding:3px 10px;font-size:11px;font-weight:700;" title="'+pEsc(vendorBtnTitle)+'">'+vendorBtnLabel+'</button></td><td>'+editCell+fbDel+'</td>';tb.appendChild(tr);
    });
@@ -24746,6 +24843,163 @@ let PR_TEAL=[13,92,83];
      const setRow=(s,v)=>{const e=tr.querySelector(s);if(e)e.value=v??''};setRow('.col-name',line.item_name);setRow('.col-desc',line.item?.description||'');setRow('.col-make',line.item?.make||'');setRow('.col-cat',line.item?.category||'General');setRow('.col-machine',line.machine||'');setRow('.col-qty',line.requested_qty);setRow('.col-uom',line.uom||'Pcs');setRow('.col-grossweight',pNum(line.grossWeight)||'');setRow('.col-rem',line.specification||'')});
    refreshPurchaseTotals();const btn=byId('p_submitBtn');if(btn)btn.textContent='Update Requirement';showToast('PR '+req.req_no+' is open for editing');
  }
+
+ /* ================================================================
+    REJECTED PR LOAD — Personnel Item Requirement Form
+    A PR the Purchaser / MD rejected comes back to the Store as 'Rejected'.
+    While the user's store (sarvUserStore_, a PR with no store = STORE 2) has
+    any Rejected PR, a NEW PR cannot be submitted (sarvRejectedPrBlock_, asked
+    again live on every new Submit). The way out is one of two:
+      • Load: the PR opens in this same entry form (populateRequirementEditor);
+        Update Requirement saves it under the SAME PR No. and, as for any
+        Rejected edit, sends it back to Pending with the approvals cleared.
+      • Cancel PR: not needed any more. Own PIN + a reason; status becomes
+        'Cancelled' (already a dead status for the PO desk and mobile), the
+        reason is kept in pdf_snapshot.cancellation.
+    Anyone working in that store may Load / Cancel its Rejected PRs, even
+    without the EDIT_PR right (canEditPr_), since they are made to clear them.
+    ================================================================ */
+ let sarvRejStore_=null,sarvRejList_=[];
+ async function sarvRejectedPrsLoad_(){
+   if(!SB_READY)return {ok:false,rows:[]};
+   const store=await sarvUserStore_();
+   if(!store)return {ok:false,rows:[]};
+   sarvRejStore_=store;
+   /* Only the parts of pdf_snapshot this list reads, never approvals or the
+      whole snapshot: those carry the saved signature IMAGES (most of a PR's
+      size), and this runs after every Pending Items refresh. The rows get a
+      small pdf_snapshot of just these keys, which is all rowHtml and
+      prFieldLocked_ / fbApproval_ look at; Load reads the full PR from
+      sarvPendingRequirements. */
+   let q=SB.from('purchase_requirements').select('id,req_no,request_date,required_by,requested_by,employee_code,department,priority,purchaser_name,status,store,created_at,rej:pdf_snapshot->lastRejection,prep:pdf_snapshot->preparedBy->>by,fc:pdf_snapshot->fieldChecklist,its:pdf_snapshot->items').eq('status','Rejected');
+   q=store==='STORE 2'?q.or('store.eq.STORE 2,store.is.null'):q.eq('store',store);
+   const r=await q.order('request_date',{ascending:true});
+   if(r.error){console.warn('[SARV] Rejected PR list unavailable:',r.error.message);return {ok:false,rows:[]};}
+   sarvRejList_=(r.data||[]).map(({rej,prep,fc,its,...row})=>({...row,pdf_snapshot:{
+     ...(rej?{lastRejection:rej}:{}),...(prep?{preparedBy:{by:prep}}:{}),...(fc?{fieldChecklist:fc}:{}),items:Array.isArray(its)?its:[]}}));
+   return {ok:true,rows:sarvRejList_,store};
+ }
+ function sarvRejOwnStore_(req){
+   return !!sarvRejStore_&&String((req&&req.store)||'STORE 2')===sarvRejStore_;
+ }
+ async function sarvRefreshRejectedPrBar_(){
+   const res=await sarvRejectedPrsLoad_();
+   const n=res.rows.length,bar=byId('p_rejectedPrBar'),btn=byId('p_rejectedPrBtn');
+   if(btn){btn.textContent='Rejected PRs ('+n+')';btn.style.background=n?'#dc2626':'';btn.style.color=n?'#fff':'';}
+   if(bar){
+     bar.style.display=n?'flex':'none';
+     const t=byId('p_rejectedPrBarText');
+     if(t)t.textContent=n+' Rejected PR'+(n>1?'s':'')+' in '+(res.store||'')+'. Correct and resubmit (Load) or cancel '+(n>1?'them':'it')+' first; a New PR cannot be submitted until then.';
+   }
+   return res;
+ }
+ /* The gate on a NEW PR's Submit: true = refused (the list is opened). Fails
+    closed when the list cannot be read, so the rule cannot be skipped by a
+    network hiccup; the save itself would need the network anyway. */
+ async function sarvRejectedPrBlock_(){
+   const res=await sarvRefreshRejectedPrBar_();
+   if(!res.ok){showToast('Could not check the Rejected PRs of your store. Please check the connection and try again.','warn');return true;}
+   if(!res.rows.length)return false;
+   showToast(res.rows.length+' Rejected PR(s) in '+res.store+': load and resubmit them, or cancel the ones not needed, before submitting a New PR','warn');
+   sarvOpenRejectedPrs_(res);
+   return true;
+ }
+ async function sarvOpenRejectedPrs_(pre){
+   const res=(pre&&pre.ok)?pre:await sarvRefreshRejectedPrBar_();
+   document.getElementById('sarvRejPrOv')?.remove();
+   const ov=document.createElement('div');ov.className='sarv-ov';ov.id='sarvRejPrOv';
+   const fmtD=d=>d?String(d).split('-').reverse().join('/'):'-';
+   const rowHtml=req=>{
+     const s=req.pdf_snapshot||{},lr=s.lastRejection||{},items=(s.items||[]).length;
+     const prep=(s.preparedBy&&s.preparedBy.by)||'';
+     const locked=prFieldLocked_(req);
+     return '<div data-id="'+escText(req.id)+'" style="border:1px solid #fecaca;border-radius:10px;padding:10px 12px;margin-bottom:8px;background:#fff;">'
+       +'<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:baseline;">'
+       +'<span style="font-weight:800;color:#0f172a;font-size:13.5px;">'+escText(req.req_no||'-')+'</span>'
+       +'<span style="font-size:11px;font-weight:700;color:#64748b;">'+fmtD(req.request_date)+' · Required by '+fmtD(req.required_by)+(req.priority?' · '+escText(req.priority):'')+'</span></div>'
+       +'<div style="font-size:11.5px;color:#334155;font-weight:600;margin-top:3px;">Requested by '+escText(req.requested_by||'-')+(req.employee_code?' ('+escText(req.employee_code)+')':'')+' · Purchaser '+escText(req.purchaser_name||'-')+' · '+items+' item(s)'+(prep?' · Prepared by '+escText(prep):'')+'</div>'
+       +'<div style="font-size:11.5px;color:#b91c1c;font-weight:700;margin-top:4px;">Rejected'+(lr.by?' by '+escText(lr.by):'')+(lr.at?' · '+escText(lr.at):'')+(lr.remarks?': <i>“'+escText(lr.remarks)+'”</i>':'')+'</div>'
+       +(Array.isArray(lr.reasons)&&lr.reasons.length?'<div style="font-size:11px;color:#7f1d1d;margin-top:2px;">'+lr.reasons.map(x=>escText(typeof x==='string'?x:(x&&(x.text||x.reason||x.item))||'')).filter(Boolean).join(' · ')+'</div>':'')
+       +'<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;">'
+       +(locked?'<span style="font-size:11px;color:#64748b;font-weight:700;align-self:center;">Field Boy items sent / approved: cannot be edited here</span>'
+         :'<button type="button" class="b no" data-act="cancel">✕ Cancel PR</button><button type="button" class="b ok" data-act="load">✎ Load into form</button>')
+       +'</div><div data-f="cx" style="display:none;margin-top:8px;"><textarea data-f="why" rows="2" placeholder="Why is this PR not needed any more? (at least 5 letters)" style="width:100%;box-sizing:border-box;padding:8px 10px;border:1.5px solid #cbd5e1;border-radius:7px;font-size:12.5px;font-family:inherit;"></textarea>'
+       +'<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;"><button type="button" class="b no" data-act="cxno">Back</button><button type="button" class="b ok" data-act="cxok" style="background:#dc2626;">Confirm Cancel (PIN)</button></div></div></div>';
+   };
+   const body=!res.ok?'<div class="err" style="display:block;">The Rejected PR list could not be loaded. Please try again.</div>'
+     :!res.rows.length?'<div style="padding:18px;text-align:center;color:#16a34a;font-weight:700;">No Rejected PR in '+escText(res.store)+'. A New PR can be submitted.</div>'
+     :'<div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:10px;">'+res.rows.length+' Rejected PR(s) in '+escText(res.store)+', oldest first. <b>Load</b> opens it in the form: correct it and press <b>Update Requirement</b>; it is saved under the same PR No. and goes back to Pending. A New PR can be submitted only when this list is empty.</div>'+res.rows.map(rowHtml).join('');
+   ov.innerHTML='<div class="card" style="max-width:640px;"><div class="hd">Rejected PRs'+(res.store?' · '+escText(res.store):'')+'</div><div class="bd">'+body+'</div><div class="ft"><button type="button" class="b no" data-act="close">Close</button></div></div>';
+   document.body.appendChild(ov);
+   ov.addEventListener('click',async ev=>{
+     if(ev.target===ov)return ov.remove();
+     const b=ev.target.closest('[data-act]');if(!b)return;
+     const act=b.dataset.act;if(act==='close')return ov.remove();
+     const box=b.closest('[data-id]');if(!box)return;
+     const id=box.dataset.id,req=sarvRejList_.find(x=>String(x.id)===id);if(!req)return;
+     const cx=box.querySelector('[data-f="cx"]');
+     if(act==='cancel'){cx.style.display='block';box.querySelector('[data-f="why"]').focus();return;}
+     if(act==='cxno'){cx.style.display='none';return;}
+     if(act==='load'){b.disabled=true;const ok=await sarvLoadRejectedPr_(req);b.disabled=false;if(ok)ov.remove();return;}
+     if(act==='cxok'){
+       const why=box.querySelector('[data-f="why"]').value.trim();
+       if(why.length<5)return showToast('Write why this PR is not needed (at least 5 letters)','warn');
+       b.disabled=true;
+       const done=await sarvCancelRejectedPr_(req,why);
+       b.disabled=false;
+       if(done){ov.remove();sarvOpenRejectedPrs_();}
+     }
+   });
+ }
+ async function sarvLoadRejectedPr_(req){
+   if(sarvEditingRequirementId&&sarvEditingRequirementId!==req.id&&!confirmLeaveEdit_())return false;
+   /* The form is filled from sarvPendingRequirements (the same rows Edit PR
+      uses). Every line of the PR must be there, or the save, which replaces
+      the PR's lines, would drop the missing ones; so the count is checked
+      against the database first. */
+   if(!sarvPendingRequirements.some(y=>y.req.id===req.id))await refreshPendingRequirements();
+   const x=sarvPendingRequirements.find(y=>y.req.id===req.id);
+   const lc=await SB.from('purchase_requirement_lines').select('id',{count:'exact',head:true}).eq('requirement_id',req.id);
+   const have=sarvPendingRequirements.filter(y=>y.req.id===req.id).length;
+   if(!x||lc.error||(lc.count!=null&&lc.count!==have)){
+     showToast('PR '+(req.req_no||'')+' could not be loaded completely (some items are missing from the list). Refresh the page and try again.','warn');
+     return false;
+   }
+   if(String(x.req.status||'')!=='Rejected'){showToast('PR '+(req.req_no||'')+' is no longer Rejected (now '+(x.req.status||'')+')','warn');await sarvRefreshRejectedPrBar_();return false;}
+   if(!canEditPr_(x.req)){showToast(prEditDeniedMsg_(x.req),'warn');return false;}
+   populateRequirementEditor(x);
+   const lr=(x.req.pdf_snapshot||{}).lastRejection||{};
+   const bn=byId('p_editBanner'),bt=byId('p_editBannerText');
+   if(bt)bt.textContent='Correcting Rejected PR '+(x.req.req_no||'')+(lr.remarks?' (rejected: '+lr.remarks+')':'')+'. Update Requirement saves it under the same PR No. and sends it back to Pending.';
+   if(bn)bn.style.display='flex';
+   byId('p_editBanner')?.scrollIntoView({behavior:'smooth',block:'start'});
+   return true;
+ }
+ // Leaving a half-done edit of another PR for this one.
+ function confirmLeaveEdit_(){
+   return window.confirm('Another PR is open for editing in the form. Leave it without saving and load this one?');
+ }
+ async function sarvCancelRejectedPr_(req,why){
+   if(prFieldLocked_(req)){showToast(prEditDeniedMsg_(req),'warn');return false;}
+   if(!canEditPr_(req)){showToast(prEditDeniedMsg_(req),'warn');return false;}
+   const sign=await sarvSubmitPinGate_('Cancel PR '+(req.req_no||''));
+   if(!sign)return false;
+   try{
+     // Re-read: it may have been loaded and resubmitted elsewhere meanwhile.
+     const cur=await SB.from('purchase_requirements').select('status,pdf_snapshot').eq('id',req.id).single();
+     if(cur.error)throw cur.error;
+     if(String(cur.data.status||'')!=='Rejected'){showToast('PR '+(req.req_no||'')+' is no longer Rejected (now '+(cur.data.status||'')+'); nothing was changed','warn');await sarvRefreshRejectedPrBar_();return true;}
+     const snap=(cur.data.pdf_snapshot&&typeof cur.data.pdf_snapshot==='object')?cur.data.pdf_snapshot:{};
+     const cancellation={by:sign.name||(sarvCurrentUser&&sarvCurrentUser.name)||'',at:pStamp(),atIso:new Date().toISOString(),remarks:why,from:'Rejected'};
+     const u=await SB.from('purchase_requirements').update({status:'Cancelled',pdf_snapshot:{...snap,status:'Cancelled',cancellation}}).eq('id',req.id).eq('status','Rejected').select('id');
+     if(u.error)throw u.error;
+     if(!(u.data||[]).length){showToast('PR '+(req.req_no||'')+' changed meanwhile; nothing was cancelled','warn');await sarvRefreshRejectedPrBar_();return true;}
+     showToast('PR '+(req.req_no||'')+' cancelled');
+     if(sarvEditingRequirementId===req.id)clearPrForm();
+     await refreshPendingRequirements();
+     return true;
+   }catch(e){dbError(e);return false;}
+ }
  // Plain wa.me links can only pre-fill text — WhatsApp's click-to-chat API
  // has no way to attach a file. The Web Share API is the only web-standard
  // path that hands WhatsApp an actual file, so we try that first (mobile
@@ -24816,7 +25070,7 @@ let PR_TEAL=[13,92,83];
  }
  async function refreshGeneratedPoList(){
    if(!SB_READY)return;const tb=byId('p_poListBody');if(!tb)return;
-   const q=await SB.from('purchase_orders').select('*').order('po_date',{ascending:false});if(q.error){console.warn('[SARV] PO list unavailable:',q.error.message);return}
+   const q=await sarvPrPoLight_('PO');if(q.error){console.warn('[SARV] PO list unavailable:',q.error.message);return}
    // Sorted by PO No., newest number on top. Numeric-aware, so PO/U-2/100
    // comes before PO/U-2/99 (a plain text sort would put it after).
    sarvGeneratedPos=(q.data||[]).sort((a,b)=>String(b.po_no||'').localeCompare(String(a.po_no||''),undefined,{numeric:true,sensitivity:'base'}));
@@ -25526,6 +25780,7 @@ let PR_TEAL=[13,92,83];
      else if(h.ev==='DECIDED')add(h.at,h.sentBack?'Requester decided (some sent back)':'Requester approved',h.by,'Approved: '+(h.approved||0)+' · Sent back: '+(h.sentBack||0)+(h.remarks?' · “'+h.remarks+'”':''),!!h.sentBack);
      else if(h.ev==='CONFIRMED')add(h.at,'Confirmed by the Field Boy: done',h.by||'Field Boy','');
      else if(h.ev==='DELETED')add(h.at,'Item deleted: '+its,h.by,(h.remarks?'“'+h.remarks+'”':''),true);
+     else if(h.ev==='CANCELLED')add(h.at,(h.wholePr?'PR cancelled (only item): ':'Item cancelled: ')+its,h.by,(h.qty!=null?fudN_(h.qty)+' '+(h.uom||'')+' · ':'')+(h.remarks?'“'+h.remarks+'”':''),true);
      else if(h.ev==='QTY')add(h.at,'Qty changed: '+its,h.by,fudN_(h.from)+' → '+fudN_(h.to)+' '+(h.uom||'')+(h.remarks?' · “'+h.remarks+'”':''));
    });
    fb.lines.forEach(l=>{const d=l.decision||{};if(l.status==='REJECTED'&&d.at)add(d.at,'Sent back: '+(l.item||''),d.by,d.remarks?'“'+d.remarks+'”':'',true);});
@@ -25599,8 +25854,13 @@ let PR_TEAL=[13,92,83];
       needs); the full rows of the PRs that are shown are fetched after it. */
    const INW_LIGHT='id,document_no,po_number,req_no,notes';
    const [reqsList,pos,plRows,inwList]=await Promise.all([
-     fetchAllRows('purchase_requirements',full?'*':'id,req_no','id').catch(e=>{dbError(e);return null}),
-     fetchAllRows('purchase_orders','*','id').catch(skip('PO headers')),
+     /* PR / PO headers without their signature images (PR / PO LIGHT LISTS):
+        this sheet only asks whether a stage is signed, and the images were
+        nearly all of the download. Paged, so it stays complete as the tables
+        grow; the old full read is the fallback before the migration. */
+     (full?sarvPrPoLightRows_('PR',{fallback:()=>fetchAllRows('purchase_requirements','*','id')})
+          :fetchAllRows('purchase_requirements','id,req_no','id')).catch(e=>{dbError(e);return null}),
+     sarvPrPoLightRows_('PO',{fallback:()=>fetchAllRows('purchase_orders','*','id')}).catch(skip('PO headers')),
      // item_name / ordered_qty come along so the PO cell can SHOW which of this
      // PR's items are on that PO — the link is then auditable from the sheet
      // instead of being taken on trust.
@@ -25714,7 +25974,7 @@ let PR_TEAL=[13,92,83];
        (looseInwByReq[r.req_no]||[]).forEach(i=>inwIds.add(i.id));
      });
      const [rq,iw,pl]=await Promise.all([
-       fuFetchByIds_('purchase_requirements','*','id',keepIds).catch(e=>{dbError(e);return null}),
+       sarvPrPoLightRows_('PR',{ids:keepIds}).catch(e=>{dbError(e);return null}),   // light, only the shown PRs
        fuFetchByIds_('inward_entries','*','id',[...inwIds]).catch(skip('inward')),
        prLinesQ().catch(skip('PR lines'))
      ]);
@@ -27991,7 +28251,9 @@ let PR_TEAL=[13,92,83];
      const csv='Item Name,Description,Make,Category,Qty,UOM\n'+rows.join('\n');
      const a=document.createElement('a');a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);a.download='PR_Items_'+today()+'.csv';a.click();showToast('CSV downloaded');
    });
-   on('p_cancelEditBtn',()=>{sarvEditingRequirementId=null;const btn=byId('p_submitBtn');if(btn)btn.textContent='Submit & Sync';showToast('Edit cancelled');});
+   /* Cancel Edit now clears the form too: the loaded PR's items and its PR No.
+      used to stay on screen, so the next Submit raised them as a NEW PR. */
+   on('p_cancelEditBtn',()=>{clearPrForm();showToast('Edit cancelled');});
 
    // ── PO sub-panels ────────────────────────────────────────────
    on('p_poRefreshBtn',()=>refreshPendingRequirements().catch(dbError));
