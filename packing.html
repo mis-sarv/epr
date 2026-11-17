@@ -7268,7 +7268,7 @@ function renderVerificationList(resetPage) {
                     // The invoice box is above Save Rates; only a slip with no
                     // quality rows (no Save Rates) keeps it here.
                     (tbKeys.length > 0 ? '' : invNoInputHtml) +
-                    '<input type="text" id="after-chalan-' + key + '" placeholder="Chalan No" value="' + escapeHtmlJs(st.chalanNo || '') + '" onclick="event.stopPropagation()">' +
+                    '<input type="text" id="after-chalan-' + key + '" placeholder="Gate Pass No." value="' + escapeHtmlJs(st.chalanNo || '') + '" onclick="event.stopPropagation()">' +
                     '<input type="number" id="after-kanta-' + key + '" placeholder="Kanta Weight (Kg)" step="0.01" value="' + escapeHtmlJs(st.kantaWeight || '') + '" onclick="event.stopPropagation()" style="text-transform:none;">' +
                     '<textarea id="after-remark-' + key + '" placeholder="Remark (optional)" rows="1" onclick="event.stopPropagation()"></textarea>' +
                     '<button type="button" onclick="event.stopPropagation();submitVerificationStage(\'' + key + '\',\'afterInvoice\')">Save Invoice No, Chalan &amp; Kanta Wt</button>' +

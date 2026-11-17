@@ -23615,8 +23615,8 @@ let PR_TEAL=[13,92,83];
    let prepSign=null;
    if(!sarvEditingRequirementId){
      /* A NEW PR no longer waits for the store's Rejected PRs: the gate
-        (sarvRejectedPrBlock_, REJECTED PR LOAD) is switched off by request, and
-        the form's Rejected PRs button / bar are removed from index.html. */
+        (sarvRejectedPrBlock_, REJECTED PR LOAD) is switched off by request.
+        The form's Rejected PRs button / bar stay, for information only. */
      prepSign=await sarvSubmitPinGate_('Submit Purchase Requirement');
      if(!prepSign)return;
    }
@@ -24890,7 +24890,7 @@ let PR_TEAL=[13,92,83];
    if(bar){
      bar.style.display=n?'flex':'none';
      const t=byId('p_rejectedPrBarText');
-     if(t)t.textContent=n+' Rejected PR'+(n>1?'s':'')+' in '+(res.store||'')+'. Correct and resubmit (Load) or cancel '+(n>1?'them':'it')+' first; a New PR cannot be submitted until then.';
+     if(t)t.textContent=n+' Rejected PR'+(n>1?'s':'')+' in '+(res.store||'')+'. Correct and resubmit (Load) or cancel '+(n>1?'them':'it')+'.';
    }
    return res;
  }
@@ -24928,8 +24928,8 @@ let PR_TEAL=[13,92,83];
        +'<div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px;"><button type="button" class="b no" data-act="cxno">Back</button><button type="button" class="b ok" data-act="cxok" style="background:#dc2626;">Confirm Cancel (PIN)</button></div></div></div>';
    };
    const body=!res.ok?'<div class="err" style="display:block;">The Rejected PR list could not be loaded. Please try again.</div>'
-     :!res.rows.length?'<div style="padding:18px;text-align:center;color:#16a34a;font-weight:700;">No Rejected PR in '+escText(res.store)+'. A New PR can be submitted.</div>'
-     :'<div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:10px;">'+res.rows.length+' Rejected PR(s) in '+escText(res.store)+', oldest first. <b>Load</b> opens it in the form: correct it and press <b>Update Requirement</b>; it is saved under the same PR No. and goes back to Pending. A New PR can be submitted only when this list is empty.</div>'+res.rows.map(rowHtml).join('');
+     :!res.rows.length?'<div style="padding:18px;text-align:center;color:#16a34a;font-weight:700;">No Rejected PR in '+escText(res.store)+'.</div>'
+     :'<div style="font-size:11.5px;color:#64748b;font-weight:600;margin-bottom:10px;">'+res.rows.length+' Rejected PR(s) in '+escText(res.store)+', oldest first. <b>Load</b> opens it in the form: correct it and press <b>Update Requirement</b>; it is saved under the same PR No. and goes back to Pending. A New PR can be submitted without clearing this list.</div>'+res.rows.map(rowHtml).join('');
    ov.innerHTML='<div class="card" style="max-width:640px;"><div class="hd">Rejected PRs'+(res.store?' · '+escText(res.store):'')+'</div><div class="bd">'+body+'</div><div class="ft"><button type="button" class="b no" data-act="close">Close</button></div></div>';
    document.body.appendChild(ov);
    ov.addEventListener('click',async ev=>{

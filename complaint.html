@@ -3813,11 +3813,9 @@ function App(){
     return c;
   },[rows, tabSeenMap]);
 
-  // Swipe to switch main tabs (uses navItems computed below but stable keys)
-  const mainSwipeRef = useSwipe(
-    () => { setView(v => { const keys = _navKeys(profile); const i = keys.indexOf(v); return i < keys.length-1 ? (markTabSeen("main:"+keys[i+1]), reloadTabSeen(), keys[i+1]) : v; }); },
-    () => { setView(v => { const keys = _navKeys(profile); const i = keys.indexOf(v); return i > 0 ? (markTabSeen("main:"+keys[i-1]), reloadTabSeen(), keys[i-1]) : v; }); }
-  );
+  /* No swipe on the main tabs (Complaints / Notices / Machines): a sideways
+     slide while scrolling or reading used to jump to another tab by accident, so
+     they change only by tapping. (_navKeys above is now unused.) */
 
   // ---- render ----
   if (session === undefined) return null;      // boot overlay is still showing
@@ -4004,7 +4002,7 @@ function App(){
       </header>
 
       {/* ===== MAIN CONTENT — scrollable, padded for bottom nav ===== */}
-      <main ref={mainSwipeRef} className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-4 pt-3 sm:pt-4 pb-24 sm:pb-6">
+      <main className="flex-1 max-w-3xl mx-auto w-full px-3 sm:px-4 pt-3 sm:pt-4 pb-24 sm:pb-6">
         {view === "machines" && canManageMachines_(profile) ? (
           <AdminMachines profile={profile} toast={toast} onMachinesChanged={loadMachines} />
         ) : view === "notices" ? (
