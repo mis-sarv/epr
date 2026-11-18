@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script>
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script>
 <script src="caps-input.js"></script><script src="hover-tip.js"></script>
@@ -222,6 +223,9 @@
   .pfoot .tot{font-size:12px;font-weight:700;color:var(--mut)}
   .pfoot .tot b{color:var(--ink)}
 </style>
+<!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<script src="ios-ui.js?v=20261118a" defer></script>
 </head>
 <body>
 
@@ -833,6 +837,7 @@ function fbTimeline(pr) {
     else if (h.ev === 'DECIDED') add(h.at, h.sentBack ? 'bad' : 'me', h.sentBack ? 'You decided (some sent back)' : 'You approved', 'by ' + esc(h.by || 'you'), `Approved: <b>${h.approved || 0}</b> · Sent back: <b>${h.sentBack || 0}</b>` + q(h.remarks));
     else if (h.ev === 'CONFIRMED') add(h.at, 'done', 'Confirmed by the Field Boy: done', 'by ' + esc(h.by || 'Field Boy'), '');
     // One item taken off / its qty changed (by you here, or from the ERP's PO desk).
+    else if (h.ev === 'CANCELLED') add(h.at, 'bad', (h.wholePr ? 'PR cancelled (only item): ' : 'Item cancelled: ') + esc((h.items || []).join(', ')), 'by ' + esc(h.by || ''), (h.qty != null ? nfmt(h.qty) + ' ' + esc(h.uom || '') : '') + q(h.remarks));
     else if (h.ev === 'DELETED') add(h.at, 'bad', 'Item deleted: ' + esc((h.items || []).join(', ')), 'by ' + esc(h.by || ''), (h.qty != null ? nfmt(h.qty) + ' ' + esc(h.uom || '') : '') + q(h.remarks));
     else if (h.ev === 'QTY') add(h.at, 'me', 'Qty changed: ' + esc((h.items || []).join(', ')), 'by ' + esc(h.by || 'you'),
       `${nfmt(h.from)} → <b>${nfmt(h.to)}</b> ${esc(h.uom || '')}${h.wasSent ? ' · <span class="muted">sent back to the Field Boy to send again</span>' : ''}` + q(h.remarks));

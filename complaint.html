@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script>
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://unpkg.com" crossorigin>
+
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -15,8 +16,7 @@
 <!-- React & ReactDOM 18 (UMD) -->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
-<!-- Babel Standalone for inline JSX -->
-<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<!-- Babel Standalone is NOT loaded here any more: the compiled app is cached on the phone (see the COMPILE CACHE loader at the end). Babel loads only when the source changed or the cache is empty. -->
 <!-- Supabase JS client -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -48,16 +48,22 @@
   .fab-pulse-blue{animation:fabPulseBlue 2s ease-in-out infinite}
   @media(prefers-reduced-motion:reduce){.fab-pulse,.fab-pulse-blue{animation:none}}
   /* Card press effect for mobile */
-  .card-press{transition:transform 0.1s ease}
+  .card-press{transition:transform 0.18s cubic-bezier(.32,.72,0,1);content-visibility:auto;contain-intrinsic-size:auto 110px}
   .card-press:active{transform:scale(0.98);}
+  /* iOS skin: frosted bottom bar, spring pop on the active nav item */
+  .pb-safe{-webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px)}
+  .nav-pop{animation:navPop .38s cubic-bezier(.175,.885,.32,1.12)}
 </style>
+<!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<script src="ios-ui.js?v=20261118a" defer></script>
 </head>
 <body class="bg-white text-slate-900 antialiased min-h-screen">
 
 <div id="boot"><div class="ring"></div><div style="font-size:13px">Loading&hellip; / लोड हो रहा है</div></div>
 <div id="root"></div>
 
-<script type="text/babel" data-presets="react">
+<script type="text/plain" id="cmp-src">
 // ============================================================
 // 1. CONFIGURATION
 // ============================================================
@@ -4128,6 +4134,31 @@ function App(){
 const boot = document.getElementById("boot");
 if (boot) boot.remove();
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+<script>
+/* ── COMPILE CACHE ──────────────────────────────────────────────────────────
+   The app above is JSX. Babel (~3 MB) used to be downloaded, parsed and run on EVERY open, to turn ~220 KB of
+   JSX into JavaScript: seconds on a phone. Now the compiled JavaScript is kept in IndexedDB under a hash of the
+   source: the next open runs it at once and never loads Babel. Edit the JSX and the hash changes, so the new
+   source is compiled once and cached again. If IndexedDB is unavailable it compiles on every open, as before. */
+(function () {
+  var el = document.getElementById("cmp-src"); if (!el) return;
+  var src = el.textContent;
+  function hash(s) { var h = 0x811c9dc5; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); } return (h >>> 0).toString(36) + "_" + s.length; }
+  var id = "v1_" + hash(src);
+  function db() { return new Promise(function (res, rej) { var r = indexedDB.open("sarv_cmp_cache", 1); r.onupgradeneeded = function () { r.result.createObjectStore("js"); }; r.onsuccess = function () { res(r.result); }; r.onerror = function () { rej(r.error); }; }); }
+  function get(k) { return db().then(function (d) { return new Promise(function (res) { var q = d.transaction("js").objectStore("js").get(k); q.onsuccess = function () { res(q.result || null); }; q.onerror = function () { res(null); }; }); }).catch(function () { return null; }); }
+  function put(k, v) { return db().then(function (d) { return new Promise(function (res) { var tx = d.transaction("js", "readwrite"), s = tx.objectStore("js"); s.clear(); s.put(v, k); tx.oncomplete = res; tx.onerror = res; }); }).catch(function () { }); }
+  function run(code) { var s = document.createElement("script"); s.text = code; document.body.appendChild(s); }
+  function babel() { return new Promise(function (res, rej) { var s = document.createElement("script"); s.src = "https://unpkg.com/@babel/standalone@7/babel.min.js"; s.onload = res; s.onerror = function () { rej(new Error("Babel could not be loaded (check the internet connection)")); }; document.head.appendChild(s); }); }
+  get(id).then(function (code) {
+    if (code) { run(code); return; }
+    return babel().then(function () { var out = Babel.transform(src, { presets: ["react"] }).code; run(out); put(id, out); });
+  }).catch(function (e) {
+    console.error("[complaint] could not start", e);
+    var b = document.getElementById("boot"); if (b) b.innerHTML = '<div style="font-size:13px;color:#b91c1c;text-align:center;padding:20px">The app could not start: ' + String((e && e.message) || e) + '<br><button onclick="location.reload()" style="margin-top:10px;padding:8px 16px;border-radius:10px;background:#0d9488;color:#fff">Try again</button></div>';
+  });
+})();
 </script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside the ERP iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>

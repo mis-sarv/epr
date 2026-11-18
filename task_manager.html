@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script>
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://unpkg.com" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
     <meta charset="UTF-8">
     <script src="date-dmy.js"></script>
     <script src="caps-input.js"></script><script src="hover-tip.js"></script>
@@ -31,7 +32,7 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web" defer></script>
     <style>
         body { font-family: 'Inter', sans-serif; background-color: #f8fafc; }
         
@@ -153,7 +154,33 @@
             #screen-completion-chart { position: absolute; left: 0; top: 0; width: 100%; }
             .print-hide { display: none !important; }
         }
+
+        /* iOS skin (ios-ui.css has the shared motion): frosted top bar, screens fade in, home buttons rise one after another, press feedback, lazy-drawn task cards */
+        nav.sticky { background-color: rgba(15, 23, 42, 0.92) !important; -webkit-backdrop-filter: saturate(180%) blur(16px); backdrop-filter: saturate(180%) blur(16px); }
+        .screen-view:not(.hidden) { animation: iosFade 0.3s ease-out both; }
+        #screen-home .tm-home-btn:not(.hidden) { animation: iosRise 0.5s var(--ios-spring, cubic-bezier(0.32,0.72,0,1)) both; }
+        #screen-home .tm-home-btn:nth-child(3) { animation-delay: 0ms; }
+        #screen-home .tm-home-btn:nth-child(4) { animation-delay: 35ms; }
+        #screen-home .tm-home-btn:nth-child(5) { animation-delay: 70ms; }
+        #screen-home .tm-home-btn:nth-child(6) { animation-delay: 105ms; }
+        #screen-home .tm-home-btn:nth-child(7) { animation-delay: 140ms; }
+        #screen-home .tm-home-btn:nth-child(8) { animation-delay: 175ms; }
+        #screen-home .tm-home-btn:nth-child(9) { animation-delay: 210ms; }
+        #screen-home .tm-home-btn:nth-child(10) { animation-delay: 245ms; }
+        #screen-home .tm-home-btn:nth-child(11) { animation-delay: 280ms; }
+        #screen-home .tm-home-btn:nth-child(12) { animation-delay: 315ms; }
+        #screen-home .tm-home-btn:nth-child(13) { animation-delay: 350ms; }
+        #screen-home .tm-home-btn:nth-child(14) { animation-delay: 385ms; }
+        #screen-home .tm-home-btn:nth-child(15) { animation-delay: 420ms; }
+        #screen-home .tm-home-btn:nth-child(16) { animation-delay: 455ms; }
+        .tm-home-btn:active { transform: scale(0.97) !important; }
+        #taskListContainer > *, #dashSummary > * { content-visibility: auto; contain-intrinsic-size: auto 110px; }
+        @media (prefers-reduced-motion: reduce) { #screen-home .tm-home-btn { animation: none !important; } }
     </style>
+<!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<script>window.IOS_UI={overlays:false};</script>
+<script src="ios-ui.js?v=20261118a" defer></script>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col selection:bg-indigo-200">
 
@@ -908,6 +935,44 @@
                         <button onclick="saveScoreSettings()" class="bg-slate-900 hover:bg-black text-white px-8 py-3.5 rounded-xl font-bold shadow-lg transition-all active:scale-95 flex items-center">
                             <i class="ph-bold ph-floppy-disk mr-2 text-xl"></i> Save All Settings
                         </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reset score (sql/TM_SCORE_RESET_MIGRATION.sql): one employee, several or ALL start fresh from a date.
+                 Nothing is deleted; the days before it stop counting (neutral, like a leave day), and a reset can be cancelled. -->
+            <div id="srCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6">
+                <div class="bg-slate-50 border-b border-slate-200 p-6">
+                    <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-arrow-counter-clockwise mr-2 text-indigo-600"></i> Reset score (start fresh)</h2>
+                    <p class="text-sm font-medium text-slate-500 mt-1">Choose one employee, several, or everyone, and the date they start fresh from. Every day <b>before</b> that date stops counting: no points gained or lost, nothing shown as pending. Nothing is deleted, and a reset can be cancelled to bring the old days back.</p>
+                </div>
+                <div class="grid grid-cols-1 lg:grid-cols-5">
+                    <div class="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-slate-200 p-5 bg-slate-50/50 space-y-4">
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Employee(s)</label>
+                            <div class="flex gap-2">
+                                <select id="srEmpSel" class="flex-grow min-w-0 px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400 font-bold text-slate-700 text-sm"></select>
+                                <button onclick="srAddEmp()" class="shrink-0 text-xs font-extrabold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 rounded-xl uppercase tracking-wider">+ Add</button>
+                            </div>
+                            <div id="srEmpChips" class="flex flex-wrap gap-1.5 mt-2"></div>
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Start fresh from (this day counts)</label>
+                            <input type="date" id="srStart" onchange="srPreview()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400 font-bold text-slate-700 text-sm">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Reason</label>
+                            <input type="text" id="srRemarks" placeholder="e.g. New score cycle, new rules" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-indigo-400 font-bold text-slate-700 text-sm">
+                        </div>
+                        <div id="srPreview" class="text-[11px] font-bold text-slate-500 leading-relaxed"></div>
+                        <button id="srSaveBtn" onclick="srSave()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center"><i class="ph-bold ph-arrow-counter-clockwise mr-2 text-lg"></i> Reset score</button>
+                    </div>
+                    <div class="lg:col-span-3 p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                            <div class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">Resets made</div>
+                            <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 cursor-pointer select-none"><input type="checkbox" id="srShowCancelled" onchange="srRender()" class="w-4 h-4 accent-indigo-600"> Show cancelled</label>
+                        </div>
+                        <div id="srList"><div class="text-center text-sm font-bold text-slate-400 py-10">Loading…</div></div>
                     </div>
                 </div>
             </div>
@@ -1813,6 +1878,7 @@
             fupCache = new Map();   // fresh records / follow-ups / rules: the coordinator cuts are worked out again
             appState.currentLoggedInEmp = (appState.me.empCode && appState.employees.find(e => e.empCode === appState.me.empCode)) || null;
             setTimeout(tmSyncReminders, 0);
+            setTimeout(srBoot, 0);   // Score Master › Reset score: the resets of this login (a changed list repaints the screen)
             setTimeout(clBoot, 0);   // Consult Letters: my letters + may I manage (separate RPC, so an old server just has no letters)
             return res;
         }
@@ -2198,6 +2264,7 @@
             }).join('') : '<div class="text-sm text-slate-400 font-bold">Not saved yet. The default rules apply: grace 3 hours / -20, then -20 per hour, into minus with no limit.</div>';
             fupFill();
             liveSetLoad();   // the Live Photo default card (its own RPC)
+            initScoreReset();   // Reset score card (its own RPC)
             if (!keepAuto || !EMA.data) emAutoLoad();   // a redraw after saving the scoring rules keeps unsaved automation edits
         }
         // A worked example under each card, so the effect of a number is obvious before saving.
@@ -3158,13 +3225,20 @@
             HOLIDAY:   { label: 'Holiday',   short: 'H', icon: 'ph-confetti',         cls: 'text-sky-800 bg-sky-50 border-sky-300',        cell: 'bg-sky-50 text-sky-700' },
             EMERGENCY: { label: 'Emergency', short: 'E', icon: 'ph-first-aid',        cls: 'text-rose-800 bg-rose-50 border-rose-300',     cell: 'bg-rose-50 text-rose-700' }
         };
-        const dayOffKind = k => DAY_OFF_KINDS[k] || { label: String(k || 'Off'), short: String(k || 'O').charAt(0), icon: 'ph-calendar-x', cls: 'text-slate-700 bg-slate-50 border-slate-300', cell: 'bg-slate-100 text-slate-600' };
+        // RESET is not a day off the Leave screen can mark: it is the synthetic entry dayOffOf gives to every day before an employee's score start (see SCORE RESET)
+        const dayOffKind = k => DAY_OFF_KINDS[k] || (k === 'RESET' ? { label: 'Score reset', short: 'R', icon: 'ph-arrow-counter-clockwise', cls: 'text-indigo-800 bg-indigo-50 border-indigo-300', cell: 'bg-indigo-50 text-indigo-700' } : { label: String(k || 'Off'), short: String(k || 'O').charAt(0), icon: 'ph-calendar-x', cls: 'text-slate-700 bg-slate-50 border-slate-300', cell: 'bg-slate-100 text-slate-600' });
         let dayOffMap = new Map();
         function setDayOffs(list) {
             appState.dayOffs = list; dayOffMap = new Map();
             list.forEach(o => { if (o.active !== false) dayOffMap.set(o.empCode + '|' + o.date, o); });
         }
-        function dayOffOf(code, ds) { return (code && dayOffMap.get(code + '|' + ds)) || dayOffMap.get('*|' + ds) || null; }
+        function dayOffOf(code, ds) {
+            const o = (code && dayOffMap.get(code + '|' + ds)) || dayOffMap.get('*|' + ds) || null;
+            if (o) return o;
+            // Score reset (Score Master): every day before the employee's start date is neutral, like a day off
+            const r = code && scoreResetOf_(code);
+            return (r && ds < r.startDate) ? r.obj : null;
+        }
         const dayOffTitle = o => dayOffKind(o.kind).label + (o.empCode === '*' ? ' (all employees)' : '') + (o.remarks ? ': ' + o.remarks : '') + (o.by ? ' · marked by ' + o.by : '');
         // A short coloured tag, e.g. on a sheet's day header or a card.
         function dayOffTag(o, extra) {
@@ -3991,7 +4065,7 @@
             const tot = { Present: 0, Absent: 0, Leave: 0, Holiday: 0, Emergency: 0 }; let mins = 0; const rows = [];
             for (let d = dim; d >= 1; d--) {
                 const ds = `${y}-${mm}-${String(d).padStart(2, '0')}`; if (ds > td) continue;
-                const di = doneOf(ins, ds), dout = doneOf(outs, ds), off = dayOffOf(code, ds);
+                const di = doneOf(ins, ds), dout = doneOf(outs, ds), off0 = dayOffOf(code, ds), off = off0 && off0.kind === 'RESET' ? null : off0;   // a reset day is not an attendance status
                 const tIn = di.length ? di[0].at : null, tOut = dout.length ? dout[dout.length - 1].at : null;
                 const expected = ins.some(t => occursOn(t, ds, recOf(t, ds)));
                 let status;
@@ -5388,6 +5462,117 @@
             const tp = await tmRpc('tm_cl_template_list', {}); if (tp.ok) CL.templates = tp.data.rows || [];
             document.getElementById('clFmtId').value = res.data.id; clFmtListRender(); clIssFormatFill();
             showCustomModal('Format saved', 'Letters already issued are not changed; the new text is used for letters issued from now on.');
+        };
+
+        /* ════════════════════════════════════════════════════════════════
+           SCORE RESET (sql/TM_SCORE_RESET_MIGRATION.sql, Score Master › Reset score)
+           One employee, several or ALL ('*') start fresh from a date: every day BEFORE it is
+           neutral in the score, exactly like a Leave / Holiday day. That is done in ONE place,
+           dayOffOf(), which returns a synthetic {kind:'RESET'} entry for such a day, so every
+           screen (score card, month sheet, pending list, PC follow-up, alarms) agrees at once.
+           Nothing is deleted; a reset can be cancelled. Every login reads the active resets that
+           concern it (srBoot: own + '*' for an employee); the Score Master card lists and edits
+           them (srLoad). The latest start date of an employee (own rows and '*' rows) is in force.
+           Not covered: fms-tasks.js (Task Tracker / Scorecard / Plan vs Actual) has its own day-off
+           map and does not know about resets yet.
+           ════════════════════════════════════════════════════════════════ */
+        const SR = { emps: [], rows: [], employees: [], err: '', sig: null };
+        const srCache = new Map();
+        function scoreResetOf_(code) {
+            if (srCache.has(code)) return srCache.get(code);
+            let best = null;
+            (appState.scoreResets || []).forEach(r => {
+                if (r.active === false || (r.empCode !== '*' && r.empCode !== code)) return;
+                if (!best || r.startDate > best.startDate) best = r;
+            });
+            const out = best ? { startDate: best.startDate, obj: { kind: 'RESET', empCode: best.empCode, active: true, by: best.by, at: best.at,
+                remarks: 'Score started fresh from ' + fmtDay(best.startDate) + (best.remarks ? ' · ' + best.remarks : '') } } : null;
+            srCache.set(code, out); return out;
+        }
+        // Every login: the active resets that concern it. A changed list repaints the open screen.
+        async function srBoot() {
+            const res = await tmRpc('tm_score_reset_list', { p_all: false });
+            if (!res.ok) return;   // no migration = no resets
+            const rows = res.data.rows || [], sig = JSON.stringify(rows.map(r => [r.id, r.empCode, r.startDate, r.active]));
+            if (sig === SR.sig) return;
+            SR.sig = sig; appState.scoreResets = rows; srCache.clear();
+            if (appState.dbReady) rerenderScreen();
+        }
+        // Score Master card
+        window.srLoad = async function() {
+            const box = document.getElementById('srList'); if (!box) return;
+            const res = await tmRpc('tm_score_reset_list', { p_all: true });
+            if (!res.ok) { SR.rows = []; SR.err = res.error === 'NO_MIGRATION' ? 'The server is not ready for Score Reset yet: run sql/TM_SCORE_RESET_MIGRATION.sql in the Supabase SQL Editor.' : (TM_ERR[res.error] || esc(res.error)); }
+            else { SR.rows = res.data.rows || []; SR.employees = res.data.employees || []; SR.err = ''; }
+            srFillSel(); srChips(); srRender();
+        };
+        window.initScoreReset = function() {
+            const st = document.getElementById('srStart'); if (st && !st.value) st.value = todayStr();
+            srLoad();
+        };
+        function srFillSel() {
+            const sel = document.getElementById('srEmpSel'); if (!sel) return;
+            const list = (SR.employees.length ? SR.employees : appState.employees.map(e => ({ empCode: e.empCode, empName: e.empName }))).slice().sort((a, b) => a.empName.localeCompare(b.empName));
+            sel.innerHTML = '<option value="">-- Select employee --</option><option value="*">ALL EMPLOYEES</option>'
+                + list.map(e => `<option value="${esc(e.empCode)}">${esc(e.empName)} (${esc(e.empCode)})</option>`).join('');
+        }
+        window.srAddEmp = function() {
+            const sel = document.getElementById('srEmpSel'), v = sel.value; if (!v) return;
+            // everyone covers everyone: it replaces the names (and a name added after it is pointless)
+            if (v === '*') SR.emps = ['*']; else if (!SR.emps.includes('*') && !SR.emps.includes(v)) SR.emps.push(v);
+            sel.value = ''; srChips();
+        };
+        window.srDropEmp = function(code) { SR.emps = SR.emps.filter(x => x !== code); srChips(); };
+        function srChips() {
+            const box = document.getElementById('srEmpChips'); if (!box) return;
+            box.innerHTML = SR.emps.length ? SR.emps.map(c => `<span class="inline-flex items-center gap-1.5 text-[11px] font-extrabold px-2 py-1 rounded-lg border ${c === '*' ? 'text-indigo-800 bg-indigo-50 border-indigo-300' : 'text-slate-700 bg-white border-slate-300'}">${c === '*' ? 'ALL EMPLOYEES' : esc(empName(c)) + ' <span class="text-slate-400">' + esc(c) + '</span>'}<button onclick="srDropEmp('${esc(c)}')" class="text-slate-400 hover:text-red-600" title="Remove">✕</button></span>`).join('')
+                : '<span class="text-[11px] font-bold text-slate-400">No employee added yet.</span>';
+            srPreview();
+        }
+        window.srPreview = function() {
+            const el = document.getElementById('srPreview'); if (!el) return;
+            const d = (document.getElementById('srStart') || {}).value, who = SR.emps.includes('*') ? 'all employees' : SR.emps.length + ' employee(s)';
+            el.innerHTML = d ? `<b class="text-slate-700">${who}</b> start fresh from <b class="text-slate-700">${esc(fmtDay(d))}</b>. Earlier days stop counting; ${d <= todayStr() ? 'that day and later count as usual.' : '<span class="text-amber-700">that date is in the future, so today does not count either.</span>'}` : 'Choose the start date.';
+        };
+        window.srSave = async function() {
+            const d = document.getElementById('srStart').value, rm = document.getElementById('srRemarks').value.trim(), bad = [];
+            if (!SR.emps.length) bad.push(TM_ERR.NO_EMPLOYEE);
+            if (!d) bad.push('Choose the date they start fresh from.');
+            if (rm.length < 3) bad.push(TM_ERR.REMARK_REQUIRED);
+            if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
+            const who = SR.emps.includes('*') ? 'ALL employees' : SR.emps.map(empName).join(', ');
+            if (!confirm(`Reset the score of ${who}?\n\nEvery day before ${fmtDay(d)} stops counting. Nothing is deleted and you can cancel the reset later.`)) return;
+            setBusy('srSaveBtn', true);
+            const res = await tmRpc('tm_score_reset_save', { p_emps: SR.emps, p_start: d, p_remarks: rm });
+            setBusy('srSaveBtn', false, 'Reset score');
+            if (!res.ok) return tmErr(res, 'Not saved');
+            SR.emps = []; document.getElementById('srRemarks').value = '';
+            SR.sig = null; await srBoot(); await srLoad();
+            showCustomModal('Score reset', `${res.data.saved} reset${res.data.saved === 1 ? '' : 's'} saved. The score now counts from <b>${esc(fmtDay(d))}</b>.`);
+        };
+        window.srRender = function() {
+            const box = document.getElementById('srList'); if (!box) return;
+            if (SR.err) { box.innerHTML = `<div class="p-4 rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-800">${SR.err}</div>`; return; }
+            const showC = document.getElementById('srShowCancelled').checked, rows = SR.rows.filter(r => showC || r.active);
+            if (!rows.length) { box.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">No reset made yet. Everyone is scored from the first day.</div>'; return; }
+            // the one in force per employee is the latest active start date
+            const force = new Map(); SR.rows.forEach(r => { if (r.active && (!force.has(r.empCode) || r.startDate > force.get(r.empCode).startDate)) force.set(r.empCode, r); });
+            box.innerHTML = '<div class="space-y-2">' + rows.map(r => {
+                const who = r.empCode === '*' ? 'ALL EMPLOYEES' : esc(empName(r.empCode)) + ' <span class="text-xs text-slate-400">' + esc(r.empCode) + '</span>';
+                const live = r.active && force.get(r.empCode) === r;
+                return `<div class="rounded-2xl border ${r.active ? 'border-slate-200 bg-white' : 'border-slate-200 bg-slate-50 opacity-80'} p-4"><div class="flex flex-wrap items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800">${who}</div>`
+                    + `<div class="flex flex-wrap items-center gap-1.5 mt-1 text-[11px] font-extrabold text-slate-600">Fresh from ${esc(fmtDay(r.startDate))}${live ? '<span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border text-emerald-700 bg-emerald-50 border-emerald-200">In force</span>' : ''}${r.active ? '' : '<span class="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded border text-slate-500 bg-slate-100 border-slate-300">Cancelled</span>'}</div></div>`
+                    + (r.active ? `<button onclick="srCancel(${r.id})" class="text-[11px] font-extrabold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Cancel reset</button>` : '') + '</div>'
+                    + (r.remarks ? `<div class="text-xs font-bold text-slate-600 mt-2 italic">“${esc(r.remarks)}”</div>` : '')
+                    + `<div class="text-[10px] font-bold text-slate-400 mt-2">Made by ${esc(r.by || '-')} · ${esc(fmtWhen(new Date(r.at)))}${r.active ? '' : ' · cancelled by ' + esc(r.cancelledBy || '-') + (r.cancelReason ? ': “' + esc(r.cancelReason) + '”' : '')}</div></div>`;
+            }).join('') + '</div>';
+        };
+        window.srCancel = async function(id) {
+            const why = prompt('Cancel this reset? The days before its start date count in the score again.\n\nReason:'); if (why == null) return;
+            if (why.trim().length < 3) return showCustomModal('Reason needed', TM_ERR.REMARK_REQUIRED, true);
+            const res = await tmRpc('tm_score_reset_cancel', { p_ids: [id], p_reason: why.trim() });
+            if (!res.ok) return tmErr(res, 'Could not cancel');
+            SR.sig = null; await srBoot(); await srLoad();
         };
 
         /* ── Month navigation (My Month View + MD sheet) ─────────────────

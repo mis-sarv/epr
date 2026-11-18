@@ -1,0 +1,81 @@
+/* ios-ui.css — the shared iOS motion / touch / speed layer for every external app page
+   (task_manager, complaint, launcher, packing, order-form, hr-payroll, unloader, issuer, ...).
+   Companion: ios-ui.js. mobile.html has its own, fuller pair (mobile-ios.css / mobile-ios.js).
+
+   DESIGN RULE: this file must never change a page's layout or colours, only how it MOVES and TOUCHES:
+   every rule that could clash with an app's own styles is written with :where() (zero specificity), so the
+   app's own CSS always wins; the rest are animations, scroll behaviour and accessibility. Per-page "skins"
+   (rounded cards, frosted bars) sit in the page's own style block, not here.
+   Remove the <link> and the <script> from a page and it is exactly as it was. */
+
+:root {
+    --ios-spring: cubic-bezier(0.32, 0.72, 0, 1);
+    --ios-bounce: cubic-bezier(0.175, 0.885, 0.32, 1.12);
+    --ios-blur: saturate(180%) blur(18px);
+}
+
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; text-rendering: optimizeLegibility; }
+* { -webkit-tap-highlight-color: transparent; }
+
+/* No 300 ms tap delay, no double-tap zoom on controls */
+:where(button, [role="button"], a, summary, label, select, input, textarea, [onclick], .cursor-pointer) { touch-action: manipulation; }
+
+/* Boxes the user types in are 16px on touch screens, so iOS never zooms the page when one gets focus */
+@media (pointer: coarse) {
+    :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea) { font-size: max(16px, 1em); }
+}
+
+/* ── Press feedback: a control gives a little when touched ─────────────── */
+:where(button, [role="button"], summary) { transition: transform 0.18s var(--ios-spring), opacity 0.2s; }
+:where(button:not(:disabled), [role="button"], summary):active { transform: scale(0.97); }
+:where(button:disabled) { cursor: not-allowed; }
+
+/* ── Scrolling: momentum on touch, no scroll chaining into the page behind ── */
+:where(.overflow-y-auto, .overflow-auto, .overflow-x-auto, .overflow-y-scroll, .excel-table-container) {
+    -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+}
+html { scroll-behavior: auto; }
+
+/* ── Lazy drawing: the browser skips layout + paint of off-screen items ──── */
+.ios-cv { content-visibility: auto; contain-intrinsic-size: auto 120px; }
+.ios-cv-sm { content-visibility: auto; contain-intrinsic-size: auto 64px; }
+
+/* ── Screens that swap by toggling .hidden slide / fade in ───────────────── */
+@keyframes iosScreenIn { from { opacity: 0; transform: translateX(22px); } to { opacity: 1; transform: none; } }
+@keyframes iosRise { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+@keyframes iosFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes iosPop { from { opacity: 0; transform: scale(0.93) translateY(10px); } to { opacity: 1; transform: none; } }
+@keyframes iosSheet { from { transform: translateY(100%); } to { transform: none; } }
+@keyframes iosShimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0 50%; } }
+@keyframes iosSpin { to { transform: rotate(360deg); } }
+
+/* overlays / dialogs that ios-ui.js sees appearing (React or class-toggled) */
+.ios-overlay-in { animation: iosFade 0.26s ease-out both; }
+.ios-pop-in { animation: iosPop 0.38s var(--ios-spring) both; }
+.ios-sheet-in { animation: iosSheet 0.46s var(--ios-spring) both; }
+.ios-rise-in { animation: iosRise 0.42s var(--ios-spring) both; animation-delay: var(--ios-d, 0ms); }
+
+/* ── Skeleton rows while the first data loads ───────────────────────────── */
+.ios-skel { border-radius: 14px; padding: 14px 16px; margin: 0 0 10px; background: #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); }
+.ios-skel > i { display: block; height: 12px; border-radius: 6px; margin-bottom: 10px; background: linear-gradient(90deg, #ececf0 25%, #f6f6f9 37%, #ececf0 63%); background-size: 400% 100%; animation: iosShimmer 1.3s ease infinite; }
+.ios-skel > i:nth-child(1) { width: 46%; height: 14px; } .ios-skel > i:nth-child(2) { width: 84%; } .ios-skel > i:nth-child(3) { width: 62%; margin-bottom: 0; }
+
+/* ── Pull to refresh (IosUI.pullToRefresh) ──────────────────────────────── */
+.ios-ptr { position: absolute; left: 0; right: 0; top: 0; height: 0; z-index: 4; display: flex; align-items: center; justify-content: center; overflow: hidden; pointer-events: none; color: #8e8e93; font: 700 12px/1 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; }
+.ios-ptr .ios-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(60, 60, 67, 0.2); border-top-color: #0a84ff; margin-right: 8px; }
+.ios-ptr.go .ios-spin { animation: iosSpin 0.7s linear infinite; }
+
+/* ── Sliding thumb under the active tab (IosUI.slider) ──────────────────── */
+.ios-thumb { position: absolute; z-index: 0; top: 0; left: 0; width: 0; height: 100%; border-radius: inherit; pointer-events: none; opacity: 0; transform: translateX(0);
+    transition: transform 0.42s var(--ios-spring), width 0.42s var(--ios-spring), opacity 0.2s; }
+.ios-thumb.on { opacity: 1; }
+
+/* ── Keyboard users keep a clear focus ring; touch users never see it ───── */
+:where(:focus-visible) { outline: 3px solid rgba(10, 132, 255, 0.5); outline-offset: 2px; }
+:where(:focus:not(:focus-visible)) { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+@media print { .ios-ptr, .ios-thumb, .ios-skel { display: none !important; } }

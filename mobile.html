@@ -294,6 +294,16 @@
                                 style="border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-size:0.72rem; font-weight:800; border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap;"
                                 title="Add a new supplier to the Supplier Master. It appears in every vendor dropdown below immediately.">Add Supplier</button>
                     </div>
+                    <!-- PO Type for the whole PR in one go (each line below can still differ). Frozen with the sheet once quotes are saved. -->
+                    <div style="display:flex; align-items:center; gap:8px; margin:0 0 8px;">
+                        <label for="viPoTypeAll" style="font-size:0.74rem; font-weight:800; color:#1e40af; white-space:nowrap; margin:0;">PO Type (all items)</label>
+                        <select id="viPoTypeAll" class="form-select" style="flex:1; min-width:0; font-size:0.78rem; padding:7px 8px;">
+                            <option value="">-- Same type for every item --</option>
+                            <option value="STANDARD">Standard PO</option>
+                            <option value="FOC">FOC PO</option>
+                            <option value="OPEN">OPEN PO</option>
+                        </select>
+                    </div>
                     <div style="font-size:0.68rem; color:#6b7280; margin-bottom:6px;">
                         The contact number is shown in the vendor dropdown. The item column and header are frozen; scroll sideways to see the other vendors.
                     </div>
@@ -886,7 +896,7 @@
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261118c"></script>
+<script src="mobile-core.js?v=20261118d"></script>
 <!-- Sliding tabs, sheet animations, swipe to close, pull to refresh, lazy PDF libraries. Optional: the app works without it. -->
 <script src="mobile-ios.js?v=20261118b"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->

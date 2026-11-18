@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script>
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin>
+
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -408,6 +409,9 @@
   #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 600; background: #1f2937; color: #fff; padding: 10px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 700; max-width: 92%; text-align: center; display: none; box-shadow: 0 6px 20px rgba(0,0,0,.25); }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
+<!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<script src="ios-ui.js?v=20261118a" defer></script>
 </head>
 <body>
 <header class="top">

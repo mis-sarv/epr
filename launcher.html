@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script>
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -426,6 +427,14 @@ a.app .tile svg, .photo .prev svg{display:block;}
 .logo{background:#2563eb; box-shadow:none;}
 button.go{background:#2563eb; box-shadow:none;}
 button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
+<!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<style>
+/* iOS touch: a tile gives a little under the finger */
+a.app{transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .2s,background .2s;}
+a.app:active{transform:scale(.965);}
+</style>
+<script src="ios-ui.js?v=20261118a" defer></script>
 </head>
 <body>
 <div class="wrap">
@@ -1815,6 +1824,10 @@ async function fillEmpDatalist(){
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
+<script>
+/* Warm the first apps while the launcher sits idle, so a tap opens them from cache. Light: HTML only, 6 pages at most. */
+(function(){var g=document.getElementById("appGrid");if(!g)return;var t=0;new MutationObserver(function(){clearTimeout(t);t=setTimeout(function(){if(!window.IosUI)return;IosUI.idle(function(){[].slice.call(g.querySelectorAll("a.app[href]")).slice(0,6).forEach(function(a){IosUI.prefetch(a.href);});},4000);},600);}).observe(g,{childList:true});})();
+</script>
 <script src="cursor-glow.js"></script>
 </body>
 </html>
