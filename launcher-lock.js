@@ -85,7 +85,13 @@
   }
 
   /* ══ LOCK ══════════════════════════════════════════════════════════════ */
-  var LOCKED = false, lockEl = null, pin = '', busy = false, fails = 0, waitUntil = 0, lockTick = null;
+  var LOCKED = false, lockEl = null, pin = '', busy = false, waitUntil = 0, lockTick = null, autoT = null;
+  /* Wrong PINs here add up with the login card's (same key as launcher-login.js): the n-th wrong try in a row = n minutes
+     of waiting (at most 60), until a PIN is right. Kept per user on this device, so a reload does not clear it. */
+  var K_FAIL = 'sarv_login_fail:', AUTO_MS = 600;
+  function fget() { try { var x = JSON.parse(store(K_FAIL + (me().id || '')) || 'null'); return x && typeof x === 'object' ? x : { n: 0, until: 0 }; } catch (e) { return { n: 0, until: 0 }; } }
+  function fset(x) { store(K_FAIL + (me().id || ''), x ? JSON.stringify(x) : null); }
+  function fmtLeft(sec) { var m = Math.floor(sec / 60); return m + ':' + pad2(sec % 60); }
 
   function doLock() {
     if (!loggedIn() || LOCKED) return;
@@ -106,14 +112,13 @@
       + '<div class="ls-lic">' + IC.lockBig + '</div><div class="ls-ltime" id="lsLTime"></div><div class="ls-ldate" id="lsLDate"></div>'
       + '<div class="ls-lwho"><div class="ls-lav">' + esc(nm.trim().charAt(0).toUpperCase() || '?') + '</div><div><b>' + esc(nm) + '</b><span>Locked · enter your PIN</span></div></div>'
       + '<div class="ls-dots" id="lsDots"></div><div class="ls-lerr" id="lsErr" aria-live="polite"></div>'
-      + '<div class="ls-pad">' + keys + '</div><button class="ls-go" id="lsGo">Unlock</button></div>';
+      + '<div class="ls-pad">' + keys + '</div></div>';
     document.body.appendChild(el); lockEl = el;
     var av = el.querySelector('.ls-lav'), mine = document.getElementById('avatar');
     if (mine && mine.querySelector('img')) av.innerHTML = '<img src="' + esc(mine.querySelector('img').src) + '" alt="" style="width:100%;height:100%;object-fit:cover">';
     el.addEventListener('click', function (e) {
       var k = e.target.closest('[data-k]'); if (k) return addDigit(k.getAttribute('data-k'));
       if (e.target.closest('#lsDel')) return delDigit();
-      if (e.target.closest('#lsGo')) return trySubmit();
       if (e.target.closest('#lsOut')) return logoutFromLock();
     });
     paintDots(); tickLock(); clearInterval(lockTick); lockTick = setInterval(function () { tickLock(); }, 1000);
@@ -123,11 +128,9 @@
     if (!lockEl) return;
     var d = new Date(), c = clock(d);
     $('lsLTime').textContent = c.hm; $('lsLDate').textContent = longDate(d);
-    if (waitUntil) {
-      var left = Math.ceil((waitUntil - Date.now()) / 1000);
-      if (left > 0) { setErr('Try again in ' + (left >= 60 ? Math.floor(left / 60) + ' min ' + (left % 60) + ' s' : left + ' s')); setKeys(false); }
-      else { waitUntil = 0; setErr(''); setKeys(true); }
-    }
+    var until = fget().until || 0, left = Math.ceil((until - Date.now()) / 1000);
+    if (left > 0) { waitUntil = until; setErr('Incorrect PIN. Try again in ' + fmtLeft(left)); setKeys(false); }
+    else if (waitUntil) { waitUntil = 0; setErr(''); setKeys(true); pin = ''; paintDots(); }
     // the session ended behind the lock (logged out elsewhere, expired): nothing left to protect, let the login show
     if (!store(K_TOKEN)) removeLock(true);
   }
@@ -141,15 +144,18 @@
     var del = $('lsDel'); if (del) del.style.visibility = pin.length ? 'visible' : 'hidden';
     var go = $('lsGo'); if (go) go.classList.toggle('on', pin.length >= 4 && !busy);
   }
-  function addDigit(c) { if (busy || waitUntil > Date.now() || pin.length >= 8) return; pin += c; setErr(''); paintDots(); buzz(6); }
-  function delDigit() { if (busy || !pin.length) return; pin = pin.slice(0, -1); paintDots(); buzz(4); }
-  function trySubmit() { if (busy || pin.length < 4 || waitUntil > Date.now()) return; submitPin(); }
+  // The PIN opens the lock by itself AUTO_MS after the last digit (4+ digits): a 4-digit PIN unlocks at once, a longer one is not
+  // tried at 4 digits (that would count as a wrong try). Enter on a keyboard submits straight away.
+  function armAuto() { clearTimeout(autoT); if (pin.length >= 4) autoT = setTimeout(trySubmit, AUTO_MS); }
+  function addDigit(c) { if (busy || waitUntil > Date.now() || pin.length >= 8) return; pin += c; setErr(''); paintDots(); buzz(6); armAuto(); }
+  function delDigit() { if (busy || !pin.length) return; pin = pin.slice(0, -1); paintDots(); buzz(4); armAuto(); }
+  function trySubmit() { clearTimeout(autoT); if (!lockEl || busy || pin.length < 4 || waitUntil > Date.now()) return; submitPin(); }
   async function submitPin() {
     busy = true; var p = pin; paintDots('chk'); setErr('');
     var r = await checkPin(p);
     busy = false;
     if (r === 'ok') {
-      fails = 0; waitUntil = 0; pin = ''; paintDots();
+      fset(null); waitUntil = 0; pin = ''; paintDots();
       lockEl.classList.add('ok'); buzz(12);
       setTimeout(function () { removeLock(false); }, 520);
       return;
@@ -157,9 +163,10 @@
     if (r === 'nosession') { toast('Your session has ended. Please log in again.'); removeLock(true); setTimeout(function () { location.reload(); }, 600); return; }
     pin = '';
     if (r === 'net') { paintDots(); setErr('No connection: the PIN could not be checked.'); return; }
-    fails++; buzz([14, 50, 14]); paintDots('bad'); var d = $('lsDots'); if (d) { d.classList.add('shake'); }
-    setErr('Incorrect PIN');
-    if (fails >= 5) { waitUntil = Date.now() + Math.min(600, 30 * Math.pow(2, fails - 5)) * 1000; fails = Math.min(fails, 9); setKeys(false); tickLock(); }
+    var n = (fget().n || 0) + 1, mins = Math.min(60, n);
+    fset({ n: n, until: Date.now() + mins * 60000 }); waitUntil = Date.now() + mins * 60000;
+    buzz([14, 50, 14]); paintDots('bad'); var d = $('lsDots'); if (d) { d.classList.add('shake'); }
+    setKeys(false); tickLock();       // the timer starts: "Incorrect PIN. Try again in 1:00"
     setTimeout(function () { if (!busy && !pin.length) paintDots(); }, 650);
   }
   /* The PIN is only CHECKED, never used to log in again. */
@@ -190,7 +197,7 @@
     } catch (e) { return 'net'; }
   }
   function removeLock(noAnim) {
-    store(K_LOCK, null); LOCKED = false; clearInterval(lockTick); lockTick = null; pin = ''; fails = fails || 0;
+    store(K_LOCK, null); LOCKED = false; clearInterval(lockTick); lockTick = null; pin = ''; clearTimeout(autoT);
     var el = lockEl; lockEl = null; document.body.style.overflow = '';
     if (el) { if (noAnim) el.remove(); else { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; setTimeout(function () { el.remove(); }, 320); } }
     armIdle();

@@ -434,6 +434,8 @@ button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
 <!-- Lock screen + Screen Saver (launcher-lock.js): iOS look sheets, lock screen and saver -->
 <link rel="stylesheet" href="launcher-lock.css?v=20261118a">
+<!-- Login helpers (launcher-login.js): cursor flow, auto login, wrong-PIN wait, Help popup -->
+<link rel="stylesheet" href="launcher-login.css?v=20261118a">
 <style>
 /* iOS touch: a tile gives a little under the finger */
 a.app{transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .2s,background .2s;}
@@ -1098,6 +1100,8 @@ async function doLogin(){
   const u = (list.length === 1) ? list[0] : list.find(x => String(x.id) === pickedId);
   if (!u){ syncPicks(list); return showErr('This code has ' + list.length + ' accounts. Choose your account above.'); }
   if (!pin) return showErr('Please enter your PIN');
+  // launcher-login.js: an account that is waiting after wrong PINs is not tried (1 min, 2 min, 3 min ... per wrong try)
+  if (window.LoginGuard && LoginGuard.blocked(u)) return;
 
   const roles = (u.roles && u.roles.length ? u.roles : [u.role]).filter(Boolean);
   const apps  = allowedAppKeys(roles, u.app_access);
@@ -1114,6 +1118,8 @@ async function doLogin(){
     if (r.error) throw r.error;
     const d = r.data || {};
     if (!d.success){
+      // Wrong PIN: alert popup, OK clears the PIN and returns the cursor to it; the wait grows with every wrong try
+      if (d.error === 'PIN_INVALID' && window.LoginGuard){ LoginGuard.wrong(u); return; }
       const m = {
         USER_NOT_FOUND:'User not found. Please refresh the page.',
         USER_INACTIVE:'This account is inactive. Please contact the Admin.',
@@ -1122,6 +1128,7 @@ async function doLogin(){
       };
       return showErr(m[d.error] || ('Login failed: ' + esc(d.error || 'unknown')));
     }
+    if (window.LoginGuard) LoginGuard.ok(u);
     await finishLogin(d, pin);
   }catch(e){
     /* Log the full error object to the console as well. The screen shows a
@@ -1831,6 +1838,7 @@ async function fillEmpDatalist(){
 </script>
 <!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
 <script src="launcher-lock.js?v=20261118a"></script>
+<script src="launcher-login.js?v=20261118a"></script>
 <!-- The splash that prevents the login screen from flashing does not run on
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->

@@ -1,0 +1,55 @@
+/* ════════════════════════════════════════════════════════════════════
+   LAUNCHER LOGIN: help button + popups + wrong-PIN wait note
+   Used by launcher.html with launcher-login.js. Prefixed lg- (no clashes).
+   Popups are iOS style alerts (spring pop, frosted scrim) and follow the page
+   theme like the Lock / Screen Saver sheets (launcher-lock.css tokens).
+   ════════════════════════════════════════════════════════════════════ */
+#loginCard{position:relative;}
+.lg-help{
+  position:absolute; top:14px; right:14px; width:38px; height:38px; border-radius:50%;
+  display:flex; align-items:center; justify-content:center; cursor:pointer; padding:0;
+  background:var(--surface-2); border:1px solid var(--hairline-s); color:var(--txt-2);
+  transition:transform .25s cubic-bezier(.32,.72,0,1), color .2s, border-color .2s, background .2s;
+}
+.lg-help:hover{color:var(--txt); border-color:var(--accent);}
+.lg-help:active{transform:scale(.9);}
+.lg-help svg{display:block;}
+
+/* wrong-PIN wait note under the PIN box */
+.lg-wait{display:none; margin:8px 2px 0; padding:9px 12px; border-radius:12px; font-size:12.5px; font-weight:600; line-height:1.4;
+  background:rgba(255,159,10,.14); border:1px solid rgba(255,159,10,.4); color:#ffb340;}
+.lg-wait.on{display:block;}
+@media (prefers-color-scheme:light){ :root:not([data-theme="dark"]) .lg-wait{color:#b45309;} }
+:root[data-theme="light"] .lg-wait{color:#b45309;}
+#pinBox.lg-locked{opacity:.55;}
+
+/* iOS style alert */
+.lg-scrim{position:fixed; inset:0; z-index:9800; display:flex; align-items:center; justify-content:center; padding:24px;
+  background:rgba(0,0,0,.45); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px); opacity:0; transition:opacity .25s ease;}
+.lg-scrim.in{opacity:1;}
+.lg-alert{
+  width:min(100%,300px); border-radius:18px; overflow:hidden; text-align:center;
+  background:var(--ls-bg,#1c1c1e); color:var(--ls-txt,#fff); font-family:var(--ls-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","Helvetica Neue",system-ui,sans-serif);
+  -webkit-font-smoothing:antialiased; box-shadow:0 20px 60px rgba(0,0,0,.5);
+  transform:scale(1.14); opacity:0; transition:transform .32s cubic-bezier(.2,.9,.3,1.05), opacity .22s ease;
+}
+.lg-scrim.in .lg-alert{transform:scale(1); opacity:1;}
+.lg-alert .tx{padding:22px 18px 16px;}
+.lg-alert .ic{width:46px; height:46px; margin:0 auto 10px; border-radius:50%; display:flex; align-items:center; justify-content:center;}
+.lg-alert .ic.err{background:rgba(255,69,58,.16); color:var(--ls-red,#ff453a);}
+.lg-alert .ic.help{background:rgba(10,132,255,.16); color:var(--ls-blue,#0a84ff);}
+.lg-alert b{display:block; font-size:17px; font-weight:650; letter-spacing:-.005em; margin-bottom:6px;}
+.lg-alert p{margin:0; font-size:13.5px; line-height:1.45; color:var(--ls-txt2,rgba(235,235,245,.62));}
+.lg-alert p strong{color:var(--ls-txt,#fff); font-weight:650;}
+.lg-call{display:flex; align-items:center; justify-content:center; gap:10px; margin:16px 0 0; height:50px; border-radius:14px; text-decoration:none;
+  background:var(--ls-green,#30d158); color:#fff; font:650 17px var(--ls-font,system-ui); letter-spacing:.01em; transition:transform .2s cubic-bezier(.32,.72,0,1), filter .2s;}
+.lg-call:active{transform:scale(.97); filter:brightness(.92);}
+.lg-call svg{flex:0 0 auto;}
+.lg-open{margin-top:10px; font-size:12px; font-weight:650;}
+.lg-open.on{color:var(--ls-green,#30d158);}
+.lg-open.off{color:#ff9f0a;}
+.lg-alert .bt{display:flex; border-top:1px solid var(--ls-sep,rgba(84,84,88,.65));}
+.lg-alert .bt button{flex:1; height:46px; background:none; border:0; color:var(--ls-blue,#0a84ff); font:600 17px var(--ls-font,system-ui); cursor:pointer;}
+.lg-alert .bt button:active{background:var(--ls-fill2,rgba(120,120,128,.2));}
+
+@media (prefers-reduced-motion:reduce){ .lg-scrim,.lg-alert,.lg-help,.lg-call{transition-duration:.01s;} }
