@@ -3,8 +3,15 @@
 <head><script src="offline-sync.js"></script>
     <meta charset="UTF-8">
 <script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="theme-color" content="#0a84ff">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>Mobile Approvals Panel</title>
+
+    <!-- Open the connection to the database while the page is still loading (saves one round trip on the first read) -->
+    <link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin>
+    <link rel="dns-prefetch" href="https://jdlzgjgxxjkjejkhvdij.supabase.co">
 
     <!-- Prevents the login screen from flashing: with a token in localStorage the overlay is never painted. Must run first. -->
     <script src="sso-preboot.js"></script>
@@ -16,13 +23,13 @@
     <script>if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps.");</script>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
-    <!-- Stamps the GM / MD signature onto the Store Inward / Outward PDF STORE.html already uploaded. -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+    <!-- jsPDF, jsPDF-autotable and pdf-lib (~0.9 MB) are NOT loaded here any more: mobile-ios.js loads them a moment after the first
+         screen, or at once when a PDF is first needed (window.mobLoadPdfLibs, awaited before every PDF is built in mobile-core.js). -->
 
     <!-- Build stamp: see the note on mobile-core.js at the end of the page. -->
     <link rel="stylesheet" href="mobile.css?v=20261031d">
+    <!-- iOS look, motion and phone / tablet / desktop fit. Loaded after mobile.css; only overrides it. -->
+    <link rel="stylesheet" href="mobile-ios.css?v=20261118b">
 </head>
 <body>
 
@@ -879,7 +886,9 @@
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261118a"></script>
+<script src="mobile-core.js?v=20261118c"></script>
+<!-- Sliding tabs, sheet animations, swipe to close, pull to refresh, lazy PDF libraries. Optional: the app works without it. -->
+<script src="mobile-ios.js?v=20261118b"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->

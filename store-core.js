@@ -6437,7 +6437,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -7466,6 +7466,10 @@ const SARV_TABS=[
      cloud mirror in yarn_unloading_drafts). OFF for everyone, Admin included,
      until switched ON here or under Users › Apps. Same default (no roles) as
      launcher.html's APPS entry. */
+  /* SARV INDIA GATE-2 (gate_2.html, opens from the launcher): gate register for Inward, Outward, Visitor,
+     Dharam Kanta and Hydra / JCB. Party, vehicle, PO / PR and "whom to meet" lists come from the ERP
+     (GATE2_MASTERS_MIGRATION.sql, gate_masters checks this same key). Admin only until switched on. */
+  {key:'HOME_GATE2',label:'Gate-2 (Security Gate)',hint:'Gate register: Inward, Outward, Visitor, Dharam Kanta, Hydra / JCB (gate_2.html, opens from the launcher). Party / vehicle / PO lists come from the ERP',def:['ADMIN_PIN']},
   {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
   /* emission-live.html: the boiler stack's online monitoring readings (PM,
      NOx, SO2) from the Access Surveykshan portal, live, with today's trend and
@@ -8251,9 +8255,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8469,7 +8473,7 @@ function sarvUserAppsHtml_(u){
 const SARV_ACCESS_AREAS=[
   {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
   {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
-  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_YARN_UNLOADING']},
+  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE2']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
