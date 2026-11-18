@@ -7505,6 +7505,11 @@ const SARV_TABS=[
      employee (or for all), on which their score stays neutral
      (TM_DAY_OFF_MIGRATION.sql; its default there is the same Admin + MD). */
   {key:'TM_DAY_OFF',label:'Leave / Holiday',hint:'Mark Leave / Holiday / Emergency days for employees; on those days their task score is neither gained nor lost',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  /* Home button "Consult Letters": build letter formats, issue them to all or chosen
+     employees, see who signed and open every signed PDF (TM_CONSULT_LETTER_MIGRATION.sql,
+     tm_cl_can_; its default there is the same Admin + MD). Every employee reads and
+     signs their own letters under My Tasks without any right. */
+  {key:'TM_CONSULT_LETTER',label:'Consult Letters',hint:'Make letter formats, issue them to all / chosen employees, track signatures and open the signed PDFs',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   /* hr-payroll.html's rights. As with TM_*, the SERVER checks the same key on
      every read and write (hr_perms_ in HR_PAYROLL_MIGRATION.sql), and these
      defaults MUST match hr_perm_default_() there. Any HR right also gives
@@ -14603,6 +14608,14 @@ const SARV_DROPDOWNS=[
    def:['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']},
   {key:'erp_pkRowTo',label:'TO (per Sr. row)',hint:'Packing slip form › TO of every Sr. row (saved on the row, shown in the Slip Labour Expense sheet)',where:'packing.html slip form (TO column)',
    def:['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']},
+  /* Verify › Save Rates: expense sub-rows under every quality row (Labour / Freight charges ...).
+     The label list is free; the calculation list is matched by its words in packing.html
+     (pkExpBasisCode_: "Qty", "Pcs", "Wt" / "Kg" / "Weight", "Without") and by the server
+     (save_slip_charges), so keep those words in any renamed entry. PACKING_SLIP_EXPENSES_MIGRATION.sql. */
+  {key:'erp_pkExpenseLabel',label:'Expense Labels (Verify)',hint:'Verify › quality row › + Expense: the name of an expense sub-row (printed on the Triplicate Copy)',where:'packing.html Verify tab',
+   def:['LABOUR CHARGES','FREIGHT CHARGES','PACKING CHARGES','LOADING CHARGES','UNLOADING CHARGES','INSURANCE CHARGES','OTHER CHARGES']},
+  {key:'erp_pkExpenseBasis',label:'Expense Amount Calculation (Verify)',hint:'Verify › expense sub-row › Amount Calculation. Qty = packs of the quality row, Pcs, Total Wt (Kg), or Without Basis = a flat amount. The words Qty / Pcs / Wt-Kg / Without decide the maths: keep them if you rename an entry.',where:'packing.html Verify tab',
+   def:['QTY','PCS','TOTAL WT (KG)','WITHOUT BASIS']},
   {key:'erp_pkTransportType',label:'Transport Type',hint:'New Order › Transport Type / Deliver Destination (every Transport Type is paired with every Deliver Destination)',where:'packing.html New Order · Order edit',
    def:['TEMPO','TRUCK','BY HAND','OTHER']},
   {key:'erp_pkDeliverDest',label:'Deliver Destination',hint:'New Order › Transport Type / Deliver Destination',where:'packing.html New Order · Order edit',

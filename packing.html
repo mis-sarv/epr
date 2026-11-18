@@ -1792,7 +1792,12 @@ var PK_DD = {
     erp_pkSupervisor:        [],
     // Packing slip form › TO of every Sr. row. (SHIFT BY / LOAD BY offer the
     // Loading Contractor names above: slPersons_.)
-    erp_pkRowTo:         ['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3']
+    erp_pkRowTo:         ['GROUND FLOOR','FIRST FLOOR','SECOND FLOOR','GODOWN 3'],
+    // Verify › Save Rates › expense sub-rows under a quality row. Labels are free;
+    // the calculation names are read by their words (pkExpBasisCode_) and by the
+    // server (save_slip_charges): Qty / Pcs / Wt-Kg-Weight / Without.
+    erp_pkExpenseLabel:  ['LABOUR CHARGES','FREIGHT CHARGES','PACKING CHARGES','LOADING CHARGES','UNLOADING CHARGES','INSURANCE CHARGES','OTHER CHARGES'],
+    erp_pkExpenseBasis:  ['QTY','PCS','TOTAL WT (KG)','WITHOUT BASIS']
 };
 // Names saved on earlier slips: the fallback list while a key above is empty
 var pkPastNames = { contractor: [], supervisor: [] };
@@ -1802,6 +1807,7 @@ var PACK_ITEM_TYPES, DISPATCH_FROM_OPTIONS, TRANSPORT_TYPES, DELIVER_DESTS, REVI
 var SHIFT_TYPES, SHIFT_FROM_OPTIONS, SHIFT_TO_OPTIONS, SHIFT_ITEM_TYPES, SHIFTING_BY_OPTIONS;
 var LOADING_CONTRACTORS, SUPERVISORS;   // Dropdown Master lists; empty = use pkPastNames
 var ROW_TO_OPTIONS;                     // slip Sr. row TO
+var EXPENSE_LABELS, EXPENSE_BASES;      // Verify expense sub-rows: label / amount calculation
 
 function pkDdSet_(rowsByKey) {
     var L = function(k) {
@@ -1822,6 +1828,8 @@ function pkDdSet_(rowsByKey) {
     LOADING_CONTRACTORS   = L('erp_pkLoadingContractor');
     SUPERVISORS           = L('erp_pkSupervisor');
     ROW_TO_OPTIONS        = L('erp_pkRowTo');
+    EXPENSE_LABELS        = L('erp_pkExpenseLabel');
+    EXPENSE_BASES         = L('erp_pkExpenseBasis');
 }
 
 // list + the record's current value when it is not in the list
@@ -2621,6 +2629,8 @@ async function dispatchPost(payload) {
                 Object.assign(update, { pre_invoice_status: payload.status, pre_invoice_verifier: fullName, pre_invoice_datetime: new Date().toISOString(), pre_invoice_remark: payload.remark });
             } else if (stage === 'afterInvoice') {
                 Object.assign(update, { actual_invoice_no: payload.actualInvoiceNo, chalan_no: payload.chalanNo, kanta_weight: payload.kantaWeight, after_invoice_verifier: fullName, after_invoice_datetime: new Date().toISOString(), after_invoice_remark: payload.remark });
+                // Kanta Photo (PACKING_KANTA_PHOTO_MIGRATION.sql): the columns are written only when a photo was just attached, so a database without them still saves the rest
+                if (payload.kantaPhoto) Object.assign(update, { kanta_photo: payload.kantaPhoto, kanta_photo_at: new Date().toISOString(), kanta_photo_by: fullName });
             } else if (stage === 'receiving') {
                 Object.assign(update, { receiving_status: payload.status, receiving_verifier: fullName, receiving_datetime: new Date().toISOString(), receiving_remark: payload.remark });
             } else if (stage === 'saveRates') {
@@ -2928,6 +2938,23 @@ async function dispatchGet(params) {
                     .forEach(function(r) { (labMap[r.slip_id] = labMap[r.slip_id] || []).push(r); });
             } catch (labErr) { console.warn('Slip labour columns not readable (run PACKING_SLIP_LABOUR_MIGRATION.sql):', labErr.message || labErr); }
 
+            // Saved expense sub-rows (Labour / Freight charges ...) of these slips:
+            // PACKING_SLIP_EXPENSES_MIGRATION.sql. Before it the table does not
+            // exist: ignored, no row has expenses.
+            var exMap = {};
+            for (var exi = 0; exi < pageIds.length; exi += 150) {
+                try {
+                    var { data: exRows, error: exErr } = await supabaseClient.from('slip_expenses')
+                        .select('slip_id, quality, item_type, seq, label, basis, rate, gst_pct')
+                        .in('slip_id', pageIds.slice(exi, exi + 150)).order('seq', { ascending: true });
+                    if (exErr) { console.warn('slip_expenses not readable (run PACKING_SLIP_EXPENSES_MIGRATION.sql):', exErr.message); break; }
+                    (exRows || []).forEach(function(x) {
+                        var xk = x.slip_id + '||' + String(x.quality || '').toUpperCase() + '||' + String(x.item_type || '').toUpperCase();
+                        (exMap[xk] = exMap[xk] || []).push({ label: x.label, basis: x.basis, rate: Number(x.rate) || 0, gst: Number(x.gst_pct) || 0 });
+                    });
+                } catch (exEx) { console.warn('slip_expenses read failed:', exEx.message); break; }
+            }
+
             var pageSlips = pageSlipRows.map(function(s){
                 // Build typeBreakdown from v_slip_breakdown_rows
                 var rows = bdMap[s.id] || [];
@@ -2961,7 +2988,9 @@ async function dispatchGet(params) {
                         basis:  ch && (ch.basis === 'kg' || ch.basis === 'pcs') ? ch.basis : null,
                         gst:    ch ? Number(ch.gst_pct) || 0 : null,
                         other:  ch ? Number(ch.other_charges) || 0 : null,
-                        amount: ch ? Number(ch.amount) || 0 : null
+                        amount: ch ? Number(ch.amount) || 0 : null,
+                        // saved expense sub-rows [{label, basis, rate, gst}]
+                        expenses: exMap[s.id + '||' + String(b.quality || '').toUpperCase() + '||' + String(b.item_type || '').toUpperCase()] || []
                     };
                 });
 
@@ -2989,6 +3018,7 @@ async function dispatchGet(params) {
                         actualInvoiceNo: s.actual_invoice_no || '',
                         chalanNo: s.chalan_no || '',
                         kantaWeight: s.kanta_weight || '',
+                        kantaPhoto: s.kanta_photo || '',
                         afterInvoiceVerifier: s.after_invoice_verifier || '',
                         afterInvoiceDateTime: s.after_invoice_datetime || '',
                         afterInvoiceRemark: s.after_invoice_remark || '',
@@ -3521,9 +3551,11 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
                 '<div style="font-size:9px;font-weight:700;color:#334155;">Taxable ' + formatInr(billing.taxable) +
                     ' + GST ' + formatInr(billing.gstAmt) +
                     // Other Charges may be negative (a deduction): print it as "− Other ₹ x"
-                    (Number(billing.other) < 0 ? ' − Other ' + formatInr(-billing.other) : ' + Other ' + formatInr(billing.other)) + '</div>' +
+                    (Number(billing.other) < 0 ? ' − Other ' + formatInr(-billing.other) : ' + Other ' + formatInr(billing.other)) +
+                    // Expense sub-rows (Labour / Freight charges ...), already inside the Total Amount
+                    (Number(billing.expenseTotal) ? (Number(billing.expenseTotal) < 0 ? ' − Expenses ' + formatInr(-billing.expenseTotal) : ' + Expenses ' + formatInr(billing.expenseTotal)) : '') + '</div>' +
             '</div>' +
-        '</div>' + slLabourSummaryHtml_(billing.labour, true) + remarksHtml;
+        '</div>' + slExpenseHtml_(billing.expenses) + slLabourSummaryHtml_(billing.labour, true) + remarksHtml;
     }
 
     // ── Prepared By signature ──
@@ -3710,6 +3742,60 @@ async function slipRateLinesFromDb_(slipId) {
             return (seen[k] = true);
         }).map(function(r) { return { quality: r.quality, type: r.item_type, rate: r.rate, basis: null }; });
     } catch (e2) { return []; }
+}
+
+// The expense sub-rows of a slip with their saved working, for the Triplicate when
+// it is rebuilt without Save Rates. Never throws: none / no table = [].
+async function slipExpensesFromDb_(slipId) {
+    try {
+        var { data, error } = await supabaseClient.from('slip_expenses')
+            .select('quality, item_type, seq, label, basis, basis_qty, rate, taxable, gst_pct, gst_amt, amount')
+            .eq('slip_id', slipId).order('quality', { ascending: true }).order('item_type', { ascending: true }).order('seq', { ascending: true });
+        if (error) { console.warn('slip_expenses read for the Triplicate failed:', error.message); return []; }
+        return (data || []).map(function(x) {
+            return { quality: x.quality, type: x.item_type, seq: x.seq, label: x.label, basis: x.basis, basisQty: Number(x.basis_qty) || 0,
+                     rate: Number(x.rate) || 0, taxable: Number(x.taxable) || 0, gst: Number(x.gst_pct) || 0, gstAmt: Number(x.gst_amt) || 0, amount: Number(x.amount) || 0 };
+        });
+    } catch (e) { console.warn('slip_expenses read for the Triplicate failed:', e.message || e); return []; }
+}
+
+// The EXPENSES table of the Triplicate (and nothing when the slip has none):
+// quality-wise, one line per expense sub-row with its Amount Calculation, basis
+// qty, rate, GST % and amount, then the expenses total. Plain black borders like
+// the rest of the slip PDF.
+function slExpenseHtml_(exps) {
+    if (!Array.isArray(exps) || !exps.length) return '';
+    var c = 'padding:1px 4px;border:1px solid #000;font-size:9px;';
+    var th = function(t, al) { return '<th style="' + c + 'text-align:' + (al || 'center') + ';">' + t + '</th>'; };
+    var td = function(t, al, bold, extra) { return '<td style="' + c + 'text-align:' + (al || 'center') + ';' + (bold ? 'font-weight:800;' : '') + (extra || '') + '">' + t + '</td>'; };
+    var n = function(v) { return String(Math.round((Number(v) || 0) * 100) / 100); };
+    // one block per quality + type, in the order the rows came
+    var groups = [], idx = {};
+    exps.forEach(function(x) {
+        var k = String(x.quality || '').toUpperCase() + '||' + String(x.type || '').toUpperCase();
+        if (idx[k] === undefined) { idx[k] = groups.length; groups.push({ quality: x.quality, type: x.type, rows: [] }); }
+        groups[idx[k]].rows.push(x);
+    });
+    var total = 0, rows = '';
+    groups.forEach(function(g) {
+        g.rows.forEach(function(x, i) {
+            total += Number(x.amount) || 0;
+            var code = x.basis, calc = PK_EXP_BASIS_NAMES[code] || '';
+            rows += '<tr>' + (i === 0 ? '<td rowspan="' + g.rows.length + '" style="' + c + 'text-align:left;font-weight:800;">' + escapeHtmlJs(g.quality || '') + '<br><span style="font-weight:600;">' + escapeHtmlJs(g.type || '') + '</span></td>' : '') +
+                td(escapeHtmlJs(x.label || ''), 'left', true) +
+                td(code === 'none' ? 'Without Basis' : escapeHtmlJs(calc)) +
+                td(code === 'none' ? '-' : n(x.basisQty)) +
+                td(code === 'none' ? formatInr(x.rate) : n(x.rate), 'right') +
+                td(Number(x.gst) > 0 ? n(x.gst) + '%' : '-') +
+                td(formatInr(x.amount), 'right', true) + '</tr>';
+        });
+    });
+    return '<div style="margin-top:3px;"><table style="width:100%;border-collapse:collapse;">' +
+        '<tr><th colspan="7" style="' + c + 'text-align:left;background:#ddd;">EXPENSES / CHARGES (QUALITY-WISE)</th></tr>' +
+        '<tr style="background:#f2f2f2;">' + th('Quality', 'left') + th('Expense', 'left') + th('Amount Calculation') + th('Basis Qty') + th('Rate / Amount') + th('GST') + th('Amount') + '</tr>' +
+        rows +
+        '<tr style="background:#eee;font-weight:800;"><td colspan="6" style="' + c + 'text-align:right;">TOTAL EXPENSES</td>' + td(formatInr(total), 'right', true) + '</tr>' +
+        '</table></div>';
 }
 
 // Default GST % for a row that has none saved yet: 5 % on a Billed slip (the
@@ -5508,20 +5594,36 @@ function slLabourSummaryHtml_(lab, forPdf) {
     var b = forPdf ? '1px solid #000' : '1px solid #cbd5e1';
     var c = 'padding:' + (forPdf ? '1px 4px' : '3px 6px') + ';border:' + b + ';font-size:' + (forPdf ? '9px' : '11px') + ';';
     var n = function(v) { return String(Math.round((Number(v) || 0) * 100) / 100); };
-    var th = function(t, al) { return '<th style="' + c + 'text-align:' + (al || 'center') + ';">' + t + '</th>'; };
-    var td = function(t, al, bold) { return '<td style="' + c + 'text-align:' + (al || 'center') + ';' + (bold ? 'font-weight:800;' : '') + '">' + t + '</td>'; };
+    /* The Shift group (columns 1-3: Packs / Qty / Amount) and the Load group (4-6)
+       each sit inside a BOLD border (left / right edge on every row, top edge on the
+       group heading, bottom edge on the TOTAL row). border-collapse lets the 2px
+       edge win over the 1px grid lines. ci = column index 0..7. */
+    var BB = forPdf ? '2px solid #000' : '2px solid #1e293b';
+    var edge = function(ci, isTot) {
+        var s = '';
+        if (ci === 1 || ci === 4) s += 'border-left:' + BB + ';';
+        if (ci === 3 || ci === 6) s += 'border-right:' + BB + ';';
+        if (isTot && ci >= 1 && ci <= 6) s += 'border-bottom:' + BB + ';';
+        return s;
+    };
+    var th = function(t, al, ci) { return '<th style="' + c + 'text-align:' + (al || 'center') + ';' + edge(ci) + '">' + t + '</th>'; };
+    var td = function(t, al, bold, ci, isTot) { return '<td style="' + c + 'text-align:' + (al || 'center') + ';' + (bold ? 'font-weight:800;' : '') + edge(ci, isTot) + '">' + t + '</td>'; };
     var row = function(p, isTot) {
         return '<tr' + (isTot ? ' style="background:' + (forPdf ? '#eee' : '#dbeafe') + ';font-weight:800;"' : '') + '>' +
-            td(isTot ? 'TOTAL' : escapeHtmlJs(p.name), 'left', true) +
-            td(p.shiftPacks) + td(n(p.shiftQty)) + td(formatInr(p.shiftAmt), 'right') +
-            td(p.loadPacks) + td(n(p.loadQty)) + td(formatInr(p.loadAmt), 'right') +
-            td(formatInr(p.amount), 'right', true) + '</tr>';
+            td(isTot ? 'TOTAL' : escapeHtmlJs(p.name), 'left', true, 0, isTot) +
+            td(p.shiftPacks, 'center', false, 1, isTot) + td(n(p.shiftQty), 'center', false, 2, isTot) + td(formatInr(p.shiftAmt), 'right', false, 3, isTot) +
+            td(p.loadPacks, 'center', false, 4, isTot) + td(n(p.loadQty), 'center', false, 5, isTot) + td(formatInr(p.loadAmt), 'right', false, 6, isTot) +
+            td(formatInr(p.amount), 'right', true, 7, isTot) + '</tr>';
     };
+    var grpTh = function(t, bg) { return '<th colspan="3" style="' + c + 'text-align:center;letter-spacing:.5px;background:' + bg + ';border-top:' + BB + ';border-left:' + BB + ';border-right:' + BB + ';">' + t + '</th>'; };
     return '<div style="' + (forPdf ? 'margin-top:3px;' : 'overflow-x:auto;margin:6px 0;') + '"' + (forPdf ? '' : ' onclick="event.stopPropagation()"') + '>' +
         '<table style="width:100%;border-collapse:collapse;' + (forPdf ? '' : 'min-width:560px;') + '">' +
         '<tr><th colspan="8" style="' + c + 'text-align:left;background:' + (forPdf ? '#ddd' : '#e0e7ff') + ';">LOADING CONTRACTOR LABOUR (SHIFT BY / LOAD BY)</th></tr>' +
-        '<tr style="background:' + (forPdf ? '#f2f2f2' : '#e2e8f0') + ';">' + th('Person', 'left') + th('Shift Packs (Sr.)') + th('Shift Qty') + th('Shift Amount') +
-            th('Load Packs (Sr.)') + th('Load Qty') + th('Load Amount') + th('Total Amount') + '</tr>' +
+        '<tr style="background:' + (forPdf ? '#f2f2f2' : '#e2e8f0') + ';"><th rowspan="2" style="' + c + 'text-align:left;">Person</th>' +
+            grpTh('SHIFT BY', forPdf ? '#e4e4e4' : '#cbd5e1') + grpTh('LOAD BY', forPdf ? '#e4e4e4' : '#cbd5e1') +
+            '<th rowspan="2" style="' + c + 'text-align:center;">Total Amount</th></tr>' +
+        '<tr style="background:' + (forPdf ? '#f2f2f2' : '#e2e8f0') + ';">' + th('Shift Packs (Sr.)', 'center', 1) + th('Shift Qty', 'center', 2) + th('Shift Amount', 'center', 3) +
+            th('Load Packs (Sr.)', 'center', 4) + th('Load Qty', 'center', 5) + th('Load Amount', 'center', 6) + '</tr>' +
         lab.persons.map(function(p) { return row(p, false); }).join('') +
         row(lab.total, true) + '</table>' +
         (lab.missing ? '<div style="font-size:' + (forPdf ? '8px' : '10px') + ';color:#b91c1c;font-weight:700;margin-top:2px;">' + lab.missing +
@@ -7124,7 +7226,7 @@ function renderVerificationList(resetPage) {
             // Wide table (13 columns): it scrolls sideways inside the card on a
             // phone instead of squeezing every input.
             breakdownHtml = '<div style="overflow-x:auto;-webkit-overflow-scrolling:touch;margin:6px 0;" onclick="event.stopPropagation()">' +
-                '<table class="rate-table" data-key="' + key + '" style="width:100%;min-width:840px;border-collapse:collapse;">' +
+                '<table class="rate-table" data-key="' + key + '" style="width:100%;min-width:930px;border-collapse:collapse;">' +
                 '<tr style="background:#e2e8f0;">' +
                 '<th style="' + tds + 'text-align:left;">Quality</th>' +
                 '<th style="' + tds + 'text-align:left;">Pack Type</th>' +
@@ -7138,7 +7240,8 @@ function renderVerificationList(resetPage) {
                 '<th style="' + tds + 'text-align:center;width:60px;">Disc%</th>' +
                 '<th style="' + tds + 'text-align:center;width:55px;">GST%</th>' +
                 '<th style="' + tds + 'text-align:center;width:80px;">Other Charges Amt</th>' +
-                '<th style="' + tds + 'text-align:right;width:95px;">Amount</th></tr>';
+                '<th style="' + tds + 'text-align:right;width:95px;">Amount</th>' +
+                '<th style="' + tds + 'text-align:center;width:84px;">Expense</th></tr>';
             var sumQty = 0, sumPcs = 0, sumWt = 0, sumAmt = 0;
             tbKeys.forEach(function (k) {
                 var item = tb[k];
@@ -7154,7 +7257,7 @@ function renderVerificationList(resetPage) {
                     existingRates[k] ? existingRates[k].rate : 0,
                     existingRates[k] ? existingRates[k].discount : 0, gstVal, otherVal, basisVal);
                 sumAmt += la.amount;
-                breakdownHtml += '<tr class="rate-row" data-type="' + escapeHtmlJs(item.type || '') + '" data-pcs="' + (Number(item.pcs) || 0) + '" data-wt="' + (Number(item.wt) || 0) + '">' +
+                breakdownHtml += '<tr class="rate-row" data-qkey="' + escapeHtmlJs(k) + '" data-type="' + escapeHtmlJs(item.type || '') + '" data-pcs="' + (Number(item.pcs) || 0) + '" data-wt="' + (Number(item.wt) || 0) + '" data-qty="' + (Number(item.packCount) || 0) + '">' +
                     '<td style="' + tds + 'font-weight:600;">' + escapeHtmlJs(item.quality || '') + '</td>' +
                     '<td style="' + tds + '">' + escapeHtmlJs(item.type || '') + '</td>' +
                     '<td style="' + tds + 'text-align:center;">' + stdPcs + '</td>' +
@@ -7190,7 +7293,18 @@ function renderVerificationList(resetPage) {
                     'onclick="event.stopPropagation()" oninput="recalcSlipAmounts(this)" style="width:70px;' + inpCss + '">' +
                     '</td>' +
                     '<td class="amt-cell" style="' + tds + 'text-align:right;font-weight:700;white-space:nowrap;" title="' +
-                    (la.basis === 'pcs' ? 'Pcs' : 'Weight (Kg)') + ' × Rate − Disc% + GST% + Other Charges">' + formatInr(la.amount) + '</td></tr>';
+                    (la.basis === 'pcs' ? 'Pcs' : 'Weight (Kg)') + ' × Rate − Disc% + GST% + Other Charges">' + formatInr(la.amount) + '</td>' +
+                    // Last column of the quality row: adds an expense sub-row under it
+                    '<td style="' + tds + 'text-align:center;white-space:nowrap;">' +
+                    '<button type="button" class="exp-add-btn" onclick="event.stopPropagation();addExpenseRow(this)" data-key="' + key + '" data-qkey="' + escapeHtmlJs(k) + '" ' +
+                    'title="Add an expense (Labour, Freight ...) for this quality" ' +
+                    'style="background:#eef2ff;color:#4338ca;border:1px dashed #818cf8;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700;cursor:pointer;">' +
+                    ((item.expenses || []).length ? '+ Expense (' + item.expenses.length + ')' : '+ Expense') + '</button></td></tr>';
+                // Its saved expense sub-rows, right under it
+                (item.expenses || []).forEach(function(ex) {
+                    breakdownHtml += pkExpRowHtml_(key, k, ex);
+                    sumAmt += slipExpenseAmount(ex.basis, item.packCount, item.pcs, item.wt, ex.rate, ex.gst).amount;
+                });
             });
             breakdownHtml += '<tr style="background:#fef3c7;font-weight:700;">' +
                 '<td colspan="2" style="' + tds + '">TOTAL</td>' +
@@ -7200,9 +7314,9 @@ function renderVerificationList(resetPage) {
                 '<td style="' + tds + 'text-align:right;">' + (Number(sumWt)||0).toFixed(2) + '</td>' +
                 '<td colspan="6" style="' + tds + 'text-align:right;font-size:10px;color:#475569;">' +
                     (s.totalAmount !== null ? 'Saved: ' + formatInr(s.totalAmount) : 'Not saved yet') + '</td>' +
-                '<td class="amt-total" style="' + tds + 'text-align:right;white-space:nowrap;">' + formatInr(sumAmt) + '</td></tr>';
+                '<td class="amt-total" style="' + tds + 'text-align:right;white-space:nowrap;">' + formatInr(sumAmt) + '</td><td style="' + tds + '"></td></tr>';
             breakdownHtml += '</table></div>';
-            breakdownHtml += '<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Amount = Weight (Kg) or Pcs (as per Bill Basis) × Rate − Disc % + GST % + Other Charges. Bill Basis is Weight by default, Pcs for PVC; change it per quality if needed. Other Charges may be a minus amount (deduction). Save Rates also rebuilds the 1-page Triplicate PDF.</div>';
+            breakdownHtml += '<div style="font-size:10px;color:#64748b;margin:2px 0 4px;">Amount = Weight (Kg) or Pcs (as per Bill Basis) × Rate − Disc % + GST % + Other Charges. Bill Basis is Weight by default, Pcs for PVC; change it per quality if needed. Other Charges may be a minus amount (deduction). <b>+ Add expense</b> under a quality adds a labelled charge (Labour, Freight ...) on Qty / Pcs / Total Wt or a flat amount; it is added to the TOTAL and printed on the Triplicate. Save Rates also rebuilds the 1-page Triplicate PDF.</div>';
             // Loading Contractor labour of this slip (Shift By / Load By), also
             // printed on the Triplicate that Save Rates builds
             breakdownHtml += slLabourSummaryHtml_(s.labour, false);
@@ -7263,15 +7377,19 @@ function renderVerificationList(resetPage) {
                 '<div class="verify-stage">' +
                     '<div class="verify-stage-title">After Invoice ' + afterBadge + '</div>' +
                     (st.actualInvoiceNo
-                        ? '<div class="verify-detail">Invoice: <strong>' + escapeHtmlJs(st.actualInvoiceNo) + '</strong> | Chalan: <strong>' + escapeHtmlJs(st.chalanNo || '-') + '</strong>' + (st.kantaWeight ? ' | Kanta Wt: <strong>' + escapeHtmlJs(st.kantaWeight) + ' Kg</strong>' : '') + ' | By ' + escapeHtmlJs(st.afterInvoiceVerifier) + '</div>'
+                        ? '<div class="verify-detail">Invoice: <strong>' + escapeHtmlJs(st.actualInvoiceNo) + '</strong> | Chalan: <strong>' + escapeHtmlJs(st.chalanNo || '-') + '</strong>' + (st.kantaWeight ? ' | Kanta Wt: <strong>' + escapeHtmlJs(st.kantaWeight) + ' Kg</strong>' : '') + (st.kantaPhoto ? ' | Kanta Photo: <strong>attached</strong>' : '') + ' | By ' + escapeHtmlJs(st.afterInvoiceVerifier) + '</div>'
                         : '') +
                     // The invoice box is above Save Rates; only a slip with no
                     // quality rows (no Save Rates) keeps it here.
                     (tbKeys.length > 0 ? '' : invNoInputHtml) +
                     '<input type="text" id="after-chalan-' + key + '" placeholder="Gate Pass No." value="' + escapeHtmlJs(st.chalanNo || '') + '" onclick="event.stopPropagation()">' +
-                    '<input type="number" id="after-kanta-' + key + '" placeholder="Kanta Weight (Kg)" step="0.01" value="' + escapeHtmlJs(st.kantaWeight || '') + '" onclick="event.stopPropagation()" style="text-transform:none;">' +
+                    // Kanta Weight, and to its right the Kanta Photo (attach / replace / open the saved one)
+                    '<div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;" onclick="event.stopPropagation()">' +
+                        '<input type="number" id="after-kanta-' + key + '" placeholder="Kanta Weight (Kg)" step="0.01" value="' + escapeHtmlJs(st.kantaWeight || '') + '" onclick="event.stopPropagation()" style="text-transform:none;flex:1;min-width:0;margin-bottom:0;">' +
+                        '<div id="kanta-ctl-' + key + '" style="display:flex;align-items:center;gap:5px;flex-shrink:0;">' + kantaCtlHtml_(key, st.kantaPhoto) + '</div>' +
+                    '</div>' +
                     '<textarea id="after-remark-' + key + '" placeholder="Remark (optional)" rows="1" onclick="event.stopPropagation()"></textarea>' +
-                    '<button type="button" onclick="event.stopPropagation();submitVerificationStage(\'' + key + '\',\'afterInvoice\')">Save Invoice No, Chalan &amp; Kanta Wt</button>' +
+                    '<button type="button" onclick="event.stopPropagation();submitVerificationStage(\'' + key + '\',\'afterInvoice\')">Save Invoice No, Chalan, Kanta Wt &amp; Photo</button>' +
                 '</div>' +
             '</div>';
 
@@ -8075,6 +8193,59 @@ async function sendSlipWhatsApp(packingType, slipNo, btnEl) {
     window.open(waUrl, '_blank');
 }
 
+// ── Kanta Photo (Verify › After Invoice; PACKING_KANTA_PHOTO_MIGRATION.sql) ──
+// An attachment next to the Kanta Weight box. Picking a photo only holds it
+// (_kantaPick); "Save Invoice No, Chalan, Kanta Wt & Photo" uploads it to the
+// PRIVATE bucket kanta-photos (path <slip id>/kanta_<time>.jpg, shrunk to
+// 1600 px like the vehicle documents) and writes packing_slips.kanta_photo.
+// The saved photo is opened here again with a 5-minute signed URL; a replaced
+// photo stays in the bucket, the slip points to the newest.
+var KANTA_BUCKET = 'kanta-photos';
+var _kantaPick = {};   // slip key → the photo picked, not saved yet
+function kantaCtlHtml_(key, savedPath) {
+    var btn = 'width:auto;margin:0;padding:6px 9px;font-size:11px;font-weight:700;border-radius:6px;cursor:pointer;white-space:nowrap;';
+    var pick = _kantaPick[key], k = escapeHtmlJs(key);
+    var html = '<label style="' + btn + 'display:inline-block;background:#fff;color:#4338ca;border:1.5px dashed #818cf8;" title="Attach the Kanta (weighbridge) photo">' +
+        (pick || savedPath ? 'Replace Photo' : 'Attach Kanta Photo') +
+        '<input type="file" accept="image/*" style="display:none" onclick="event.stopPropagation()" onchange="kantaPick(\'' + k + '\', this)"></label>';
+    if (pick) {
+        html += '<span style="font-size:11px;font-weight:700;color:#15803d;white-space:nowrap;" title="' + escapeHtmlJs(pick.name || '') + '">✓ selected</span>' +
+            '<button type="button" onclick="event.stopPropagation();kantaClear(\'' + k + '\')" title="Remove the selected photo" style="' + btn + 'background:none;color:#dc2626;border:none;padding:4px 6px;">✕</button>';
+    }
+    if (savedPath) {
+        html += '<button type="button" onclick="event.stopPropagation();kantaView(\'' + escapeHtmlJs(savedPath) + '\')" title="Open the saved Kanta photo" style="' + btn + 'background:#4338ca;color:#fff;border:none;">View Photo</button>';
+    }
+    return html;
+}
+function kantaRefreshCtl_(key) {
+    var box = document.getElementById('kanta-ctl-' + key); if (!box) return;
+    var s = verifySlips.find(function(x) { return x.packingType + '__' + x.slipNo === key; });
+    box.innerHTML = kantaCtlHtml_(key, s && s.status ? s.status.kantaPhoto : '');
+}
+function kantaPick(key, input) {
+    var f = input.files && input.files[0]; input.value = '';
+    if (!f) return;
+    if (!/^image\//.test(f.type)) { alert('Choose a photo (JPG / PNG).'); return; }
+    if (f.size > 20 * 1024 * 1024) { alert('This photo is larger than 20 MB.'); return; }
+    _kantaPick[key] = f;
+    kantaRefreshCtl_(key);
+}
+function kantaClear(key) { delete _kantaPick[key]; kantaRefreshCtl_(key); }
+async function kantaView(path) {
+    try {
+        var { data, error } = await supabaseClient.storage.from(KANTA_BUCKET).createSignedUrl(path, 300);
+        if (error) throw error;
+        window.open(data.signedUrl, '_blank');
+    } catch (e) { alert('The Kanta photo could not be opened: ' + (e.message || e)); }
+}
+async function kantaUpload_(slip, file) {
+    var blob = await vehShrinkImage(file);
+    var path = (slip && slip.id ? slip.id : 'slip') + '/kanta_' + Date.now() + '.jpg';
+    var up = await supabaseClient.storage.from(KANTA_BUCKET).upload(path, blob, { contentType: 'image/jpeg', upsert: false });
+    if (up.error) throw new Error(up.error.message);
+    return path;
+}
+
 async function submitVerificationStage(key, stage) {
     var parts       = key.split('__');
     var packingType = parts[0];
@@ -8102,11 +8273,25 @@ async function submitVerificationStage(key, stage) {
         return;
     }
 
+    // Kanta Photo picked: upload it first; if that fails nothing is saved, so the
+    // invoice no is never saved without the photo the user attached.
+    if (_kantaPick[key]) {
+        try {
+            showToast('Uploading the Kanta photo...');
+            payload.kantaPhoto = await kantaUpload_(slip, _kantaPick[key]);
+        } catch (upErr) {
+            alert('The Kanta photo could not be uploaded, so nothing was saved:\n\n' + (upErr.message || upErr) +
+                (/bucket|not found|polic|permission|row-level/i.test(upErr.message || '') ? '\n\nAdmin: run sql/PACKING_KANTA_PHOTO_MIGRATION.sql in the Supabase SQL Editor.' : ''));
+            return;
+        }
+    }
+
     try {
         var result = await gasPost(payload);
         if (handleAuthFailure(result)) return;
 
         if (result.success) {
+            delete _kantaPick[key];
             // The Triplicate prints the Actual Invoice No, so once rates are
             // saved it is rebuilt with the new number (not when queued offline:
             // the DB does not have the number yet).
@@ -8122,7 +8307,8 @@ async function submitVerificationStage(key, stage) {
             }
             fetchVerificationSlips();
         } else {
-            alert('Update failed: ' + (result.error || 'Unknown error'));
+            alert('Update failed: ' + (result.error || 'Unknown error') +
+                (payload.kantaPhoto && /kanta_photo/i.test(result.error || '') ? '\n\nAdmin: run sql/PACKING_KANTA_PHOTO_MIGRATION.sql in the Supabase SQL Editor.' : ''));
         }
     } catch (err) {
         alert('Network error. Please check the internet connection.');
@@ -10176,12 +10362,78 @@ async function handleDeleteOrder(orderNo) {
 // builds the Triplicate from the figures on screen, with a warning.
 // ══════════════════════════════════════
 
+// ── Expense sub-rows (Verify › quality row › + Add expense) ──
+// Label = Dropdown Master erp_pkExpenseLabel; Amount Calculation =
+// erp_pkExpenseBasis, read by its words: Qty (packs of the quality row), Pcs,
+// Wt / Kg / Weight (Total Wt), Without (a flat amount). Same maths as the
+// server (save_slip_charges, PACKING_SLIP_EXPENSES_MIGRATION.sql): Taxable =
+// basis qty × Rate (Without Basis: the amount itself), + GST % of it.
+function pkExpBasisCode_(txt) {
+    var t = String(txt || '').toUpperCase();
+    if (/WITHOUT|NO BASIS|FLAT|FIXED/.test(t)) return 'none';
+    if (/QTY|QUANTITY|PACK/.test(t)) return 'qty';
+    if (/PCS|PIECE/.test(t)) return 'pcs';
+    if (/\bWT\b|KG|WEIGHT/.test(t)) return 'kg';
+    return '';
+}
+var PK_EXP_BASIS_NAMES = { qty: 'Qty', pcs: 'Pcs', kg: 'Total Wt (Kg)', none: 'Without Basis' };
+// The Dropdown Master entry that stands for a basis code (the default name if the list has none)
+function pkExpBasisText_(code) {
+    var hit = (EXPENSE_BASES || []).filter(function(b) { return pkExpBasisCode_(b) === code; })[0];
+    return hit || PK_EXP_BASIS_NAMES[code] || '';
+}
+function slipExpenseAmount(basis, qty, pcs, wt, rate, gst) {
+    var bq = basis === 'qty' ? (Number(qty) || 0) : basis === 'pcs' ? (Number(pcs) || 0) : basis === 'kg' ? (Number(wt) || 0) : 1;
+    var taxable = basis === 'none' ? slipRound2(rate) : slipRound2(bq * (Number(rate) || 0));
+    var gstAmt = slipRound2(taxable * (Number(gst) || 0) / 100);
+    return { basisQty: bq, taxable: taxable, gstAmt: gstAmt, amount: slipRound2(taxable + gstAmt) };
+}
+// One expense sub-row of a quality row (e = {label, basis, rate, gst}; empty = a new row)
+function pkExpRowHtml_(key, qKey, e) {
+    e = e || {};
+    var tds = 'padding:2px 6px;border:1px solid #cbd5e1;font-size:11px;background:#f8fafc;';
+    var inp = 'padding:3px;text-align:center;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;';
+    var sel = 'padding:3px;border:1px solid #cbd5e1;border-radius:4px;font-size:11px;max-width:100%;';
+    var code = e.basis || pkExpBasisCode_((EXPENSE_BASES || [])[0]) || 'qty';
+    var labelOpts = '<option value="">Select expense…</option>' + pkOptionsHtml(EXPENSE_LABELS, e.label || '');
+    var basisOpts = pkOptionsHtml((EXPENSE_BASES || []).length ? EXPENSE_BASES : Object.keys(PK_EXP_BASIS_NAMES).map(pkExpBasisText_), pkExpBasisText_(code));
+    return '<tr class="exp-row" data-key="' + key + '" data-qkey="' + escapeHtmlJs(qKey) + '">' +
+        '<td colspan="3" style="' + tds + '"><span style="color:#6366f1;font-weight:700;">↳</span> ' +
+            '<select class="exp-label" onclick="event.stopPropagation()" style="' + sel + 'width:calc(100% - 18px);">' + labelOpts + '</select></td>' +
+        '<td colspan="2" style="' + tds + '"><select class="exp-basis" onclick="event.stopPropagation()" onchange="recalcSlipAmounts(this)" title="Amount Calculation" style="' + sel + 'width:100%;">' + basisOpts + '</select></td>' +
+        '<td class="exp-bq" style="' + tds + 'text-align:right;color:#475569;"></td>' +
+        '<td class="exp-note" colspan="2" style="' + tds + 'font-size:10px;color:#64748b;"></td>' +
+        '<td style="' + tds + 'text-align:center;"><input type="number" class="exp-rate" value="' + (e.rate !== undefined && e.rate !== null ? e.rate : '') + '" step="0.01" onclick="event.stopPropagation()" oninput="recalcSlipAmounts(this)" style="width:60px;' + inp + '"></td>' +
+        '<td style="' + tds + '"></td>' +
+        '<td style="' + tds + 'text-align:center;"><input type="number" class="exp-gst" value="' + (Number(e.gst) || 0) + '" step="0.01" min="0" max="100" title="GST % on this expense" onclick="event.stopPropagation()" oninput="recalcSlipAmounts(this)" style="width:46px;' + inp + '"></td>' +
+        '<td style="' + tds + '"></td>' +
+        '<td class="exp-amt" style="' + tds + 'text-align:right;font-weight:700;white-space:nowrap;"></td>' +
+        // under the quality row's Expense column
+        '<td style="' + tds + 'text-align:center;"><button type="button" onclick="event.stopPropagation();removeExpenseRow(this)" title="Remove this expense" style="border:none;background:none;color:#dc2626;font-weight:800;cursor:pointer;">✕</button></td></tr>';
+}
+// The "+ Expense" button in the quality row's last column: the new sub-row goes under
+// the quality row, after any expense rows it already has.
+function addExpenseRow(btn) {
+    var qk = btn.getAttribute('data-qkey'), table = btn.closest('table.rate-table'), last = btn.closest('tr');
+    while (last.nextElementSibling && last.nextElementSibling.classList.contains('exp-row') && last.nextElementSibling.getAttribute('data-qkey') === qk) last = last.nextElementSibling;
+    last.insertAdjacentHTML('afterend', pkExpRowHtml_(btn.getAttribute('data-key'), qk, {}));
+    recalcSlipAmounts(table);
+    var sel = last.nextElementSibling && last.nextElementSibling.querySelector('.exp-label');
+    if (sel) sel.focus();
+}
+function removeExpenseRow(btn) {
+    var tr = btn.closest('tr'), table = btn.closest('table.rate-table');
+    tr.parentNode.removeChild(tr);
+    recalcSlipAmounts(table);
+}
+
 // Live Amount column: recompute the row that changed and the TOTAL.
 function recalcSlipAmounts(el) {
-    var table = el && el.closest ? el.closest('table.rate-table') : null;
+    var table = el && el.closest ? (el.matches && el.matches('table.rate-table') ? el : el.closest('table.rate-table')) : null;
     if (!table) return;
-    var total = 0;
+    var total = 0, qrows = {};
     table.querySelectorAll('tr.rate-row').forEach(function(tr) {
+        qrows[tr.getAttribute('data-qkey')] = { qty: tr.getAttribute('data-qty'), pcs: tr.getAttribute('data-pcs'), wt: tr.getAttribute('data-wt') };
         var v = function(cls) { var i = tr.querySelector('.' + cls); return i ? i.value.trim() : ''; };
         var la = slipLineAmount(tr.getAttribute('data-type'), tr.getAttribute('data-pcs'), tr.getAttribute('data-wt'),
             v('rate-input'), v('disc-input'), v('gst-input'), v('other-input'), v('basis-select'));
@@ -10191,6 +10443,25 @@ function recalcSlipAmounts(el) {
             cell.title = (la.basis === 'pcs' ? 'Pcs' : 'Weight (Kg)') + ' × Rate − Disc% + GST% + Other Charges';
         }
         total += la.amount;
+    });
+    // Expense sub-rows: each on its quality row's Qty / Pcs / Wt (or a flat amount)
+    table.querySelectorAll('tr.exp-row').forEach(function(tr) {
+        var q = qrows[tr.getAttribute('data-qkey')] || { qty: 0, pcs: 0, wt: 0 };
+        var code = pkExpBasisCode_((tr.querySelector('.exp-basis') || {}).value);
+        var rateInp = tr.querySelector('.exp-rate');
+        var r = slipExpenseAmount(code, q.qty, q.pcs, q.wt, rateInp ? rateInp.value : 0, (tr.querySelector('.exp-gst') || {}).value);
+        var set = function(cls, txt) { var c = tr.querySelector('.' + cls); if (c) c.textContent = txt; };
+        set('exp-bq', code === 'none' || !code ? '' : String(slipRound2(r.basisQty)));
+        set('exp-note', code === 'none' ? 'flat amount' : (code ? PK_EXP_BASIS_NAMES[code] + ' × Rate' : 'choose the calculation'));
+        if (rateInp) rateInp.placeholder = code === 'none' ? '₹ amount' : '₹ rate';
+        set('exp-amt', formatInr(r.amount));
+        total += r.amount;
+    });
+    // "+ Expense (n)": how many expense sub-rows each quality row has
+    table.querySelectorAll('button.exp-add-btn').forEach(function(b) {
+        var qk = b.getAttribute('data-qkey'), n = 0;
+        table.querySelectorAll('tr.exp-row').forEach(function(er) { if (er.getAttribute('data-qkey') === qk) n++; });
+        b.textContent = n ? '+ Expense (' + n + ')' : '+ Expense';
     });
     var tc = table.querySelector('.amt-total');
     if (tc) tc.textContent = formatInr(slipRound2(total));
@@ -10229,10 +10500,28 @@ async function saveRates(key, btnEl) {
         // Other Charges may be negative (a deduction), only not text
         if (!isFinite(n.other))                                 { flag(othInp);  problems.push(label + ': Other Charges must be a number'); return; }
         var basis = basisSel && (basisSel.value === 'kg' || basisSel.value === 'pcs') ? basisSel.value : defaultSlipBasis(item.type);
+        // Expense sub-rows of this quality row. A row left completely empty is
+        // ignored; a started one needs a label, a calculation and a figure.
+        var exps = [];
+        table.querySelectorAll('tr.exp-row').forEach(function(er) {
+            if (er.getAttribute('data-qkey') !== qKey) return;
+            var lbl = (er.querySelector('.exp-label') || {}).value || '', code = pkExpBasisCode_((er.querySelector('.exp-basis') || {}).value);
+            var rEl = er.querySelector('.exp-rate'), gEl = er.querySelector('.exp-gst');
+            var rv = rEl ? rEl.value.trim() : '', gv = gEl ? gEl.value.trim() : '';
+            if (!String(lbl).trim() && rv === '') return;
+            var pre = label + ' › ' + (String(lbl).trim() || 'expense') + ': ';
+            if (!String(lbl).trim()) { flag(er.querySelector('.exp-label')); problems.push(pre + 'choose the expense'); return; }
+            if (!code) { flag(er.querySelector('.exp-basis')); problems.push(pre + 'choose the Amount Calculation'); return; }
+            var rn = Number(rv), gn = Number(gv || 0);
+            if (rv === '' || !isFinite(rn)) { flag(rEl); problems.push(pre + (code === 'none' ? 'amount is missing' : 'rate is missing')); return; }
+            if (code !== 'none' && rn < 0)  { flag(rEl); problems.push(pre + 'rate must be 0 or more (only a Without Basis amount may be a minus)'); return; }
+            if (!isFinite(gn) || gn < 0 || gn > 100) { flag(gEl); problems.push(pre + 'GST % must be 0 to 100'); return; }
+            exps.push({ label: String(lbl).trim(), basis: code, rate: rn, gst: gn });
+        });
         ratesObj[qKey] = { rate: n.rate, discount: n.disc };
         lines.push({ quality: item.quality || '', type: item.type || '', basis: basis,
                      rate: n.rate, discount: n.disc, gst: n.gst, other: n.other,
-                     pcs: item.pcs || 0, weight: item.wt || 0 });
+                     pcs: item.pcs || 0, weight: item.wt || 0, packs: item.packCount || 0, expenses: exps });
     });
     if (problems.length) {
         alert('Please correct these rows:\n\n' + problems.join('\n') + '\n\n(A rate of 0 is allowed)');
@@ -10298,13 +10587,25 @@ async function saveRates(key, btnEl) {
             });
             if (chErr) throw new Error(chErr.message);
             if (!chRes || !chRes.success) throw new Error((chRes && chRes.error) || 'No answer from the server');
+            // Expenses were sent but the answer has no expenseTotal: the server is the OLD
+            // save_slip_charges, which ignores them. Stop, so no wrong total is printed.
+            if (lines.some(function(l) { return l.expenses && l.expenses.length; }) && chRes.expenseTotal === undefined) {
+                throw new Error('The expenses were NOT saved: the server needs a database update. Admin: run sql/PACKING_SLIP_EXPENSES_MIGRATION.sql in the Supabase SQL Editor, then press Save Rates again.');
+            }
             billing = { taxable: Number(chRes.taxable) || 0, gstAmt: Number(chRes.gstAmt) || 0,
-                        other: Number(chRes.other) || 0, total: Number(chRes.total) || 0 };
+                        other: Number(chRes.other) || 0, total: Number(chRes.total) || 0,
+                        expenseTotal: Number(chRes.expenseTotal) || 0, expenses: chRes.expenses || [] };
         } catch (chEx) {
             // Missing function = migration not run: keep going with the screen's
             // own figures so the Triplicate is still made. Any other error (bad
             // value, not allowed) stops here — nothing half-saved is printed.
             if (/save_slip_charges|function .* does not exist|schema cache/i.test(chEx.message)) {
+                if (lines.some(function(l) { return l.expenses && l.expenses.length; })) {
+                    setOrderSavingStage('error', 'Rates saved, but the expenses cannot be saved: run PACKING_SLIP_CHARGES_MIGRATION.sql and then PACKING_SLIP_EXPENSES_MIGRATION.sql in the Supabase SQL Editor.');
+                    setTimeout(hideOrderSavingOverlay, 3500);
+                    fetchVerificationSlips();
+                    return;
+                }
                 console.error('save_slip_charges missing — run sql/PACKING_SLIP_CHARGES_MIGRATION.sql', chEx);
                 chargesWarn = 'GST / Other Charges / Amount were NOT stored in the database (run PACKING_SLIP_CHARGES_MIGRATION.sql). The Triplicate uses the figures on screen.';
                 billing = { taxable: 0, gstAmt: 0, other: 0, total: 0 };
@@ -10440,9 +10741,12 @@ async function buildTriplicatePdfForSlip(slipId, billing) {
             throw new Error('No saved amount for this slip yet. Press Save Rates first.');
         }
         billing = { taxable: Number(row.taxable_amount) || 0, gstAmt: Number(row.gst_amount) || 0,
-                    other: Number(row.other_charges_total) || 0, total: Number(row.total_amount) || 0 };
+                    other: Number(row.other_charges_total) || 0, total: Number(row.total_amount) || 0,
+                    expenseTotal: Number(row.expense_total) || 0 };
     }
     billing = Object.assign({}, billing, { invoiceNo: row.actual_invoice_no || '' });
+    // Expense sub-rows (Labour / Freight charges ...) saved with the rates
+    if (!Array.isArray(billing.expenses)) billing.expenses = await slipExpensesFromDb_(row.id);
     // Rate + Bill Basis per column (printed under Avg/pcs)
     if (!Array.isArray(billing.lines)) billing.lines = await slipRateLinesFromDb_(row.id);
     // Loading Contractor labour (Shift By / Load By), person-wise, from the saved rows

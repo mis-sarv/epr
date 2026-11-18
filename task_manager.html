@@ -59,6 +59,33 @@
         body.tm-mobile-full #screen-task-list > div { border: 0; border-radius: 0; box-shadow: none; min-height: 100vh; min-height: 100dvh; }
         body.tm-mobile-full #screen-employee-dashboard > div > div:first-child { border-radius: 0; padding-top: max(1.5rem, env(safe-area-inset-top)); }
         body.tm-mobile-full #screen-task-list > div > div:first-child { padding-top: max(1rem, env(safe-area-inset-top)); }
+        /* Consult Letters (employee side) use the same phone-width shell. */
+        body.tm-mobile-full #screen-my-letters,
+        body.tm-mobile-full #screen-letter-view { max-width: 560px; margin: 0 auto; padding: 0; min-height: 100vh; min-height: 100dvh; background-color: #f8fafc; box-shadow: 0 0 0 1px #cbd5e1; }
+        body.tm-mobile-full #screen-my-letters > div,
+        body.tm-mobile-full #screen-letter-view > div { border: 0; border-radius: 0; box-shadow: none; min-height: 100vh; min-height: 100dvh; }
+        /* The letter paper: ONE markup (clPaperHtml) used on screen, in the issuer's preview and as the
+           source of the signed PDF. Inline-friendly values only (html2canvas). .cl-pdf = the off-screen
+           A4-width copy the PDF is made from. */
+        .cl-paper { background: #fff; color: #0f172a; font-family: Georgia, 'Times New Roman', 'Noto Serif Devanagari', serif; font-size: 14px; line-height: 1.6; padding: 22px 20px; border: 1px solid #e2e8f0; border-radius: 6px; }
+        .cl-paper .cl-letterhead { text-align: center; border-bottom: 2px solid #0f172a; padding-bottom: 10px; margin-bottom: 14px; }
+        .cl-paper .cl-letterhead img { height: 44px; width: auto; margin: 0 auto 4px; display: block; }
+        .cl-paper .cl-letterhead .cl-co { font-family: Arial, Helvetica, sans-serif; font-size: 20px; font-weight: 800; letter-spacing: .08em; }
+        .cl-paper .cl-letterhead .cl-addr { font-family: Arial, Helvetica, sans-serif; font-size: 11px; color: #475569; white-space: pre-line; }
+        .cl-paper .cl-meta { display: flex; justify-content: space-between; gap: 12px; font-size: 12.5px; margin-bottom: 12px; }
+        .cl-paper .cl-to { font-size: 13px; margin-bottom: 12px; }
+        .cl-paper .cl-subject { font-weight: 800; text-decoration: underline; margin: 10px 0 12px; }
+        .cl-paper .cl-title { text-align: center; font-family: Arial, Helvetica, sans-serif; font-size: 15px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; margin: 4px 0 12px; }
+        .cl-paper .cl-body { white-space: pre-wrap; word-wrap: break-word; text-align: justify; }
+        .cl-paper .cl-issuer { margin-top: 26px; font-size: 13px; }
+        .cl-paper .cl-ack { margin-top: 26px; padding-top: 12px; border-top: 1px dashed #94a3b8; font-size: 13px; }
+        .cl-paper .cl-sigbox { margin-top: 8px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+        .cl-paper .cl-sigimg { height: 70px; max-width: 240px; object-fit: contain; border-bottom: 1px solid #0f172a; }
+        .cl-paper .cl-sigmeta { font-family: Arial, Helvetica, sans-serif; font-size: 10.5px; color: #334155; line-height: 1.5; text-align: right; }
+        .cl-paper .cl-keep { break-inside: avoid; page-break-inside: avoid; }
+        .cl-pdf { position: fixed; left: -10000px; top: 0; width: 700px; background: #fff; }   /* 700px ≈ the 182 mm inside the page margins, so the text keeps its real size */
+        .cl-pdf .cl-paper { border: 0; border-radius: 0; padding: 0; font-size: 13.5px; }
+        #clSigCanvas { touch-action: none; background: repeating-linear-gradient(transparent, transparent 38px, #e2e8f0 39px); }
 
         /* Month sheet (My Month View + MD sheet): the date header row stays frozen
            while scrolling down and the Tasks column while scrolling sideways.
@@ -498,6 +525,10 @@
                 <div class="w-14 h-14 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-amber-100"><i class="ph-fill ph-calendar-x text-3xl"></i></div>
                 <h3 class="text-lg font-extrabold text-slate-800 mb-1">11. Leave / Holiday</h3><p class="text-sm font-medium text-slate-500">Leave, holiday or emergency days: score stays neutral.</p>
             </button>
+            <button data-tm="TM_CONSULT_LETTER" onclick="openScreen('consult-letter')" class="tm-home-btn bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-cyan-400 hover:-translate-y-1 transition-all text-left group">
+                <div class="w-14 h-14 bg-cyan-50 text-cyan-700 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-cyan-100"><i class="ph-fill ph-envelope-simple-open text-3xl"></i></div>
+                <h3 class="text-lg font-extrabold text-slate-800 mb-1">12. Consult Letters</h3><p class="text-sm font-medium text-slate-500">Issue letters to all or chosen employees; they sign digitally.</p>
+            </button>
         </div>
 
         <!-- LEAVE / HOLIDAY: date range + employee(s) (or all) + type + remark →
@@ -549,6 +580,141 @@
                         <div id="doList"><div class="text-center text-sm font-bold text-slate-400 py-16">Loading…</div></div>
                     </div>
                 </div>
+            </div>
+        </div>
+
+        <!-- CONSULT LETTERS (manager side, TM_CONSULT_LETTER): Issue (format + recipients + dates → one
+             frozen letter per employee), Issued (who signed, open the signed PDF, withdraw an unsigned
+             letter) and Formats (reusable letter texts). data-no-caps: letters keep their own case. -->
+        <div id="screen-consult-letter" data-no-caps class="screen-view hidden max-w-6xl mx-auto mt-4">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex justify-between items-start gap-4">
+                    <div>
+                        <h2 class="text-2xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-envelope-simple-open mr-2 text-cyan-700 text-3xl"></i> Consult Letters</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">Write a letter once, issue it to everyone or chosen employees. Each signs in My Tasks; the signed PDF is saved for good.</p>
+                    </div>
+                    <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2.5 rounded-xl border shadow-sm shrink-0"><i class="ph-bold ph-x text-xl"></i></button>
+                </div>
+                <div class="flex gap-1 px-4 pt-3 border-b border-slate-200 bg-white overflow-x-auto" id="clTabs">
+                    <button data-cl-tab="issue" onclick="clTab('issue')" class="px-4 py-2.5 text-sm font-extrabold rounded-t-xl border-b-2 whitespace-nowrap">1. Issue a letter</button>
+                    <button data-cl-tab="issued" onclick="clTab('issued')" class="px-4 py-2.5 text-sm font-extrabold rounded-t-xl border-b-2 whitespace-nowrap">2. Issued letters <span id="clIssuedCount" class="ml-1 text-[10px] bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full"></span></button>
+                    <button data-cl-tab="formats" onclick="clTab('formats')" class="px-4 py-2.5 text-sm font-extrabold rounded-t-xl border-b-2 whitespace-nowrap">3. Letter formats</button>
+                </div>
+                <div id="clMigBanner" class="hidden m-5 p-4 rounded-xl border border-amber-200 bg-amber-50 text-sm font-bold text-amber-900"></div>
+
+                <!-- 1. ISSUE -->
+                <div id="clPane-issue" class="p-5 grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div class="space-y-5">
+                        <div class="rounded-2xl border border-slate-200 p-4 space-y-3">
+                            <div class="flex items-center justify-between gap-2"><h3 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">A. The letter</h3>
+                                <select id="clIssFormat" onchange="clIssFormatPick()" class="max-w-[60%] px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-xs"></select></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Title</label><input type="text" id="clIssTitle" oninput="clIssChanged()" placeholder="Consult Letter" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Letterhead (first line = company name, more lines = address)</label><textarea id="clIssHeader" rows="2" oninput="clIssChanged()" placeholder="SARV INDIA" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></textarea></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Subject</label><input type="text" id="clIssSubject" oninput="clIssChanged()" placeholder="Subject of the letter" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                            <div><div class="flex items-center justify-between mb-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Letter text</label><span class="flex flex-wrap gap-1 justify-end" id="clIssTokens"></span></div>
+                                <textarea id="clIssBody" rows="9" oninput="clIssChanged()" onfocus="CL.focus='clIssBody'" placeholder="Dear {{name}}, ..." class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-medium text-slate-800 text-sm leading-relaxed"></textarea></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Sentence above the employee's signature</label><input type="text" id="clIssAck" oninput="clIssChanged()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-medium text-slate-700 text-sm"></div>
+                            <button onclick="clIssSaveAsFormat()" class="text-[11px] font-extrabold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-3 py-2 rounded-lg uppercase tracking-wider">Save this as a letter format</button>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 p-4 space-y-3">
+                            <h3 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">B. Who gets it</h3>
+                            <div class="grid grid-cols-2 gap-2" id="clRecMode"></div>
+                            <div id="clRecBox" class="hidden space-y-2">
+                                <div class="flex gap-2"><input type="text" id="clRecSearch" oninput="clRecRender()" autocomplete="off" placeholder="Search name, code, department" class="flex-grow min-w-0 px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm">
+                                    <button onclick="clRecShown(true)" class="shrink-0 text-[11px] font-extrabold text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 rounded-xl uppercase">Tick shown</button>
+                                    <button onclick="clRecShown(false)" class="shrink-0 text-[11px] font-extrabold text-slate-600 bg-slate-50 border border-slate-200 px-3 rounded-xl uppercase">Clear</button></div>
+                                <div id="clRecList" class="max-h-64 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100"></div>
+                            </div>
+                            <div id="clRecSummary" class="text-[11px] font-bold text-slate-500"></div>
+                        </div>
+                        <div class="rounded-2xl border border-slate-200 p-4 space-y-3">
+                            <h3 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">C. Dates and signatory</h3>
+                            <div class="grid grid-cols-2 gap-3">
+                                <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Letter date</label><input type="date" id="clIssDate" onchange="clIssChanged()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                                <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Sign before (optional)</label><input type="date" id="clIssDue" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                                <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Issued by (name)</label><input type="text" id="clIssSigName" oninput="clIssChanged()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                                <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Designation</label><input type="text" id="clIssSigDesig" oninput="clIssChanged()" placeholder="e.g. Managing Director" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                            </div>
+                        </div>
+                        <button id="clIssueBtn" onclick="clIssueSubmit()" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-bold px-6 py-3.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center"><i class="ph-bold ph-paper-plane-tilt mr-2 text-lg"></i> Issue letter</button>
+                    </div>
+                    <div>
+                        <div class="lg:sticky lg:top-4">
+                            <div class="flex items-center justify-between mb-2"><h3 class="text-sm font-extrabold text-slate-800 uppercase tracking-wider">Preview</h3><span id="clPrevWho" class="text-[11px] font-bold text-slate-400"></span></div>
+                            <div id="clIssPreview" class="max-h-[78vh] overflow-y-auto rounded-2xl bg-slate-100 p-3"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. ISSUED -->
+                <div id="clPane-issued" class="hidden p-5">
+                    <div class="flex flex-wrap items-end gap-2 mb-3">
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Issued in</label><select id="clFltRange" onchange="clIssuedLoad()" class="px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"><option value="90">Last 3 months</option><option value="30">Last 30 days</option><option value="365">Last 12 months</option><option value="all">All time</option></select></div>
+                        <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Status</label><select id="clFltStatus" onchange="clIssuedRender()" class="px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"><option value="">All</option><option value="PENDING">Waiting for signature</option><option value="OVERDUE">Overdue</option><option value="SIGNED">Signed</option><option value="WITHDRAWN">Withdrawn</option></select></div>
+                        <div class="flex-grow min-w-[180px]"><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Search</label><input type="text" id="clFltSearch" oninput="clIssuedRender()" autocomplete="off" placeholder="Name, code, ref, title" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                        <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 cursor-pointer select-none pb-2"><input type="checkbox" id="clFltGroup" onchange="clIssuedRender()" class="w-4 h-4 accent-cyan-700" checked> Group by employee</label>
+                    </div>
+                    <div id="clIssuedStats" class="flex flex-wrap gap-2 mb-4"></div>
+                    <div id="clIssuedList"><div class="text-center text-sm font-bold text-slate-400 py-16">Loading…</div></div>
+                </div>
+
+                <!-- 3. FORMATS -->
+                <div id="clPane-formats" class="hidden p-5 grid grid-cols-1 lg:grid-cols-5 gap-6">
+                    <div class="lg:col-span-2 space-y-3">
+                        <button onclick="clFmtNew()" class="w-full text-sm font-extrabold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-4 py-2.5 rounded-xl">+ New format</button>
+                        <div id="clFmtList" class="space-y-2"></div>
+                    </div>
+                    <div class="lg:col-span-3 space-y-3">
+                        <div class="rounded-2xl border border-slate-200 p-4 space-y-3">
+                            <input type="hidden" id="clFmtId">
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Title</label><input type="text" id="clFmtTitle" oninput="clFmtPreview()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Letterhead</label><textarea id="clFmtHeader" rows="2" oninput="clFmtPreview()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></textarea></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Subject</label><input type="text" id="clFmtSubject" oninput="clFmtPreview()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm"></div>
+                            <div><div class="flex items-center justify-between mb-1"><label class="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">Letter text</label><span class="flex flex-wrap gap-1 justify-end" id="clFmtTokens"></span></div>
+                                <textarea id="clFmtBody" rows="10" oninput="clFmtPreview()" onfocus="CL.focus='clFmtBody'" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-medium text-slate-800 text-sm leading-relaxed"></textarea></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Sentence above the employee's signature</label><input type="text" id="clFmtAck" oninput="clFmtPreview()" class="w-full px-3 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-medium text-slate-700 text-sm"></div>
+                            <label class="flex items-center gap-2 text-xs font-bold text-slate-600 cursor-pointer select-none"><input type="checkbox" id="clFmtActive" checked class="w-4 h-4 accent-cyan-700"> Active (offered when issuing)</label>
+                            <button id="clFmtSaveBtn" onclick="clFmtSave()" class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-bold px-6 py-3 rounded-xl shadow-md transition-all active:scale-95">Save format</button>
+                        </div>
+                        <div id="clFmtPreview" class="rounded-2xl bg-slate-100 p-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MY LETTERS (employee): the letters issued to me, waiting ones first. -->
+        <div id="screen-my-letters" data-no-caps class="screen-view hidden w-full max-w-md mx-auto mt-4 px-2">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-900 p-5 text-white relative" style="padding-top:max(1.25rem, env(safe-area-inset-top))">
+                    <button onclick="navigate('employee-dashboard')" title="Back" class="absolute top-4 left-4 text-slate-300 hover:text-white bg-slate-800/80 p-2 rounded-xl border border-slate-700"><i class="ph-bold ph-arrow-left text-lg"></i></button>
+                    <div class="text-center pt-1"><div class="w-14 h-14 mx-auto rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400 mb-2"><i class="ph-fill ph-envelope-simple-open text-3xl"></i></div>
+                        <h2 class="text-xl font-extrabold tracking-tight">Consult Letters</h2>
+                        <p class="text-xs font-bold text-slate-400 mt-0.5" id="clMySub"></p></div>
+                </div>
+                <div id="clMyList" class="p-4 space-y-3 bg-slate-50/50"></div>
+            </div>
+        </div>
+
+        <!-- ONE LETTER (employee, also a manager's quick look): the paper, then the signature pad (pending)
+             or the signed state with the PDF (signed). -->
+        <div id="screen-letter-view" data-no-caps class="screen-view hidden w-full max-w-md mx-auto mt-4 px-2">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-900 px-4 py-3 text-white flex items-center gap-3" style="padding-top:max(0.75rem, env(safe-area-inset-top))">
+                    <button onclick="clBackFromLetter()" title="Back" class="text-slate-300 hover:text-white bg-slate-800/80 p-2 rounded-xl border border-slate-700 shrink-0"><i class="ph-bold ph-arrow-left text-lg"></i></button>
+                    <div class="min-w-0"><div class="font-extrabold truncate" id="clLvTitle">Letter</div><div class="text-[11px] font-bold text-slate-400 truncate" id="clLvSub"></div></div>
+                </div>
+                <div class="p-3 bg-slate-100"><div id="clLvPaper"></div></div>
+                <div id="clLvAction" class="p-4 space-y-3 bg-white border-t border-slate-200"></div>
+            </div>
+        </div>
+
+        <!-- A manager's look at any issued letter (paper + signed PDF), over the Issued list. -->
+        <div id="clViewOv" data-no-caps class="fixed inset-0 z-[125] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 print-hide">
+            <div class="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden">
+                <div class="px-5 py-4 border-b border-slate-200 flex items-start justify-between gap-3"><div class="min-w-0"><div class="text-lg font-extrabold text-slate-800 truncate" id="clVwTitle"></div><div class="text-[11px] font-bold text-slate-500" id="clVwSub"></div></div>
+                    <button onclick="clViewClose()" class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center shrink-0"><i class="ph-bold ph-x"></i></button></div>
+                <div class="overflow-y-auto p-4 bg-slate-100 flex-grow"><div id="clVwPaper"></div></div>
+                <div id="clVwAction" class="px-5 py-3 border-t border-slate-200 flex flex-wrap gap-2"></div>
             </div>
         </div>
 
@@ -1077,6 +1243,8 @@
                     <button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-fuchsia-200 hover:border-fuchsia-400 text-fuchsia-800 rounded-2xl px-3 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-camera text-lg"></i> My Live Photos</button>
                     <button onclick="openAttendanceLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-emerald-200 hover:border-emerald-400 text-emerald-800 rounded-2xl px-3 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-clock-user text-lg"></i> My Attendance</button>
                 </div>
+                <!-- Consult Letters: read, sign and re-open the letters issued to me (clOpenMy). The badge = waiting for my signature. -->
+                <div class="px-4 pt-3 bg-slate-50/50"><button id="clDashBtn" onclick="clOpenMy()" class="w-full relative bg-white border border-cyan-200 hover:border-cyan-400 text-cyan-800 rounded-2xl px-4 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-envelope-simple-open text-lg"></i> <span>Consult Letters</span><span id="clDashBadge" class="hidden ml-1 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11px] font-extrabold items-center justify-center animate-pulse"></span></button></div>
 
                 <div class="p-4 grid grid-cols-2 gap-3 bg-slate-50/50">
                     <button data-pend="daily" onclick="openTaskCategory('daily', 'Daily Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:shadow-md transition-all active:scale-95 group">
@@ -1228,6 +1396,7 @@
                                 </div>
                                 <div id="mdMonthScore" class="mt-1.5"></div>
                                 <button onclick="openLiveLog(appState.mdSelectedCode)" class="mt-1.5 text-[10px] font-extrabold text-fuchsia-700 bg-white hover:bg-fuchsia-50 border border-fuchsia-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"><i class="ph-bold ph-camera"></i> Live photos of this month</button>
+                                <button data-tm="TM_CONSULT_LETTER" onclick="clOpenForEmp(appState.mdSelectedCode)" class="cl-md-btn hidden mt-1.5 text-[10px] font-extrabold text-cyan-800 bg-white hover:bg-cyan-50 border border-cyan-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"><i class="ph-bold ph-envelope-simple-open"></i> Consult letters</button>
                                 <button id="mdRemarksBtn" onclick="showMonthRemarks(true)" class="hidden mt-1.5 text-[10px] font-extrabold text-sky-800 bg-white hover:bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-lg uppercase tracking-wider print-hide"></button>
                             </div>
                             <button onclick="document.getElementById('mdSheetContainer').classList.add('hidden'); appState.mdSelectedCode=null;" class="text-xs font-extrabold text-slate-600 hover:text-slate-900 bg-white px-5 py-2.5 rounded-xl border border-slate-300 shadow-sm transition-colors flex items-center uppercase tracking-wider active:scale-95">Close Sheet <i class="ph-bold ph-x ml-2"></i></button>
@@ -1589,7 +1758,15 @@
             CHECKOUT_MIGRATION: 'Live Photo Check-out needs a server update. Admin: run <code>TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql</code> in the Supabase SQL Editor.',
             RANGE_TOO_LONG: 'At most 92 days can be saved at a time. Save a longer leave in parts.',
             NO_EMPLOYEE: 'Add at least one employee (or All employees).',
-            NOT_DONE: 'This task is not marked done (any more). Reload the page and check again.'
+            NOT_DONE: 'This task is not marked done (any more). Reload the page and check again.',
+            TITLE_REQUIRED: 'Please give the letter a title.',
+            BODY_REQUIRED: 'The letter text is too short (or too long). Write the full letter.',
+            NOT_PENDING: 'This letter is no longer waiting for a signature.',
+            ALREADY_SIGNED: 'This letter is already signed.',
+            SIGNATURE_REQUIRED: 'Please sign in the box first.',
+            BAD_PDF: 'The signed PDF could not be made or was not accepted. Please try again.',
+            HASH_MISMATCH: 'The signed PDF was damaged on its way to the server. Please try again.',
+            LETTERS_MIGRATION: 'Consult Letters need a server update. Admin: run <code>TM_CONSULT_LETTER_MIGRATION.sql</code> in the Supabase SQL Editor.'
         };
         function tmErr(res, title) {
             const msg = TM_ERR[res.error] || ('The request failed: ' + esc(res.error));
@@ -1611,6 +1788,8 @@
             const d = res.data;
             appState.dbReady = true; appState.dbError = '';
             appState.me = d.me || {}; appState.perms = (d.me && d.me.perms) || {};
+            // Consult Letters has its own right (tm_cl_can_, answered by tm_cl_my): kept across reloads.
+            if (typeof CL !== 'undefined' && CL.canManage != null) appState.perms.TM_CONSULT_LETTER = CL.canManage;
             // The server's day (IST) is the task day, so a PC with a wrong clock cannot tick tomorrow's task.
             if (d.today) { const [y, m, dd] = String(d.today).split('-'); appState.currentYear = +y; appState.currentMonth = +m; appState.currentDay = +dd; }
             appState.employees = (d.employees || []).map(e => {
@@ -1634,6 +1813,7 @@
             fupCache = new Map();   // fresh records / follow-ups / rules: the coordinator cuts are worked out again
             appState.currentLoggedInEmp = (appState.me.empCode && appState.employees.find(e => e.empCode === appState.me.empCode)) || null;
             setTimeout(tmSyncReminders, 0);
+            setTimeout(clBoot, 0);   // Consult Letters: my letters + may I manage (separate RPC, so an old server just has no letters)
             return res;
         }
 
@@ -1913,7 +2093,7 @@
            ones are numbered again so there is no gap. The server checks the
            same key again on every save. */
         const ROUTE_KEY = { 'add-task': 'TM_ADD_TASK', 'md-view': 'TM_MD_VIEW', 'score-card': 'TM_SCORE_CARD', 'employee-list': 'TM_DIRECTORY',
-            'completion-chart': 'TM_CHART', 'score-master': 'TM_SCORE_MASTER', 'ea-delegation': 'TM_EA', 'assign-buddy': 'TM_BUDDY', 'pc-followup': 'TM_PC_FOLLOWUP', 'day-off': 'TM_DAY_OFF' };
+            'completion-chart': 'TM_CHART', 'score-master': 'TM_SCORE_MASTER', 'ea-delegation': 'TM_EA', 'assign-buddy': 'TM_BUDDY', 'pc-followup': 'TM_PC_FOLLOWUP', 'day-off': 'TM_DAY_OFF', 'consult-letter': 'TM_CONSULT_LETTER' };
 
         function applyHomeAccess() {
             let n = 0;
@@ -1984,13 +2164,15 @@
             appState.currentScreen = sId;
             document.querySelectorAll('.screen-view').forEach(el => el.classList.add('hidden')); document.getElementById('screen-' + sId).classList.remove('hidden');
             // My Tasks screens: full-screen mobile layout (see tm-mobile-full in the CSS).
-            const full = sId === 'employee-dashboard' || sId === 'task-list';
+            const full = sId === 'employee-dashboard' || sId === 'task-list' || sId === 'my-letters' || sId === 'letter-view';
             document.body.classList.toggle('tm-mobile-full', full);
             if (full) window.scrollTo(0, 0);
             if(sId==='home') applyHomeAccess(); else if(sId==='add-task') initAddTaskScreen(); else if(sId==='md-view') renderMDView(); else if(sId==='score-card') renderScoreCard(); else if(sId==='employee-list') renderEmployeeList(); else if(sId==='completion-chart') initCompletionChart(); else if(sId==='ea-delegation') initEADelegation(); else if(sId==='assign-buddy') initAssignBuddy();
             else if(sId==='score-master') initScoreMaster();
             else if(sId==='pc-followup') initPcFollowup();
             else if(sId==='day-off') initDayOff();
+            else if(sId==='consult-letter') initConsultLetter();
+            else if(sId==='my-letters') clMyRender();
             const emp = appState.currentLoggedInEmp;
             if(emp && sId==='employee-sheet') renderEmployeeSheet(emp);
             else if(emp && sId==='employee-dashboard') renderDashboard();
@@ -4765,6 +4947,447 @@
                 + (o.remarks ? `<div class="text-sm font-bold text-slate-600 italic mt-1">“${esc(o.remarks)}”</div>` : '')
                 + `<div class="text-[11px] font-bold text-slate-400 mt-2">Marked by ${esc(o.by || '-')}${o.at ? ' · ' + esc(fmtWhen(new Date(o.at))) : ''}</div>`
                 + `<p class="text-[11px] font-bold text-slate-500 mt-3">The tasks of this day are not scored: no points gained, none lost.</p></div>`);
+        };
+
+        /* ════════════════════════════════════════════════════════════════
+           CONSULT LETTERS (sql/TM_CONSULT_LETTER_MIGRATION.sql)
+           Flow: a manager (right TM_CONSULT_LETTER, answered by tm_cl_my as
+           canManage) writes a FORMAT, ISSUES it to all / chosen employees (the
+           server freezes one copy per employee, placeholders filled), the
+           employee opens it under My Tasks > Consult Letters, reads it and
+           signs with a drawn signature. The page then renders the SAME paper
+           (clPaperHtml) to a PDF with the signature, date / time and name
+           stamped on it, and tm_cl_sign_save keeps the PDF (server checks it
+           is a PDF and works out its SHA-256 again). Signed letters are never
+           edited or deleted; an unsigned one can be withdrawn with a reason.
+           The employee's PDF can be opened again at any time; the manager's
+           Issued tab shows every user's letters, signed or not.
+           Placeholders: add one to CL_TOKENS here AND to tm_cl_fill_ on the
+           server (and clFill below). The letter paper has ONE markup for the
+           screen, the preview and the PDF, so they can never differ.
+           ════════════════════════════════════════════════════════════════ */
+        var CL = { canManage: null, mine: [], loaded: false, mig: false, tab: 'issue', targets: [], meName: '', templates: [], issued: [], issuedLoaded: false,
+                   cur: null, focus: 'clIssBody', recMode: 'chosen', rec: new Set(), from: 'my', init: false, view: null };
+        const CL_ACK_DEFAULT = 'I have read and understood this letter and I acknowledge that I have received it.';
+        const CL_TOKENS = [['{{name}}', 'Name'], ['{{emp_code}}', 'Emp Code'], ['{{designation}}', 'Designation'], ['{{department}}', 'Department'], ['{{date}}', 'Date']];
+        const CL_SAMPLE = { title: 'Consult Letter', subject: 'Consultation held on {{date}}',
+            body: 'Dear {{name}},\n\nThis letter records the consultation held with you on {{date}}.\n\n[Write the points discussed and what is expected from you here.]\n\nYou are requested to read this letter carefully and sign below as a token of having received and understood it.\n\nThank you.' };
+        const clStatusOf = (l, mgr) => {
+            if (l.status === 'SIGNED') return ['SIGNED', 'Signed', 'text-emerald-800 bg-emerald-50 border-emerald-200'];
+            if (l.status === 'WITHDRAWN') return ['WITHDRAWN', 'Withdrawn', 'text-slate-500 bg-slate-100 border-slate-300'];
+            if (l.dueDate && l.dueDate < todayStr()) return ['OVERDUE', 'Overdue', 'text-red-800 bg-red-50 border-red-200'];
+            return ['PENDING', l.viewedAt ? 'Opened · not signed' : (mgr ? 'Not opened yet' : 'New · please sign'), l.viewedAt ? 'text-amber-800 bg-amber-50 border-amber-200' : 'text-cyan-800 bg-cyan-50 border-cyan-200'];
+        };
+        const clChip = (s) => `<span class="inline-block text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-lg border ${s[2]}">${esc(s[1])}</span>`;
+        const clStamp = iso => { const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true }) + ' IST'; };
+        const clFill = (t, e, ds) => String(t || '')
+            .replace(/\{\{\s*name\s*\}\}/gi, () => e.empName || '').replace(/\{\{\s*emp_code\s*\}\}/gi, () => e.empCode || '')
+            .replace(/\{\{\s*designation\s*\}\}/gi, () => e.desig || '').replace(/\{\{\s*department\s*\}\}/gi, () => e.dept || '')
+            .replace(/\{\{\s*date\s*\}\}/gi, () => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ds || ''); return m ? m[3] + '-' + m[2] + '-' + m[1] : ''; });
+
+        /* The letter paper. L = {title, subject, header, body, ackText, letterDate, ref, empName, empCode, desig, dept,
+           signatoryName, signatoryDesig}; o = {sig (PNG data URL), signedAt (ISO), remark, logo:false}. */
+        function clPaperHtml(L, o) {
+            o = o || {};
+            const lines = String(L.header || '').split('\n').map(x => x.trim()).filter(Boolean); if (!lines.length) lines.push('SARV INDIA');
+            const who = esc(L.empName || '') + (L.empCode ? ' (' + esc(L.empCode) + ')' : '');
+            const sub = [L.desig, L.dept].filter(Boolean).map(esc).join(', ');
+            const sigBlock = o.sig
+                ? `<img class="cl-sigimg" src="${o.sig}" alt="Signature">`
+                : `<div style="height:70px;width:240px;max-width:100%;border:1px dashed #94a3b8;border-radius:4px;display:flex;align-items:center;justify-content:center;color:#94a3b8;font:700 11px Arial,sans-serif">${o.preview ? 'Employee signs here' : 'Not signed yet'}</div>`;
+            return `<div class="cl-paper">`
+                + `<div class="cl-letterhead">${o.logo === false ? '' : '<img src="logo.png" alt="">'}<div class="cl-co">${esc(lines[0])}</div>${lines.length > 1 ? `<div class="cl-addr">${lines.slice(1).map(esc).join('\n')}</div>` : ''}</div>`
+                + `<div class="cl-meta"><div>Ref: <b>${esc(L.ref || (o.preview ? 'CL/____/____' : ''))}</b></div><div>Date: <b>${esc(L.letterDate ? fmtDay(L.letterDate) : '')}</b></div></div>`
+                + `<div class="cl-to">To,<br><b>${who}</b>${sub ? '<br>' + sub : ''}</div>`
+                + (L.title ? `<div class="cl-title">${esc(L.title)}</div>` : '')
+                + (L.subject ? `<div class="cl-subject">Sub: ${esc(L.subject)}</div>` : '')
+                + `<div class="cl-body">${esc(L.body || '')}</div>`
+                + `<div class="cl-issuer cl-keep">Yours sincerely,<br>For <b>${esc(lines[0])}</b><br><br><b>${esc(L.signatoryName || '')}</b>${L.signatoryDesig ? '<br>' + esc(L.signatoryDesig) : ''}</div>`
+                + `<div class="cl-ack cl-keep"><div>${esc(L.ackText || CL_ACK_DEFAULT)}</div>`
+                + `<div class="cl-sigbox"><div>${sigBlock}<div style="font:700 12px Arial,sans-serif;margin-top:3px">${who}</div></div>`
+                + `<div class="cl-sigmeta">${o.sig ? 'Signed digitally on the Task Portal<br>' + esc(clStamp(o.signedAt)) + '<br>' : ''}Letter ID: ${esc(L.ref || '')}${o.remark ? '<br>Remark: ' + esc(o.remark) : ''}</div></div></div>`
+                + `</div>`;
+        }
+
+        // ── loading, rights and the badge ──────────────────────────────
+        async function clBoot() {
+            const res = await tmRpc('tm_cl_my', {});
+            if (!res.ok) { CL.mig = res.error === 'NO_MIGRATION'; CL.loaded = true; return res; }
+            CL.mig = false; CL.loaded = true; CL.canManage = !!res.data.canManage; CL.mine = res.data.rows || [];
+            appState.perms = appState.perms || {}; appState.perms.TM_CONSULT_LETTER = CL.canManage;
+            clApplyAccess(); return res;
+        }
+        function clApplyAccess() {
+            clBadge();
+            document.querySelectorAll('.cl-md-btn').forEach(b => b.classList.toggle('hidden', !can('TM_CONSULT_LETTER')));
+            if (appState.currentScreen === 'home') applyHomeAccess();
+            if (appState.currentScreen === 'my-letters') clMyRender(true);
+        }
+        function clBadge() {
+            const n = CL.mine.filter(l => l.status === 'PENDING').length, b = document.getElementById('clDashBadge'); if (!b) return;
+            b.textContent = n; b.classList.toggle('hidden', !n); b.classList.toggle('inline-flex', !!n);
+        }
+
+        // ── employee: my letters ───────────────────────────────────────
+        window.clOpenMy = async function() {
+            if (CL.mig) return showCustomModal('Server update needed', TM_ERR.LETTERS_MIGRATION, true);
+            navigate('my-letters');
+        };
+        window.clMyRender = function(noFetch) {
+            const box = document.getElementById('clMyList'); if (!box) return;
+            if (!noFetch) clBoot();
+            const rows = CL.mine, wait = rows.filter(l => l.status === 'PENDING').length;
+            document.getElementById('clMySub').textContent = !CL.loaded ? 'Loading…' : (wait ? wait + ' waiting for your signature' : (rows.length ? 'All your letters are signed' : 'No letters yet'));
+            if (!rows.length) { box.innerHTML = `<div class="text-center p-10 bg-white border border-dashed border-slate-300 rounded-2xl text-slate-400 font-bold">${CL.loaded ? 'No letter has been issued to you.' : 'Loading…'}</div>`; return; }
+            box.innerHTML = rows.map(l => { const s = clStatusOf(l, false), pend = l.status === 'PENDING';
+                return `<button onclick="clOpenLetter(${l.id}, 'my')" class="w-full text-left bg-white rounded-2xl border ${pend ? 'border-amber-300 shadow-md' : 'border-slate-200 shadow-sm'} p-4 active:scale-[.99] transition-transform">`
+                    + `<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800 truncate">${esc(l.title)}</div>${l.subject ? `<div class="text-xs font-bold text-slate-500 truncate">${esc(l.subject)}</div>` : ''}</div>${clChip(s)}</div>`
+                    + `<div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 mt-2 text-[11px] font-bold text-slate-400"><span>${esc(l.ref)}</span><span>${esc(fmtDay(l.letterDate))}</span>${l.issuedBy ? `<span>by ${esc(l.issuedBy)}</span>` : ''}</div>`
+                    + (pend ? `<div class="mt-2 text-xs font-extrabold ${s[0] === 'OVERDUE' ? 'text-red-700' : 'text-amber-700'}"><i class="ph-bold ph-pencil-simple-line"></i> ${l.dueDate ? 'Sign before ' + esc(fmtDay(l.dueDate)) : 'Tap to read and sign'}</div>`
+                        : `<div class="mt-2 text-xs font-extrabold text-emerald-700"><i class="ph-bold ph-seal-check"></i> Signed ${esc(clStamp(l.signedAt))}</div>`)
+                    + `</button>`; }).join('');
+        };
+        window.clBackFromLetter = function() { CL.cur = null; navigate('my-letters'); };
+        window.clOpenLetter = async function(id) {
+            const res = await tmRpc('tm_cl_get', { p_id: id, p_pdf: false });
+            if (!res.ok) return tmErr(res, 'Could not open the letter');
+            CL.cur = { L: res.data.letter, sig: res.data.signature || null };
+            navigate('letter-view'); clLetterRender();
+            const l = CL.cur.L;
+            if (l.status === 'PENDING' && !l.viewedAt && l.empCode === (appState.me && appState.me.empCode)) {
+                tmRpc('tm_cl_seen_mark', { p_id: id });   // the issuer's "Opened" mark
+                const m = CL.mine.find(x => x.id === id); if (m) m.viewedAt = new Date().toISOString();
+            }
+        };
+        function clLetterRender() {
+            const cur = CL.cur; if (!cur) return;
+            const L = cur.L, signed = L.status === 'SIGNED';
+            document.getElementById('clLvTitle').textContent = L.title;
+            document.getElementById('clLvSub').textContent = L.ref + ' · ' + fmtDay(L.letterDate);
+            document.getElementById('clLvPaper').innerHTML = clPaperHtml(L, { sig: cur.sig, signedAt: L.signedAt, remark: L.signRemark, preview: !signed });
+            const act = document.getElementById('clLvAction');
+            if (signed) {
+                act.innerHTML = `<div class="flex items-center gap-3 p-3 rounded-xl bg-emerald-50 border border-emerald-200"><i class="ph-fill ph-seal-check text-3xl text-emerald-600"></i><div class="min-w-0"><div class="font-extrabold text-emerald-800">Signed and saved</div><div class="text-[11px] font-bold text-emerald-700">${esc(clStamp(L.signedAt))}</div></div></div>`
+                    + `<div class="grid grid-cols-2 gap-3"><button onclick="clPdf(${L.id}, false)" class="bg-slate-900 hover:bg-black text-white font-extrabold py-3 rounded-xl text-sm flex items-center justify-center gap-2"><i class="ph-bold ph-file-pdf text-lg"></i> Open PDF</button>`
+                    + `<button onclick="clPdf(${L.id}, true)" class="bg-white border border-slate-300 text-slate-700 font-extrabold py-3 rounded-xl text-sm flex items-center justify-center gap-2"><i class="ph-bold ph-download-simple text-lg"></i> Download</button></div>`
+                    + `<div class="text-[10px] font-bold text-slate-400 break-all">Fingerprint (SHA-256): ${esc(L.sha256 || '')}</div>`;
+                return;
+            }
+            if (L.status !== 'PENDING') { act.innerHTML = '<div class="text-sm font-bold text-slate-500">This letter was withdrawn.</div>'; return; }
+            act.innerHTML = `<div class="text-sm font-extrabold text-slate-800">Your signature</div><div class="text-[11px] font-bold text-slate-500 -mt-2">Read the whole letter above, then sign in the box with your finger or mouse.</div>`
+                + `<div class="relative rounded-xl border-2 border-dashed border-slate-300 bg-white overflow-hidden"><canvas id="clSigCanvas" class="w-full block" style="height:190px"></canvas><div id="clSigHint" class="absolute inset-0 flex items-center justify-center text-slate-300 text-xl font-extrabold pointer-events-none">Sign here</div></div>`
+                + `<div class="flex items-center justify-between"><button onclick="clSigClear()" class="text-xs font-extrabold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Clear</button><span id="clSigState" class="text-[11px] font-bold text-slate-400"></span></div>`
+                + `<label class="flex items-start gap-2 text-xs font-bold text-slate-600 cursor-pointer select-none"><input type="checkbox" id="clSignAgree" onchange="clSignUi()" class="w-4 h-4 mt-0.5 accent-cyan-700"> <span>I have read and understood this letter, and the signature above is mine.</span></label>`
+                + `<input type="text" id="clSignRemark" maxlength="300" placeholder="Remark (optional)" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-cyan-400 font-bold text-slate-700 text-sm">`
+                + `<button id="clSignBtn" onclick="clSign()" disabled class="w-full bg-cyan-700 hover:bg-cyan-800 text-white font-extrabold py-3.5 rounded-xl shadow-md flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"><i class="ph-bold ph-signature text-lg"></i> Sign &amp; save</button>`
+                + `<div class="text-[10px] font-bold text-slate-400 leading-relaxed">Your signature, name, date and time are stamped on a PDF copy that is saved on the server. You can open it again here whenever you want.</div>`;
+            requestAnimationFrame(clSigInit);
+        }
+
+        // ── signature pad ──────────────────────────────────────────────
+        const SIG = { c: null, x: null, on: false, last: null, mid: null, len: 0, b: null, dpr: 1 };
+        function clSigInit() {
+            const c = document.getElementById('clSigCanvas'); if (!c) return;
+            const r = c.getBoundingClientRect(); if (!r.width) return;
+            const d = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+            c.width = Math.round(r.width * d); c.height = Math.round(r.height * d);
+            const x = c.getContext('2d'); x.setTransform(d, 0, 0, d, 0, 0); x.lineWidth = 2.6; x.lineCap = 'round'; x.lineJoin = 'round'; x.strokeStyle = '#0b1b4d'; x.fillStyle = '#0b1b4d';
+            Object.assign(SIG, { c, x, on: false, last: null, mid: null, len: 0, b: null, dpr: d });
+            const pos = e => { const q = c.getBoundingClientRect(); return { x: e.clientX - q.left, y: e.clientY - q.top }; };
+            const grow = p => { const b = SIG.b || (SIG.b = { x0: p.x, y0: p.y, x1: p.x, y1: p.y }); b.x0 = Math.min(b.x0, p.x); b.y0 = Math.min(b.y0, p.y); b.x1 = Math.max(b.x1, p.x); b.y1 = Math.max(b.y1, p.y); };
+            c.onpointerdown = e => { e.preventDefault(); try { c.setPointerCapture(e.pointerId); } catch (_) {} SIG.on = true; const p = pos(e); SIG.last = p; SIG.mid = p; x.beginPath(); x.arc(p.x, p.y, 1.3, 0, 7); x.fill(); grow(p); const h = document.getElementById('clSigHint'); if (h) h.classList.add('hidden'); };
+            c.onpointermove = e => { if (!SIG.on) return; e.preventDefault(); const p = pos(e), m = { x: (SIG.last.x + p.x) / 2, y: (SIG.last.y + p.y) / 2 };
+                x.beginPath(); x.moveTo(SIG.mid.x, SIG.mid.y); x.quadraticCurveTo(SIG.last.x, SIG.last.y, m.x, m.y); x.stroke();
+                SIG.len += Math.hypot(p.x - SIG.last.x, p.y - SIG.last.y); grow(p); SIG.last = p; SIG.mid = m; };
+            c.onpointerup = c.onpointercancel = () => { SIG.on = false; clSignUi(); };
+            clSignUi();
+        }
+        const clSigHas = () => !!(SIG.c && SIG.b && SIG.len > 30 && ((SIG.b.x1 - SIG.b.x0) > 25 || (SIG.b.y1 - SIG.b.y0) > 25));
+        window.clSigClear = function() { if (!SIG.c) return; SIG.x.save(); SIG.x.setTransform(1, 0, 0, 1, 0, 0); SIG.x.clearRect(0, 0, SIG.c.width, SIG.c.height); SIG.x.restore(); SIG.len = 0; SIG.b = null; const h = document.getElementById('clSigHint'); if (h) h.classList.remove('hidden'); clSignUi(); };
+        window.clSignUi = function() {
+            const ok = clSigHas(), ag = document.getElementById('clSignAgree'), b = document.getElementById('clSignBtn'), s = document.getElementById('clSigState');
+            if (b) b.disabled = !(ok && ag && ag.checked);
+            if (s) s.textContent = ok ? 'Signature captured' : 'Not signed yet';
+        };
+        // The drawn ink only (transparent background), cropped to its box and kept small.
+        function clSigPng() {
+            const c = SIG.c, b = SIG.b, d = SIG.dpr, pad = 8;
+            const sx = Math.max(0, Math.floor((b.x0 - pad) * d)), sy = Math.max(0, Math.floor((b.y0 - pad) * d));
+            const sw = Math.min(c.width - sx, Math.ceil((b.x1 - b.x0 + pad * 2) * d)), sh = Math.min(c.height - sy, Math.ceil((b.y1 - b.y0 + pad * 2) * d));
+            const k = Math.min(1, 520 / sw), t = document.createElement('canvas'); t.width = Math.max(1, Math.round(sw * k)); t.height = Math.max(1, Math.round(sh * k));
+            t.getContext('2d').drawImage(c, sx, sy, sw, sh, 0, 0, t.width, t.height);
+            return t.toDataURL('image/png');
+        }
+
+        // ── the signed PDF ─────────────────────────────────────────────
+        let clPdfLibP = null;
+        function clLoadPdfLib() {
+            if (window.html2pdf) return Promise.resolve();
+            return clPdfLibP || (clPdfLibP = new Promise((res, rej) => {
+                const s = document.createElement('script'); s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+                s.onload = () => res(); s.onerror = () => { clPdfLibP = null; rej(new Error('The PDF maker could not be loaded. Check the internet connection and try again.')); };
+                document.head.appendChild(s);
+            }));
+        }
+        const clImgsReady = host => Promise.all([...host.querySelectorAll('img')].map(i => i.complete ? 0 : new Promise(r => { i.onload = i.onerror = r; })));
+        function clBufB64(buf) { const u = new Uint8Array(buf); let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+        // SHA-256: the browser's own when the page is secure (https), else this plain version (the server compares both).
+        function clSha256Js(u) {
+            const K = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+            const H = [0x6a09e667,0xbb67ae85,0x3c6ef372,0xa54ff53a,0x510e527f,0x9b05688c,0x1f83d9ab,0x5be0cd19];
+            const n = u.length, tot = ((n + 9 + 63) >> 6) << 6, p = new Uint8Array(tot); p.set(u); p[n] = 0x80;
+            const dv = new DataView(p.buffer); dv.setUint32(tot - 8, Math.floor(n / 0x20000000)); dv.setUint32(tot - 4, (n << 3) >>> 0);
+            const w = new Uint32Array(64), rr = (x, k) => (x >>> k) | (x << (32 - k));
+            for (let o = 0; o < tot; o += 64) {
+                for (let i = 0; i < 16; i++) w[i] = dv.getUint32(o + i * 4);
+                for (let i = 16; i < 64; i++) { const a = w[i - 15], b = w[i - 2]; w[i] = (w[i - 16] + (rr(a, 7) ^ rr(a, 18) ^ (a >>> 3)) + w[i - 7] + (rr(b, 17) ^ rr(b, 19) ^ (b >>> 10))) >>> 0; }
+                let [a, b, c, d, e, f, g, h] = H;
+                for (let i = 0; i < 64; i++) {
+                    const t1 = (h + (rr(e, 6) ^ rr(e, 11) ^ rr(e, 25)) + ((e & f) ^ (~e & g)) + K[i] + w[i]) >>> 0, t2 = ((rr(a, 2) ^ rr(a, 13) ^ rr(a, 22)) + ((a & b) ^ (a & c) ^ (b & c))) >>> 0;
+                    h = g; g = f; f = e; e = (d + t1) >>> 0; d = c; c = b; b = a; a = (t1 + t2) >>> 0;
+                }
+                [a, b, c, d, e, f, g, h].forEach((v, i) => { H[i] = (H[i] + v) >>> 0; });
+            }
+            return H.map(v => v.toString(16).padStart(8, '0')).join('');
+        }
+        async function clSha256Hex(buf) {
+            if (window.crypto && crypto.subtle && window.isSecureContext) { const d = await crypto.subtle.digest('SHA-256', buf); return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); }
+            return clSha256Js(new Uint8Array(buf));
+        }
+        // Renders the paper (with the signature) to an A4 PDF; returns {b64, sha}. Retries without the logo if the browser blocks it.
+        async function clBuildPdf(L, sig, signedIso, remark, noLogo) {
+            await clLoadPdfLib();
+            let host = document.getElementById('clPdfHost');
+            if (!host) { host = document.createElement('div'); host.id = 'clPdfHost'; host.className = 'cl-pdf'; document.body.appendChild(host); }
+            host.innerHTML = clPaperHtml(L, { sig, signedAt: signedIso, remark, logo: !noLogo });
+            try {
+                await clImgsReady(host);
+                const opt = { margin: [14, 14, 16, 14], image: { type: 'jpeg', quality: 0.92 }, html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff', logging: false }, jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }, pagebreak: { mode: ['css', 'legacy'], avoid: ['.cl-keep'] } };
+                const pdf = await html2pdf().set(opt).from(host.firstElementChild).toPdf().get('pdf');
+                const n = pdf.internal.getNumberOfPages();
+                for (let i = 1; i <= n; i++) { pdf.setPage(i); pdf.setFontSize(8); pdf.setTextColor(110); pdf.text(String(L.ref || '') + '   ·   Page ' + i + ' of ' + n, 105, 291, { align: 'center' }); }
+                const buf = await pdf.output('blob').arrayBuffer();
+                return { b64: clBufB64(buf), sha: await clSha256Hex(buf), bytes: buf.byteLength };
+            } catch (e) {
+                if (!noLogo) return clBuildPdf(L, sig, signedIso, remark, true);
+                throw e;
+            } finally { host.innerHTML = ''; }
+        }
+        window.clSign = async function() {
+            const cur = CL.cur; if (!cur || cur.L.status !== 'PENDING') return;
+            if (!clSigHas()) return showCustomModal('Signature needed', TM_ERR.SIGNATURE_REQUIRED, true);
+            if (!document.getElementById('clSignAgree').checked) return showCustomModal('Please confirm', 'Tick the box to confirm you have read and understood the letter.', true);
+            const remark = (document.getElementById('clSignRemark').value || '').trim();
+            setBusy('clSignBtn', true);
+            try {
+                const sig = clSigPng(), out = await clBuildPdf(cur.L, sig, new Date().toISOString(), remark);
+                const res = await tmRpc('tm_cl_sign_save', { p_id: cur.L.id, p_signature: sig, p_pdf_b64: out.b64, p_sha256: out.sha, p_remark: remark || null });
+                if (!res.ok) { if (res.error === 'ALREADY_SIGNED') { await clBoot(); await clOpenLetter(cur.L.id); } return tmErr(res, 'Not signed'); }
+                await clBoot();
+                const g = await tmRpc('tm_cl_get', { p_id: cur.L.id, p_pdf: false });
+                if (g.ok) CL.cur = { L: g.data.letter, sig: g.data.signature || null };
+                clLetterRender(); window.scrollTo(0, 0);
+                showCustomModal('Letter signed', 'Your signature is saved with the letter. The signed PDF is kept on the server; open it any time from <b>Consult Letters</b>.');
+            } catch (e) { showCustomModal('Could not sign', esc((e && e.message) || e), true); }
+            finally { setBusy('clSignBtn', false, 'Sign & save'); }
+        };
+        // Opens (or downloads) the signed PDF of a letter: the employee's own, or any one for a manager.
+        window.clPdf = async function(id, download) {
+            const w = download ? null : window.open('', '_blank');   // opened first, so the pop-up blocker allows it
+            const res = await tmRpc('tm_cl_get', { p_id: id, p_pdf: true });
+            if (!res.ok) { if (w) w.close(); return tmErr(res, 'Could not open the PDF'); }
+            if (!res.data.pdf) { if (w) w.close(); return showCustomModal('No PDF', 'No signed PDF is saved for this letter yet.', true); }
+            const bin = atob(res.data.pdf), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+            const url = URL.createObjectURL(new Blob([u], { type: 'application/pdf' })), L = res.data.letter;
+            if (w && !w.closed) w.location.href = url;
+            else { const a = document.createElement('a'); a.href = url; a.download = String(L.ref || 'letter').replace(/[\/\\]/g, '-') + '_' + (L.empCode || '') + '.pdf'; document.body.appendChild(a); a.click(); a.remove(); }
+            setTimeout(() => URL.revokeObjectURL(url), 120000);
+        };
+
+        // ── manager screen ─────────────────────────────────────────────
+        window.initConsultLetter = async function() {
+            const mb = document.getElementById('clMigBanner'); mb.classList.add('hidden');
+            const [tg, tp] = await Promise.all([tmRpc('tm_cl_targets', {}), tmRpc('tm_cl_template_list', {})]);
+            if (!tg.ok) { mb.innerHTML = TM_ERR[tg.error] || esc(tg.error); mb.classList.remove('hidden'); return; }
+            CL.targets = tg.data.rows || []; CL.meName = tg.data.me || ''; CL.templates = tp.ok ? (tp.data.rows || []) : [];
+            if (!CL.init) {
+                CL.init = true;
+                const tok = (id) => CL_TOKENS.map(t => `<button type="button" onmousedown="event.preventDefault()" onclick="clInsertToken('${t[0]}')" class="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-1.5 py-0.5 rounded">${esc(t[1])}</button>`).join('');
+                document.getElementById('clIssTokens').innerHTML = tok(); document.getElementById('clFmtTokens').innerHTML = tok();
+                document.getElementById('clIssDate').value = todayStr(); document.getElementById('clIssSigName').value = CL.meName;
+                document.getElementById('clIssAck').value = CL_ACK_DEFAULT;
+                document.getElementById('clIssTitle').value = CL_SAMPLE.title; document.getElementById('clIssSubject').value = CL_SAMPLE.subject; document.getElementById('clIssBody').value = CL_SAMPLE.body;
+                clFmtNew();
+            }
+            clIssFormatFill(); clRecModeRender(); clRecRender(); clIssChanged(); clFmtListRender(); clTab(CL.tab);
+        };
+        window.clTab = function(t) {
+            CL.tab = t;
+            ['issue', 'issued', 'formats'].forEach(k => document.getElementById('clPane-' + k).classList.toggle('hidden', k !== t));
+            document.querySelectorAll('#clTabs [data-cl-tab]').forEach(b => { const on = b.dataset.clTab === t; b.className = 'px-4 py-2.5 text-sm font-extrabold rounded-t-xl border-b-2 whitespace-nowrap ' + (on ? 'text-cyan-800 border-cyan-600 bg-cyan-50/60' : 'text-slate-500 border-transparent hover:text-slate-800'); });
+            if (t === 'issued') clIssuedLoad();
+            if (t === 'formats') clFmtPreview();
+        };
+        window.clInsertToken = function(tok) {
+            const el = document.getElementById(CL.focus) || document.getElementById('clIssBody'); if (!el) return;
+            const a = el.selectionStart == null ? el.value.length : el.selectionStart, b = el.selectionEnd == null ? a : el.selectionEnd;
+            el.value = el.value.slice(0, a) + tok + el.value.slice(b); el.focus(); el.selectionStart = el.selectionEnd = a + tok.length;
+            el.dispatchEvent(new Event('input'));
+        };
+        // 1. Issue
+        function clIssFormatFill() {
+            const sel = document.getElementById('clIssFormat'), keep = sel.value;
+            sel.innerHTML = '<option value="">Letter format: write a new letter</option>' + CL.templates.filter(t => t.active).map(t => `<option value="${t.id}">${esc(t.title)}</option>`).join('');
+            sel.value = CL.templates.some(t => t.active && String(t.id) === keep) ? keep : '';
+        }
+        window.clIssFormatPick = function() {
+            const t = CL.templates.find(x => String(x.id) === document.getElementById('clIssFormat').value); if (!t) return;
+            document.getElementById('clIssTitle').value = t.title || ''; document.getElementById('clIssHeader').value = t.header || '';
+            document.getElementById('clIssSubject').value = t.subject || ''; document.getElementById('clIssBody').value = t.body || '';
+            document.getElementById('clIssAck').value = t.ackText || CL_ACK_DEFAULT; clIssChanged();
+        };
+        const clIssLetter = () => ({ title: document.getElementById('clIssTitle').value.trim(), header: document.getElementById('clIssHeader').value, subject: document.getElementById('clIssSubject').value.trim(),
+            body: document.getElementById('clIssBody').value, ackText: document.getElementById('clIssAck').value.trim(), letterDate: document.getElementById('clIssDate').value || todayStr(),
+            signatoryName: document.getElementById('clIssSigName').value.trim(), signatoryDesig: document.getElementById('clIssSigDesig').value.trim() });
+        window.clIssChanged = function() {
+            const f = clIssLetter(), pick = (CL.recMode === 'chosen' && CL.rec.size) ? CL.targets.find(e => CL.rec.has(e.empCode)) : CL.targets[0];
+            const e = pick || { empName: 'Employee Name', empCode: 'EMP001', desig: 'Designation', dept: 'Department' };
+            document.getElementById('clPrevWho').textContent = pick ? 'for ' + e.empName : 'sample employee';
+            document.getElementById('clIssPreview').innerHTML = clPaperHtml({ ...f, title: clFill(f.title, e, f.letterDate), subject: clFill(f.subject, e, f.letterDate), body: clFill(f.body, e, f.letterDate), empName: e.empName, empCode: e.empCode, desig: e.desig, dept: e.dept }, { preview: true });
+        };
+        function clRecModeRender() {
+            document.getElementById('clRecMode').innerHTML = [['all', 'All employees', 'ph-users-three'], ['chosen', 'Specific employees', 'ph-user-check']].map(([k, l, ic]) =>
+                `<button type="button" onclick="clRecSetMode('${k}')" class="flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-extrabold uppercase tracking-wider ${CL.recMode === k ? 'text-cyan-800 bg-cyan-50 border-cyan-400' : 'text-slate-500 bg-white border-slate-200 hover:border-slate-300'}"><i class="ph-bold ${ic} text-lg"></i>${l}</button>`).join('');
+            document.getElementById('clRecBox').classList.toggle('hidden', CL.recMode !== 'chosen');
+        }
+        window.clRecSetMode = function(m) { CL.recMode = m; clRecModeRender(); clRecRender(); clIssChanged(); };
+        window.clRecRender = function() {
+            const q = document.getElementById('clRecSearch').value;
+            const list = CL.targets.filter(e => !q.trim() || sarvLikeMatch_(q, [e.empName, e.empCode, e.dept, e.desig]));
+            document.getElementById('clRecList').innerHTML = list.length ? list.map(e => `<label class="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-slate-50"><input type="checkbox" ${CL.rec.has(e.empCode) ? 'checked' : ''} onchange="clRecToggle('${esc(e.empCode)}', this.checked)" class="w-4 h-4 accent-cyan-700 shrink-0"><span class="min-w-0"><span class="block text-sm font-extrabold text-slate-800 truncate">${esc(e.empName)} <span class="text-[11px] text-slate-400">${esc(e.empCode)}</span></span><span class="block text-[11px] font-bold text-slate-400 truncate">${esc([e.desig, e.dept].filter(Boolean).join(' · ') || '-')}</span></span></label>`).join('')
+                : '<div class="p-4 text-center text-xs font-bold text-slate-400">No employee matches.</div>';
+            document.getElementById('clRecSummary').textContent = CL.recMode === 'all' ? `Every active employee (${CL.targets.length}) gets their own letter, with their own name filled in.` : (CL.rec.size ? `${CL.rec.size} employee(s) selected.` : 'Tick the employees who should get this letter.');
+        };
+        // A plain every-word-anywhere match for the small pickers on this screen.
+        function sarvLikeMatch_(q, hay) { const h = hay.join(' ').toUpperCase(); return String(q).toUpperCase().split(/\s+/).filter(Boolean).every(w => h.includes(w)); }
+        window.clRecToggle = function(code, on) { if (on) CL.rec.add(code); else CL.rec.delete(code); clRecRender(); clIssChanged(); };
+        window.clRecShown = function(on) {
+            const q = document.getElementById('clRecSearch').value;
+            CL.targets.filter(e => !q.trim() || sarvLikeMatch_(q, [e.empName, e.empCode, e.dept, e.desig])).forEach(e => on ? CL.rec.add(e.empCode) : CL.rec.delete(e.empCode));
+            clRecRender(); clIssChanged();
+        };
+        window.clIssSaveAsFormat = async function() {
+            const f = clIssLetter(); if (!f.title || f.body.trim().length < 10) return showCustomModal('Please check', 'Give the letter a title and write its text first.', true);
+            const sel = document.getElementById('clIssFormat').value;
+            const upd = sel && confirm('Update the selected format with this text?\n\nOK = update it\nCancel = save as a new format');
+            const res = await tmRpc('tm_cl_template_save', { p_id: upd ? +sel : null, p_title: f.title, p_subject: f.subject, p_header: f.header, p_body: f.body, p_ack: f.ackText, p_active: true });
+            if (!res.ok) return tmErr(res);
+            const tp = await tmRpc('tm_cl_template_list', {}); if (tp.ok) CL.templates = tp.data.rows || [];
+            clIssFormatFill(); document.getElementById('clIssFormat').value = String(res.data.id); clFmtListRender();
+            showCustomModal('Format saved', 'It is now in the format list; pick it any time when issuing a letter.');
+        };
+        window.clIssueSubmit = async function() {
+            const f = clIssLetter(), due = document.getElementById('clIssDue').value || null, emps = CL.recMode === 'all' ? ['*'] : [...CL.rec];
+            const bad = [];
+            if (!f.title) bad.push(TM_ERR.TITLE_REQUIRED); if (f.body.trim().length < 10) bad.push(TM_ERR.BODY_REQUIRED);
+            if (!emps.length) bad.push(TM_ERR.NO_EMPLOYEE.replace(' (or All employees)', '')); if (due && due < f.letterDate) bad.push('The "sign before" date cannot be earlier than the letter date.');
+            if (!f.signatoryName) bad.push('Write the name of the person issuing the letter.');
+            if (bad.length) return showCustomModal('Please check', bad.join('<br>'), true);
+            const n = CL.recMode === 'all' ? CL.targets.length : emps.length;
+            if (!confirm(`Issue "${f.title}" to ${CL.recMode === 'all' ? 'ALL ' + n + ' employees' : n + ' employee(s)'}?\n\nEach one gets their own copy to read and sign in My Tasks. A copy cannot be changed after it is issued; an unsigned one can be withdrawn.`)) return;
+            setBusy('clIssueBtn', true);
+            const res = await tmRpc('tm_cl_issue_save', { p_emps: emps, p_template: +document.getElementById('clIssFormat').value || null, p_title: f.title, p_subject: f.subject, p_header: f.header, p_body: f.body, p_ack: f.ackText, p_letter_date: f.letterDate, p_due: due, p_sign_name: f.signatoryName, p_sign_desig: f.signatoryDesig });
+            setBusy('clIssueBtn', false, 'Issue letter');
+            if (!res.ok) return tmErr(res, 'Not issued');
+            CL.rec = new Set(); document.getElementById('clIssDue').value = ''; clRecRender(); clIssChanged();
+            showCustomModal('Letter issued', `${res.data.issued} letter${res.data.issued === 1 ? '' : 's'} issued. Each employee sees it under <b>My Tasks › Consult Letters</b>. Track the signatures in the Issued tab.`);
+            CL.issuedLoaded = false; clTab('issued');
+        };
+        // 2. Issued
+        window.clIssuedLoad = async function() {
+            const r = document.getElementById('clFltRange').value, box = document.getElementById('clIssuedList');
+            box.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">Loading…</div>';
+            let from = null; if (r !== 'all') { const d = dateAt(todayStr()); d.setDate(d.getDate() - Number(r)); from = ymd(d); }
+            const res = await tmRpc('tm_cl_list', { p_from: from, p_to: r === 'all' ? null : todayStr(), p_emp: null });
+            if (!res.ok) { box.innerHTML = `<div class="p-4 rounded-xl border border-red-200 bg-red-50 text-sm font-bold text-red-800">${TM_ERR[res.error] || esc(res.error)}</div>`; return; }
+            CL.issued = res.data.rows || []; CL.issuedLoaded = true; clIssuedRender();
+        };
+        window.clIssuedRender = function() {
+            const box = document.getElementById('clIssuedList'); if (!box || !CL.issuedLoaded) return;
+            const q = document.getElementById('clFltSearch').value, st = document.getElementById('clFltStatus').value, grp = document.getElementById('clFltGroup').checked;
+            const base = CL.issued.filter(l => !q.trim() || sarvLikeMatch_(q, [l.empName, l.empCode, l.ref, l.title, l.subject, l.dept, l.issuedBy]));
+            const key = l => clStatusOf(l, true)[0], cnt = k => base.filter(l => k === 'ALL' ? true : (k === 'PENDING' ? l.status === 'PENDING' : key(l) === k)).length;
+            document.getElementById('clIssuedCount').textContent = CL.issued.length || '';
+            document.getElementById('clIssuedStats').innerHTML = [['ALL', 'All', 'bg-slate-50 text-slate-700 border-slate-200', ''], ['PENDING', 'Waiting', 'bg-amber-50 text-amber-800 border-amber-200', 'PENDING'], ['OVERDUE', 'Overdue', 'bg-red-50 text-red-800 border-red-200', 'OVERDUE'], ['SIGNED', 'Signed', 'bg-emerald-50 text-emerald-800 border-emerald-200', 'SIGNED'], ['WITHDRAWN', 'Withdrawn', 'bg-slate-100 text-slate-500 border-slate-300', 'WITHDRAWN']]
+                .map(([k, l, c, v]) => `<button onclick="document.getElementById('clFltStatus').value='${v}';clIssuedRender()" class="text-[11px] font-extrabold uppercase tracking-wider px-3 py-1.5 rounded-xl border ${c} ${st === v ? 'ring-2 ring-cyan-400' : ''}">${l} ${cnt(k)}</button>`).join('');
+            const rows = base.filter(l => !st || (st === 'PENDING' ? l.status === 'PENDING' : key(l) === st));
+            if (!rows.length) { box.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-16">No letter matches.</div>'; return; }
+            const row = l => { const s = clStatusOf(l, true);
+                return `<div class="flex flex-wrap items-center gap-x-4 gap-y-1 px-3 py-2.5 ${grp ? '' : 'rounded-xl border border-slate-200 bg-white'}"><div class="min-w-0 flex-grow basis-56"><div class="text-sm font-extrabold text-slate-800 truncate">${esc(l.title)}</div><div class="text-[11px] font-bold text-slate-400 truncate">${esc(l.ref)} · issued ${esc(fmtDay(l.issuedAt.slice(0, 10)))} by ${esc(l.issuedBy || '-')}${l.dueDate && l.status === 'PENDING' ? ' · sign before ' + esc(fmtDay(l.dueDate)) : ''}</div></div>`
+                    + (grp ? '' : `<div class="text-xs font-extrabold text-slate-700 min-w-[120px]">${esc(l.empName)} <span class="text-slate-400">${esc(l.empCode)}</span></div>`)
+                    + `<div class="text-right min-w-[120px]">${clChip(s)}${l.signedAt ? `<div class="text-[10px] font-bold text-slate-400 mt-0.5">${esc(clStamp(l.signedAt))}</div>` : (l.withdrawReason ? `<div class="text-[10px] font-bold text-slate-400 mt-0.5 italic">“${esc(l.withdrawReason)}”</div>` : '')}</div>`
+                    + `<div class="flex gap-1.5 shrink-0"><button onclick="clViewAsManager(${l.id})" class="text-[11px] font-extrabold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">View</button>`
+                    + (l.status === 'SIGNED' ? `<button onclick="clPdf(${l.id}, false)" class="text-[11px] font-extrabold text-slate-700 bg-white hover:bg-slate-50 border border-slate-300 px-3 py-1.5 rounded-lg uppercase tracking-wider">PDF</button>` : '')
+                    + (l.status === 'PENDING' ? `<button onclick="clWithdraw(${l.id})" class="text-[11px] font-extrabold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-3 py-1.5 rounded-lg uppercase tracking-wider">Withdraw</button>` : '') + `</div></div>`; };
+            if (!grp) { box.innerHTML = '<div class="space-y-2">' + rows.map(row).join('') + '</div>'; return; }
+            const by = new Map(); rows.forEach(l => { if (!by.has(l.empCode)) by.set(l.empCode, []); by.get(l.empCode).push(l); });
+            box.innerHTML = '<div class="space-y-3">' + [...by.values()].sort((a, b) => a[0].empName.localeCompare(b[0].empName)).map(ls => { const e = ls[0], sg = ls.filter(x => x.status === 'SIGNED').length, pn = ls.filter(x => x.status === 'PENDING').length;
+                return `<div class="rounded-2xl border border-slate-200 bg-white overflow-hidden"><div class="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 bg-slate-50 border-b border-slate-200"><div class="font-extrabold text-slate-800">${esc(e.empName)} <span class="text-xs text-slate-400">${esc(e.empCode)}</span>${e.desig ? `<span class="ml-2 text-[11px] font-bold text-slate-400">${esc(e.desig)}</span>` : ''}</div><div class="text-[11px] font-extrabold"><span class="text-emerald-700">${sg} signed</span>${pn ? ` · <span class="text-amber-700">${pn} waiting</span>` : ''}</div></div><div class="divide-y divide-slate-100">${ls.map(row).join('')}</div></div>`; }).join('') + '</div>';
+        };
+        window.clWithdraw = async function(id) {
+            const why = prompt('Withdraw this letter? The employee will no longer see it.\n\nReason:'); if (why == null) return;
+            if (why.trim().length < 3) return showCustomModal('Reason needed', TM_ERR.REMARK_REQUIRED, true);
+            const res = await tmRpc('tm_cl_withdraw_cancel', { p_ids: [id], p_reason: why.trim() });
+            if (!res.ok) return tmErr(res, 'Could not withdraw'); clIssuedLoad();
+        };
+        // A look at any letter (the paper as the employee saw / signed it) with its trail and the PDF.
+        window.clViewAsManager = async function(id) {
+            const res = await tmRpc('tm_cl_get', { p_id: id, p_pdf: false });
+            if (!res.ok) return tmErr(res, 'Could not open the letter');
+            const L = res.data.letter, s = clStatusOf(L, true);
+            document.getElementById('clVwTitle').textContent = L.title; document.getElementById('clVwSub').innerHTML = esc(L.ref) + ' · ' + esc(L.empName) + ' (' + esc(L.empCode) + ') &nbsp;' + clChip(s);
+            document.getElementById('clVwPaper').innerHTML = `<div class="text-[11px] font-bold text-slate-500 mb-2 leading-relaxed">Issued ${esc(clStamp(L.issuedAt))} by ${esc(L.issuedBy || '-')}${L.viewedAt ? ' · opened ' + esc(clStamp(L.viewedAt)) : ' · not opened yet'}${L.signedAt ? ' · <b class="text-emerald-700">signed ' + esc(clStamp(L.signedAt)) + '</b>' : ''}${L.withdrawnAt ? ' · withdrawn ' + esc(clStamp(L.withdrawnAt)) + ' by ' + esc(L.withdrawnBy || '-') + ': “' + esc(L.withdrawReason || '') + '”' : ''}${L.sha256 ? '<br>SHA-256 ' + esc(L.sha256) : ''}</div>` + clPaperHtml(L, { sig: res.data.signature, signedAt: L.signedAt, remark: L.signRemark, preview: L.status !== 'SIGNED' });
+            document.getElementById('clVwAction').innerHTML = (L.status === 'SIGNED' ? `<button onclick="clPdf(${L.id}, false)" class="bg-slate-900 text-white text-xs font-extrabold px-4 py-2.5 rounded-xl uppercase tracking-wider">Open signed PDF</button><button onclick="clPdf(${L.id}, true)" class="bg-white border border-slate-300 text-slate-700 text-xs font-extrabold px-4 py-2.5 rounded-xl uppercase tracking-wider">Download</button>` : '')
+                + (L.status === 'PENDING' ? `<button onclick="clViewClose();clWithdraw(${L.id})" class="bg-red-50 border border-red-200 text-red-700 text-xs font-extrabold px-4 py-2.5 rounded-xl uppercase tracking-wider">Withdraw</button>` : '');
+            const ov = document.getElementById('clViewOv'); ov.classList.remove('hidden'); ov.classList.add('flex');
+        };
+        window.clViewClose = function() { const ov = document.getElementById('clViewOv'); ov.classList.add('hidden'); ov.classList.remove('flex'); };
+        // From MD Oversight View: every letter of that employee.
+        window.clOpenForEmp = function(code) {
+            if (!can('TM_CONSULT_LETTER')) return; CL.tab = 'issued';
+            document.getElementById('clFltSearch').value = code || ''; document.getElementById('clFltStatus').value = '';
+            navigate('consult-letter');
+        };
+        // 3. Formats
+        window.clFmtListRender = function() {
+            const cur = document.getElementById('clFmtId').value;
+            document.getElementById('clFmtList').innerHTML = CL.templates.length ? CL.templates.map(t => `<button onclick="clFmtEdit(${t.id})" class="w-full text-left rounded-xl border ${String(t.id) === cur ? 'border-cyan-400 bg-cyan-50' : 'border-slate-200 bg-white hover:border-slate-300'} p-3"><div class="flex items-center justify-between gap-2"><div class="font-extrabold text-slate-800 truncate">${esc(t.title)}</div>${t.active ? '' : '<span class="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded border text-slate-500 bg-slate-100 border-slate-300">Inactive</span>'}</div><div class="text-[11px] font-bold text-slate-400 truncate">${esc(t.subject || t.body.slice(0, 60))}</div><div class="text-[10px] font-bold text-slate-400 mt-0.5">Updated ${esc(clStamp(t.updatedAt))} · ${esc(t.updatedBy || '-')}</div></button>`).join('')
+                : '<div class="text-center text-xs font-bold text-slate-400 p-6 bg-slate-50 rounded-xl border border-dashed border-slate-300">No format saved yet. Write one here, or save a letter from the Issue tab as a format.</div>';
+        };
+        window.clFmtNew = function() {
+            ['clFmtId', 'clFmtHeader'].forEach(i => document.getElementById(i).value = '');
+            document.getElementById('clFmtTitle').value = CL_SAMPLE.title; document.getElementById('clFmtSubject').value = CL_SAMPLE.subject; document.getElementById('clFmtBody').value = CL_SAMPLE.body;
+            document.getElementById('clFmtAck').value = CL_ACK_DEFAULT; document.getElementById('clFmtActive').checked = true; clFmtListRender(); clFmtPreview();
+        };
+        window.clFmtEdit = function(id) {
+            const t = CL.templates.find(x => x.id === id); if (!t) return;
+            document.getElementById('clFmtId').value = t.id; document.getElementById('clFmtTitle').value = t.title || ''; document.getElementById('clFmtHeader').value = t.header || '';
+            document.getElementById('clFmtSubject').value = t.subject || ''; document.getElementById('clFmtBody').value = t.body || ''; document.getElementById('clFmtAck').value = t.ackText || CL_ACK_DEFAULT;
+            document.getElementById('clFmtActive').checked = !!t.active; clFmtListRender(); clFmtPreview();
+        };
+        window.clFmtPreview = function() {
+            const e = { empName: 'Employee Name', empCode: 'EMP001', desig: 'Designation', dept: 'Department' }, d = todayStr(), g = i => document.getElementById(i).value;
+            document.getElementById('clFmtPreview').innerHTML = clPaperHtml({ title: clFill(g('clFmtTitle'), e, d), header: g('clFmtHeader'), subject: clFill(g('clFmtSubject'), e, d), body: clFill(g('clFmtBody'), e, d), ackText: g('clFmtAck'), letterDate: d, empName: e.empName, empCode: e.empCode, desig: e.desig, dept: e.dept, signatoryName: CL.meName, signatoryDesig: '' }, { preview: true });
+        };
+        window.clFmtSave = async function() {
+            const g = i => document.getElementById(i).value, id = g('clFmtId');
+            setBusy('clFmtSaveBtn', true);
+            const res = await tmRpc('tm_cl_template_save', { p_id: id ? +id : null, p_title: g('clFmtTitle'), p_subject: g('clFmtSubject'), p_header: g('clFmtHeader'), p_body: g('clFmtBody'), p_ack: g('clFmtAck'), p_active: document.getElementById('clFmtActive').checked });
+            setBusy('clFmtSaveBtn', false, 'Save format');
+            if (!res.ok) return tmErr(res);
+            const tp = await tmRpc('tm_cl_template_list', {}); if (tp.ok) CL.templates = tp.data.rows || [];
+            document.getElementById('clFmtId').value = res.data.id; clFmtListRender(); clIssFormatFill();
+            showCustomModal('Format saved', 'Letters already issued are not changed; the new text is used for letters issued from now on.');
         };
 
         /* ── Month navigation (My Month View + MD sheet) ─────────────────
