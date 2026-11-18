@@ -19025,7 +19025,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    pendLeft:'#16a34a',          // still pending: green
    excess:'#7e22ce',            // excess — jamuni
    excessBg:'#fde047',          // excess figure ka peela background
-   alert:'#dc2626', info:'#334155',
+   alert:'#dc2626', info:'#334155', black:'#000000',
  };
  const hexRgb_=h=>[parseInt(h.slice(1,3),16),parseInt(h.slice(3,5),16),parseInt(h.slice(5,7),16)];
  const stripPendColor_=n=>pNum(n)>0?STRIP_COLOR.pendLeft:STRIP_COLOR.pendDone;
@@ -19056,6 +19056,39 @@ window.addEventListener('DOMContentLoaded',()=>{
     screen, a <b> in the HTML print, hand-placed text in the vector PDF. */
  function docStripLines_(p){
    if(!p)return [];
+   const lines=docStripLinesColoured_(p);
+   // p.plain (set by stripForPdf_): everything black, no highlight, captions too.
+   return p.plain?lines.map(segs=>segs.map(s=>({lbl:s.lbl,t:s.t,c:STRIP_COLOR.black,bold:s.bold}))):lines;
+ }
+ /* ── PR / PO sub-row on the printed In / Out PDF: black unless needed ──
+    The coloured figures (red / green Pending, purple + yellow Excess, blue / green
+    tag, red rate line) are for a receipt that needs somebody's eye. On the PDF
+    they now print only when this row needed the MD's Inward Approval, i.e. when
+    inwardDocOverrides would have raised it for the row:
+      - QTY basis: excess qty past the item's PO Excess Allowed %
+      - WEIGHT basis: excess weight past that %
+      - billed at a rate other than the PO's (PO strips only)
+    Every other row, including an excess still inside the allowed %, prints
+    all black. Keep this in step with the per-row tests in inwardDocOverrides.
+    Only PO / PR strips: a Repair Return (never approved) and an Issue against a
+    Lot keep their colours. The on-screen strip is untouched (docStripParts_). */
+ function stripColorNeeded_(it,p){
+   const tolPct=(p.kind==='PO'&&!(p.poRate!=null&&Math.abs(pNum(p.rate)-pNum(p.poRate))>0.001))?itemExcessTol_(itemForInwardRow_(it)):0;
+   const within=(excess,ordered)=>tolPct>0&&ordered>0&&excess<=ordered*tolPct/100+0.0005;
+   if(p.kind==='PO'&&p.poRate!=null&&Math.abs(pNum(p.rate)-pNum(p.poRate))>0.001)return true;
+   const basis=inwardRowBasis_(it,p);
+   if(basis==='QTY')return p.excess>0&&!within(p.excess,p.ordered);
+   return !!(p.hasWeight&&p.excWt>0&&!within(p.excWt,p.ordWt));
+ }
+ function stripForPdf_(it){
+   const p=docStripParts_(it);
+   if(p&&(p.kind==='PO'||p.kind==='PR')&&!stripColorNeeded_(it,p))p.plain=true;
+   return p;
+ }
+ function docStripRateColor_(p){
+   return docStripRateAlert_(p)?STRIP_COLOR.alert:(p&&p.plain?STRIP_COLOR.black:STRIP_COLOR.info);
+ }
+ function docStripLinesColoured_(p){
    const accent=docStripAccent_(p);
    const lines=[[
      {t:p.tag,c:accent,bold:true},
@@ -19152,7 +19185,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  /* Whether the rate line goes red or plain slate: red only when the receipt
     really went beyond the PO (higher rate or more qty). Otherwise the line is
     a normal record, and making every receipt red would rob red of its meaning. */
- function docStripRateAlert_(p){ return !!(p&&p.kind==='PO'&&(p.rateOver||p.excess>0)); }
+ function docStripRateAlert_(p){ return !!(p&&!p.plain&&p.kind==='PO'&&(p.rateOver||p.excess>0)); }
  /* docStripText_ has been removed: it built the whole strip as a single string
     for the native PDF, and autoTable could give one string only one colour.
     docStripLines_ + drawStripCell_ now do that job, with per-figure colours. */
@@ -19398,7 +19431,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           shows. docStripParts_ gives both the same shape, so only the label and
           colour change here; the layout is the same. Left off the Supplier
           Copy when the store chose so on Submit (storeStripOnCopy_). */
-       const strip=storeStripOnCopy_(d,title)?docStripParts_(it):null;
+       const strip=storeStripOnCopy_(d,title)?stripForPdf_(it):null;   // black unless this row needed approval
        if(strip){
          const rateNote=docStripRateNote_(strip);
          /* Qty on the first line, Weight under it in the same Order / Pending /
@@ -19416,7 +19449,7 @@ window.addEventListener('DOMContentLoaded',()=>{
            // The third line: the PO's own rate. It now prints on every PO receipt;
            // red only when the receipt went beyond the PO.
            +(rateNote?('<div style="margin-top:1px;font-weight:800;color:'
-               +(docStripRateAlert_(strip)?STRIP_COLOR.alert:STRIP_COLOR.info)+';">'+pEsc(rateNote)+'</div>'):'')
+               +docStripRateColor_(strip)+';">'+pEsc(rateNote)+'</div>'):'')
            +'</td></tr>';
        }
      });
@@ -19817,7 +19850,7 @@ window.addEventListener('DOMContentLoaded',()=>{
           minCellHeight keeps the row height, because with empty content
           autoTable has nothing to measure. Left off the Supplier Copy when the
           store chose so on Submit (storeStripOnCopy_). */
-       const bits=storeStripOnCopy_(d,title)?docStripParts_(it):null;
+       const bits=storeStripOnCopy_(d,title)?stripForPdf_(it):null;   // black unless this row needed approval
        if(bits){
          const lines=docStripLines_(bits);
          stripRows[body.length]=lines;      // the row about to be pushed
@@ -19836,7 +19869,7 @@ window.addEventListener('DOMContentLoaded',()=>{
             top:0 / bottom:0.8 padding pushed it against the top line. */
          if(rateNote)body.push([{content:rateNote,colSpan:7,
            styles:{fontSize:STRIP_FS,fontStyle:'bold',halign:'left',valign:'middle',fillColor:[248,250,252],
-             textColor:hexRgb_(docStripRateAlert_(bits)?STRIP_COLOR.alert:STRIP_COLOR.info),
+             textColor:hexRgb_(docStripRateColor_(bits)),
              cellPadding:{top:0.5,bottom:0.5,left:1.6,right:1.6}}}]);
        }
      });
