@@ -118,6 +118,9 @@ body::after{
   font-size:31px; line-height:1;
   box-shadow:0 10px 30px -8px rgba(37,99,235,.75), inset 0 1px 0 rgba(255,255,255,.35);
 }
+/* The logo sits above the name on a white card: its dark-blue lettering would vanish on the dark page background. */
+.logo-card{display:inline-block; background:#fff; border:1px solid var(--hairline-s); border-radius:18px; padding:8px 16px; margin:0 auto 14px; box-shadow:0 2px 8px rgba(0,0,0,.18);}
+.logo-card img{display:block; height:68px; width:auto; max-width:60vw; object-fit:contain;}
 .brand h1{
   margin:0; font-size:clamp(19px,5.2vw,23px); font-weight:800;
   letter-spacing:.14em; text-transform:uppercase;
@@ -429,6 +432,8 @@ button.go{background:#2563eb; box-shadow:none;}
 button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<!-- Lock screen + Screen Saver (launcher-lock.js): iOS look sheets, lock screen and saver -->
+<link rel="stylesheet" href="launcher-lock.css?v=20261118a">
 <style>
 /* iOS touch: a tile gives a little under the finger */
 a.app{transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .2s,background .2s;}
@@ -440,7 +445,7 @@ a.app:active{transform:scale(.965);}
 <div class="wrap">
 
   <div class="brand rise">
-    <div class="logo">S</div>
+    <div class="logo-card"><img src="logo.png" alt="Sarv India" width="136" height="68" decoding="async" fetchpriority="high"></div>
     <h1>Sarv India</h1>
     <p>One login for all your apps</p>
   </div>
@@ -662,7 +667,11 @@ a.app:active{transform:scale(.965);}
         <div class="nm" id="whoName">—</div>
         <div class="rl" id="whoRole"></div>
       </div>
-      <button class="out" id="outBtn">Logout</button>
+      <div class="acts">
+        <button class="out" id="outBtn">Logout</button>
+        <button class="out act" id="lockBtn" type="button" title="Lock the screen (Ctrl + Alt + L)" aria-keyshortcuts="Control+Alt+L"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4.5" y="10.5" width="15" height="10" rx="2.5"/><path d="M8 10.5V8a4 4 0 018 0v2.5"/></svg>Lock</button>
+        <button class="out act" id="ssBtn" type="button" title="Screen Saver (Ctrl + Shift + S)" aria-keyshortcuts="Control+Shift+S"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="12.5" rx="2.5"/><path d="M9 20.5h6M12 17v3.5"/><path d="M15.5 8.5l-.5 1.5-1.5.5 1.5.5.5 1.5.5-1.5 1.5-.5-1.5-.5z" fill="currentColor" stroke="none"/></svg>Screen Saver</button>
+      </div>
     </div>
     <div class="sec-h" id="appsHead" style="display:none;">Your Apps</div>
     <div class="grid" id="appGrid"></div>
@@ -1820,6 +1829,8 @@ async function fillEmpDatalist(){
   }
 }
 </script>
+<!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
+<script src="launcher-lock.js?v=20261118a"></script>
 <!-- The splash that prevents the login screen from flashing does not run on
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->

@@ -96,18 +96,33 @@
         /* body is select-none (no accidental text selection on taps), but iOS Safari then refuses typing in boxes */
         input, textarea, select { -webkit-user-select: text; user-select: text; }
 
-        /* Print Styles */
+        /* Searchable list under a box (Party Name, Vehicle Number) and the pending PO / PR rows */
+        .gate-combo { position: absolute; z-index: 40; left: 0; right: 0; top: 100%; margin-top: 4px; max-height: 250px; overflow-y: auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 12px 30px rgba(0,0,0,0.14); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+        .gate-combo .opt { padding: 10px 14px; font-size: 13px; font-weight: 600; color: #111827; border-bottom: 1px solid #f3f4f6; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+        .gate-combo .opt:last-child { border-bottom: 0; }
+        .gate-combo .opt:hover, .gate-combo .opt:active { background: #eff6ff; }
+        .gate-combo .opt .s { font-size: 10px; font-weight: 700; color: #6b7280; flex-shrink: 0; }
+        .gate-combo .empty { padding: 14px; font-size: 12px; font-weight: 600; color: #9ca3af; text-align: center; }
+        .ref-row { width: 100%; display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1.5px solid #e5e7eb; border-radius: 16px; background: #fff; transition: border-color .2s, background .2s; }
+        .ref-row.on { border-color: #2563eb; background: #eff6ff; }
+        .ref-row .chk { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #d1d5db; display: flex; align-items: center; justify-content: center; font-size: 11px; color: transparent; flex-shrink: 0; }
+        .ref-row.on .chk { background: #2563eb; border-color: #2563eb; color: #fff; }
+        .ref-row .t { display: block; font-size: 13px; font-weight: 800; color: #111827; font-family: ui-monospace, monospace; }
+        .ref-row .l { display: block; font-size: 10.5px; font-weight: 600; color: #6b7280; margin-top: 2px; }
+        .ref-row .bdg { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; flex-shrink: 0; }
+        .b-pend { background: #fef3c7; color: #92400e; } .b-part { background: #dbeafe; color: #1e40af; } .b-pr { background: #ede9fe; color: #5b21b6; }
+
+        /* Print Styles. The pass is printed from a COPY (#gatePrintRoot, a direct child of body, filled by printGatePass()),
+           never from inside the modal: the sheet keeps its slide-up animation transform (fill-mode both) and has overflow hidden +
+           max-height, so a position:fixed pass inside it was clipped to that box and the PDF came out blank white. */
+        #gatePrintRoot { display: none; }
         @media print {
-            body * { visibility: hidden; }
-            #printablePass, #printablePass * { visibility: visible; }
-            #printablePass {
-                position: fixed;
-                left: 0;
-                top: 0;
-                width: 100%;
-                background: white;
-                padding: 20px;
-            }
+            @page { margin: 10mm; }
+            html, body { background: #fff !important; overflow: visible !important; height: auto !important; }
+            body > *:not(#gatePrintRoot) { display: none !important; }
+            #gatePrintRoot { display: block !important; }
+            #gatePrintRoot > div { max-width: 420px; margin: 0 auto; overflow: visible !important; max-height: none !important; }
+            #gatePrintRoot * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .no-print { display: none !important; }
         }
     </style>
@@ -292,9 +307,10 @@
                                 <i class="fa-solid fa-plus-circle"></i> Add Party
                             </button>
                         </div>
-                        <select id="inPartyName" onchange="refreshRefNoList()" required class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
-                            <!-- Populated dynamically via JS -->
-                        </select>
+                        <div class="relative">
+                            <input type="text" id="inPartyName" required autocomplete="off" placeholder="Type to search the party..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                            <div id="inPartyList" class="gate-combo hidden"></div>
+                        </div>
                     </div>
 
                     <!-- PO No ya PR No (Required) -->
@@ -312,12 +328,22 @@
                         </div>
                     </div>
 
-                    <p id="inRefHint" class="text-[10px] font-semibold text-gray-400 -mt-2"></p>
+                    <div class="flex items-center justify-between gap-2 -mt-2">
+                        <p id="inRefHint" class="text-[10px] font-semibold text-gray-400"></p>
+                        <button type="button" onclick="openRefPicker()" class="ios-btn shrink-0 text-[11px] font-extrabold text-blue-600 flex items-center gap-1"><i class="fa-solid fa-list-check"></i> Pending list</button>
+                    </div>
+
+                    <!-- Items + details of the chosen PO / PR (gate_ref_detail) -->
+                    <div id="inRefDetail" class="hidden space-y-3"></div>
 
                     <!-- Vehicle No -->
                     <div>
                         <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle Number</label>
-                        <input type="text" id="inVehicle" list="gateVehicleList" autocomplete="off" placeholder="HR-20-AB-1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                        <div class="relative">
+                            <input type="text" id="inVehicle" autocomplete="off" placeholder="Choose the vehicle from the list" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                            <div id="inVehicleList" class="gate-combo hidden"></div>
+                        </div>
+                        <p class="text-[10px] font-semibold text-gray-400 mt-1">Only vehicles of the list can be chosen. Type to search it.</p>
                     </div>
 
                     <!-- Bill Photo & Item Photo (Compressed & Saved with Preview) -->
@@ -498,9 +524,11 @@
                                 <i class="fa-solid fa-plus-circle"></i> New Pass
                             </button>
                         </div>
-                        <select id="storePassSelect" onchange="fetchStoreGatePassDetails()" required class="w-full px-3.5 py-3 bg-orange-50/60 border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500">
-                            <!-- Populated dynamically via JS -->
-                        </select>
+                        <div class="relative">
+                            <input type="text" id="storePassSelect" required autocomplete="off" placeholder="Type to search today's Outward No / party / receiver..." class="w-full px-3.5 py-3 bg-orange-50/60 border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500">
+                            <div id="storePassList" class="gate-combo hidden"></div>
+                        </div>
+                        <p class="text-[10px] font-semibold text-gray-400 mt-1">Only today's Store Outward numbers (not yet checked out here) are listed.</p>
                     </div>
 
                     <!-- Auto-Fetched Details Card from Store -->
@@ -512,6 +540,20 @@
                         <div>
                             <p class="text-[10px] font-semibold text-gray-400 uppercase">Party Name</p>
                             <p id="fetchedPartyName" class="text-sm font-bold text-gray-900">-</p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <p class="text-[10px] font-semibold text-gray-400 uppercase">Date</p>
+                                <p id="fetchedPassDate" class="text-xs font-bold text-gray-800">-</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-semibold text-gray-400 uppercase">Nature of Dispatch</p>
+                                <p id="fetchedPassNature" class="text-xs font-bold text-gray-800 break-words">-</p>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-semibold text-gray-400 uppercase">Receiver Name</p>
+                                <p id="fetchedPassReceiver" class="text-xs font-bold text-gray-800 break-words">-</p>
+                            </div>
                         </div>
                         <div class="grid grid-cols-3 gap-2 pt-1">
                             <div class="col-span-2">
@@ -599,8 +641,8 @@
                             <span id="dispDkMatchBadge" class="text-[10px] font-bold text-gray-400">Enter Slip to Fetch Tare</span>
                         </div>
                         <div class="relative">
-                            <input type="text" id="dispDkSlipNo" list="dispDkSlipDatalist" oninput="lookupDispatchDkSlip()" required placeholder="e.g. DK-4501" class="w-full px-3.5 py-3 bg-cyan-50/60 border border-cyan-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
-                            <datalist id="dispDkSlipDatalist"></datalist>
+                            <input type="text" id="dispDkSlipNo" required autocomplete="off" placeholder="Choose the saved Dharam Kanta Slip" class="w-full px-3.5 py-3 bg-cyan-50/60 border border-cyan-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
+                            <div id="dispDkSlipList" class="gate-combo hidden"></div>
                         </div>
                         <!-- Quick-Select Available Dharam Kanta Slips -->
                         <div id="dispDkQuickChips" class="flex flex-wrap gap-1.5 mt-2"></div>
@@ -755,15 +797,15 @@
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No *</label>
-                            <input type="text" id="dkVehicleNo" list="gateVehicleList" autocomplete="off" required placeholder="HR-20-AB-1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <input type="text" id="dkVehicleNo" list="gateVehicleList" autocomplete="off" required oninput="dkVehicleCheck()" placeholder="HR20AB1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
                         </div>
                     </div>
 
                     <!-- Gross Weight, Tare Weight & LOCKED Auto-Calculated Net Weight -->
                     <div class="grid grid-cols-3 gap-2.5">
                         <div>
-                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gross Wt (Kg) *</label>
-                            <input type="number" step="0.01" id="dkGrossWeight" oninput="calculateNetWeight()" required placeholder="0.00" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gross Wt (Kg) <span class="normal-case font-semibold text-gray-400">(optional)</span></label>
+                            <input type="number" step="0.01" min="0" id="dkGrossWeight" oninput="calculateNetWeight()" placeholder="Optional" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Tare Wt (Kg) *</label>
@@ -771,7 +813,7 @@
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-cyan-600 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
-                            <input type="number" step="0.01" id="dkNetWeight" readonly tabindex="-1" required placeholder="Auto" class="w-full px-3 py-3 bg-cyan-100/80 border border-cyan-300 rounded-xl text-sm font-extrabold text-cyan-900 cursor-not-allowed select-none focus:outline-none">
+                            <input type="number" step="0.01" id="dkNetWeight" readonly tabindex="-1" placeholder="Auto" class="w-full px-3 py-3 bg-cyan-100/80 border border-cyan-300 rounded-xl text-sm font-extrabold text-cyan-900 cursor-not-allowed select-none focus:outline-none">
                         </div>
                     </div>
 
@@ -792,6 +834,16 @@
                         <i class="fa-solid fa-scale-balanced"></i> Save Dharam Kanta Entry
                     </button>
                 </form>
+
+                <!-- Vehicles whose Outward is still pending: no new slip for them until they are out (or the old slip is deleted) -->
+                <div id="dkPendingBox" class="mt-5 hidden">
+                    <div class="flex items-center justify-between px-1 mb-2">
+                        <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider">Outward pending vehicles</span>
+                        <span id="dkPendingCount" class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">0</span>
+                    </div>
+                    <div id="dkPendingList" class="space-y-2"></div>
+                    <p class="text-[10px] font-semibold text-gray-400 mt-2 px-1">A new Dharam Kanta slip for these vehicles is possible only after the vehicle is marked Out, or after the saved slip is deleted (ERP PIN).</p>
+                </div>
             </div>
 
             <!-- VIEW 7: HYDRA / JCB INWARD & LIVE MINUTE TIMER WORKFLOW -->
@@ -839,7 +891,7 @@
                     <!-- Hydra / Crane Vehicle No (Optional) -->
                     <div>
                         <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Hydra / Vehicle No (Optional)</label>
-                        <input type="text" id="hydraVehicleNo" list="gateVehicleList" autocomplete="off" placeholder="e.g. HR-20-CR-4510" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
+                        <input type="text" id="hydraVehicleNo" list="gateVehicleList" autocomplete="off" placeholder="e.g. HR20CR4510" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
                     </div>
 
                     <!-- Auto Date & Time Stamp -->
@@ -956,7 +1008,7 @@
                 <button id="modalMarkOutBtn" onclick="" class="hidden ios-btn flex-1 py-3 rounded-2xl bg-amber-500 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5">
                     <i class="fa-solid fa-right-from-bracket"></i> Mark Out
                 </button>
-                <button onclick="window.print()" class="ios-btn flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5">
+                <button onclick="printGatePass()" class="ios-btn flex-1 py-3 rounded-2xl bg-blue-600 text-white font-bold text-xs shadow-md flex items-center justify-center gap-1.5">
                     <i class="fa-solid fa-print"></i> Print Pass
                 </button>
                 <button onclick="closePassModal()" class="ios-btn px-4 py-3 rounded-2xl bg-gray-200/80 text-gray-700 font-bold text-xs">Close</button>
@@ -989,6 +1041,24 @@
             <!-- Live Lookup Result -->
             <div id="qrLookupResult" class="bg-gray-50 rounded-2xl p-4 border border-gray-200/80 text-center max-h-72 overflow-y-auto">
                 <p class="text-xs text-gray-400">Type a Pass ID, Mobile, or Vehicle No above to verify or mark exit.</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pending POs / Field Boy PRs of the chosen Party (Inward form) -->
+    <div id="refPickModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeRefPicker()"></div>
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[86vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 border-b border-gray-100 shrink-0 flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <h3 id="refPickTitle" class="text-base font-bold text-gray-900 truncate">Pending POs</h3>
+                    <p id="refPickSub" class="text-[11px] font-semibold text-gray-500"></p>
+                </div>
+                <button type="button" onclick="closeRefPicker()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div id="refPickList" class="overflow-y-auto p-3 space-y-2"></div>
+            <div class="p-3 border-t border-gray-100 shrink-0">
+                <button type="button" id="refPickUse" onclick="refPickUse()" class="ios-btn w-full py-3 bg-blue-600 text-white font-extrabold text-sm rounded-2xl shadow-md">Select a number</button>
             </div>
         </div>
     </div>
@@ -1271,7 +1341,7 @@
         // every list gate_masters returns: key, label for the status line
         const GATE_SOURCES = [
             { key: 'parties', label: 'suppliers' }, { key: 'buyers', label: 'buyers' }, { key: 'vehicles', label: 'vehicles' },
-            { key: 'hosts', label: 'employees' }, { key: 'pos', label: 'POs' }, { key: 'prs', label: 'PRs' }, { key: 'passes', label: 'store passes' }
+            { key: 'hosts', label: 'employees' }, { key: 'pos', label: 'POs' }, { key: 'prs', label: 'PRs' }, { key: 'passes', label: 'store passes' }, { key: 'fieldBoys', label: 'field boys' }, { key: 'fbPrs', label: 'field boy PRs' }
         ];
 
         let gateSb = null, GATE_USER = null, GATE_OFFLINE = false, gateRefreshTimer = null, gateMastersBusy = false;
@@ -1452,6 +1522,57 @@
             return out.sort((a, b) => a.no.localeCompare(b.no));
         }
 
+        // ── PO / PR details under the number: header + items table ──
+        const REF_DOCS = {};      // 'PO|<no>' / 'PR|<no>' -> the document the server sent (kept for the page visit)
+        let refDetailGen = 0, refDetailTimer = null;
+        const refNum = v => { const n = Number(v); return (v === null || v === undefined || v === '' || !isFinite(n)) ? '-' : String(Math.round(n * 1000) / 1000); };
+        const refDate = v => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? m[3] + '-' + m[2] + '-' + m[1] : (v || '-'); };
+        function refNosTyped() {
+            return [...new Set(String((document.getElementById('inRefNo') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean))].slice(0, 10);
+        }
+        function clearRefDetail() { const box = document.getElementById('inRefDetail'); if (box) { box.classList.add('hidden'); box.innerHTML = ''; } refDetailGen++; }
+        function refDetailSoon() { clearTimeout(refDetailTimer); refDetailTimer = setTimeout(loadRefDetail, 350); }
+        async function loadRefDetail() {
+            const box = document.getElementById('inRefDetail'); if (!box) return;
+            const type = (document.getElementById('inRefType') || {}).value === 'PR' ? 'PR' : 'PO', nos = refNosTyped();
+            if (!nos.length) { clearRefDetail(); return; }
+            const gen = ++refDetailGen, need = nos.filter(n => !REF_DOCS[type + '|' + n]);
+            box.classList.remove('hidden');
+            let err = '';
+            if (need.length) {
+                box.innerHTML = '<div class="rounded-2xl bg-gray-50 border border-gray-200 p-4 text-center text-xs font-semibold text-gray-400"><i class="fa-solid fa-spinner fa-spin mr-1"></i> Loading the items...</div>';
+                const r = await gateRpc('gate_ref_detail', { p_kind: type, p_nos: need });
+                if (gen !== refDetailGen) return;   // another number was chosen meanwhile
+                if (r.ok) (r.data.docs || []).forEach(d => { REF_DOCS[type + '|' + d.no] = d; });
+                else err = r.error === 'NO_MIGRATION' ? 'The server needs the updated GATE2_MASTERS_MIGRATION.sql (Admin).' : r.error === 'NET' ? 'No internet: the items cannot be loaded now.' : 'The items could not be read' + (r.detail ? ': ' + r.detail : '') + '.';
+            }
+            box.innerHTML = (err ? `<p class="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">${esc(err)}</p>` : '')
+                + nos.map(n => refDocHtml(type, n, REF_DOCS[type + '|' + n])).join('');
+        }
+        function refDocHtml(type, no, d) {
+            if (!d) return `<div class="rounded-2xl border border-gray-200 bg-white p-3 text-xs font-semibold text-gray-500"><b class="font-mono text-gray-800">${esc(no)}</b>: not found in the ERP${type === 'PO' ? ' (or no longer open)' : ''}.</div>`;
+            const kv = (k, v) => v === null || v === undefined || v === '' ? '' : `<div class="min-w-0"><div class="text-[9.5px] font-bold text-gray-400 uppercase">${esc(k)}</div><div class="text-[12px] font-bold text-gray-900 break-words">${esc(v)}</div></div>`;
+            const items = d.items || [];
+            let head, table;
+            if (type === 'PR') {
+                head = [kv('Requested By', d.requestedBy), kv('Department', d.department), kv('Purchaser', d.purchaser), kv('Priority', d.priority), kv('Required By', d.requiredBy ? refDate(d.requiredBy) : ''), kv('PR Date', refDate(d.date)), kv('Remarks', d.remarks)].join('');
+                table = `<table class="w-full text-[11px]"><thead><tr class="bg-gray-100 text-gray-500 uppercase text-[9.5px]"><th class="p-1.5 text-left">Sr</th><th class="p-1.5 text-left">Item</th><th class="p-1.5 text-center">UOM</th><th class="p-1.5 text-right">Required</th><th class="p-1.5 text-right">Weight</th></tr></thead><tbody>`
+                    + items.map((it, i) => `<tr class="border-t border-gray-100"><td class="p-1.5 text-gray-400">${i + 1}</td><td class="p-1.5"><div class="font-bold text-gray-900">${esc(it.name || '-')}</div>${(it.make || it.desc) ? `<div class="text-[10px] text-gray-500">${esc([it.make, it.desc].filter(Boolean).join(' · '))}</div>` : ''}</td><td class="p-1.5 text-center">${esc(it.uom || '-')}</td><td class="p-1.5 text-right font-bold">${esc(refNum(it.ordered))}</td><td class="p-1.5 text-right">${esc(refNum(it.weight))}</td></tr>`).join('') + '</tbody></table>';
+            } else {
+                head = [kv('Vendor', d.vendor), kv('PO Date', refDate(d.date)), kv('Delivery Date', d.deliveryDate ? refDate(d.deliveryDate) : ''), kv('Order Value', d.grandTotal ? '₹ ' + Number(d.grandTotal).toLocaleString('en-IN') : ''), kv('PR Ref', d.prRef), kv('Received / Ordered', (d.totalQty ? refNum(d.receivedQty || 0) + ' / ' + refNum(d.totalQty) : ''))].join('');
+                table = `<table class="w-full text-[11px]"><thead><tr class="bg-gray-100 text-gray-500 uppercase text-[9.5px]"><th class="p-1.5 text-left">Sr</th><th class="p-1.5 text-left">Item</th><th class="p-1.5 text-center">UOM</th><th class="p-1.5 text-right">Ordered</th><th class="p-1.5 text-right">Received</th><th class="p-1.5 text-right">Pending</th><th class="p-1.5 text-right">Rate</th></tr></thead><tbody>`
+                    + items.map((it, i) => { const o = Number(it.ordered) || 0, r = Number(it.received) || 0, pend = Math.max(0, o - r);
+                        return `<tr class="border-t border-gray-100"><td class="p-1.5 text-gray-400">${i + 1}</td><td class="p-1.5"><div class="font-bold text-gray-900">${esc(it.name || '-')}</div>${(it.make || it.desc) ? `<div class="text-[10px] text-gray-500">${esc([it.make, it.desc].filter(Boolean).join(' · '))}</div>` : ''}</td><td class="p-1.5 text-center">${esc(it.uom || '-')}</td><td class="p-1.5 text-right font-bold">${esc(refNum(it.ordered))}</td><td class="p-1.5 text-right">${esc(refNum(it.received))}</td><td class="p-1.5 text-right font-extrabold ${pend > 0 ? 'text-amber-600' : 'text-emerald-600'}">${esc(refNum(pend))}</td><td class="p-1.5 text-right">${esc(refNum(it.rate))}</td></tr>`; }).join('') + '</tbody></table>';
+            }
+            const st = d.status ? `<span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full ${type === 'PR' ? 'b-pr' : (/partial/i.test(d.status) ? 'b-part' : 'b-pend')} uppercase">${esc(d.status)}</span>` : '';
+            return `<div class="rounded-2xl border border-gray-200 bg-white overflow-hidden">
+                <div class="flex items-center justify-between gap-2 px-3 py-2 bg-blue-50/60 border-b border-blue-100"><span class="font-mono text-[12px] font-extrabold text-blue-700">${esc(d.no)}</span>${st}</div>
+                <div class="grid grid-cols-2 gap-x-3 gap-y-2 p-3">${head}</div>
+                <div class="px-3 pb-1 text-[10px] font-extrabold text-gray-400 uppercase">Items (${items.length})</div>
+                <div class="overflow-x-auto px-1 pb-2">${items.length ? table : '<p class="text-center text-[11px] font-semibold text-gray-400 py-3">No item lines found.</p>'}</div>
+            </div>`;
+        }
+
         // PO / PR numbers for the Inward form: the open POs of the chosen party (or the PR list)
         function refreshRefNoList() {
             const dl = document.getElementById('gateRefList'), hint = document.getElementById('inRefHint');
@@ -1464,8 +1585,9 @@
                 opts = mine.slice(0, 200).map(p => ({ v: p.poNo, t: [p.vendor, p.date, p.status].filter(Boolean).join(' · ') }));
                 if (all.length) text = party ? (mine.length ? mine.length + ' open PO(s) of this party from the ERP: pick one or type it' : 'No open PO of this party in the ERP: type the number') : 'Choose the party first to see its POs';
             } else {
-                opts = (GATE_MASTERS.prs || []).slice(0, 200).map(p => ({ v: p.reqNo, t: [p.date, p.status].filter(Boolean).join(' · ') }));
-                if (opts.length) text = 'Recent PRs from the ERP: pick one or type it';
+                const fbp = party ? fbPrsFor(party) : (GATE_MASTERS.fbPrs || []);
+                opts = (fbp.length ? fbp : (GATE_MASTERS.prs || [])).slice(0, 200).map(p => ({ v: p.reqNo, t: [p.requestedBy, p.date, p.status].filter(Boolean).join(' · ') }));
+                if (opts.length) text = fbp.length ? fbp.length + ' open PR(s) of this Field Boy: use the Pending list' : 'Recent PRs from the ERP: pick one or type it';
             }
             dl.innerHTML = opts.map(o => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
             if (hint) hint.textContent = text;
@@ -1524,6 +1646,7 @@
         }
 
         function gateRegUi() {
+            try { renderDkPending(); dkVehicleCheck(); } catch (e) { }   // every add / change / delete / pull passes here
             const n = gatePendingCount(), st = gateRegState_.state;
             const badge = document.getElementById('gatePendingBadge'), txt = document.getElementById('gateRegText');
             if (badge) { badge.textContent = n; badge.classList.toggle('hidden', !n); }
@@ -1663,15 +1786,166 @@
         function getStorePass(code) {
             if (storeGatePassesDB[code]) return storeGatePassesDB[code];
             const p = (GATE_MASTERS.passes || []).find(x => x.no === code);
-            return p ? { party: p.party || '', item: p.item || '', qty: p.qty || '' } : null;
+            return p ? { party: p.party || '', item: p.item || '', qty: p.qty || '', date: p.date || '', nature: p.nature || '', receiver: p.receiver || '' } : null;
         }
         // not yet checked out at the gate: ERP passes (newest first), then the local ones
+        // The gate form lists only TODAY's Store Outward numbers (the ERP's outward_date, or the day a pass was made on this
+        // device; an older device pass without a date is not offered). A stale cached ERP list therefore shows nothing new.
+        const localYmd = () => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); };
+        const passYmd = v => String(v || '').slice(0, 10);
         function storePassCodes() {
-            const used = usedPassNos(), seen = new Set(), out = [];
-            (GATE_MASTERS.passes || []).forEach(p => { if (p.no && !used.has(p.no) && !seen.has(p.no)) { seen.add(p.no); out.push(p.no); } });
-            Object.keys(storeGatePassesDB).forEach(c => { if (!seen.has(c)) { seen.add(c); out.push(c); } });
+            const used = usedPassNos(), seen = new Set(), out = [], td = localYmd();
+            (GATE_MASTERS.passes || []).forEach(p => { if (p.no && passYmd(p.date) === td && !used.has(p.no) && !seen.has(p.no)) { seen.add(p.no); out.push(p.no); } });
+            Object.keys(storeGatePassesDB).forEach(c => { if (!seen.has(c) && passYmd(storeGatePassesDB[c].date) === td && !used.has(c)) { seen.add(c); out.push(c); } });
             return out;
         }
+        const storePassOptions = () => storePassCodes().map(code => {
+            const p = getStorePass(code) || {};
+            return { value: code, sub: p.party || '', hay: [p.nature, p.receiver, p.item].filter(Boolean).join(' ') };
+        });
+
+        // ==========================================
+        // 1D. INWARD FORM: searchable Party box, PO / PR popup, vehicle from the list only
+        // ==========================================
+        /* gateCombo: a text box that is only a SEARCH box over a list. What is typed filters the list; the value
+           is committed only by tapping a row (or by typing exactly one of the list's values), and anything else
+           typed is thrown back to the last committed value when the box is left. So the box can never hold a
+           value that is not in the list. The input keeps its id and .value, so the form code reads it as before. */
+        const GATE_COMBOS = {};
+        function gateCombo(cfg) {
+            const input = document.getElementById(cfg.inputId), list = document.getElementById(cfg.listId);
+            if (!input || !list || GATE_COMBOS[cfg.inputId]) return;
+            const api = GATE_COMBOS[cfg.inputId] = {
+                options: cfg.options, committed: '',
+                match(v) { const k = normKey(v); return k ? api.options().find(o => normKey(o.value) === k) : null; },
+                render(q) {
+                    const words = String(q || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+                    const rows = api.options().filter(o => !words.length || words.every(w => (o.value + ' ' + (o.sub || '') + ' ' + (o.hay || '')).toUpperCase().indexOf(w) >= 0)).slice(0, 80);
+                    list.innerHTML = rows.length ? rows.map(o => `<div class="opt" data-v="${esc(o.value)}"><span class="v">${esc(o.value)}</span>${o.sub ? `<span class="s">${esc(o.sub)}</span>` : ''}</div>`).join('')
+                        : `<div class="empty">${esc(cfg.emptyText || 'Nothing matches. Choose from the list.')}</div>`;
+                    list.classList.remove('hidden');
+                },
+                close() { list.classList.add('hidden'); },
+                set(v, silent) {
+                    const hit = api.match(v); const val = hit ? hit.value : '';
+                    input.value = val; api.committed = val; api.close();
+                    if (!silent && cfg.onPick) cfg.onPick(val);
+                }
+            };
+            input.addEventListener('focus', () => { try { input.select(); } catch (e) { } api.render(''); });
+            input.addEventListener('input', () => api.render(input.value));
+            input.addEventListener('keydown', e => {
+                if (e.key === 'Escape') { api.close(); input.blur(); }
+                if (e.key === 'Enter') { e.preventDefault(); const first = list.querySelector('.opt'); if (first && !api.match(input.value)) api.set(first.dataset.v); else { const m = api.match(input.value); if (m) api.set(m.value); } }
+            });
+            // pointerdown, not click: the box loses focus before a click would land
+            list.addEventListener('pointerdown', e => { const o = e.target.closest('.opt'); if (!o) return; e.preventDefault(); api.set(o.dataset.v); });
+            input.addEventListener('blur', () => setTimeout(() => {
+                const m = api.match(input.value);
+                if (m) { if (m.value !== api.committed) api.set(m.value); else { input.value = m.value; api.close(); } }
+                else { input.value = api.committed; api.close(); }   // not in the list: back to what was chosen
+            }, 160));
+            if (input.form) input.form.addEventListener('reset', () => { api.committed = ''; api.close(); });
+        }
+
+        /* Parties that are Field Boys BY DEFAULT, whether or not Users & Roles has them ticked (DEEPAK VERMA, also read as DEEPAK VERM).
+           Their Pending list is the open PRs of the FIELD BOY purchaser, never POs. To add one: a line here. */
+        const GATE_FB_DEFAULT = [/^DEEPAK\s+VERMA?$/];
+        const isDefaultFbParty = n => GATE_FB_DEFAULT.some(rx => rx.test(normKey(n)));
+        const isFieldBoyName = n => isDefaultFbParty(n) || (GATE_MASTERS.fieldBoys || []).some(x => normKey(x) === normKey(n));
+        // The open PRs a Field Boy party brings: a default one gets every PR whose Purchaser is FIELD BOY (and his own name), another one his own
+        function fbPrsFor(party) {
+            const all = GATE_MASTERS.fbPrs || [], k = normKey(party);
+            return isDefaultFbParty(party) ? all.filter(p => normKey(p.purchaser) === 'FIELD BOY' || normKey(p.purchaser) === k) : all.filter(p => normKey(p.purchaser) === k);
+        }
+        // Party options of the Inward form: every ERP supplier / local party, plus the Field Boys (their PRs are what they bring)
+        function inwardPartyOptions() {
+            const out = allParties().map(p => ({ value: p, sub: '' }));
+            const seen = new Set(out.map(o => normKey(o.value)));
+            (GATE_MASTERS.fieldBoys || []).concat(['DEEPAK VERMA']).forEach(n => { if (!seen.has(normKey(n))) { seen.add(normKey(n)); out.push({ value: n, sub: 'Field Boy' }); } });
+            out.forEach(o => { if (isFieldBoyName(o.value)) o.sub = 'Field Boy'; });
+            return out.sort((a, b) => a.value.localeCompare(b.value));
+        }
+        const inwardVehicleOptions = () => allVehicles().map(v => ({ value: v.no, sub: v.note }));
+
+        function initInwardCombos() {
+            gateCombo({ inputId: 'inPartyName', listId: 'inPartyList', options: inwardPartyOptions, emptyText: 'No such party. Use Add Party if it is new.', onPick: inwardPartyPicked });
+            gateCombo({ inputId: 'inVehicle', listId: 'inVehicleList', options: inwardVehicleOptions, emptyText: 'No such vehicle in the list.' });
+            gateCombo({ inputId: 'dispDkSlipNo', listId: 'dispDkSlipList', options: dispDkSlipOptions, emptyText: 'No saved Dharam Kanta Slip. Create one in Dharam Kanta first.', onPick: lookupDispatchDkSlip });
+            gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
+            const rn = document.getElementById('inRefNo'), rt = document.getElementById('inRefType');
+            if (rn) { rn.addEventListener('input', refDetailSoon); rn.addEventListener('change', loadRefDetail); }
+            if (rt) rt.addEventListener('change', () => { document.getElementById('inRefNo').value = ''; clearRefDetail(); });
+            if (rn && rn.form) rn.form.addEventListener('reset', clearRefDetail);
+        }
+
+        // A party was chosen: a Field Boy brings PRs, every other party POs. Open the list of what is still pending.
+        function inwardPartyPicked(party) {
+            const rt = document.getElementById('inRefType');
+            if (!party) { refreshRefNoList(); return; }
+            rt.value = isFieldBoyName(party) ? 'PR' : 'PO';
+            document.getElementById('inRefNo').value = '';
+            clearRefDetail();
+            refreshRefNoList();
+            openRefPicker();
+        }
+
+        // Pending / Partially Received POs of a party, or the open PRs of a Field Boy
+        function refPickerRows() {
+            const type = (document.getElementById('inRefType') || {}).value || 'PO';
+            const party = (document.getElementById('inPartyName') || {}).value || '';
+            if (type === 'PR') {
+                const rows = fbPrsFor(party);
+                return { type, party, rows: rows.map(p => ({ no: p.reqNo, title: p.reqNo, line: [p.requestedBy ? 'By ' + p.requestedBy : '', 'Purchaser ' + (p.purchaser || '-'), p.date].filter(Boolean).join(' · '), badge: p.status || 'Open', cls: 'b-pr' })) };
+            }
+            const rows = [];
+            (GATE_MASTERS.pos || []).forEach(p => {
+                if (party && normKey(p.vendor) !== normKey(party)) return;
+                const total = Number(p.totalQty) || 0, got = Number(p.receivedQty) || 0;
+                if (total > 0 && got >= total) return;   // fully received
+                const partial = got > 0;
+                rows.push({ no: p.poNo, title: p.poNo, line: [p.date, total ? 'Received ' + got + ' of ' + total : '', p.grandTotal ? '₹ ' + Number(p.grandTotal).toLocaleString('en-IN') : ''].filter(Boolean).join(' · '), badge: partial ? 'Partially Received' : 'Pending', cls: partial ? 'b-part' : 'b-pend' });
+            });
+            return { type, party, rows };
+        }
+        let REF_PICK = new Set();
+        function openRefPicker() {
+            const { type, party, rows } = refPickerRows();
+            if (!party) return showIosBanner('Choose the Party Name first', 'info');
+            REF_PICK = new Set();
+            const noList = !(GATE_MASTERS.at);
+            document.getElementById('refPickTitle').textContent = type === 'PR' ? 'Pending PRs (Field Boy) for ' + party : 'Pending POs of ' + party;
+            document.getElementById('refPickSub').textContent = type === 'PR' ? 'Open PRs of the Field Boy purchaser. Tap one or more.' : 'Pending and Partially Received POs of this party. Tap one or more.';
+            const cur = String((document.getElementById('inRefNo') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
+            cur.forEach(n => { if (rows.some(r => r.no === n)) REF_PICK.add(n); });
+            document.getElementById('refPickList').innerHTML = rows.length ? rows.map(r => `
+                <button type="button" class="ref-row${REF_PICK.has(r.no) ? ' on' : ''}" data-no="${esc(r.no)}" onclick="refPickToggle(this)">
+                    <span class="chk"><i class="fa-solid fa-check"></i></span>
+                    <span class="min-w-0 flex-1 text-left"><span class="t">${esc(r.title)}</span><span class="l">${esc(r.line)}</span></span>
+                    <span class="bdg ${r.cls}">${esc(r.badge)}</span>
+                </button>`).join('')
+                : `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${noList ? 'The ERP list has not loaded yet. Check the internet and tap the refresh button at the top.' : (type === 'PR' ? 'No pending PR of the Field Boy purchaser in the ERP.' : 'No pending or partially received PO of this party in the ERP. Type the number in the PO / PR box if it is new.')}</p>`;
+            refPickCount();
+            document.getElementById('refPickModal').classList.remove('hidden');
+        }
+        function refPickCount() {
+            const b = document.getElementById('refPickUse');
+            b.textContent = REF_PICK.size ? 'Use ' + REF_PICK.size + ' selected' : 'Select a number';
+            b.disabled = !REF_PICK.size; b.classList.toggle('opacity-50', !REF_PICK.size);
+        }
+        function refPickToggle(btn) {
+            const no = btn.dataset.no;
+            if (REF_PICK.has(no)) REF_PICK.delete(no); else REF_PICK.add(no);
+            btn.classList.toggle('on', REF_PICK.has(no)); refPickCount();
+        }
+        function refPickUse() {
+            if (!REF_PICK.size) return;
+            document.getElementById('inRefNo').value = [...REF_PICK].join(', ');
+            closeRefPicker();
+            loadRefDetail();
+            showIosBanner(REF_PICK.size + ' selected', 'success');
+        }
+        function closeRefPicker() { document.getElementById('refPickModal').classList.add('hidden'); }
 
         // ==========================================
         // 2. INITIALIZATION & CLOCK
@@ -1685,6 +1959,7 @@
             }, 1000);
             refreshMasterDropdowns();
             updateShiftBadgeUI();
+            initInwardCombos();
             gateBoot();   // ERP login check, then the ERP lists (section 1B)
         });
 
@@ -1837,6 +2112,11 @@
                 initDispatchPackingSlipForm();
             }
 
+            if (viewId === 'dharamKantaForm') {
+                renderDkPending();
+                dkVehicleCheck();
+            }
+
             if (viewId === 'visitorForm') {
                 initVisitorForm();
             }
@@ -1890,10 +2170,11 @@
                 showIosBanner('Both the Bill Photo and the Item Photo are required!', 'error');
                 return;
             }
-            if (!document.getElementById('inPartyName').value) {
-                showIosBanner('Please select the Party Name!', 'error');
+            if (!GATE_COMBOS.inPartyName.match(document.getElementById('inPartyName').value)) {
+                showIosBanner('Please choose the Party Name from the list!', 'error');
                 return;
             }
+            { const vv = document.getElementById('inVehicle').value.trim(); if (vv && !GATE_COMBOS.inVehicle.match(vv)) { showIosBanner('Choose the Vehicle Number from the list!', 'error'); return; } }
             const inwardType = document.querySelector('input[name="inwardType"]:checked').value;
             const partyName = document.getElementById('inPartyName').value;
             const refType = document.getElementById('inRefType').value;
@@ -1963,6 +2244,10 @@
                 document.getElementById('fetchedPartyName').textContent = data.party;
                 document.getElementById('fetchedItemName').textContent = data.item;
                 document.getElementById('fetchedItemQty').textContent = data.qty;
+                const dm = /^(\d{4})-(\d{2})-(\d{2})/.exec(data.date || '');
+                document.getElementById('fetchedPassDate').textContent = dm ? dm[3] + '-' + dm[2] + '-' + dm[1] : (data.date || '-');
+                document.getElementById('fetchedPassNature').textContent = data.nature || '-';
+                document.getElementById('fetchedPassReceiver').textContent = data.receiver || '-';
                 box.classList.remove('hidden');
             } else {
                 box.classList.add('hidden');
@@ -2022,6 +2307,7 @@
 
             commitEntry(newOutward);
             this.reset();
+            fetchStoreGatePassDetails();
             tempPhotos.outPass = null;
             tempPhotos.outItem = null;
             showView('actionMenu');
@@ -2074,12 +2360,9 @@
             document.getElementById('dispVehiclePreviewBox').classList.add('hidden');
             document.getElementById('dispVehiclePreviewImg').classList.add('hidden');
 
-            // Populate datalist and quick-select chips from recorded Dharam Kanta slips
+            // Quick-select chips from the recorded Dharam Kanta slips (the full list is the combo box above)
             const dkSlips = getAllDharamKantaSlips();
-            const datalist = document.getElementById('dispDkSlipDatalist');
             const chipsBox = document.getElementById('dispDkQuickChips');
-
-            datalist.innerHTML = dkSlips.map(s => `<option value="${esc(s.id)}">${esc(s.vehicle)} (Tare: ${parseTareFromDkEntry(s)} Kg)</option>`).join('');
 
             if (dkSlips.length > 0) {
                 chipsBox.innerHTML = `<span class="text-[10px] font-bold text-gray-400 self-center mr-1">Recent Slips:</span>` +
@@ -2094,8 +2377,14 @@
         }
 
         function selectDispatchDkChip(slipId) {
-            document.getElementById('dispDkSlipNo').value = slipId;
-            lookupDispatchDkSlip();
+            if (GATE_COMBOS.dispDkSlipNo) GATE_COMBOS.dispDkSlipNo.set(slipId);   // commits + runs the lookup (onPick)
+            else { document.getElementById('dispDkSlipNo').value = slipId; lookupDispatchDkSlip(); }
+        }
+        // Saved Dharam Kanta slips, newest first. A slip already used by a Dispatch Packing entry is marked, not hidden.
+        function dispDkSlipOptions() {
+            const used = new Set();
+            gateEntries.forEach(e => { if (e.category === 'DISPATCH PACKING') { const m = /DK: ([^ |]+)/.exec(e.host || ''); if (m) used.add(m[1]); } });
+            return getAllDharamKantaSlips().filter(x => !x.deleted_at).map(x => ({ value: x.id, sub: [x.vehicle, 'Tare ' + parseTareFromDkEntry(x) + ' Kg', used.has(x.id) ? 'used' : ''].filter(Boolean).join(' · ') }));
         }
 
         function lookupDispatchDkSlip() {
@@ -2125,7 +2414,7 @@
             if (found) {
                 matchedDispatchDkEntry = found;
                 const tareVal = parseTareFromDkEntry(found);
-                badge.innerHTML = `<i class="fa-solid fa-circle-check mr-0.5"></i> Tare Fetched (${tareVal} Kg)`;
+                badge.innerHTML = `<i class="fa-solid fa-circle-check mr-0.5"></i> Tare filled (${tareVal} Kg)`;
                 badge.className = 'text-[10px] font-extrabold text-emerald-600';
 
                 vehicleInput.value = found.vehicle || 'N/A';
@@ -2385,11 +2674,69 @@
             const gross = parseFloat(document.getElementById('dkGrossWeight').value) || 0;
             const tare = parseFloat(document.getElementById('dkTareWeight').value) || 0;
             const netInput = document.getElementById('dkNetWeight');
-            if (gross > 0 || tare > 0) {
+            // Net only means something when a Gross was weighed; the guard often notes just the Tare
+            if (gross > 0) {
                 netInput.value = Math.max(0, gross - tare).toFixed(2);
             } else {
                 netInput.value = '';
             }
+        }
+
+        // ── One open Dharam Kanta slip per vehicle ──
+        // A saved slip keeps its vehicle "in the loop" until the vehicle is Out: the slip itself is marked Out, or a Dispatch
+        // Packing entry made from it (host "DK: <slip>") is. A deleted slip is gone from gateEntries, so it frees the vehicle too.
+        const dkVehKey = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        function dkPendingSlips() {
+            const disp = {};
+            gateEntries.forEach(e => {
+                if (e.category !== 'DISPATCH PACKING') return;
+                const m = /DK: ([^ |]+)/.exec(e.host || '');
+                if (m) (disp[m[1]] = disp[m[1]] || []).push(e);
+            });
+            const out = [];
+            gateEntries.forEach(d => {
+                if (d.category !== 'DHARAM KANTA' || d.status === 'OUT' || !dkVehKey(d.vehicle)) return;
+                const ps = disp[d.id] || [];
+                if (ps.some(p => p.status === 'OUT')) return;   // dispatched and gone: the vehicle is free again
+                out.push({ key: dkVehKey(d.vehicle), slip: d, disp: ps[0] || null });
+            });
+            return out;   // newest first, like gateEntries
+        }
+        const dkPendingFor = veh => { const k = dkVehKey(veh); return k ? dkPendingSlips().find(x => x.key === k) || null : null; };
+        function dkBlockText(p) {
+            return `Vehicle ${p.slip.vehicle} already has Slip ${p.slip.id}: ${p.disp ? 'loaded, not marked Out yet' : 'Outward pending'}. A new slip is possible after the vehicle is Out, or if that slip is deleted.`;
+        }
+        function dkVehicleCheck() {
+            const w = document.getElementById('dkVehicleWarn'), inp = document.getElementById('dkVehicleNo');
+            if (!inp) return;
+            if (!w) {
+                const p = document.createElement('p'); p.id = 'dkVehicleWarn';
+                p.className = 'hidden text-[10.5px] font-bold text-red-600 mt-1 leading-snug';
+                inp.insertAdjacentElement('afterend', p);
+                return dkVehicleCheck();
+            }
+            const hit = dkPendingFor(inp.value);
+            w.textContent = hit ? dkBlockText(hit) : '';
+            w.classList.toggle('hidden', !hit);
+        }
+        function renderDkPending() {
+            const box = document.getElementById('dkPendingBox'), list = document.getElementById('dkPendingList');
+            if (!box || !list) return;
+            const rows = dkPendingSlips();
+            box.classList.toggle('hidden', !rows.length);
+            document.getElementById('dkPendingCount').textContent = rows.length;
+            const fmt = iso => { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+            list.innerHTML = rows.map(p => {
+                const d = p.slip;
+                return `<div class="flex items-center gap-2 bg-amber-50/70 border border-amber-200 rounded-2xl px-3 py-2.5">
+                    <button type="button" onclick="openPassModal('${esc(d.id)}')" class="ios-btn min-w-0 flex-1 text-left">
+                        <span class="block font-mono text-[13px] font-extrabold text-gray-900 truncate">${esc(d.vehicle)}</span>
+                        <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg · ${esc(fmt(d.inTime))}</span>
+                    </button>
+                    <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${p.disp ? 'b-part' : 'b-pend'}">${p.disp ? 'Loaded, not out' : 'Outward pending'}</span>
+                    <button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>
+                </div>`;
+            }).join('');
         }
 
         document.getElementById('formDharamKanta').addEventListener('submit', function(e) {
@@ -2397,17 +2744,23 @@
             const grossVal = parseFloat(document.getElementById('dkGrossWeight').value) || 0;
             const tareVal = parseFloat(document.getElementById('dkTareWeight').value) || 0;
 
-            if (tareVal > grossVal) {
+            if (grossVal > 0 && tareVal > grossVal) {   // no Gross weighed (0 / empty) = Tare only, nothing to compare
                 showIosBanner('Tare Weight cannot be greater than Gross Weight!', 'error');
                 return;
             }
 
             const slipNo = cleanGateId(document.getElementById('dkSlipNo').value);
             const vehicleNo = document.getElementById('dkVehicleNo').value.trim().toUpperCase();
-            const netVal = Math.max(0, grossVal - tareVal).toFixed(2);
+            const netVal = grossVal > 0 ? Math.max(0, grossVal - tareVal).toFixed(2) : '0.00';
             const formattedId = slipNo.startsWith('DK-') ? slipNo : 'DK-' + slipNo;
             if (!slipNo) {
                 showIosBanner('Enter the Dharam Kanta Slip No!', 'error');
+                return;
+            }
+            const dkOpen = dkPendingFor(vehicleNo);
+            if (dkOpen) {
+                dkVehicleCheck(); renderDkPending();
+                showIosBanner(dkBlockText(dkOpen), 'error');
                 return;
             }
             if (gateIdTaken(formattedId)) {
@@ -2428,8 +2781,8 @@
                 grossWeight: grossVal,
                 tareWeight: tareVal,
                 netWeight: parseFloat(netVal),
-                host: `Gross: ${grossVal.toFixed(2)} Kg | Tare: ${tareVal.toFixed(2)} Kg`,
-                purpose: `Net Weight: ${netVal} Kg • Vehicle Photo ✓`,
+                host: grossVal > 0 ? `Gross: ${grossVal.toFixed(2)} Kg | Tare: ${tareVal.toFixed(2)} Kg` : `Tare: ${tareVal.toFixed(2)} Kg`,
+                purpose: grossVal > 0 ? `Net Weight: ${netVal} Kg • Vehicle Photo ✓` : `Tare Weight noted • Vehicle Photo ✓`,
                 vehiclePhoto: tempPhotos.dkVehicle,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
@@ -2439,6 +2792,7 @@
 
             commitEntry(newDkEntry);
             this.reset();
+            dkVehicleCheck();
             tempPhotos.dkVehicle = null;
             document.getElementById('dkVehicleLabel').textContent = 'Capture / Upload Vehicle Photo';
             document.getElementById('dkPreviewBox').classList.add('hidden');
@@ -2761,17 +3115,11 @@
                 sel.innerHTML = `<option value="">${placeholder}</option>` + list.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
                 if (list.indexOf(cur) >= 0) sel.value = cur;
             };
-            fillParty('inPartyName', '-- Select Party / Vendor --');
             fillParty('hydraSupplierName', '-- Select Fixed Supplier / Party --');
 
-            const passSelect = document.getElementById('storePassSelect');
-            if (passSelect) {
-                const currentPass = passSelect.value;
-                const codes = storePassCodes();
-                passSelect.innerHTML = `<option value="">-- Select Store Gate Pass --</option>` +
-                    codes.map(code => { const p = getStorePass(code) || {}; return `<option value="${esc(code)}">${esc(code)} (${esc(p.party || '')})</option>`; }).join('');
-                if (currentPass && codes.indexOf(currentPass) >= 0) passSelect.value = currentPass;
-            }
+            // the pass box is a gateCombo over storePassOptions(): a chosen pass that left the list (checked out, or the day changed) is cleared
+            const passBox = document.getElementById('storePassSelect');
+            if (passBox && passBox.value && GATE_COMBOS.storePassSelect && !GATE_COMBOS.storePassSelect.match(passBox.value)) { GATE_COMBOS.storePassSelect.set('', true); fetchStoreGatePassDetails(); }
 
             // Type-ahead lists behind the vehicle / meet / PO boxes: free typing stays possible for anything new
             const veh = document.getElementById('gateVehicleList');
@@ -2843,7 +3191,7 @@
             }
 
             const passNote = document.getElementById('masterErpPassNote');
-            if (passNote) passNote.textContent = (GATE_MASTERS.passes || []).length + ' Store passes of the last 30 days come from the ERP (the ones already checked out here are hidden). Create a pass below only for one the ERP does not have.';
+            if (passNote) passNote.textContent = (GATE_MASTERS.passes || []).length + ' Store outwards of the last 30 days come from the ERP; the Out From Store form lists only today\'s (the ones already checked out here are hidden). Create a pass below only for one the ERP does not have; it is offered for the day it is made.';
             const passesContainer = document.getElementById('masterPassesList');
             if (passesContainer) {
                 const codes = Object.keys(storeGatePassesDB);
@@ -2896,7 +3244,7 @@
             const item = document.getElementById('newSgpItem').value.trim();
             if (!code || !party || !item) return;
 
-            storeGatePassesDB[code] = { party, item, qty };
+            storeGatePassesDB[code] = { party, item, qty, date: localYmd() };
             saveMasters();
             renderMasterLists();
             e.target.reset();
@@ -3016,6 +3364,32 @@
             if ((entry.photoKeys || []).some(f => !photoOf(entry, f))) {
                 gateEnsurePhotos(entry).then(got => { if (got && GATE_OPEN_PASS === entry.id) renderPassPhotos(entry); });
             }
+        }
+
+        // Print / Save as PDF: copy the pass into #gatePrintRoot (see Print Styles), wait for its pictures, then print
+        function printGatePass() {
+            const src = document.getElementById('printablePass');
+            if (!src) return;
+            let root = document.getElementById('gatePrintRoot');
+            if (!root) { root = document.createElement('div'); root.id = 'gatePrintRoot'; document.body.appendChild(root); }
+            const clone = src.cloneNode(true);
+            clone.removeAttribute('id');
+            clone.classList.remove('overflow-y-auto');
+            // a cloned <canvas> is empty: copy the pixels of a visible one as a picture (qrcodejs hides the canvas behind its own <img>)
+            const from = src.querySelectorAll('canvas');
+            clone.querySelectorAll('canvas').forEach((c, i) => {
+                try {
+                    if (!from[i] || getComputedStyle(from[i]).display === 'none') return;
+                    const im = new Image(); im.src = from[i].toDataURL('image/png'); im.width = from[i].width; im.height = from[i].height;
+                    c.replaceWith(im);
+                } catch (e) { }
+            });
+            root.innerHTML = '';
+            root.appendChild(clone);
+            const cleanup = () => { root.innerHTML = ''; window.removeEventListener('afterprint', cleanup); };
+            window.addEventListener('afterprint', cleanup);
+            const pics = [...root.querySelectorAll('img')].map(im => (im.decode ? im.decode().catch(() => { }) : Promise.resolve()));
+            Promise.all(pics).then(() => setTimeout(() => window.print(), 60));
         }
 
         function closePassModal() {

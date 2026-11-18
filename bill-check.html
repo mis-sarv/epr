@@ -101,8 +101,16 @@ body.sheeted #app{transform:translateY(calc(var(--sat) + 8px)) scale(.925);borde
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .seg .thumb{background:#636366}}
 .seg button{position:relative;z-index:1;font-size:13px;font-weight:500;display:flex;align-items:center;justify-content:center;gap:4px;border-radius:7px;white-space:nowrap}
 .seg button.on{font-weight:600}
+@media (max-width:400px){.seg button{font-size:12px;gap:3px;padding:0 1px}}   /* five tabs: To Check, Done, Hold, Debit, All */
 .seg .bdg{min-width:17px;height:17px;border-radius:9px;background:var(--red);color:#fff;font-size:11px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;padding:0 5px}
 .seg .bdg.q{background:var(--label3)}
+/* MD-1 / MD-2 / Accounts only: a Hold or Debit bill waiting turns its tab yellow (black text) / red (white text) */
+.seg button.t-hold{background:#ffd60a;color:#000}
+.seg button.t-hold .bdg{background:#000;color:#ffd60a}
+.seg button.t-hold.on{box-shadow:inset 0 0 0 2px rgba(0,0,0,.55)}
+.seg button.t-debit{background:var(--red);color:#fff}
+.seg button.t-debit .bdg{background:#fff;color:var(--red)}
+.seg button.t-debit.on{box-shadow:inset 0 0 0 2px rgba(255,255,255,.9)}
 .ctrl{position:absolute;left:0;right:0;top:calc(var(--sat) + 44px);z-index:4;background:var(--bar);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);box-shadow:0 .5px 0 var(--sep);padding:8px 0 10px}
 .ctrl .in{max-width:760px;margin:0 auto;padding:0 16px;display:flex;flex-direction:column;gap:8px}
 .ctrl .chips{padding:0 16px;margin:0 -16px}
@@ -125,6 +133,7 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 .cell+.cell::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--sep)}
 .cell.rec{padding-left:14px;animation:rise .45s var(--spring) both;animation-delay:calc(var(--i,0)*28ms)}
 .cell.rec+.cell.rec::before{left:62px}
+.cell.rec.locked .ico,.cell.rec.locked .mid{opacity:.5}
 @keyframes rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .ico{flex:none;width:38px;height:38px;border-radius:9px;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px;letter-spacing:.02em}
 .mid{flex:1;min-width:0}
@@ -244,6 +253,9 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 .vs .ld .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff;width:28px;height:28px}
 .vnav{position:absolute;top:50%;transform:translateY(-50%);z-index:3;width:44px;height:44px;border-radius:50%;background:rgba(60,60,67,.7);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);color:#fff;display:none;align-items:center;justify-content:center}
 .vnav.l{left:12px}.vnav.r{right:12px}
+.vnav.go{background:var(--green)}
+.vgo{display:none;height:32px;padding:0 14px;border-radius:16px;background:var(--green);color:#fff;font-size:15px;font-weight:600;white-space:nowrap;align-items:center;gap:6px}
+.vgo.on{display:inline-flex}
 @media (hover:hover) and (pointer:fine){.vnav{display:flex}.vnav:disabled{opacity:.25}}
 .vfoot{flex:none;background:rgba(28,28,30,.78);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);padding:8px 0 calc(var(--sab) + 8px)}
 .vcap{padding:0 16px 8px;font-size:13px;color:rgba(235,235,245,.7);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -424,6 +436,47 @@ function mineStep(r){                         // the step this record waits at, 
   if (r.cancelled) return null;
   const st = stageOf(r);
   return st.step && canDo(st.step.code, r.store) ? st : null;
+}
+/* ── Series order (bill-check app only) ──────────────────────────────────
+   Bills are checked in the order of their series: one series = store + entry type (Inward / Inward NB / Outward / Issue of
+   Store 1 or Store 2), oldest first (the order the numbers were issued). At a step the user can check only the OLDEST bill
+   still waiting there for that series; the later ones are locked ("Check <no> first"). A bill the user HOLDs stops blocking:
+   the next one in the series opens at once. A held bill is re-checked any time. Cancelled bills are not in the series.
+   Computed over ALL loaded rows (never over the search / type filter), so a filter cannot unlock anything. */
+const seqSeries = r => (r.store || '') + '|' + (r.type || '');
+const seqCmp = (a, b) => seqSeries(a).localeCompare(seqSeries(b)) || (a.created || '').localeCompare(b.created || '') || String(a.no || '').localeCompare(String(b.no || ''), undefined, { numeric:true });
+let LOCKS = null;
+function seqLocks(){
+  if (LOCKS) return LOCKS;
+  const by = {}; LOCKS = {};
+  S.rows.forEach(r => { const m = mineStep(r); if (!m || m.hold) return; const k = m.step.code + '|' + seqSeries(r); (by[k] = by[k] || []).push(r); });
+  Object.keys(by).forEach(k => { const l = by[k].sort(seqCmp); l.forEach((r, i) => { if (i) LOCKS[r.key] = { no:l[0].no, key:l[0].key }; }); });
+  return LOCKS;
+}
+const lockOf = r => seqLocks()[r.key] || null;
+/* Saves that are still running in the background (key -> true). The bill already shows its new step (optimistic), but it cannot be
+   checked again until the save is through; a failed save puts the old state back and says so. */
+const SAVING = {};
+/* The bill to open after a check: the next one of the SAME series at the same step (the one the check just unlocked), else the first
+   unlocked bill of To Check in step / series order. Never the bill just checked, never one still saving, and only among the bills the
+   current search / type / store filter shows. */
+function pickNext(prev, code){
+  LOCKS = null;
+  const pool = baseRows().filter(x => x.key !== prev.key && !SAVING[x.key]);
+  const open = x => { const m = mineStep(x); return m && !m.hold && !lockOf(x) ? m : null; };
+  const same = pool.filter(x => { const m = open(x); return m && m.step.code === code && seqSeries(x) === seqSeries(prev) && seqCmp(x, prev) > 0; }).sort(seqCmp)[0];
+  if (same) return same;
+  const d = segData(pool);
+  for (const st of S.flow) { const hit = (d.todo[st.code] || []).find(x => !x.hold && !lockOf(x.r)); if (hit) return hit.r; }
+  return null;
+}
+/* A bill on HOLD at a step stays there (it does not go on), but the person of the NEXT step can see it, VIEW ONLY: it is listed
+   under To Check as "On hold at <step>" with no Check button; it becomes theirs to check once the held step passes it. */
+function heldForMe(r){
+  if (r.cancelled || mineStep(r)) return null;
+  const st = stageOf(r); if (!st.step || !st.hold) return null;
+  const nx = S.flow[S.flow.findIndex(s => s.code === st.step.code) + 1];
+  return nx && canDo(nx.code, r.store) ? st.step : null;
 }
 function doneStep(r){                         // the latest step of this user's that is OKAY
   let hit = null;
@@ -627,28 +680,32 @@ function matchQ(r, q){
 }
 function baseRows(){ return S.rows.filter(r => (S.type === 'ALL' || r.type === S.type) && (S.store === 'ALL' || r.store === S.store) && matchQ(r, S.q)); }
 function segData(rows){
-  const todo = {}, done = {}, deb = { RAISED:[], VERIFIED:[] }, all = {};
+  const todo = {}, done = {}, deb = { RAISED:[], VERIFIED:[] }, all = {}, view = {};
   rows.forEach(r => {
     const m = mineStep(r); if (m) (todo[m.step.code] = todo[m.step.code] || []).push({ r, hold:m.hold });
+    const hv = heldForMe(r); if (hv) (view[hv.code] = view[hv.code] || []).push({ r, view:true });
     const d = doneStep(r); if (d) (done[d.code] = done[d.code] || []).push({ r });
     const db = debitOf(r); if (db) deb[db.status].push({ r });
     const st = rowOf(r) && Object.keys(rowOf(r).steps || {}).length ? stageOf(r) : null;
     const k = !st ? 'NEW' : !st.step ? 'DONE' : st.hold ? 'HOLD' : st.step.code;
     (all[k] = all[k] || []).push({ r });
   });
-  Object.keys(todo).forEach(k => todo[k].sort((a, b) => (a.hold ? 1 : 0) - (b.hold ? 1 : 0)));   // fresh ones first, held ones after
-  return { todo, done, deb, all };
+  Object.keys(todo).forEach(k => todo[k].sort((a, b) => (a.hold ? 1 : 0) - (b.hold ? 1 : 0) || seqCmp(a.r, b.r)));   // fresh ones first (series by series, oldest first), held ones after
+  Object.keys(view).forEach(k => view[k].sort((a, b) => seqCmp(a.r, b.r)));
+  return { todo, done, deb, all, view };
 }
 function rowHtml(x, i){
   const r = x.r, look = TYPE_LOOK[r.type] || ['REC', '#8e8e93'], st = stageOf(r), has = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
   const dots = S.flow.map(s => { const y = stepOf(r, s.code); const c = y ? (y.status === 'OKAY' ? 'ok' : 'hold') : (st.step && st.step.code === s.code && has ? 'next' : ''); return '<i class="' + c + '" title="' + esc(s.label) + '"></i>'; }).join('');
   const db = debitOf(r);
-  const tags = (x.hold ? '<span class="pill hold">On hold</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
+  const lk = lockOf(r);
+  const hs = x.view ? stageOf(r) : null, hx = hs && hs.step ? stepOf(r, hs.step.code) : null;
+  const tags = (SAVING[r.key] ? '<span class="pill blue">Saving…</span>' : '') + (lk ? '<span class="pill gray">Locked</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
     + (db ? '<span class="pill red">' + (db.status === 'VERIFIED' ? 'Debit ✓' : 'Debit') + '</span>' : '');
   const hl = db && db.status === 'RAISED' ? '<div class="dbn">Debit: ' + esc(db.reason || '') + (db.amount != null ? ' · ₹' + esc(String(db.amount)) : '') + '</div>' : '';
-  return '<button class="cell rec" style="--i:' + Math.min(i, 14) + '" data-open="' + esc(r.key) + '">'
+  return '<button class="cell rec' + (lk ? ' locked' : '') + '" style="--i:' + Math.min(i, 14) + '" data-open="' + esc(r.key) + '">'
     + '<span class="ico" style="background:' + look[1] + '">' + look[0] + '</span>'
-    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(r.party || r.items || '—') + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
+    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? 'Check ' + lk.no + ' first' : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
     + '<span class="end"><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (fmtAmt(r.amount) ? '<span class="a">' + esc(fmtAmt(r.amount)) + '</span>' : '') + tags + '</span>'
     + '<span class="chev">' + IC.chev + '</span></button>';
 }
@@ -667,16 +724,21 @@ function paintHeader(){
   $('subline').textContent = S.missing ? '' : mine.length ? 'Your steps: ' + mine.join(' · ') : (S.loaded ? 'You can view the pipeline; no step is assigned to you.' : '');
   $('meBtn').textContent = ((S.user && (S.user.user_name || S.user.name)) || '?').trim().charAt(0).toUpperCase();
   const d = segData(baseRows()), cnt = o => Object.keys(o).reduce((n, k) => n + o[k].length, 0);
-  const defs = [['TODO', 'To Check', cnt(d.todo), 1], ['DONE', 'Done', cnt(d.done), 0], ['DEBIT', 'Debit', d.deb.RAISED.length, 1], ['ALL', 'All', 0, 0]];
+  const heldMine = Object.keys(d.todo).reduce((n, k) => n + d.todo[k].filter(x => x.hold).length, 0), freshMine = cnt(d.todo) - heldMine;
+  // Only the people of the MD-1, MD-2 and Accounts steps get the colour alert; every bill in the Hold tab (held by them or view only) counts
+  const alertUser = S.flow.some(s => /^(MD1|MD2|AC)$/.test(s.code) && (canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2')));
+  const holdAny = heldMine + Object.keys(d.view).reduce((n, k) => n + d.view[k].length, 0), debitAny = d.deb.RAISED.length;
+  const defs = [['TODO', 'To Check', freshMine, 1, ''], ['DONE', 'Done', cnt(d.done), 0, ''], ['HOLD', 'Hold', heldMine, 1, alertUser && holdAny ? 't-hold' : ''], ['DEBIT', 'Debit', debitAny, 1, alertUser && debitAny ? 't-debit' : ''], ['ALL', 'All', 0, 0, '']];
   const i = Math.max(0, defs.findIndex(x => x[0] === S.seg));
   $('seg').style.gridTemplateColumns = 'repeat(' + defs.length + ',1fr)';
   $('seg').innerHTML = '<div class="thumb" style="width:calc(' + (100 / defs.length) + '% - 2px);transform:translateX(' + (i * 100) + '%)"></div>'
-    + defs.map(x => '<button class="' + (S.seg === x[0] ? 'on' : '') + '" data-seg="' + x[0] + '">' + x[1] + (x[2] ? '<span class="bdg' + (x[3] ? '' : ' q') + '">' + x[2] + '</span>' : '') + '</button>').join('');
+    + defs.map(x => '<button class="' + (S.seg === x[0] ? 'on' : '') + (x[4] ? ' ' + x[4] : '') + '" data-seg="' + x[0] + '">' + x[1] + (x[2] ? '<span class="bdg' + (x[3] ? '' : ' q') + '">' + x[2] + '</span>' : '') + '</button>').join('');
   const types = ['ALL', 'INWARD', 'INWARD NB', 'OUTWARD', 'ISSUE'], stores = ['ALL', 'STORE 1', 'STORE 2'];
   $('chips').innerHTML = types.map(t => '<button class="chip' + (S.type === t ? ' on' : '') + '" data-type="' + esc(t) + '">' + (t === 'ALL' ? 'All types' : t.charAt(0) + t.slice(1).toLowerCase()) + '</button>').join('')
   $('chipsStore').innerHTML = stores.map(s => '<button class="chip' + (S.store === s ? ' on' : '') + '" data-store="' + esc(s) + '">' + (s === 'ALL' ? 'Both stores' : s.charAt(0) + s.slice(1).toLowerCase()) + '</button>').join('');
 }
 function paintList(){
+  LOCKS = null;
   const L = $('list');
   if (!S.loaded) { L.innerHTML = skeleton(); return; }
   if (S.missing) { L.innerHTML = emptyHtml(IC.doc, 'Not set up yet', 'Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql in the Supabase SQL Editor (after STORE_RECORD_STATUS_MIGRATION.sql).'); return; }
@@ -685,8 +747,12 @@ function paintList(){
   let h = '';
   const noStep = !S.flow.some(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2'));
   if (S.seg === 'TODO') {
-    S.flow.forEach(s => { if (d.todo[s.code]) h += sectionHtml('t' + s.code, s.label, d.todo[s.code], 'Waiting for your check'); });
+    S.flow.forEach(s => { const fr = (d.todo[s.code] || []).filter(x => !x.hold); if (fr.length) h += sectionHtml('t' + s.code, s.label, fr, 'Check in series order, oldest first. Hold a bill to move on to the next one.'); });
     if (!h) h = emptyHtml(IC.inbox, noStep ? 'No step assigned' : 'All caught up', noStep ? 'The Admin gives a bill check step in Manage access. You can still browse All.' : 'Nothing is waiting for your check. New bills appear here on their own.');
+  } else if (S.seg === 'HOLD') {
+    S.flow.forEach(s => { const hd = (d.todo[s.code] || []).filter(x => x.hold); if (hd.length) h += sectionHtml('h' + s.code, s.label + ' · held by you', hd, 'Open one to check it again (OKAY, or keep holding).'); });
+    S.flow.forEach(s => { if (d.view[s.code]) h += sectionHtml('v' + s.code, 'On hold at ' + s.label + ' · view only', d.view[s.code], 'Held by ' + s.label + '. You can look at it; it reaches you when it is passed.'); });
+    if (!h) h = emptyHtml(IC.inbox, 'Nothing on hold', 'Bills you hold, and bills held at the step before yours, are listed here.');
   } else if (S.seg === 'DONE') {
     S.flow.slice().reverse().forEach(s => { if (d.done[s.code]) h += sectionHtml('d' + s.code, s.label + ' · done', d.done[s.code]); });
     if (!h) h = emptyHtml(IC.done, 'Nothing done yet', 'The bills you check show up here.');
@@ -794,9 +860,10 @@ async function loadProofs(r){
   const d = debitOf(r); if (!d || !d.proofs) { if (CUR && CUR.r === r) CUR.proofs = []; return; }
   try { const x = await rpc('scs_debit_proofs', { p_kind:r.kind, p_record_id:String(r.id) }); if (CUR && CUR.r === r) { CUR.proofs = x.rows || []; paintSheet(); } } catch (e) { if (CUR && CUR.r === r) CUR.proofs = []; }
 }
-function nextTodo(){ const d = segData(baseRows()); const list = []; S.flow.forEach(s => (d.todo[s.code] || []).forEach(x => { if (!x.hold) list.push(x.r); })); const i = list.findIndex(x => CUR && x.key === CUR.r.key); return list.find((x, k) => k !== i && (i < 0 || k > i)) || list.find(x => !CUR || x.key !== CUR.r.key) || null; }
+function nextTodo(){ LOCKS = null; const d = segData(baseRows()); const list = []; S.flow.forEach(s => (d.todo[s.code] || []).forEach(x => { if (!x.hold && !lockOf(x.r)) list.push(x.r); })); const i = list.findIndex(x => CUR && x.key === CUR.r.key); return list.find((x, k) => k !== i && (i < 0 || k > i)) || list.find(x => !CUR || x.key !== CUR.r.key) || null; }
 function paintSheet(){
   if (!CUR || CUR.layer.closed) return;
+  LOCKS = null;
   const r = CUR.r, a = S.att[r.key], look = TYPE_LOOK[r.type] || ['REC', '#8e8e93'], el = CUR.layer.el, body = CUR.layer.body;
   const keepScroll = body.scrollTop, keep = {}; body.querySelectorAll('[data-keep]').forEach(i => { keep[i.dataset.keep] = i.value; });
   const si = seenInfo(r), store = r.store, mine = mineStep(r), db = debitOf(r);
@@ -836,10 +903,12 @@ function paintSheet(){
   const mineAny = S.flow.filter(s => canDo(s.code, store) && !r.cancelled && prevOk(r, s.code).ok && stepOf(r, s.code) && !(myStage && myStage.step.code === s.code));
   if (myStage || mineAny.length) {
     h += '<div class="gap"></div>';
-    if (myStage) h += '<button class="btn ' + (myStage.hold ? 'orange' : '') + '" data-check="' + esc(myStage.step.code) + '">' + (myStage.hold ? 'Re-check: ' : 'Check: ') + esc(myStage.step.label) + '</button>';
+    const lkd = myStage && lockOf(r);
+    if (lkd) h += '<div class="note warn">Locked: bills of this series are checked in order. Check <b>' + esc(lkd.no) + '</b> first (OKAY, or HOLD it), then this one opens.</div><div class="gap"></div><button class="btn gray" data-next="' + esc(lkd.key) + '">Open ' + esc(lkd.no) + '</button>';
+    else if (myStage) h += '<button class="btn ' + (myStage.hold ? 'orange' : '') + '" data-check="' + esc(myStage.step.code) + '">' + (myStage.hold ? 'Re-check: ' : 'Check: ') + esc(myStage.step.label) + '</button>';
     mineAny.forEach(s => { h += '<div class="gap"></div><button class="btn gray" data-check="' + esc(s.code) + '">Change: ' + esc(s.label) + '</button>'; });
   } else if (!r.cancelled && stage.step && !canDo(stage.step.code, store) && started !== undefined) {
-    h += '<div class="note">Waiting for ' + esc(stage.step.label) + '.</div>';
+    h += stage.hold ? '<div class="note warn">On hold at <b>' + esc(stage.step.label) + '</b>' + (heldForMe(r) ? ': view only. It reaches you when ' + esc(stage.step.label) + ' passes it.' : '.') + ' The reason is in History below.</div>' : '<div class="note">Waiting for ' + esc(stage.step.label) + '.</div>';
   }
   h += '</div>';
   // A signing step of mine that is OKAY but not on the Accountant Copy yet (the stamp failed, or the PIN was skipped)
@@ -967,10 +1036,14 @@ async function stampCopy(r, step, sig, remarks){
 }
 
 /* ── Check form: a small sheet. OKAY forwards the bill, HOLD keeps it at this step (the next step
-   never sees it), DEBIT forwards it too and raises a highlighted Debit Note with a remark for the
+   sees it view only), DEBIT forwards it too and raises a highlighted Debit Note with a remark for the
    Accountant (not on the last step, which is the Accountant's own). ── */
 function openCheck(code){
   const r = CUR && CUR.r, step = S.flow.find(s => s.code === code); if (!r || !step) return;
+  LOCKS = null;
+  if (SAVING[r.key]) { toast('This bill is still saving. One moment.', true); return; }
+  const lkd = lockOf(r), nowStep = mineStep(r);
+  if (lkd && nowStep && nowStep.step.code === code) { toast('Check ' + lkd.no + ' first (OKAY, or HOLD it).', true); return; }
   const f = { pick:'' }, last = S.flow[S.flow.length - 1].code === code;
   const opts = last ? ['OKAY', 'HOLD'] : ['OKAY', 'HOLD', 'DEBIT'];
   const COL = { OKAY:'var(--green)', HOLD:'var(--orange)', DEBIT:'var(--red)' };
@@ -1015,16 +1088,41 @@ function openCheck(code){
         let has = false; try { has = !!(await accOf(r)).hasBase; } catch (e) {}
         if (has) { sig = await askPin(step); if (!sig) return; }
       }
-      busy(true);
-      try {
-        const res = await rpc('scs_check_save', Object.assign({ p_kind:r.kind, p_record_id:String(r.id), p_step:code, p_status:f.pick, p_remarks:rm, p_seen:si3.n, p_total:si3.total }, f.pick === 'DEBIT' ? { p_amount:amt === '' ? null : Number(amt) } : {}));
-        if (res.row) S.map[res.row.key] = res.row;
-        let stampErr = '';
-        if (sig) { busy(true); try { await stampCopy(r, step, sig, f.pick === 'DEBIT' ? '[DEBIT] ' + rm : rm); } catch (se) { stampErr = se.message || String(se); } }
-        busy(false); closeLayer(l);
-        if (stampErr) toast('Checked, but the Accountant Copy could not be signed: ' + stampErr + ' Open the bill and press Sign Accountant Copy.', true); else toast(step.label + ' · ' + f.pick + (sig ? ' · Accountant Copy signed' : ''));
-        CUR.hist = null; CUR.proofs = null; loadHistory(r); loadProofs(r); paintSheet(); paintAll();
-      } catch (er) { busy(false); toast(er.message || String(er), true); }
+      /* The PIN (if any) is already in. From here the save, the Accountant Copy stamp, the remarks and the history refresh run in
+         the BACKGROUND: the bill shows its new step at once (optimistic), this form closes and the next bill of the series opens. */
+      const before = S.map[r.key] ? JSON.parse(JSON.stringify(S.map[r.key])) : null, nowM = mineStep(r), wasTodo = !!nowM && nowM.step.code === code;
+      const u = S.user || {}, row0 = S.map[r.key] || (S.map[r.key] = { key:r.key, steps:{} });
+      row0.steps = row0.steps || {}; row0.steps[code] = { status:f.pick === 'HOLD' ? 'HOLD' : 'OKAY', remarks:rm, by:u.user_name || u.name || '', emp:u.emp_code || '', at:new Date().toISOString(), seen:si3.n, total:si3.total };
+      SAVING[r.key] = true;
+      const body = Object.assign({ p_kind:r.kind, p_record_id:String(r.id), p_step:code, p_status:f.pick, p_remarks:rm, p_seen:si3.n, p_total:si3.total }, f.pick === 'DEBIT' ? { p_amount:amt === '' ? null : Number(amt) } : {});
+      const pickWas = f.pick;
+      (async () => {
+        try {
+          const res = await rpc('scs_check_save', body);
+          if (res.row) S.map[res.row.key] = res.row;
+          let stampErr = '';
+          if (sig) { try { await stampCopy(r, step, sig, pickWas === 'DEBIT' ? '[DEBIT] ' + rm : rm); } catch (se) { stampErr = se.message || String(se); } }
+          if (stampErr) toast(r.no + ' checked, but the Accountant Copy could not be signed: ' + stampErr + ' Open the bill and press Sign Accountant Copy.', true);
+          else toast(r.no + ' · ' + step.label + ' · ' + pickWas + (sig ? ' · Accountant Copy signed' : '') + ' saved');
+        } catch (er) {
+          if (before) S.map[r.key] = before; else delete S.map[r.key];   // the old state comes back; the bill is in the list again
+          iosAlert({ title:'Check not saved', message:(r.no || '') + ': ' + (er.message || String(er)) + '\nThe bill is back in your list. Please check it again.', buttons:[{ t:'OK', s:'b' }] });
+        } finally {
+          delete SAVING[r.key]; LOCKS = null;
+          if (CUR && CUR.r === r) { CUR.hist = null; CUR.proofs = null; loadHistory(r); loadProofs(r); paintSheet(); }
+          paintAll();
+        }
+      })();
+      closeLayer(l);
+      if (wasTodo) {
+        const nx = pickNext(r, code);
+        if (nx) { openRecord(nx.key); toast(r.no + ' saved in the background · next: ' + nx.no); }
+        else {
+          toast(r.no + ' saved in the background · nothing more waiting');
+          const rec = CUR && CUR.layer; if (rec) { const w = () => { if (l.closed) closeLayer(rec); else setTimeout(w, 60); }; w(); }
+        }
+      } else { paintSheet(); }
+      paintAll();
     }
   });
   CHECK_FORM = { l, paint };
@@ -1129,7 +1227,7 @@ function openViewer(r, start, onDone){
   if (start === 'next' && slides.every(s => ss.has(s.n))) idx = 0;
   if (idx < 0) idx = 0;
   const el = document.createElement('div'); el.className = 'viewer'; el.style.zIndex = String(80 + LAYERS.length * 2);
-  el.innerHTML = '<div class="vbar"><button class="nbtn" data-x="1">' + IC.back + '<span>Done</span></button><div class="vt"><b data-t="1"></b><small data-s="1"></small></div><span style="width:70px"></span></div>'
+  el.innerHTML = '<div class="vbar"><button class="nbtn" data-x="1">' + IC.back + '<span>Done</span></button><div class="vt"><b data-t="1"></b><small data-s="1"></small></div><span style="min-width:70px;display:flex;justify-content:flex-end"><button class="vgo" data-go="1">Bill Check</button></span></div>'
     + '<div class="car" id="car">' + slides.map(s => '<div class="vs" data-n="' + s.n + '"></div>').join('') + '</div>'
     + '<button class="vnav l" data-nv="-1" aria-label="Previous">' + IC.back + '</button><button class="vnav r" data-nv="1" aria-label="Next" style="transform:translateY(-50%) scaleX(-1)">' + IC.back + '</button>'
     + '<div class="vfoot"><div class="vcap" data-c="1"></div><div class="vfilm">' + slides.map(s => '<button class="vf' + (ss.has(s.n) ? ' seen' : '') + '" data-f="' + s.n + '"><span class="tk"></span></button>').join('') + '</div></div>';
@@ -1149,6 +1247,21 @@ function openViewer(r, start, onDone){
       node.className = 'vi'; box.innerHTML = ''; box.appendChild(node); zooms.set(i, attachZoom(box, car));
     } catch (e) { box.innerHTML = '<div class="msg"><b>Could not show this</b>' + esc(e.message || '') + '</div>'; }
   };
+  /* Every attachment seen and the last one on screen: the right arrow (and the green Bill Check pill, for touch screens where
+     there is no arrow) leaves the viewer and opens the Bill Check popup of the user's pending step. Not offered when the user has
+     no step to check here, the bill is locked / still saving, or the Check popup is already open under the viewer (then it just returns). */
+  const ckCode = () => {
+    if (!CUR || CUR.r !== r || r.cancelled || SAVING[r.key]) return null;
+    LOCKS = null; const m = mineStep(r); if (!m || lockOf(r) || !prevOk(r, m.step.code).ok) return null;
+    const si = seenInfo(r); return si.ready && si.n >= si.total ? m.step.code : null;
+  };
+  const goCheck = () => {
+    const code = ckCode(); if (!code) return false;
+    const under = CHECK_FORM && !CHECK_FORM.l.closed;
+    closeLayer(l);
+    if (!under) { const w = () => { if (l.closed) openCheck(code); else setTimeout(w, 60); }; w(); }
+    return true;
+  };
   let cur = -1;
   const show = (i, jump) => {
     if (i === cur) return; cur = i; const s = slides[i];
@@ -1160,17 +1273,21 @@ function openViewer(r, start, onDone){
     el.querySelector('[data-c]').innerHTML = esc(s.caption || '') + (s.open ? '<a class="open" href="' + esc(s.open) + '" target="_blank" rel="noopener">Open original</a>' : '');
     [i - 1, i, i + 1].forEach(k => { if (k >= 0 && k < slides.length) mount(k); });
     zooms.forEach((z, k) => { if (k !== i) z.reset(); });
-    el.querySelectorAll('.vnav').forEach(b => { b.disabled = (+b.dataset.nv < 0 && i === 0) || (+b.dataset.nv > 0 && i === slides.length - 1); });
+    const last = i === slides.length - 1, can = last && !!ckCode();
+    el.querySelectorAll('.vnav').forEach(b => { const fwd = +b.dataset.nv > 0; b.disabled = (!fwd && i === 0) || (fwd && last && !can); b.classList.toggle('go', fwd && can); b.title = fwd && can ? 'Bill Check' : ''; });
+    el.querySelector('.vgo').classList.toggle('on', can);
     if (jump) car.scrollTo({ left:i * car.clientWidth, behavior:'auto' });
   };
   let st = null;
   car.addEventListener('scroll', () => { clearTimeout(st); st = setTimeout(() => { const i = Math.round(car.scrollLeft / Math.max(1, car.clientWidth)); if (i >= 0 && i < slides.length) show(i); }, 60); }, { passive:true });
   el.addEventListener('click', e => {
     if (e.target.closest('[data-x]')) return closeLayer(l);
-    const nv = e.target.closest('[data-nv]'); if (nv && !nv.disabled) return car.scrollTo({ left:(cur + +nv.dataset.nv) * car.clientWidth, behavior:'smooth' });
+    if (e.target.closest('.vgo')) return goCheck();
+    const nv = e.target.closest('[data-nv]'); if (nv && !nv.disabled && +nv.dataset.nv > 0 && cur === slides.length - 1) return goCheck();
+    if (nv && !nv.disabled) return car.scrollTo({ left:(cur + +nv.dataset.nv) * car.clientWidth, behavior:'smooth' });
     const f = e.target.closest('[data-f]'); if (f) { const i = +f.dataset.f; car.scrollTo({ left:i * car.clientWidth, behavior:'smooth' }); }
   });
-  const key = e => { if (l.closed || LAYERS[LAYERS.length - 1] !== l) return; if (e.key === 'ArrowRight') car.scrollTo({ left:(cur + 1) * car.clientWidth, behavior:'smooth' }); else if (e.key === 'ArrowLeft') car.scrollTo({ left:(cur - 1) * car.clientWidth, behavior:'smooth' }); else if (e.key === 'Escape') closeLayer(l); };
+  const key = e => { if (l.closed || LAYERS[LAYERS.length - 1] !== l) return; if (e.key === 'ArrowRight') { if (cur === slides.length - 1) goCheck(); else car.scrollTo({ left:(cur + 1) * car.clientWidth, behavior:'smooth' }); } else if (e.key === 'ArrowLeft') car.scrollTo({ left:(cur - 1) * car.clientWidth, behavior:'smooth' }); else if (e.key === 'Escape') closeLayer(l); };
   document.addEventListener('keydown', key); const oc = l.onClose; l.onClose = () => { document.removeEventListener('keydown', key); oc(); };
   show(idx, true); setTimeout(() => car.scrollTo({ left:idx * car.clientWidth, behavior:'auto' }), 30);
   return l;
@@ -1203,7 +1320,16 @@ function attachZoom(box, car){
 /* ══ Events ════════════════════════════════════════════════════════════ */
 document.addEventListener('click', async e => {
   const t = e.target;
-  const open = t.closest('[data-open]'); if (open) return openRecord(open.dataset.open);
+  const open = t.closest('[data-open]');
+  if (open) {
+    const rr = S.rows.find(x => x.key === open.dataset.open), lk = rr && S.seg === 'TODO' ? lockOf(rr) : null;
+    if (lk) {
+      const c = await iosAlert({ title:'Check ' + lk.no + ' first', message:(rr.no || '') + ' comes after ' + lk.no + ' in its series. Give ' + lk.no + ' OKAY, or HOLD it, and this one opens.', buttons:[{ t:'Close' }, { t:'Open ' + lk.no, s:'b' }] });
+      if (c.i === 1) openRecord(lk.key);
+      return;
+    }
+    return openRecord(open.dataset.open);
+  }
   const sg = t.closest('[data-seg]'); if (sg) { S.seg = sg.dataset.seg; paintAll(); return buzz(6); }
   const ty = t.closest('[data-type]'); if (ty) { S.type = ty.dataset.type; return paintAll(); }
   const so = t.closest('[data-store]'); if (so) { S.store = so.dataset.store; return paintAll(); }
