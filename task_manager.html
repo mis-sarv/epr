@@ -1072,7 +1072,11 @@
                 <!-- My FMS steps (Task › FMS): the steps of FMS flows that are this person's to do, with Done (FMS MINE in the script). -->
                 <div id="fmsMine" class="px-4 pt-3 bg-slate-50/50 hidden"></div>
                 <!-- The month's live photos with time and place (openLiveLog). -->
-                <div class="px-4 pt-3 bg-slate-50/50"><button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-fuchsia-200 hover:border-fuchsia-400 text-fuchsia-800 rounded-2xl px-4 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-camera text-lg"></i> My Live Photos (month)</button></div>
+                <!-- Beside it: the month's Check In / Check Out / Working Hours day by day (openAttendanceLog). -->
+                <div class="px-4 pt-3 bg-slate-50/50 grid grid-cols-2 gap-3">
+                    <button onclick="openLiveLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-fuchsia-200 hover:border-fuchsia-400 text-fuchsia-800 rounded-2xl px-3 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-camera text-lg"></i> My Live Photos</button>
+                    <button onclick="openAttendanceLog(appState.currentLoggedInEmp && appState.currentLoggedInEmp.empCode, true)" class="w-full bg-white border border-emerald-200 hover:border-emerald-400 text-emerald-800 rounded-2xl px-3 py-3 text-sm font-extrabold flex items-center justify-center gap-2 shadow-sm"><i class="ph-bold ph-clock-user text-lg"></i> My Attendance</button>
+                </div>
 
                 <div class="p-4 grid grid-cols-2 gap-3 bg-slate-50/50">
                     <button data-pend="daily" onclick="openTaskCategory('daily', 'Daily Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:shadow-md transition-all active:scale-95 group">
@@ -1657,7 +1661,9 @@
                             const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
                             const sc = taskScore(t, ds, rec, now);
                             if (sc.state === 'done' || sc.state === 'moved' || sc.state === 'off' || !sc.deadline) return;
-                            items.push({ k: t.ownerCode + '|' + t.id + '|' + ds, d: String(t.desc || 'Task').slice(0, 80), due: +sc.deadline });
+                            const un = liveOutUnlockAt(t, ds);   // a hidden check-out rings only once it has opened
+                            if (un === LIVE_OUT_NEVER) return;
+                            items.push({ k: t.ownerCode + '|' + t.id + '|' + ds, d: String(t.desc || 'Task').slice(0, 80), due: Math.max(+sc.deadline, un ? +un : 0) });
                         });
                         d.setDate(d.getDate() + 1);
                     }
@@ -2900,7 +2906,7 @@
             let v = null;
             for (const x of appState.scoreVersions) { if (x.at <= at) v = x; else break; }
             const r = mergeRules(v ? v.value : null)[cat];
-            const out = { ...r, cat, since: v ? v.at : null, sinceBy: v ? v.by : '' };
+            const out = { ...r, cat, since: v ? v.at : null, sinceBy: v ? v.by : '', live: !!(t.live || t.liveOut) };
             /* Live Photo Check-in / Check-out have their own grace minutes (Score Master › Live Photo card,
                kept as `live` {inMin, outMin} inside the same dated version); blank = the daily rule's grace. */
             if ((t.live || t.liveOut) && v && v.value && v.value.live) {
@@ -2913,7 +2919,9 @@
         function deadlineOf(t, ds, rec) {
             const fu = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done') && rec.time;
             const p = parse12h(fu || t.time);
-            return p ? dateAt(ds, p.h, p.m) : dateAt(ds, 23, 59);
+            const dl = p ? dateAt(ds, p.h, p.m) : dateAt(ds, 23, 59);
+            const u = liveOutUnlockAt(t, ds);   // a check-out cannot be due before it opens
+            return u && u !== LIVE_OUT_NEVER && u > dl ? u : dl;
         }
         // When it was really done: the server's tick time; for imported old data, its old text time.
         function doneMomentOf(rec, ds) {
@@ -2932,7 +2940,8 @@
             const extra = postpones * (r.postponePenalty || 0);
             let phase, cut = 0, units = 0, nextDrop = null;
             if (when <= dl) { phase = 'on-time'; nextDrop = dl; }
-            else if (when <= graceEnd && gMs > 0) { phase = 'grace'; cut = r.gracePenalty; nextDrop = graceEnd; }
+            // A Live Photo Check-in / Check-out grace is a pure relaxation: nothing is cut until it has run out.
+            else if (when <= graceEnd && gMs > 0) { phase = 'grace'; cut = r.live ? 0 : r.gracePenalty; nextDrop = graceEnd; }
             else { phase = 'late'; cut = r.gracePenalty; units = Math.max(1, Math.ceil((when - graceEnd) / unitMs)); nextDrop = new Date(graceEnd.getTime() + units * unitMs); }
             const raw = base - cut - units * r.penalty - extra;
             const floored = r.minPoints != null && raw <= r.minPoints;
@@ -2940,7 +2949,7 @@
             // Keeps dropping (into minus) until done; stops only at a set "Lowest points".
             if (floored) nextDrop = null;
             // Points that would be lost at nextDrop (for "-20 in 12m")
-            const nextCut = phase === 'on-time' ? r.gracePenalty + (gMs > 0 ? 0 : r.penalty) : r.penalty;
+            const nextCut = phase === 'on-time' ? (r.live && gMs > 0 ? 0 : r.gracePenalty + (gMs > 0 ? 0 : r.penalty)) : r.penalty;
             return { pts, base, phase, cut, units, per: r.penalty, unit: r.type, extra, postpones, deadline: dl, graceEnd, graceHours: r.graceHours, nextDrop, nextCut, rules: r };
         }
         /* State of one occurrence right now:
@@ -3010,6 +3019,29 @@
         }
         const recOf = (t, ds) => { const o = appState.employees.find(e => e.empCode === t.ownerCode); return o && o.records[ds] ? o.records[ds][t.id] : undefined; };
         const ownerOf = t => appState.employees.find(e => e.empCode === t.ownerCode);
+        /* LIVE PHOTO CHECK-OUT opens LIVE_OUT_MIN_HOURS after the day's first Check-in was completed: until then
+           the task is not shown to the employee (My Tasks lists, pending badges / alarm) and cannot be started
+           (openLiveCam). liveOutUnlockAt gives that moment; null = no gate (not a check-out, or the employee has
+           no Check-in task that day); LIVE_OUT_NEVER = a Check-in exists but is not done yet. The target time of
+           such a check-out never falls before the unlock moment (deadlineOf), so the employee is not charged
+           late points for a task that was still hidden. The page decides this, as it does the score; the server
+           (tm_mark_live) does not check the gap. */
+        const LIVE_OUT_MIN_HOURS = 4;
+        const LIVE_OUT_NEVER = new Date(8640000000000000);
+        function liveOutUnlockAt(t, ds) {
+            if (!t || !t.liveOut) return null;
+            const o = ownerOf(t); if (!o) return null;
+            const ins = o.tasks.filter(x => x.live && !x.liveOut && x.active !== false && occursOn({ ...x, ownerCode: o.empCode }, ds, o.records[ds] && o.records[ds][x.id]));
+            if (!ins.length) return null;
+            let first = null;
+            ins.forEach(x => { const r = o.records[ds] && o.records[ds][x.id]; if (r && r.checked) { const w = doneMomentOf(r, ds); if (!first || w < first) first = w; } });
+            return first ? new Date(first.getTime() + LIVE_OUT_MIN_HOURS * 3600000) : LIVE_OUT_NEVER;
+        }
+        // The unlock moment while the check-out is still hidden at `now`, else null.
+        function liveOutLocked(t, ds, now) {
+            const u = liveOutUnlockAt(t, ds);
+            return u && (now || new Date()) < u ? u : null;
+        }
         /* SELF TASK CARRY FORWARD. A personal task that is not done on its
            planned day does not drop off: it is carried forward and shows on
            today as well (My Tasks lists, pending badges and alarm, the sheet's
@@ -3118,7 +3150,7 @@
                           : (sc.phase === 'grace' ? 'Done ' + fmtDur(sc.doneAt - sc.deadline) + ' after target (−' + sc.cut + ')' : 'Done ' + fmtDur(sc.doneAt - sc.deadline) + ' late');
                 return wrap(sc.pts < 0 ? 'bg-red-50 border-red-200 text-red-800' : cls, (sc.pts < 0 ? 'Points lost · ' : 'Points gained · ') + PHASE_LABEL[sc.phase], how + (sc.extra ? ' · postponed −' + sc.extra : ''), signed(sc.pts));
             }
-            if (sc.state === 'upcoming') return wrap('bg-emerald-50 border-emerald-200 text-emerald-800', 'Full points if done by ' + fmtClock(sc.deadline), (ds > todayStr() ? 'On ' + esc(ds) : fmtDur(sc.deadline - now) + ' left') + (sc.graceHours ? ' · then ' + fmtDur(sc.graceHours * 3600000) + ' grace (−' + sc.rules.gracePenalty + ')' : ''), sc.pts);
+            if (sc.state === 'upcoming') return wrap('bg-emerald-50 border-emerald-200 text-emerald-800', 'Full points if done by ' + fmtClock(sc.deadline), (ds > todayStr() ? 'On ' + esc(ds) : fmtDur(sc.deadline - now) + ' left') + (sc.graceHours ? ' · then ' + fmtDur(sc.graceHours * 3600000) + ' grace (' + (sc.rules.live ? 'no cut' : '−' + sc.rules.gracePenalty) + ')' : ''), sc.pts);
             const cls = sc.pts <= 0 ? 'bg-red-50 border-red-200 text-red-800' : (sc.phase === 'grace' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-red-50 border-red-200 text-red-700');
             const nxt = sc.nextDrop ? `−${sc.nextCut} in ${fmtDur(sc.nextDrop - now)}${sc.pts <= 0 ? ' · already in minus' : ''}` : 'at the lowest points (' + sc.pts + ')';
             const lbl = sc.state === 'missed' ? (inCarryWindow(ds) && !t.isSelfTask ? 'Pending · delayed ' + fmtDur(now - sc.deadline) + ' · −' + sc.per + ' per ' + sc.unit : 'Missed · needs late approval') : (sc.phase === 'grace' ? 'Losing points · grace till ' + fmtClock(sc.graceEnd) : 'Losing points · −' + sc.per + ' per ' + sc.unit);
@@ -3331,6 +3363,7 @@
                 const rec=recOf(t, today);
                 const isResched=rec&&(rec.status==='pending-reschedule'||rec.status==='rescheduled-done');
                 if(!occursOn(t, today, rec)) return;
+                if(liveOutLocked(t, today)) return;   // Check-out appears 4 hours after the Check-in is done
                 if(t.isSelfTask&&rec&&rec.checked)return;   // done personal tasks live in their history
                 if(taskCats(t,isResched).includes(cat)) fTasks.push({...t,isResched,rec,ds:today});
             });
@@ -3408,6 +3441,7 @@
             const ds = todayStr(); now = now || new Date(); const out = [];
             getCombinedTasks(emp).forEach(t => {
                 const rec = recOf(t, ds); if (!occursOn(t, ds, rec)) return;
+                if (liveOutLocked(t, ds, now)) return;   // not shown yet, so nothing to alarm about
                 const sc = taskScore(t, ds, rec, now); if (sc.state !== 'upcoming' && sc.state !== 'overdue') return;
                 const isR = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done');
                 out.push({ t, rec, sc, cats: taskCats(t, isR) });
@@ -3598,6 +3632,8 @@
             const tk = findTask(e, t); if (!tk) return;
             if (e !== appState.me.empCode) return showCustomModal('Live photo', 'A live photo is taken by the employee themselves, on their own phone. A buddy cannot take it for them.', true);
             if (d !== todayStr()) return showCustomModal('Live photo', TM_ERR.LIVE_TODAY_ONLY + ' The one of ' + esc(fmtDay(d)) + ' was missed.', true);
+            { const u = liveOutLocked(tk, d);
+              if (u) return showCustomModal('Check-out not open yet', u === LIVE_OUT_NEVER ? 'Do your Live Photo Check-in first. The Check-out opens ' + LIVE_OUT_MIN_HOURS + ' hours after it.' : 'The Check-out opens ' + LIVE_OUT_MIN_HOURS + ' hours after your Check-in, at <b>' + esc(fmtClock(u)) + '</b>.', true); }
             if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
                 return showCustomModal('Camera not available', 'The live camera and location work only when the app is opened over <b>https://</b> in Chrome or Safari (not from a saved file). Ask the Admin for the app link.', true);
             Object.assign(LC, { e, t, d, shot: null, shotPos: null, shotAt: null, pos: null, posErr: '' });
@@ -3733,6 +3769,75 @@
             if (!img) return;
             if (src) { img.src = src; img.classList.remove('hidden'); if (w) w.remove(); } else if (w) w.textContent = 'The photo could not be loaded.';
         };
+
+        /* Monthly attendance list (My Tasks › My Attendance), built from the same Live Photo records:
+           Check In = the day's first Check-in photo, Check Out = the last Check-out photo, Working Hours =
+           Out − In. Status: Present (a Check-in was taken), Leave / Holiday / Emergency (tm_day_offs, with
+           its remark; a day worked anyway stays Present and shows the tag), Absent (past day, no Check-in),
+           Pending (today, no Check-in yet). The employee's own remarks on the photos are shown as the
+           remark. There is no weekly-off calendar here, so an ordinary weekly off with no Day Off entry
+           reads Absent until the Admin marks it as Holiday. */
+        const ALOG = { code: null, y: 0, m: 0 };
+        window.openAttendanceLog = function(code, thisMonth) {
+            if (!code || !appState.employees.some(e => e.empCode === code)) return showCustomModal('Attendance', 'No task list found for this login.', true);
+            ALOG.code = code;
+            ALOG.y = thisMonth ? appState.currentYear : (appState.viewY || appState.currentYear);
+            ALOG.m = thisMonth ? appState.currentMonth : (appState.viewM || appState.currentMonth);
+            let ov = document.getElementById('atOv');
+            if (!ov) {
+                ov = document.createElement('div'); ov.id = 'atOv'; ov.className = 'fixed inset-0 z-[125] hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-3 print-hide';
+                ov.innerHTML = '<div class="bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[92vh] flex flex-col overflow-hidden"><div id="atHead" class="px-5 py-4 border-b border-slate-200"></div><div id="atBody" class="overflow-y-auto p-4"></div></div>';
+                ov.addEventListener('click', ev => { if (ev.target === ov) closeAttendanceLog(); });
+                document.body.appendChild(ov);
+            }
+            ov.classList.remove('hidden'); ov.classList.add('flex');
+            renderAttendanceLog();
+        };
+        window.closeAttendanceLog = function() { const ov = document.getElementById('atOv'); if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); } };
+        window.attendanceLogShift = function(n) { const d = new Date(ALOG.y, ALOG.m - 1 + n, 1); ALOG.y = d.getFullYear(); ALOG.m = d.getMonth() + 1; renderAttendanceLog(); };
+        async function renderAttendanceLog() {
+            const { code, y, m } = ALOG, dim = getDaysInMonth(y, m), mm = String(m).padStart(2, '0');
+            const from = `${y}-${mm}-01`, to = `${y}-${mm}-${String(dim).padStart(2, '0')}`, td = todayStr();
+            const head = document.getElementById('atHead'), body = document.getElementById('atBody');
+            body.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">Loading…</div>';
+            if (!(await ensureLoaded(from, to))) return;
+            const e = appState.employees.find(x => x.empCode === code); if (!e) return;
+            const ins = e.tasks.filter(t => t.live && !t.liveOut).map(t => ({ ...t, ownerCode: code }));
+            const outs = e.tasks.filter(t => t.liveOut).map(t => ({ ...t, ownerCode: code }));
+            const doneOf = (list, ds) => list.map(t => { const r = recOf(t, ds); return r && r.checked ? { r, at: doneMomentOf(r, ds) } : null; }).filter(Boolean).sort((a, b) => a.at - b.at);
+            const hm = d => d ? fmtClock(d) : '—';
+            const tot = { Present: 0, Absent: 0, Leave: 0, Holiday: 0, Emergency: 0 }; let mins = 0; const rows = [];
+            for (let d = dim; d >= 1; d--) {
+                const ds = `${y}-${mm}-${String(d).padStart(2, '0')}`; if (ds > td) continue;
+                const di = doneOf(ins, ds), dout = doneOf(outs, ds), off = dayOffOf(code, ds);
+                const tIn = di.length ? di[0].at : null, tOut = dout.length ? dout[dout.length - 1].at : null;
+                const expected = ins.some(t => occursOn(t, ds, recOf(t, ds)));
+                let status;
+                if (tIn) status = 'Present'; else if (off) status = dayOffKind(off.kind).label; else if (ds === td) status = 'Pending'; else if (expected) status = 'Absent'; else continue;   // before the first Check-in task: not a day of this list
+                if (tot[status] != null) tot[status]++;
+                const wm = tIn && tOut && tOut > tIn ? Math.round((tOut - tIn) / 60000) : null; if (wm) mins += wm;
+                // Remarks: the day off's own note, then what the employee typed with the photos.
+                const notes = []; if (off) notes.push(dayOffKind(off.kind).label + (off.remarks ? ': ' + off.remarks : ''));
+                di.concat(dout).forEach(x => { if (x.r.doneRemarks) notes.push(x.r.doneRemarks); });
+                rows.push({ ds, status, tIn, tOut, wm, notes, hasOut: !!tOut });
+            }
+            const cls = { Present: 'bg-emerald-50 text-emerald-700 border-emerald-200', Absent: 'bg-red-50 text-red-700 border-red-200', Leave: 'bg-amber-50 text-amber-800 border-amber-200', Holiday: 'bg-sky-50 text-sky-800 border-sky-200', Emergency: 'bg-rose-50 text-rose-700 border-rose-200', Pending: 'bg-slate-50 text-slate-500 border-slate-200' };
+            head.innerHTML = `<div class="flex items-start justify-between gap-3"><div class="min-w-0"><div class="text-lg font-extrabold text-slate-800 flex items-center gap-2"><i class="ph-fill ph-clock-user text-emerald-700"></i> Attendance</div><div class="text-[11px] font-bold text-slate-500 truncate">${esc(e.empName)} (${esc(code)})</div></div>`
+                + `<button onclick="closeAttendanceLog()" class="w-9 h-9 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-100 flex items-center justify-center shrink-0"><i class="ph-bold ph-x"></i></button></div>`
+                + `<div class="flex flex-wrap items-center gap-2 mt-3"><button onclick="attendanceLogShift(-1)" class="w-8 h-8 rounded-lg border border-slate-200 font-bold">‹</button><span class="text-xs font-extrabold uppercase tracking-widest text-slate-600 min-w-[110px] text-center">${monthNames[m - 1]} ${y}</span><button onclick="attendanceLogShift(1)" class="w-8 h-8 rounded-lg border border-slate-200 font-bold">›</button></div>`
+                + `<div class="flex flex-wrap gap-1.5 mt-3 text-[10px] font-extrabold uppercase tracking-wider">`
+                + ['Present', 'Absent', 'Leave', 'Holiday', 'Emergency'].filter(k => tot[k] || k === 'Present' || k === 'Absent').map(k => `<span class="px-2 py-1 rounded-lg border ${cls[k]}">${k} ${tot[k]}</span>`).join('')
+                + `<span class="px-2 py-1 rounded-lg border bg-indigo-50 text-indigo-700 border-indigo-200">Hours ${fmtDur(mins * 60000)}</span></div>`;
+            if (!ins.length && !rows.length) { body.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">No Live Photo Check-in task for this employee yet.</div>'; return; }
+            if (!rows.length) { body.innerHTML = '<div class="text-center text-sm font-bold text-slate-400 py-10">Nothing in this month yet.</div>'; return; }
+            body.innerHTML = '<div class="space-y-2">' + rows.map(r => {
+                const col = (lbl, v, c) => `<div class="min-w-0"><div class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">${lbl}</div><div class="text-sm font-extrabold ${c || 'text-slate-800'}">${v}</div></div>`;
+                const outTxt = r.hasOut ? hm(r.tOut) : (r.status === 'Present' && r.ds === td ? '<span class="text-slate-400">Not yet</span>' : '—');
+                return `<div class="rounded-xl border border-slate-200 p-3"><div class="flex items-center justify-between gap-2 mb-2"><div class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">${esc(dateAt(r.ds).toLocaleDateString('en-GB', { weekday: 'short', day: '2-digit', month: 'short' }))}</div><span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-lg border ${cls[r.status] || cls.Leave}">${esc(r.status)}</span></div>`
+                    + `<div class="grid grid-cols-3 gap-2">${col('Check In', hm(r.tIn))}${col('Check Out', outTxt)}${col('Working Hours', r.wm ? fmtDur(r.wm * 60000) : '—', r.wm ? 'text-indigo-700' : 'text-slate-400')}</div>`
+                    + (r.notes.length ? `<div class="text-[11px] font-bold text-slate-500 mt-2 italic break-words">${r.notes.map(esc).join(' · ')}</div>` : '') + `</div>`;
+            }).join('') + '</div>';
+        }
 
         /* Monthly Live Photo log: every live slot of the month, day by day:
            time taken, place, the photo (thumbnails load a few at a time).
