@@ -35,6 +35,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Di
 
 /* ── Tabs side bar (complaint tabs): slides in from the left ────────── */
 .ios-drawer { will-change: transform; animation: iosDrawerIn 0.42s var(--ios-ease) both; }
+/* settled = the way-in has finished: no animation any more, so adding / removing the drag classes can never
+   replay it (a replay jumped the drawer off screen for a moment and a tap fell through to the backdrop). */
+.ios-drawer.settled, .ios-sheet.settled { animation: none; }
 .ios-drawer.out { animation: iosDrawerOut 0.24s cubic-bezier(0.4, 0, 1, 1) both; }
 .ios-drawer.dragging { animation: none; transition: none; }
 .ios-drawer.snap { transition: transform 0.32s var(--ios-ease); }

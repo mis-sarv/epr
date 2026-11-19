@@ -58,7 +58,7 @@
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
 <script src="ios-ui.js?v=20261118a" defer></script>
 <!-- The iOS look of this page (system colours, translucent bars, sheets, segmented tabs, banner toasts): complaint-ios.css -->
-<link rel="stylesheet" href="complaint-ios.css?v=20261119b">
+<link rel="stylesheet" href="complaint-ios.css?v=20261119c">
 </head>
 <body class="text-black antialiased min-h-screen">
 
@@ -713,15 +713,19 @@ function Modal({title, subtitle, onClose, children, footer, wide}){
     document.body.style.overflow = "hidden";
     return ()=>{ window.removeEventListener("keydown", h); document.body.style.overflow=""; };
   },[close]);
-  // Pull down to close (phone): follows the finger, closes past 110px or on a quick flick, else springs back.
-  const onTouchStart = e => { if (window.innerWidth >= 640 || !sheetRef.current) return; drag.current = { y: e.touches[0].clientY, t: Date.now(), dy: 0 }; sheetRef.current.classList.add("dragging"); };
+  /* Pull down to close (phone): becomes a drag only after 8px down, so a tap on the title or the close button
+     changes nothing (no class / transform, no replayed animation) and its click goes where it was meant;
+     then it follows the finger, closes past 110px or on a quick flick, else springs back. */
+  const onTouchStart = e => { if (window.innerWidth >= 640 || !sheetRef.current) return; drag.current = { y: e.touches[0].clientY, t: Date.now(), dy: 0, on: false }; };
   const onTouchMove = e => {
-    const d = drag.current; if (!d || !sheetRef.current) return;
-    d.dy = Math.max(0, e.touches[0].clientY - d.y);
-    sheetRef.current.style.transform = `translate3d(0,${d.dy}px,0)`;
+    const d = drag.current, el = sheetRef.current; if (!d || !el) return;
+    const my = e.touches[0].clientY - d.y;
+    if (!d.on) { if (my < 8) return; d.on = true; el.classList.add("dragging"); }
+    d.dy = Math.max(0, my);
+    el.style.transform = `translate3d(0,${d.dy}px,0)`;
   };
   const onTouchEnd = () => {
-    const d = drag.current, el = sheetRef.current; drag.current = null; if (!d || !el) return;
+    const d = drag.current, el = sheetRef.current; drag.current = null; if (!d || !el || !d.on) return;
     el.classList.remove("dragging");
     const fast = d.dy > 40 && d.dy / Math.max(1, Date.now() - d.t) > 0.6;
     if (d.dy > 110 || fast) {
@@ -732,7 +736,8 @@ function Modal({title, subtitle, onClose, children, footer, wide}){
   return (
     <div className={`ios-backdrop ${out ? "out" : ""} fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4`} data-no-ios-pop
          onMouseDown={e=>{ if(e.target===e.currentTarget) close(); }}>
-      <div ref={sheetRef} className={`ios-sheet ${out ? "out" : ""} bg-white w-full ${wide?"sm:max-w-3xl":"sm:max-w-lg"} shadow-2xl flex flex-col max-h-[94vh] sm:max-h-[90vh]`}>
+      <div ref={sheetRef} onAnimationEnd={e => { if (e.target === e.currentTarget && !closing.current) e.currentTarget.classList.add("settled"); }}
+        className={`ios-sheet ${out ? "out" : ""} bg-white w-full ${wide?"sm:max-w-3xl":"sm:max-w-lg"} shadow-2xl flex flex-col max-h-[94vh] sm:max-h-[90vh]`}>
         <div className="ios-sheet-head shrink-0" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
           {/* Grabber: the iOS cue that the sheet can be pulled down */}
           <div className="sm:hidden flex justify-center pt-2 pb-1"><div className="ios-grabber" /></div>
@@ -2966,10 +2971,17 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
     return () => window.removeEventListener("keydown", h);
   }, [dr, closeDrawer]);
   const pickTab = key => { switchTab(key); closeDrawer(); };
-  const onDrStart = e => { if (!drawerRef.current) return; drDrag.current = { x: e.touches[0].clientX, dx: 0 }; drawerRef.current.classList.add("dragging"); };
-  const onDrMove = e => { const d = drDrag.current; if (!d || !drawerRef.current) return; d.dx = Math.min(0, e.touches[0].clientX - d.x); drawerRef.current.style.transform = `translate3d(${d.dx}px,0,0)`; };
+  /* A pull only becomes a drag after 8px sideways (more than up / down): a tap or a list scroll changes
+     nothing on the drawer, so the tap's click lands on the tab it was meant for. */
+  const onDrStart = e => { if (!drawerRef.current) return; drDrag.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dx: 0, on: false }; };
+  const onDrMove = e => {
+    const d = drDrag.current, el = drawerRef.current; if (!d || !el) return;
+    const mx = e.touches[0].clientX - d.x, my = e.touches[0].clientY - d.y;
+    if (!d.on) { if (mx > -8 || Math.abs(mx) < Math.abs(my)) return; d.on = true; el.classList.add("dragging"); }
+    d.dx = Math.min(0, mx); el.style.transform = `translate3d(${d.dx}px,0,0)`;
+  };
   const onDrEnd = () => {
-    const d = drDrag.current, el = drawerRef.current; drDrag.current = null; if (!d || !el) return;
+    const d = drDrag.current, el = drawerRef.current; drDrag.current = null; if (!d || !el || !d.on) return;
     el.classList.remove("dragging"); el.classList.add("snap");
     if (d.dx < -80) { el.style.transform = "translate3d(-100%,0,0)"; setTimeout(() => setDr(0), iosReduce() ? 0 : 300); }
     else { el.style.transform = ""; setTimeout(() => el && el.classList.remove("snap"), 340); }
@@ -3045,6 +3057,7 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
           <aside ref={drawerRef} role="dialog" aria-label="Complaint tabs"
             className={`ios-drawer ${dr === 2 ? "out" : ""} absolute inset-y-0 left-0 w-[82vw] max-w-[320px] bg-[#f2f2f7] shadow-2xl flex flex-col`}
             style={{paddingTop:'env(safe-area-inset-top,0px)', paddingBottom:'env(safe-area-inset-bottom,0px)'}}
+            onAnimationEnd={e => { if (e.target === e.currentTarget && dr === 1) e.currentTarget.classList.add("settled"); }}
             onTouchStart={onDrStart} onTouchMove={onDrMove} onTouchEnd={onDrEnd} onTouchCancel={onDrEnd}>
             <div className="px-5 pt-5 pb-3 flex items-start gap-2">
               <div className="min-w-0 flex-1">
