@@ -597,7 +597,7 @@ async function attAccount(r, ctx){
   try { d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) }); }
   catch (e) { if (e.missing || /acc_get|store_account_copy|schema cache/i.test(e.message || '')) return { slides:[], empty:'The Accountant Copy is not set up yet (Admin: run sql/STORE_ACCOUNT_COPY_MIGRATION.sql).' }; throw e; }
   const a = ctx.acc = d.row || {};
-  if (!a.currentUrl) return { slides:[], empty:a.hasBase ? 'Not generated yet: it is made when the GM checks this bill.' : 'No Accountant Copy for this bill (saved before this step existed).' };
+  if (!a.currentUrl) return { slides:[], empty:a.hasBase ? 'Not generated yet: it is made when the GM checks this bill.' : 'No Accountant Copy for this bill: it was saved before this step existed, or its upload from the ERP did not finish (open the bill in the ERP on the same computer, or ask the Admin to Edit and save it again).' };
   const doc = await pdfDoc(a.currentUrl), slides = [];
   const who = S.flow.filter(s => a.stamps && a.stamps[s.code]).map(s => s.short + ' ' + (a.stamps[s.code].by || '')).join(', ');
   for (let p = 1; p <= doc.numPages; p++) slides.push({ type:'pdf', doc, page:p, open:a.currentUrl, caption:'Accountant Copy' + (who ? ' · signed: ' + who : '') + (doc.numPages > 1 ? ' · page ' + p + ' of ' + doc.numPages : '') });

@@ -722,6 +722,36 @@
             </div>
         </div>
 
+        <!-- STORE REQUESTS (Store Incharge): complaint Request Item tasks, open + done in the last 7 days
+             (sqOpen / sqRender, CMP_ITEM_REQUEST_MIGRATION.sql). -->
+        <div id="screen-store-requests" data-no-caps class="screen-view hidden w-full max-w-md mx-auto mt-4 px-2">
+            <div class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div class="bg-slate-900 p-5 text-white relative" style="padding-top:max(1.25rem, env(safe-area-inset-top))">
+                    <button onclick="navigate('employee-dashboard')" title="Back" class="absolute top-4 left-4 text-slate-300 hover:text-white bg-slate-800/80 p-2 rounded-xl border border-slate-700"><i class="ph-bold ph-arrow-left text-lg"></i></button>
+                    <button onclick="sqBoot()" title="Refresh" class="absolute top-4 right-4 text-slate-300 hover:text-white bg-slate-800/80 p-2 rounded-xl border border-slate-700"><i class="ph-bold ph-arrows-clockwise text-lg"></i></button>
+                    <div class="text-center pt-1"><div class="w-14 h-14 mx-auto rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-amber-400 mb-2"><i class="ph-fill ph-package text-3xl"></i></div>
+                        <h2 class="text-xl font-extrabold tracking-tight">Store Requests Tasks</h2>
+                        <p class="text-xs font-bold text-slate-400 mt-0.5" id="sqSub"></p></div>
+                </div>
+                <div class="px-4 pt-3 bg-slate-50/50 grid grid-cols-2 gap-2">
+                    <button id="sqTabOpen" onclick="sqTab('open')" class="rounded-xl py-2 text-sm font-extrabold border">Open</button>
+                    <button id="sqTabDone" onclick="sqTab('done')" class="rounded-xl py-2 text-sm font-extrabold border">Done (7 days)</button>
+                </div>
+                <!-- Search (every word: item, complaint no., machine / process, unit, person, Emp Code, PR no.) + state filter -->
+                <div class="px-4 pt-3 bg-slate-50/50 flex gap-2">
+                    <div class="relative flex-1 min-w-0"><i class="ph-bold ph-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400"></i>
+                        <input id="sqSearch" type="search" oninput="sqRender()" placeholder="Search item, complaint, person, PR…" autocomplete="off"
+                            class="w-full pl-9 pr-3 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-800 outline-none focus:ring-2 focus:ring-amber-400"></div>
+                    <select id="sqFilter" onchange="sqRender()" class="shrink-0 px-2 py-2.5 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-700 outline-none">
+                        <option value="">All</option><option value="Open">Waiting for Store</option><option value="redecide">PR cancelled</option>
+                        <option value="PR Raised">PR raised</option><option value="Received">Received</option><option value="Withdrawn">Withdrawn</option>
+                    </select>
+                </div>
+                <div id="sqCount" class="px-4 pt-2 bg-slate-50/50 text-[11px] font-bold text-slate-400"></div>
+                <div id="sqList" class="p-4 pt-2 space-y-3 bg-slate-50/50"></div>
+            </div>
+        </div>
+
         <!-- ONE LETTER (employee, also a manager's quick look): the paper, then the signature pad (pending)
              or the signed state with the PDF (signed). -->
         <div id="screen-letter-view" data-no-caps class="screen-view hidden w-full max-w-md mx-auto mt-4 px-2">
@@ -1314,45 +1344,52 @@
                 <div class="p-4 grid grid-cols-2 gap-3 bg-slate-50/50">
                     <button data-pend="daily" onclick="openTaskCategory('daily', 'Daily Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-indigo-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-indigo-50 rounded-2xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors border border-indigo-100 shadow-inner"><i class="ph-fill ph-calendar-blank text-3xl text-indigo-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">1. Daily Task</span>
+                        <span data-dash-label="Daily Task" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">1. Daily Task</span>
                     </button>
                     <button data-pend="weekly" onclick="openTaskCategory('weekly', 'Weekly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-blue-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-100 transition-colors border border-blue-100 shadow-inner"><i class="ph-fill ph-calendar-check text-3xl text-blue-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">2. Weekly Task</span>
+                        <span data-dash-label="Weekly Task" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">2. Weekly Task</span>
                     </button>
                     <button data-pend="monthly" onclick="openTaskCategory('monthly', 'Monthly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-emerald-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-emerald-50 rounded-2xl flex items-center justify-center group-hover:bg-emerald-100 transition-colors border border-emerald-100 shadow-inner"><i class="ph-fill ph-calendar-plus text-3xl text-emerald-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">3. Monthly Task</span>
+                        <span data-dash-label="Monthly Task" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">3. Monthly Task</span>
                     </button>
                     <button data-pend="yearly" onclick="openTaskCategory('yearly', 'Yearly Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-orange-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-orange-50 rounded-2xl flex items-center justify-center group-hover:bg-orange-100 transition-colors border border-orange-100 shadow-inner"><i class="ph-fill ph-calendar-star text-3xl text-orange-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">4. Yearly Task</span>
+                        <span data-dash-label="Yearly Task" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">4. Yearly Task</span>
                     </button>
                     <button data-pend="ea" onclick="openTaskCategory('ea', 'EA Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-rose-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-rose-50 rounded-2xl flex items-center justify-center group-hover:bg-rose-100 transition-colors border border-rose-100 shadow-inner"><i class="ph-fill ph-star text-3xl text-rose-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">5. EA Task</span>
+                        <span data-dash-label="EA Task" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">5. EA Task</span>
+                    </button>
+                    <!-- 6. Store Requests Tasks: Store Incharge only (role USER_IC_PIN) and only when scr_list answers; badge = open requests.
+                         Hidden for everyone else, so the numbers after it are set by dashRenumber (sqBoot). -->
+                    <button id="sqDashWrap" onclick="sqOpen()" class="hidden relative bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex-col items-center justify-center gap-2 hover:border-amber-400 hover:shadow-md transition-all active:scale-95 group">
+                        <div class="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center group-hover:bg-amber-100 transition-colors border border-amber-100 shadow-inner"><i class="ph-fill ph-package text-3xl text-amber-500"></i></div>
+                        <span data-dash-label="Store Requests Tasks" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">6. Store Requests Tasks</span>
+                        <span id="sqDashBadge" class="hidden absolute top-2 right-2 min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-600 text-white text-[11px] font-extrabold items-center justify-center"></span>
                     </button>
                     <button onclick="showMyScore()" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-yellow-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-yellow-50 rounded-2xl flex items-center justify-center group-hover:bg-yellow-100 transition-colors border border-yellow-100 shadow-inner"><i class="ph-fill ph-chart-pie text-3xl text-yellow-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">6. My Score</span>
+                        <span data-dash-label="My Score" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">6. My Score</span>
                     </button>
-                    <button data-pend="buddy" onclick="openTaskCategory('buddy', 'Assigned Buddy Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-teal-400 hover:shadow-md transition-all active:scale-95 group col-span-2 md:col-span-1">
+                    <button id="dashBuddyBtn" data-pend="buddy" onclick="openTaskCategory('buddy', 'Assigned Buddy Tasks')" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-teal-400 hover:shadow-md transition-all active:scale-95 group col-span-2 md:col-span-1">
                         <div class="w-14 h-14 bg-teal-50 rounded-2xl flex items-center justify-center group-hover:bg-teal-100 transition-colors border border-teal-100 shadow-inner"><i class="ph-fill ph-users text-3xl text-teal-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">7. Buddy Tasks</span>
+                        <span data-dash-label="Buddy Tasks" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">7. Buddy Tasks</span>
                     </button>
                     
                     <button onclick="navigate('employee-sheet')" class="bg-slate-900 p-5 rounded-2xl shadow-md flex flex-col items-center justify-center gap-2 hover:bg-black transition-all active:scale-95 group col-span-2 md:col-span-1 border border-slate-800">
                         <div class="w-14 h-14 bg-slate-800 rounded-2xl flex items-center justify-center group-hover:bg-slate-700 transition-colors border border-slate-700 shadow-inner"><i class="ph-fill ph-table text-3xl text-indigo-400"></i></div>
-                        <span class="text-xs font-extrabold text-white text-center uppercase tracking-wide">8. Month Sheet</span>
+                        <span data-dash-label="Month Sheet" class="text-xs font-extrabold text-white text-center uppercase tracking-wide">8. Month Sheet</span>
                     </button>
 
                     <button onclick="openSelfTaskModal()" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-blue-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-blue-50 rounded-2xl flex items-center justify-center group-hover:bg-blue-100 transition-colors border border-blue-100 shadow-inner"><i class="ph-fill ph-plus-circle text-3xl text-blue-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">9. Add Self Task</span>
+                        <span data-dash-label="Add Self Task" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">9. Add Self Task</span>
                     </button>
                     <button onclick="openCompletedSelfTasks()" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col items-center justify-center gap-2 hover:border-green-400 hover:shadow-md transition-all active:scale-95 group">
                         <div class="w-14 h-14 bg-green-50 rounded-2xl flex items-center justify-center group-hover:bg-green-100 transition-colors border border-green-100 shadow-inner"><i class="ph-fill ph-list-checks text-3xl text-green-500"></i></div>
-                        <span class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">10. Completed Self</span>
+                        <span data-dash-label="Completed Self" class="text-xs font-extrabold text-slate-700 text-center uppercase tracking-wide">10. Completed Self</span>
                     </button>
                 </div>
 
@@ -1880,6 +1917,7 @@
             setTimeout(tmSyncReminders, 0);
             setTimeout(srBoot, 0);   // Score Master › Reset score: the resets of this login (a changed list repaints the screen)
             setTimeout(clBoot, 0);   // Consult Letters: my letters + may I manage (separate RPC, so an old server just has no letters)
+            setTimeout(sqBoot, 0);   // Store Requests Tasks: only answers for a Store Incharge / Admin (scr_can_); anyone else keeps the button hidden
             return res;
         }
 
@@ -2230,7 +2268,7 @@
             appState.currentScreen = sId;
             document.querySelectorAll('.screen-view').forEach(el => el.classList.add('hidden')); document.getElementById('screen-' + sId).classList.remove('hidden');
             // My Tasks screens: full-screen mobile layout (see tm-mobile-full in the CSS).
-            const full = sId === 'employee-dashboard' || sId === 'task-list' || sId === 'my-letters' || sId === 'letter-view';
+            const full = sId === 'employee-dashboard' || sId === 'task-list' || sId === 'my-letters' || sId === 'letter-view' || sId === 'store-requests';
             document.body.classList.toggle('tm-mobile-full', full);
             if (full) window.scrollTo(0, 0);
             if(sId==='home') applyHomeAccess(); else if(sId==='add-task') initAddTaskScreen(); else if(sId==='md-view') renderMDView(); else if(sId==='score-card') renderScoreCard(); else if(sId==='employee-list') renderEmployeeList(); else if(sId==='completion-chart') initCompletionChart(); else if(sId==='ea-delegation') initEADelegation(); else if(sId==='assign-buddy') initAssignBuddy();
@@ -2239,6 +2277,7 @@
             else if(sId==='day-off') initDayOff();
             else if(sId==='consult-letter') initConsultLetter();
             else if(sId==='my-letters') clMyRender();
+            else if(sId==='store-requests') sqRender();
             const emp = appState.currentLoggedInEmp;
             if(emp && sId==='employee-sheet') renderEmployeeSheet(emp);
             else if(emp && sId==='employee-dashboard') renderDashboard();
@@ -5103,6 +5142,303 @@
             const n = CL.mine.filter(l => l.status === 'PENDING').length, b = document.getElementById('clDashBadge'); if (!b) return;
             b.textContent = n; b.classList.toggle('hidden', !n); b.classList.toggle('inline-flex', !!n);
         }
+
+        /* ── STORE REQUESTS (CMP_ITEM_REQUEST_MIGRATION.sql) ───────────────
+           A complaint's Request Item lands here for the Store Incharge (right
+           TM_STORE_REQUESTS, decided by the server's scr_can_; anyone else gets
+           NOT_ALLOWED and simply never sees the button). Two answers:
+             Issue   qty (not above the balance) + remarks + photo proof; a part
+                     issue keeps the task open with the balance
+             New PR  in the ASKER's name (the requester is never the Store), the
+                     Store Incharge's own PIN; it then shows in the asker's My
+                     Requests and on the complaint
+           The SERVER moves the complaint (Pending for Material -> Material
+           Received, also when the PR's material comes in); this page only asks
+           and shows. scr_issue_save / scr_pr_save carry "save" so offline-sync.js
+           never caches them. Prefix sq (sr / SR belong to SCORE RESET). */
+        const SQ = { open: [], done: [], tab: 'open', masters: null, photo: null, items: null };
+        const SQ_ERR = {
+            ALREADY_DONE: 'Someone has already handled this request. The list is refreshed.',
+            BAD_QTY: 'Enter a quantity more than 0 and not more than the balance (at most 3 decimals).',
+            BAD_PHOTO: 'Take the photo proof again.',
+            NO_EMP_CODE: 'The person who asked has no ERP Emp Code, so no PR can be raised in their name. Ask the Admin to link it.',
+            REQUIRED_BY: 'Choose the Required by date.', REQUIRED_BY_PAST: 'The Required by date cannot be in the past.',
+            PRIORITY: 'Choose the priority.', PURCHASER: 'Choose the purchaser.', NO_ITEMS: 'Add at least one item from the Item Master.',
+            ITEM_NOT_FOUND: 'Choose the item again from the Item Master list.', QTY: 'Check the item quantity (more than 0, at most 3 decimals).',
+            TOO_MANY_ITEMS: 'Too many items in one go. Split it into two.',
+            MACHINE: 'Choose the machine.', MACHINE_NOT_FOUND: 'Choose the machine from the Machine Master list.',
+            PIN_INVALID: 'Wrong PIN. Enter your own login PIN.', TOO_MANY_ATTEMPTS: 'Too many wrong PIN tries. Wait 15 minutes and try again.',
+            PIN_CHECK_UNAVAILABLE: 'The PIN could not be checked right now. Try again.', PR_NO_BUSY: 'A PR number could not be given right now. Try again.',
+            NOT_FOUND: 'This request no longer exists. The list is refreshed.'
+        };
+        function sqMsg(res) {
+            const e = String(res.error || ''), code = e.split(':')[0];
+            return SQ_ERR[code] || TM_ERR[code] || (e.indexOf(': ') > 0 ? e.slice(e.indexOf(': ') + 2) : 'The request failed: ' + e) + (res.detail ? ' (' + res.detail + ')' : '');
+        }
+        /* My Tasks tiles carry "n. Name" (data-dash-label = the name); the number is the tile's place among the
+           tiles on screen, so the optional 6. Store Requests Tasks never leaves a gap. With it the tile count is odd
+           until Buddy Tasks stops spanning both columns (it then pairs with My Score). */
+        function dashRenumber() {
+            const sq = document.getElementById('sqDashWrap'), on = !!sq && !sq.classList.contains('hidden');
+            const bud = document.getElementById('dashBuddyBtn'); if (bud) bud.classList.toggle('col-span-2', !on);
+            let i = 0;
+            document.querySelectorAll('#screen-employee-dashboard [data-dash-label]').forEach(el => {
+                const b = el.closest('button'); if (b && b.classList.contains('hidden')) return;
+                el.textContent = (++i) + '. ' + el.dataset.dashLabel;
+            });
+        }
+        function sqShowTile(on) {
+            const wrap = document.getElementById('sqDashWrap'); if (!wrap) return;
+            wrap.classList.toggle('hidden', !on); wrap.classList.toggle('flex', on);
+            dashRenumber();
+        }
+        async function sqBoot() {
+            // Store Incharge only (the server's scr_can_ also lets the Admin in, but the tile is the Store's own work list)
+            if (!(window.SARV_GATE && SARV_GATE.hasRole && SARV_GATE.hasRole('USER_IC_PIN'))) { sqShowTile(false); return { ok: false, error: 'NOT_STORE_INCHARGE' }; }
+            const res = await tmRpc('scr_list', {});
+            if (!res.ok) { sqShowTile(false); return res; }
+            SQ.open = res.data.open || []; SQ.done = res.data.done || [];
+            sqShowTile(true);
+            const b = document.getElementById('sqDashBadge'), n = SQ.open.length;
+            if (b) { b.textContent = n; b.classList.toggle('hidden', !n); b.classList.toggle('inline-flex', !!n); }
+            if (appState.currentScreen === 'store-requests') sqRender();
+            return res;
+        }
+        window.sqBoot = sqBoot;
+        window.sqOpen = function() { navigate('store-requests'); sqBoot(); };
+        window.sqTab = function(t) { SQ.tab = t; sqRender(); };
+        const sqFind = id => SQ.open.find(x => x.id === id);
+        function sqRender() {
+            const box = document.getElementById('sqList'); if (!box) return;
+            const on = 'bg-amber-500 text-white border-amber-500', off = 'bg-white text-slate-600 border-slate-200';
+            document.getElementById('sqTabOpen').className = 'rounded-xl py-2 text-sm font-extrabold border ' + (SQ.tab === 'open' ? on : off);
+            document.getElementById('sqTabDone').className = 'rounded-xl py-2 text-sm font-extrabold border ' + (SQ.tab === 'done' ? on : off);
+            document.getElementById('sqSub').textContent = SQ.open.length ? SQ.open.length + ' request(s) waiting for the Store' : 'Nothing waiting';
+            const all = SQ.tab === 'open' ? SQ.open : SQ.done;
+            // Search: every typed word must appear somewhere (any order, any case); the select narrows by state.
+            const words = String((document.getElementById('sqSearch') || {}).value || '').toLowerCase().split(/\s+/).filter(Boolean);
+            const f = (document.getElementById('sqFilter') || {}).value || '';
+            const hay = r => [r.itemText, r.complaintNo, r.subject, r.unit, r.state, r.requester && r.requester.name, r.requester && r.requester.empCode,
+                              (r.prs || []).map(p => p.reqNo).join(' '), r.closedNote].join(' ').toLowerCase();
+            const rows = all.filter(r => (!f || (f === 'redecide' ? (r.needsRedecide && r.state === 'Open') : r.state === f)) && words.every(w => hay(r).includes(w)));
+            const cnt = document.getElementById('sqCount'); if (cnt) cnt.textContent = (words.length || f) ? rows.length + ' of ' + all.length + ' shown' : '';
+            if (!rows.length) { box.innerHTML = `<div class="text-center p-10 bg-white border border-dashed border-slate-300 rounded-2xl text-slate-400 font-bold">${all.length ? 'No request matches the search / filter.' : (SQ.tab === 'open' ? 'No request is waiting.' : 'Nothing done in the last 7 days.')}</div>`; return; }
+            const chip = s => `<span class="text-[10px] font-extrabold uppercase px-2 py-1 rounded-lg border ${s === 'Open' ? 'bg-amber-50 text-amber-800 border-amber-200' : s === 'PR Raised' ? 'bg-violet-50 text-violet-800 border-violet-200' : s === 'Received' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : 'bg-slate-50 text-slate-600 border-slate-200'}">${esc(s)}</span>`;
+            box.innerHTML = rows.map(r => {
+                const open = SQ.tab === 'open' && r.state === 'Open';
+                return `<div class="bg-white rounded-2xl border ${r.needsRedecide ? 'border-amber-300 shadow-md' : 'border-slate-200 shadow-sm'} p-4">`
+                    + `<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800 break-words">${esc(r.itemText)}</div>`
+                    + `<div class="text-[11px] font-bold text-slate-500">${esc(r.complaintNo || '')}${r.unit ? ' · ' + esc(r.unit) : ''}${r.subject ? ' · ' + esc(r.subject) : ''}</div></div>${chip(r.state)}</div>`
+                    + `<div class="text-xs font-bold text-slate-700 mt-2">Qty ${esc(r.qty)} · issued ${esc(r.issuedQty)} · balance <b>${esc(r.balance)}</b></div>`
+                    + `<div class="text-[11px] font-bold text-slate-400">${esc((r.requester && r.requester.name) || '')} (${esc((r.requester && r.requester.empCode) || '—')}) · asked ${esc(fmtDur(Date.now() - new Date(r.requestedAt).getTime()))} ago</div>`
+                    + (r.prs || []).map(p => `<div class="text-[11px] font-bold text-violet-700 mt-1">PR ${esc(p.reqNo)} · qty ${esc(p.qty)} · ${esc(p.state)}</div>`).join('')
+                    + (r.needsRedecide && r.state === 'Open' ? `<div class="text-[11px] font-extrabold text-amber-700 mt-1">The PR was cancelled: decide again (issue or a new PR).</div>` : '')
+                    + (r.closedNote ? `<div class="text-[11px] font-bold text-slate-500 mt-1">${esc(r.closedNote)}</div>` : '')
+                    + `<div class="flex flex-wrap gap-2 mt-3">`
+                    + `<button onclick="sqTrack(${r.id})" class="px-3 py-2 rounded-xl border border-slate-200 text-xs font-extrabold text-slate-700"><i class="ph-bold ph-images"></i> Details &amp; Photos</button>`
+                    + (open ? `<button onclick="sqIssue(${r.id})" class="px-3 py-2 rounded-xl bg-emerald-600 text-white text-xs font-extrabold"><i class="ph-bold ph-hand-arrow-down"></i> Issue</button>`
+                            + `<button onclick="sqNewPr(${r.id})" class="px-3 py-2 rounded-xl bg-violet-600 text-white text-xs font-extrabold"><i class="ph-bold ph-file-plus"></i> New PR</button>` : '')
+                    + `</div></div>`;
+            }).join('');
+        }
+        /* Details & Photos (scr_request_track): where the complaint is now, the host's completion remarks + photos,
+           the Maintenance Info (with its photo), what the Store issued (Item Master lines), the PRs, every photo of
+           the request / issue / complaint, and the complaint's tab history. Photos are data:image URLs the server
+           checked; they are still escaped into the attribute. Tap a photo for the full size. */
+        const SQ_TAB = { 'Pending': 'Pending', 'In Progress': 'In-progress', MatPending: 'Pending for Material', MatReceived: 'Material Received',
+                         MaintInfo: 'Maintenance Info', Awaiting: 'Awaiting OK', Completed: 'Closed' };
+        const sqWhen = s => s ? new Date(s).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: '2-digit', hour: 'numeric', minute: '2-digit' }) : '';
+        window.sqZoom = function(b) { showCustomModal('Photo', `<img src="${esc(b.dataset.src)}" class="w-full rounded-xl border border-slate-200">`); };
+        window.sqTrack = async function(id) {
+            const res = await tmRpc('scr_request_track', { p_request_id: id });
+            if (!res.ok) return showCustomModal('Details', esc(sqMsg(res)), true);
+            const d = res.data, cm = d.complaint || {}, r = d.request || {};
+            const thumbs = list => (list || []).length
+                ? `<div class="flex flex-wrap gap-2">${list.map(p => `<button type="button" onclick="sqZoom(this)" data-src="${esc(p.image || p.photo)}" class="block"><img src="${esc(p.image || p.photo)}" class="w-20 h-20 object-cover rounded-xl border border-slate-200"></button>`).join('')}</div>`
+                : `<div class="text-xs font-bold text-slate-400">None</div>`;
+            const sec = (t, body) => `<div class="rounded-2xl border border-slate-200 p-3"><div class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wide mb-2">${t}</div>${body}</div>`;
+            const tabCls = cm.tab === 'Completed' ? 'bg-emerald-50 text-emerald-800 border-emerald-200' : cm.tab === 'Awaiting' || cm.tab === 'MaintInfo' ? 'bg-violet-50 text-violet-800 border-violet-200' : 'bg-amber-50 text-amber-800 border-amber-200';
+            const reqPh = (d.photos || []).filter(p => p.kind === 'request'), issPh = (d.photos || []).filter(p => p.kind === 'issue');
+            sqSheet('Request details',
+                `<div><div class="text-base font-extrabold text-slate-800 break-words">${esc(r.itemText || '')}</div>`
+                + `<div class="text-xs font-bold text-slate-500">${esc(cm.no || r.complaintNo || '')}${cm.unit ? ' · ' + esc(cm.unit) : ''}${r.subject ? ' · ' + esc(r.subject) : ''}</div>`
+                + `<div class="text-xs font-bold text-slate-600 mt-1">Asked ${esc(r.qty)} · issued ${esc(r.issuedQty)} · ${esc(r.state || '')} · by ${esc((r.requester && r.requester.name) || '')}</div></div>`
+                + sec('Complaint now',
+                    `<div class="flex flex-wrap items-center gap-2"><span class="text-[11px] font-extrabold uppercase px-2 py-1 rounded-lg border ${tabCls}">${esc(SQ_TAB[cm.tab] || cm.status || '')}</span>${cm.host ? `<span class="text-xs font-bold text-slate-600">Host: ${esc(cm.host)}</span>` : ''}</div>`
+                    + (cm.problem ? `<div class="text-xs font-bold text-slate-500 mt-2">${esc(cm.problem)}</div>` : '')
+                    + (cm.completedAt ? `<div class="text-xs font-bold text-emerald-700 mt-2">Completed ${esc(sqWhen(cm.completedAt))}${cm.completionRemarks ? ' · ' + esc(cm.completionRemarks) : ''}</div>` : `<div class="text-xs font-bold text-slate-400 mt-2">Not completed yet</div>`)
+                    + (cm.closedAt ? `<div class="text-xs font-bold text-emerald-700">Closed ${esc(sqWhen(cm.closedAt))}${cm.feedbackRemarks ? ' · ' + esc(cm.feedbackRemarks) : ''}</div>` : ''))
+                + sec('Completion photos', thumbs(d.completionPhotos))
+                + sec('Maintenance Info', (d.maintInfo || []).length ? (d.maintInfo || []).map(m =>
+                    `<div class="mb-2 last:mb-0"><div class="text-sm font-extrabold text-slate-700">${esc(m.actionType || '')}${m.item ? ' · ' + esc(m.item) : ''}${m.qty != null ? ' · ' + esc(m.qty) + ' ' + esc(m.uom || '') : ''}</div>`
+                    + `<div class="text-[11px] font-bold text-slate-400 mb-1">${esc(m.by || '')}${m.role ? ' (' + esc(m.role) + ')' : ''} · ${esc(sqWhen(m.at))}</div>${m.photo ? thumbs([{ image: m.photo }]) : ''}</div>`).join('')
+                    : `<div class="text-xs font-bold text-slate-400">Not filled yet</div>`)
+                + sec('Issued by the Store', (d.issues || []).length ? (d.issues || []).map(i =>
+                    `<div class="mb-2 last:mb-0"><div class="text-sm font-extrabold text-slate-700">${esc(i.qty)} against the request · ${esc(i.by || '')} · ${esc(sqWhen(i.at))}</div>`
+                    + ((i.lines || []).length ? `<div class="text-xs font-bold text-slate-600">${(i.lines || []).map(l => esc(l.item) + ' ' + esc(l.qty) + ' ' + esc(l.uom || '')).join(' · ')}</div>` : '')
+                    + (i.remarks ? `<div class="text-[11px] font-bold text-slate-400">${esc(i.remarks)}</div>` : '') + `</div>`).join('')
+                    : `<div class="text-xs font-bold text-slate-400">Nothing issued from stock</div>`)
+                + ((r.prs || []).length ? sec('PRs', (r.prs || []).map(p => `<div class="text-xs font-bold text-violet-700">PR ${esc(p.reqNo)} · qty ${esc(p.qty)} · ${esc(p.state)}</div>`).join('')) : '')
+                + sec('Item photos (asked)', thumbs(reqPh))
+                + sec('Store issue proof', thumbs(issPh))
+                + sec('Complaint photos', thumbs(d.complaintPhotos))
+                + sec('History', (d.history || []).map(h => `<div class="text-[11px] font-bold text-slate-600">${h.fromTab ? esc(SQ_TAB[h.fromTab] || h.fromTab) + ' → ' : ''}${esc(SQ_TAB[h.toTab] || h.toTab)} · ${esc(sqWhen(h.at))}${h.by ? ' · ' + esc(h.by) : ''}</div>`).join('') || '<div class="text-xs font-bold text-slate-400">None</div>'));
+        };
+        // Bottom sheet for the two forms (data-no-caps: Item Master names must match exactly).
+        function sqSheet(title, html) {
+            let ov = document.getElementById('sqOv');
+            if (!ov) {
+                ov = document.createElement('div'); ov.id = 'sqOv'; ov.setAttribute('data-no-caps', '');
+                ov.className = 'fixed inset-0 z-[120] hidden items-end sm:items-center justify-center bg-slate-900/60 sm:p-4 print-hide';
+                document.body.appendChild(ov);
+            }
+            ov.innerHTML = `<div class="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl max-h-[92vh] overflow-y-auto p-5 space-y-3" style="padding-bottom:max(1.25rem, env(safe-area-inset-bottom))">`
+                + `<div class="flex items-center justify-between"><h3 class="text-lg font-extrabold text-slate-800">${title}</h3><button onclick="sqClose()" title="Close" class="w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center"><i class="ph-bold ph-x"></i></button></div>${html}</div>`;
+            ov.classList.remove('hidden'); ov.classList.add('flex');
+        }
+        window.sqClose = function() { const ov = document.getElementById('sqOv'); if (ov) { ov.classList.add('hidden'); ov.classList.remove('flex'); ov.innerHTML = ''; } SQ.photo = null; };
+        const SQ_IN = 'w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-800';
+        const sqLbl = t => `<label class="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wide">${t}</label>`;
+        // Photo proof: downscaled under the server's 400 000-character cap, stamped with name + time like the live camera.
+        function sqCompress(file) {
+            return new Promise((ok, bad) => {
+                if (!file || !/^image\//.test(file.type || '')) return bad(new Error('This is not a photo.'));
+                const url = URL.createObjectURL(file), img = new Image();
+                img.onerror = () => { URL.revokeObjectURL(url); bad(new Error('The photo could not be opened.')); };
+                img.onload = () => {
+                    URL.revokeObjectURL(url);
+                    const draw = (max, q) => {
+                        const s = Math.min(1, max / Math.max(img.width, img.height)), w = Math.max(1, Math.round(img.width * s)), h = Math.max(1, Math.round(img.height * s));
+                        const cv = document.createElement('canvas'); cv.width = w; cv.height = h; const x = cv.getContext('2d');
+                        x.fillStyle = '#fff'; x.fillRect(0, 0, w, h); x.drawImage(img, 0, 0, w, h);
+                        const fs = Math.max(13, Math.round(w / 38)), pad = Math.round(fs * 0.6);
+                        const lines = [((appState.me && appState.me.name) || '') + ' · Store issue', new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })];
+                        const bh = lines.length * fs * 1.3 + pad * 2;
+                        x.fillStyle = 'rgba(0,0,0,0.55)'; x.fillRect(0, h - bh, w, bh); x.fillStyle = '#fff'; x.font = 'bold ' + fs + 'px sans-serif'; x.textBaseline = 'top';
+                        lines.forEach((l, i) => x.fillText(l, pad, h - bh + pad + i * fs * 1.3, w - pad * 2));
+                        return cv.toDataURL('image/jpeg', q);
+                    };
+                    let q = 0.72, out = draw(1280, q);
+                    while (out.length > 390000 && q > 0.32) { q -= 0.12; out = draw(1280, q); }
+                    if (out.length > 390000) out = draw(800, 0.55);
+                    if (out.length > 390000) return bad(new Error('The photo is too large. Take it again from closer.'));
+                    ok(out);
+                };
+                img.src = url;
+            });
+        }
+        // Item Master / machines / purchasers (mr_pr_masters), loaded once for the Issue and New PR forms.
+        async function sqMasters() {
+            if (SQ.masters) return true;
+            const m = await tmRpc('mr_pr_masters', {});
+            if (!m.ok) { showCustomModal('Could not open', esc(sqMsg(m)), true); return false; }
+            SQ.masters = m.data; SQ.items = new Map((m.data.items || []).map(i => [sqItemLabel(i), i]));
+            return true;
+        }
+        /* Issue from stock: the Item Master lines actually handed over (1 to 30, "+ Add item"), and separately how
+           much of the REQUEST this supplies (it is free text, so only that number moves its balance). */
+        window.sqIssue = async function(id) {
+            const r = sqFind(id); if (!r) return sqBoot();
+            if (!(await sqMasters())) return;
+            SQ.photo = null;
+            sqSheet('Issue from stock',
+                `<div class="text-sm font-extrabold text-slate-700 break-words">${esc(r.itemText)}</div><div class="text-xs font-bold text-slate-500">${esc(r.complaintNo || '')} · balance ${esc(r.balance)}</div>`
+                + `<div>${sqLbl('Items handed over (Item Master)')}<div id="sqIssLines" class="space-y-2"></div>`
+                + `<button type="button" onclick="sqIssAddLine()" class="mt-2 w-full py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50/50 text-amber-800 text-sm font-extrabold"><i class="ph-bold ph-plus"></i> Add item</button>`
+                + `<datalist id="sqIssItems">${[...SQ.items.keys()].map(k => `<option value="${esc(k)}"></option>`).join('')}</datalist></div>`
+                + `<div>${sqLbl('Qty against this request')}<input id="sqIssQty" type="number" min="0" step="any" inputmode="decimal" value="${esc(r.balance)}" class="${SQ_IN}">`
+                + `<div class="text-[11px] font-bold text-slate-400 mt-1">Balance ${esc(r.balance)}. When this reaches the balance the request counts as supplied.</div></div>`
+                + `<div>${sqLbl('Remarks')}<input id="sqIssRem" type="text" maxlength="500" class="${SQ_IN}"></div>`
+                + `<div>${sqLbl('Photo proof')}<label class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 font-extrabold text-sm text-slate-700 cursor-pointer"><i class="ph-bold ph-camera text-lg"></i> Take photo<input type="file" accept="image/*" capture="environment" class="hidden" onchange="sqPickPhoto(this)"></label><div id="sqIssPrev"></div></div>`
+                + `<button id="sqIssBtn" onclick="sqIssueSave(${r.id})" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-xl">Save issue</button>`);
+            sqIssAddLine();
+        };
+        window.sqIssAddLine = function() {
+            const box = document.getElementById('sqIssLines'); if (!box) return;
+            if (box.children.length >= 30) return showCustomModal('Items', 'Up to 30 items in one issue.', true);
+            const row = document.createElement('div'); row.className = 'sqIssLine flex gap-2 items-start';
+            row.innerHTML = `<div class="flex-1 min-w-0"><input list="sqIssItems" oninput="sqIssItemInfo(this)" placeholder="Type to search the Item Master…" class="sqIssItem ${SQ_IN}"><div class="sqIssInfo text-[11px] font-bold text-slate-500 mt-0.5"></div></div>`
+                + `<input type="number" min="0" step="any" inputmode="decimal" value="1" title="Qty" class="sqIssLq w-20 px-2 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-400 font-bold text-slate-800 text-center">`
+                + `<button type="button" onclick="this.closest('.sqIssLine').remove()" title="Remove" class="shrink-0 w-10 h-11 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500"><i class="ph-bold ph-x"></i></button>`;
+            box.appendChild(row);
+            row.querySelector('.sqIssItem').focus();
+        };
+        window.sqIssItemInfo = function(inp) {
+            const it = SQ.items && SQ.items.get(inp.value), info = inp.parentElement.querySelector('.sqIssInfo');
+            if (info) info.textContent = it ? [it.category, it.uom, it.make].filter(Boolean).join(' · ') : (inp.value.trim() ? 'Choose an item from the list' : '');
+        };
+        window.sqPickPhoto = async function(inp) {
+            const f = inp.files && inp.files[0]; inp.value = ''; if (!f) return;
+            try { SQ.photo = await sqCompress(f); document.getElementById('sqIssPrev').innerHTML = `<img src="${SQ.photo}" class="mt-2 w-24 h-24 object-cover rounded-xl border border-slate-200">`; }
+            catch (e) { showCustomModal('Photo', esc(e.message), true); }
+        };
+        window.sqIssueSave = async function(id) {
+            const lines = [...document.querySelectorAll('#sqIssLines .sqIssLine')].map(row => {
+                const raw = row.querySelector('.sqIssItem').value.trim();
+                return { raw, it: SQ.items && SQ.items.get(raw), q: Number(row.querySelector('.sqIssLq').value) };
+            }).filter(l => l.raw);
+            if (!lines.length) return showCustomModal('Items', 'Add at least one item from the Item Master.', true);
+            const badIt = lines.findIndex(l => !l.it); if (badIt >= 0) return showCustomModal('Items', 'Item ' + (badIt + 1) + ': choose it from the Item Master list.', true);
+            const badQ = lines.findIndex(l => !(l.q > 0)); if (badQ >= 0) return showCustomModal('Items', 'Item ' + (badQ + 1) + ': enter a quantity more than 0.', true);
+            const qty = Number(document.getElementById('sqIssQty').value);
+            if (!(qty > 0)) return showCustomModal('Qty against the request', 'Enter how much of the request this supplies.', true);
+            if (!SQ.photo) return showCustomModal('Photo proof', 'Take the photo of the item being issued.', true);
+            setBusy('sqIssBtn', true);
+            const res = await tmRpc('scr_issue_save', { p_request_id: id, p_qty: qty, p_remarks: document.getElementById('sqIssRem').value.trim(), p_photo: SQ.photo,
+                                                        p_items: lines.map(l => ({ itemId: l.it.id, qty: l.q })) });
+            setBusy('sqIssBtn', false, 'Save issue');
+            if (!res.ok) { if (/^(ALREADY_DONE|NOT_FOUND)/.test(res.error || '')) { sqClose(); sqBoot(); } return showCustomModal('Not saved', esc(sqMsg(res)), true); }
+            sqClose(); await sqBoot();
+            showCustomModal('Saved', Number(res.data.balance) > 0 ? `Issued. ${esc(res.data.balance)} still to supply.` : 'Issued in full. The complaint now shows Material Received.');
+        };
+        // "KM-04 | 12" (Machine Master) vs the complaint's "KM-04 12": same machine when only spaces / bars differ.
+        const sqMachKey = s => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        const sqItemLabel = i => i.name + (i.uom ? ' · ' + i.uom : '') + (i.category ? ' · ' + i.category : '');
+        window.sqNewPr = async function(id) {
+            const r = sqFind(id); if (!r) return sqBoot();
+            if (!(await sqMasters())) return;
+            const M = SQ.masters, d = new Date(); d.setDate(d.getDate() + 3);
+            const mach = (M.machines || []).length
+                ? `<select id="sqPrMach" class="${SQ_IN}"><option value="">Choose…</option>${M.machines.map(x => `<option value="${esc(x)}" ${sqMachKey(x) === sqMachKey(r.subject) ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select>`
+                : `<input id="sqPrMach" type="text" class="${SQ_IN}" value="${esc(r.subject || '')}">`;
+            sqSheet('New PR',
+                `<div class="rounded-xl bg-violet-50 border border-violet-200 p-3 text-xs font-bold text-violet-900">Raised in the name of <b>${esc((r.requester && r.requester.name) || '')}</b> (${esc((r.requester && r.requester.empCode) || '—')}), who asked for it on ${esc(r.complaintNo || '')}. They track it in My Requests; the complaint moves on when it is received.</div>`
+                + `<div class="text-sm font-extrabold text-slate-700 break-words">${esc(r.itemText)}</div>`
+                + `<div>${sqLbl('Item (Item Master)')}<input id="sqPrItem" list="sqPrItems" oninput="sqPrItemPicked()" placeholder="Type to search…" class="${SQ_IN}"><datalist id="sqPrItems">${[...SQ.items.keys()].map(k => `<option value="${esc(k)}"></option>`).join('')}</datalist><div id="sqPrItemInfo" class="text-[11px] font-bold text-slate-500 mt-1"></div></div>`
+                + `<div class="grid grid-cols-2 gap-2"><div>${sqLbl('Qty')}<input id="sqPrQty" type="number" min="0" step="any" inputmode="decimal" value="${esc(r.balance)}" class="${SQ_IN}"></div><div>${sqLbl('Priority')}<select id="sqPrPrio" class="${SQ_IN}"><option>Normal</option><option>Urgent</option><option>Critical</option></select></div></div>`
+                + `<div>${sqLbl('Machine')}${mach}</div>`
+                + `<div>${sqLbl('Purchaser')}<select id="sqPrPur" class="${SQ_IN}"><option value="">Choose…</option>${(M.purchasers || []).map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('')}</select></div>`
+                + `<div>${sqLbl('Required by')}<input id="sqPrBy" type="date" value="${ymd(d)}" class="${SQ_IN}"></div>`
+                + `<div>${sqLbl('Notes')}<input id="sqPrNotes" type="text" maxlength="300" value="${esc(r.itemText)}" class="${SQ_IN}"></div>`
+                + `<div>${sqLbl('Your PIN')}<input id="sqPrPin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" class="${SQ_IN}"></div>`
+                + `<button id="sqPrBtn" onclick="sqPrSave(${r.id})" class="w-full bg-violet-600 hover:bg-violet-700 text-white font-extrabold py-3 rounded-xl">Raise PR</button>`);
+        };
+        window.sqPrItemPicked = function() {
+            const it = SQ.items && SQ.items.get(document.getElementById('sqPrItem').value);
+            document.getElementById('sqPrItemInfo').textContent = it ? [it.category, it.uom, it.make].filter(Boolean).join(' · ') : '';
+            const pur = document.getElementById('sqPrPur'), def = it && SQ.masters.catPurchaser && SQ.masters.catPurchaser[String(it.category || '').trim().toUpperCase()];
+            if (pur && !pur.value && def) pur.value = def;
+        };
+        window.sqPrSave = async function(id) {
+            const r = sqFind(id); if (!r) return sqBoot();
+            const it = SQ.items && SQ.items.get(document.getElementById('sqPrItem').value);
+            const qty = Number(document.getElementById('sqPrQty').value), machine = document.getElementById('sqPrMach').value.trim();
+            const purchaser = document.getElementById('sqPrPur').value, requiredBy = document.getElementById('sqPrBy').value, pin = document.getElementById('sqPrPin').value.trim();
+            if (!it) return showCustomModal('Item', 'Choose the item from the Item Master list.', true);
+            if (!(qty > 0)) return showCustomModal('Qty', 'Enter the PR quantity.', true);
+            if (!machine) return showCustomModal('Machine', 'Choose the machine.', true);
+            if (!purchaser) return showCustomModal('Purchaser', 'Choose the purchaser.', true);
+            if (!requiredBy) return showCustomModal('Required by', 'Choose the Required by date.', true);
+            if (!/^[0-9]{4,8}$/.test(pin)) return showCustomModal('PIN', 'Enter your own login PIN (4 to 8 digits).', true);
+            setBusy('sqPrBtn', true);
+            const res = await tmRpc('scr_pr_save', { p_pin: pin, p_request_id: id, p_data: {
+                requiredBy, priority: document.getElementById('sqPrPrio').value, purchaser, notes: document.getElementById('sqPrNotes').value.trim(),
+                items: [{ itemId: it.id, qty, machine, remarks: '' }] } });
+            setBusy('sqPrBtn', false, 'Raise PR');
+            if (!res.ok) { if (/^(ALREADY_DONE|NOT_FOUND)/.test(res.error || '')) { sqClose(); sqBoot(); } return showCustomModal('PR not raised', esc(sqMsg(res)), true); }
+            sqClose(); await sqBoot();
+            showCustomModal('PR raised', `PR <b>${esc(res.data.reqNo)}</b> raised for <b>${esc(res.data.requester || '')}</b>. It follows the normal PR / PO steps; the complaint moves to Material Received when the material is received.`);
+        };
 
         // ── employee: my letters ───────────────────────────────────────
         window.clOpenMy = async function() {

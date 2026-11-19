@@ -1,0 +1,89 @@
+/* complaint-ios.css — the iOS look of complaint.html (loaded after ios-ui.css; bump ?v= in the page when this changes).
+   Colours are Apple's system palette (light): systemBlue tint for actions, grouped background #F2F2F7, white
+   inset-grouped cards, hairline separators, translucent bars. Motion uses only transform / opacity (cheap for
+   the phone's GPU), and nothing big is blurred while the list scrolls: only the two thin bars and small toasts.
+   The page's components carry the ios-* classes; Tailwind does the rest. */
+:root {
+    --ios-blue: #007aff; --ios-green: #34c759; --ios-red: #ff3b30; --ios-orange: #ff9500;
+    --ios-bg: #f2f2f7; --ios-card: #ffffff; --ios-label: #000000; --ios-label2: rgba(60, 60, 67, 0.6);
+    --ios-sep: rgba(60, 60, 67, 0.18); --ios-fill: rgba(118, 118, 128, 0.12);
+    --ios-ease: cubic-bezier(0.32, 0.72, 0, 1);            /* UIKit sheet curve */
+    --ios-pop: cubic-bezier(0.175, 0.885, 0.32, 1.1);      /* small overshoot, like a UIAlert */
+}
+html, body { background: var(--ios-bg); }
+body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", Roboto, system-ui, sans-serif;
+       letter-spacing: -0.01em; color: var(--ios-label); }
+.ios-page { background: var(--ios-bg); }
+
+/* ── Bars: translucent, hairline edge ───────────────────────────────── */
+.ios-navbar, .ios-tabbar {
+    background: rgba(249, 249, 249, 0.86);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+}
+.ios-navbar { border-bottom: 0.5px solid var(--ios-sep); }
+.ios-tabbar { border-top: 0.5px solid var(--ios-sep); }
+.ios-tabbar button { transition: color 0.2s; }
+.ios-tabbar button:active svg { transform: scale(0.86); }
+.ios-tabbar svg { transition: transform 0.25s var(--ios-pop); }
+
+/* ── Inset-grouped list (the complaint list) ────────────────────────── */
+.ios-group { background: var(--ios-card); border-radius: 14px; overflow: hidden; }
+.ios-group > * + * { box-shadow: inset 0 0.5px 0 var(--ios-sep); }      /* hairline between rows, no layout cost */
+.ios-row { content-visibility: auto; contain-intrinsic-size: auto 96px; transition: background-color 0.15s; }
+.ios-row:active { background: #e5e5ea; }
+.ios-chev { color: #c4c4c6; }
+
+/* ── Tabs side bar (complaint tabs): slides in from the left ────────── */
+.ios-drawer { will-change: transform; animation: iosDrawerIn 0.42s var(--ios-ease) both; }
+.ios-drawer.out { animation: iosDrawerOut 0.24s cubic-bezier(0.4, 0, 1, 1) both; }
+.ios-drawer.dragging { animation: none; transition: none; }
+.ios-drawer.snap { transition: transform 0.32s var(--ios-ease); }
+.ios-drawer-item { transition: background-color 0.15s; }
+.ios-drawer-item:active { background: #e5e5ea; }
+@keyframes iosDrawerIn { from { transform: translate3d(-100%, 0, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes iosDrawerOut { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(-100%, 0, 0); } }
+
+/* ── Sheets / dialogs ───────────────────────────────────────────────── */
+.ios-backdrop { background: rgba(0, 0, 0, 0.32); animation: iosFadeIn 0.3s ease both; }
+.ios-backdrop.out { animation: iosFadeOut 0.22s ease both; }
+.ios-sheet { will-change: transform; }
+@media (max-width: 639px) {
+    .ios-sheet { border-radius: 14px 14px 0 0; animation: iosSheetUp 0.46s var(--ios-ease) both; }
+    .ios-sheet.out { animation: iosSheetDown 0.24s cubic-bezier(0.4, 0, 1, 1) both; }
+    .ios-sheet.dragging { animation: none; transition: none; }
+    .ios-sheet.snap { transition: transform 0.35s var(--ios-ease); }
+}
+@media (min-width: 640px) {
+    .ios-sheet { border-radius: 14px; animation: iosPop 0.34s var(--ios-pop) both; }
+    .ios-sheet.out { animation: iosPopOut 0.18s ease both; }
+}
+.ios-grabber { width: 36px; height: 5px; border-radius: 3px; background: rgba(60, 60, 67, 0.3); }
+.ios-sheet-head { touch-action: none; }
+
+/* ── Toast = iOS banner at the top ──────────────────────────────────── */
+.ios-toast { background: rgba(255, 255, 255, 0.92); color: var(--ios-label);
+    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.16), 0 0 0 0.5px rgba(0, 0, 0, 0.05); border-radius: 16px;
+    animation: iosBanner 0.5s var(--ios-ease) both; }
+.ios-toast.bad .ios-toast-ico { color: var(--ios-red); }
+.ios-toast .ios-toast-ico { color: var(--ios-green); }
+
+/* ── Buttons: press = dim + slight shrink, like UIButton ────────────── */
+.ios-btn { -webkit-user-select: none; user-select: none; transition: opacity 0.15s, transform 0.2s var(--ios-pop), background-color 0.15s; }
+.ios-btn:active { opacity: 0.65; transform: scale(0.97); }
+
+/* ── Fast scrolling: momentum, no scroll chaining, GPU-light ────────── */
+html { -webkit-overflow-scrolling: touch; overscroll-behavior-y: none; }
+.overflow-y-auto, .overflow-x-auto { -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+
+@keyframes iosFadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes iosFadeOut { from { opacity: 1; } to { opacity: 0; } }
+@keyframes iosSheetUp { from { transform: translate3d(0, 100%, 0); } to { transform: translate3d(0, 0, 0); } }
+@keyframes iosSheetDown { from { transform: translate3d(0, 0, 0); } to { transform: translate3d(0, 100%, 0); } }
+@keyframes iosPop { from { opacity: 0; transform: scale(1.08); } to { opacity: 1; transform: scale(1); } }
+@keyframes iosPopOut { from { opacity: 1; transform: scale(1); } to { opacity: 0; transform: scale(0.96); } }
+@keyframes iosBanner { from { opacity: 0; transform: translate3d(0, -120%, 0); } to { opacity: 1; transform: translate3d(0, 0, 0); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .ios-backdrop, .ios-sheet, .ios-toast, .ios-drawer { animation: none !important; transition: none !important; }
+}

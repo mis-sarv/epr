@@ -5,7 +5,7 @@
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<meta name="theme-color" content="#ffffff">
+<meta name="theme-color" content="#f9f9f9">
 <title>Sarv India — Complaint System</title>
 <!-- Prevents the login screen from flashing; must run first. -->
 <script src="sso-preboot.js"></script>
@@ -57,8 +57,10 @@
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
 <script src="ios-ui.js?v=20261118a" defer></script>
+<!-- The iOS look of this page (system colours, translucent bars, sheets, segmented tabs, banner toasts): complaint-ios.css -->
+<link rel="stylesheet" href="complaint-ios.css?v=20261119b">
 </head>
-<body class="bg-white text-slate-900 antialiased min-h-screen">
+<body class="text-black antialiased min-h-screen">
 
 <div id="boot"><div class="ring"></div><div style="font-size:13px">Loading&hellip; / लोड हो रहा है</div></div>
 <div id="root"></div>
@@ -296,9 +298,19 @@ const NB_MAX_PDF_BYTES = 3 * 1024 * 1024;   // Notice Board PDF cap — keeps th
    migration r._needInfo is always false, so the tab stays empty and
    everything works as before. The database refuses a Close without the
    entry (MAINT_INFO_REQUIRED). */
+/* Request Item (CMP_ITEM_REQUEST_MIGRATION.sql): two statuses between
+   In-progress and Mark Completed, set ONLY by the database (the request, the
+   Store's issue, the PR's receipt), never by this page. `ir` tabs are shown
+   only once the probe in loadRows finds the migration (irOn). Every tab move
+   is also written, with its time, to cmp_status_log by a trigger. */
+const IR_STATUSES = ["Pending for Material", "Material Received"];
+// Still being worked on: the host has it, with or without material awaited.
+const isWorking = s => s === "In Progress" || IR_STATUSES.includes(s);
 const TABS = [
   { key:"Pending",     label:"Pending",     hi:"बाकी",      statuses:["Pending"] },
   { key:"In Progress", label:"In-progress", hi:"चल रहा है",  statuses:["In Progress"] },
+  { key:"MatPending",  label:"Pending for Material", hi:"सामान बाकी", statuses:["Pending for Material"], ir:true },
+  { key:"MatReceived", label:"Material Received", hi:"सामान आ गया", sub:"Wait for Completion", statuses:["Material Received"], ir:true },
   { key:"MaintInfo",   label:"Maintenance Info", hi:"मेंटेनेंस जानकारी", statuses:["Completed"], maint:true },
   { key:"Awaiting",    label:"Awaiting Your OK", hi:"आपकी मंज़ूरी बाकी",
     labelOthers:"Awaiting OK", hiOthers:"यूज़र की मंज़ूरी बाकी", statuses:["Completed"], maint:false },
@@ -390,7 +402,8 @@ function friendlyError(e){
   if (/host_scope_matches_role/i.test(m)) return "A Host must be given at least one complaint type.";
   if (/mobile_is_10_digits/i.test(m)) return "The mobile number must be exactly 10 digits.";
   // Maintenance Info step (CMP_MAINT_INFO_MIGRATION.sql): "CODE: plain sentence"
-  const miMsg = m.match(/\b(MAINT_INFO_REQUIRED|NOT_ALLOWED|WRONG_STEP|BAD_ACTION_TYPE|BAD_QTY|PHOTO_REQUIRED|ITEM_NOT_FOUND):\s*(.+)$/);
+  // Request Item (CMP_ITEM_REQUEST_MIGRATION.sql) uses the same shape: BAD_TEXT, BAD_PHOTO, NO_EMP_CODE, ALREADY_DONE ...
+  const miMsg = m.match(/\b(MAINT_INFO_REQUIRED|NOT_ALLOWED|WRONG_STEP|BAD_ACTION_TYPE|BAD_QTY|PHOTO_REQUIRED|ITEM_NOT_FOUND|BAD_TEXT|BAD_PHOTO|NO_EMP_CODE|ALREADY_DONE|BAD_REASON|BAD_STATUS|WAITING_MATERIAL):\s*(.+)$/);
   if (miMsg) return miMsg[2];
   return m;
 }
@@ -544,6 +557,9 @@ const Ico = ({d, className="w-4 h-4", fill="none", stroke=1.8}) => (
        dangerouslySetInnerHTML={{__html:d}} />
 );
 const I = {
+  chevR:'<path d="m9 5 7 7-7 7"/>',   // iOS disclosure chevron (list rows)
+  menu:'<path d="M4 6.5h16M4 12h16M4 17.5h16"/>',   // opens the tabs side bar
+  checkMark:'<path d="m5 12.5 4.5 4.5L19 7.5"/>',
   camera:'<path d="M3 8.5A2 2 0 0 1 5 6.5h2.2l1.2-2h7.2l1.2 2H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><circle cx="12" cy="13" r="3.4"/>',
   upload:'<path d="M12 16V4"/><path d="m8 8 4-4 4 4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
   x:'<path d="M6 6l12 12M18 6L6 18"/>',
@@ -592,15 +608,17 @@ const Spinner = ({className="w-4 h-4"}) => (
   </svg>
 );
 
+/* iOS buttons (complaint-ios.css .ios-btn: press = dim + slight shrink): filled
+   systemBlue / systemGreen / systemRed, "outline" = the tinted iOS style, "ghost" = plain tint text. */
 function Btn({variant="ghost", size="md", icon, children, className="", ...rest}){
-  const base = "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/70 active:scale-[0.97]";
-  const sizes = { sm:"px-2.5 py-1.5 text-xs min-h-[34px]", md:"px-3.5 py-2 text-sm min-h-[40px]", lg:"px-4 py-2.5 text-[15px] min-h-[44px]" };
+  const base = "ios-btn inline-flex items-center justify-center gap-2 rounded-xl font-semibold disabled:opacity-40 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#007aff]/40";
+  const sizes = { sm:"px-3 py-1.5 text-[13px] min-h-[34px]", md:"px-4 py-2 text-[15px] min-h-[44px]", lg:"px-5 py-2.5 text-[17px] min-h-[50px]" };
   const variants = {
-    primary:"bg-teal-500 hover:bg-teal-400 text-slate-950 font-semibold",
-    danger:"bg-rose-600 hover:bg-rose-500 text-white font-semibold",
-    ok:"bg-emerald-600 hover:bg-emerald-500 text-white font-semibold",
-    outline:"border border-slate-300 hover:border-slate-400 hover:bg-slate-100 text-slate-800",
-    ghost:"hover:bg-slate-100 text-slate-700",
+    primary:"bg-[#007aff] text-white",
+    danger:"bg-[#ff3b30] text-white",
+    ok:"bg-[#34c759] text-white",
+    outline:"bg-[#007aff]/10 text-[#007aff]",
+    ghost:"text-[#007aff] hover:bg-black/5",
   };
   return (
     <button className={`${base} ${sizes[size]} ${variants[variant]} ${className}`} {...rest}>
@@ -613,30 +631,35 @@ function Btn({variant="ghost", size="md", icon, children, className="", ...rest}
 function Field({label, hindi, required, error, hint, children}){
   return (
     <div className="mb-3.5">
-      <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">
-        {label}{hindi ? <span className="ml-1.5 normal-case tracking-normal text-slate-500 font-normal">{hindi}</span> : null}
-        {required ? <span className="text-rose-600 ml-0.5">*</span> : null}
+      {/* iOS form section header: small grey caps above the field, footnote under it */}
+      <label className="block text-[12px] font-medium uppercase tracking-wide text-[#6e6e73] mb-1.5 px-1">
+        {label}{hindi ? <span className="ml-1.5 normal-case tracking-normal text-[#8e8e93] font-normal">{hindi}</span> : null}
+        {required ? <span className="text-[#ff3b30] ml-0.5">*</span> : null}
       </label>
       {children}
-      {hint ? <p className="mt-1 text-[11px] text-slate-500">{hint}</p> : null}
-      {error ? <p className="mt-1 text-[11.5px] text-rose-600">{error}</p> : null}
+      {hint ? <p className="mt-1 px-1 text-[12px] text-[#8e8e93]">{hint}</p> : null}
+      {error ? <p className="mt-1 px-1 text-[12px] text-[#ff3b30]">{error}</p> : null}
     </div>
   );
 }
+// iOS text field: grey fill, no frame until focused (then white + tint ring); red when wrong. 16px stops iOS zooming in.
 const inputCls = (bad) =>
-  "w-full rounded-lg bg-white border px-3 py-2 text-sm text-slate-900 placeholder-slate-400 " +
-  "focus:outline-none focus:ring-2 focus:ring-teal-500/60 " + (bad ? "border-rose-500" : "border-slate-300");
+  "w-full rounded-xl border px-3.5 py-2.5 text-[16px] text-black placeholder-[#3c3c43]/50 transition-colors " +
+  "focus:outline-none focus:bg-white focus:border-[#007aff] focus:ring-4 focus:ring-[#007aff]/15 " +
+  (bad ? "bg-[#ff3b30]/5 border-[#ff3b30]" : "bg-[#767680]/10 border-transparent");
 
 function Badge({tone="slate", children, ...rest}){
+  // iOS system colours, tinted capsule (systemGray / Orange / Teal / Green / Red / Purple / Blue)
   const tones = {
-    slate:"bg-slate-100 text-slate-700",
-    amber:"bg-amber-500/15 text-amber-700",
-    teal:"bg-teal-500/15 text-teal-700",
-    emerald:"bg-emerald-500/15 text-emerald-700",
-    rose:"bg-rose-500/15 text-rose-700",
-    violet:"bg-violet-500/15 text-violet-700",
+    slate:"bg-[#787880]/15 text-[#3c3c43]",
+    amber:"bg-[#ff9500]/15 text-[#c93400]",
+    teal:"bg-[#30b0c7]/15 text-[#0e7a8c]",
+    emerald:"bg-[#34c759]/15 text-[#248a3d]",
+    rose:"bg-[#ff3b30]/12 text-[#d70015]",
+    violet:"bg-[#af52de]/15 text-[#8944ab]",
+    sky:"bg-[#007aff]/12 text-[#0062cc]",
   };
-  return <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold ${tones[tone]}`} {...rest}>{children}</span>;
+  return <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-[3px] text-[11.5px] font-semibold ${tones[tone] || tones.slate}`} {...rest}>{children}</span>;
 }
 /* `D` is optional so any older call site still renders. "DOWN" is only
    said where it is true: a machine complaint stops a machine, a fabric
@@ -646,6 +669,8 @@ function StatusBadge({c, D}){
   const down = (D ? D.tracksDowntime : true) && isDown(c);
   if (c.status === "Pending")     return <Badge tone={down?"rose":"amber"}>{down?"Pending · DOWN":"Pending"}</Badge>;
   if (c.status === "In Progress") return <Badge tone="teal">In-progress</Badge>;
+  if (c.status === "Pending for Material") return <Badge tone="amber">Pending for Material</Badge>;
+  if (c.status === "Material Received") return <Badge tone="sky">Material Received</Badge>;
   if (c.status === "Completed" && c._needInfo) return <Badge tone="amber">Maintenance Info</Badge>;
   if (c.status === "Completed")   return <Badge tone="violet">Awaiting your OK</Badge>;
   return <Badge tone="emerald">Closed</Badge>;
@@ -653,43 +678,78 @@ function StatusBadge({c, D}){
 
 function Toasts({items, dismiss}){
   return (
-    <div className="fixed bottom-20 sm:bottom-4 right-3 sm:right-4 z-[80] flex flex-col gap-2 items-end max-w-[88vw] sm:max-w-sm" style={{marginBottom:'env(safe-area-inset-bottom,0px)'}}>
+    /* iOS banner: drops in at the top (under the notch), tap to dismiss. */
+    <div className="fixed top-2 inset-x-0 z-[90] flex flex-col gap-2 items-center px-3 pointer-events-none" style={{marginTop:'env(safe-area-inset-top,0px)'}} data-no-ios-pop>
       {items.map(t => (
         <div key={t.id} onClick={()=>dismiss(t.id)}
-          className={`cursor-pointer flex items-start gap-2 rounded-lg px-4 py-3 text-sm shadow-2xl max-w-sm ${
-            t.bad ? "bg-rose-600 text-white" : "bg-slate-900 text-white"}`}>
-          <Ico d={t.bad ? I.alert : I.check} className="w-4 h-4 mt-0.5 shrink-0" />
-          <span>{t.msg}</span>
+          className={`ios-toast pointer-events-auto cursor-pointer flex items-start gap-2.5 px-4 py-3 text-[14px] font-medium w-full max-w-md ${t.bad ? "bad" : ""}`}>
+          <Ico d={t.bad ? I.alert : I.check} className="ios-toast-ico w-5 h-5 mt-[1px] shrink-0" />
+          <span className="leading-snug">{t.msg}</span>
         </div>
       ))}
     </div>
   );
 }
 
+/* iOS sheet (complaint-ios.css): on a phone it slides up from the bottom with
+   the UIKit curve and can be pulled down by its grabber / title to close; on a
+   larger screen it is a centred card that pops in. Backdrop tap, Escape, the
+   close button and the pull all play the way-out animation first, then call
+   onClose (a footer button that calls onClose itself just closes at once).
+   data-no-ios-pop: ios-ui.js must not animate it a second time. */
+const IOS_OUT_MS = 230;
+const iosReduce = () => !!(window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
 function Modal({title, subtitle, onClose, children, footer, wide}){
+  const [out, setOut] = useState(false);
+  const closing = useRef(false), sheetRef = useRef(null), drag = useRef(null);
+  const closeRef = useRef(onClose); closeRef.current = onClose;
+  const close = useCallback(() => {
+    if (closing.current) return; closing.current = true; setOut(true);
+    setTimeout(() => closeRef.current(), iosReduce() ? 0 : IOS_OUT_MS);
+  }, []);
   useEffect(()=>{
-    const h = e => { if (e.key === "Escape") onClose(); };
+    const h = e => { if (e.key === "Escape") close(); };
     window.addEventListener("keydown", h);
     document.body.style.overflow = "hidden";
     return ()=>{ window.removeEventListener("keydown", h); document.body.style.overflow=""; };
-  },[onClose]);
+  },[close]);
+  // Pull down to close (phone): follows the finger, closes past 110px or on a quick flick, else springs back.
+  const onTouchStart = e => { if (window.innerWidth >= 640 || !sheetRef.current) return; drag.current = { y: e.touches[0].clientY, t: Date.now(), dy: 0 }; sheetRef.current.classList.add("dragging"); };
+  const onTouchMove = e => {
+    const d = drag.current; if (!d || !sheetRef.current) return;
+    d.dy = Math.max(0, e.touches[0].clientY - d.y);
+    sheetRef.current.style.transform = `translate3d(0,${d.dy}px,0)`;
+  };
+  const onTouchEnd = () => {
+    const d = drag.current, el = sheetRef.current; drag.current = null; if (!d || !el) return;
+    el.classList.remove("dragging");
+    const fast = d.dy > 40 && d.dy / Math.max(1, Date.now() - d.t) > 0.6;
+    if (d.dy > 110 || fast) {
+      el.classList.add("snap"); el.style.transform = "translate3d(0,100%,0)";
+      if (!closing.current) { closing.current = true; setTimeout(() => closeRef.current(), iosReduce() ? 0 : 260); }
+    } else { el.classList.add("snap"); el.style.transform = ""; setTimeout(() => el && el.classList.remove("snap"), 360); }
+  };
   return (
-    <div className="fixed inset-0 z-[60] bg-slate-900/40 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4"
-         onMouseDown={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div className={`bg-white border border-slate-200 w-full ${wide?"sm:max-w-3xl":"sm:max-w-lg"} rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[95vh] sm:max-h-[92vh]`}>
-        {/* Drag handle for mobile (visual cue to swipe down) */}
-        <div className="sm:hidden flex justify-center pt-2 pb-0 shrink-0">
-          <div className="w-10 h-1 rounded-full bg-slate-300" />
-        </div>
-        <div className="flex items-start gap-3 px-4 sm:px-5 py-3 sm:py-4 border-b border-slate-200 shrink-0">
-          <div className="min-w-0">
-            <h2 className="font-semibold text-[14.5px] sm:text-[15px] truncate">{title}</h2>
-            {subtitle ? <p className="text-[11px] sm:text-xs text-slate-500 mt-0.5 truncate">{subtitle}</p> : null}
+    <div className={`ios-backdrop ${out ? "out" : ""} fixed inset-0 z-[60] flex items-end sm:items-center justify-center sm:p-4`} data-no-ios-pop
+         onMouseDown={e=>{ if(e.target===e.currentTarget) close(); }}>
+      <div ref={sheetRef} className={`ios-sheet ${out ? "out" : ""} bg-white w-full ${wide?"sm:max-w-3xl":"sm:max-w-lg"} shadow-2xl flex flex-col max-h-[94vh] sm:max-h-[90vh]`}>
+        <div className="ios-sheet-head shrink-0" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}>
+          {/* Grabber: the iOS cue that the sheet can be pulled down */}
+          <div className="sm:hidden flex justify-center pt-2 pb-1"><div className="ios-grabber" /></div>
+          <div className="flex items-center gap-3 px-4 sm:px-5 pt-1.5 pb-3 sm:py-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="font-semibold text-[17px] leading-tight truncate">{title}</h2>
+              {subtitle ? <p className="text-[13px] text-[#8e8e93] mt-0.5 truncate">{subtitle}</p> : null}
+            </div>
+            {/* iOS close: a small grey circle with an x */}
+            <button type="button" onClick={close} aria-label="Close"
+              className="ios-btn shrink-0 w-[30px] h-[30px] rounded-full bg-[#767680]/15 text-[#3c3c43]/70 grid place-items-center">
+              <Ico d={I.x} className="w-4 h-4" />
+            </button>
           </div>
-          <Btn size="sm" icon={I.x} onClick={onClose} className="ml-auto shrink-0" aria-label="Close" />
         </div>
-        <div className="px-4 sm:px-5 py-3 sm:py-4 overflow-y-auto grow overscroll-contain">{children}</div>
-        {footer ? <div className="px-4 sm:px-5 py-3 sm:py-3.5 border-t border-slate-200 flex gap-2 justify-end shrink-0 pb-safe">{footer}</div> : null}
+        <div className="px-4 sm:px-5 pb-4 overflow-y-auto grow overscroll-contain">{children}</div>
+        {footer ? <div className="px-4 sm:px-5 py-3 border-t border-black/10 flex flex-wrap gap-2 justify-end shrink-0 pb-safe bg-white/95">{footer}</div> : null}
       </div>
     </div>
   );
@@ -873,15 +933,17 @@ function compressImage(file){
   });
 }
 
-function PhotoCapture({photos, setPhotos, onView, toast}){
+// `max`: a form with a smaller limit (Request Item: 3, the database's own cap); default MAX_PHOTOS.
+function PhotoCapture({photos, setPhotos, onView, toast, max}){
   const camRef = useRef(null), upRef = useRef(null);
   const [busy, setBusy] = useState(0);
+  const cap = max || MAX_PHOTOS;
 
   const handle = async (fileList) => {
     let files = Array.from(fileList || []);
     if (!files.length) return;
-    const room = MAX_PHOTOS - photos.length;
-    if (room <= 0) return toast(`A maximum of ${MAX_PHOTOS} photos.`, true);
+    const room = cap - photos.length;
+    if (room <= 0) return toast(`A maximum of ${cap} photos.`, true);
     if (files.length > room){ toast(`Only ${room} more photo(s) can be added.`, true); files = files.slice(0, room); }
     setBusy(files.length);
     for (const f of files){
@@ -922,7 +984,7 @@ function PhotoCapture({photos, setPhotos, onView, toast}){
         </div>
       )}
       <p className="text-[11px] text-slate-500 mt-2.5">
-        On a phone, &ldquo;Take photo&rdquo; opens the camera. Up to {MAX_PHOTOS} photos, compressed automatically.
+        On a phone, &ldquo;Take photo&rdquo; opens the camera. Up to {cap} photos, compressed automatically.
       </p>
     </div>
   );
@@ -1636,10 +1698,457 @@ function NewComplaintModal({profile, machines: allMachines, processes, fabricQua
 }
 
 // ============================================================
+// 9C. REQUEST ITEM (CMP_ITEM_REQUEST_MIGRATION.sql)
+//    The host (or the triager / Admin) asks the Store for a part from an
+//    In-progress complaint. The Store Incharge answers in Task Manager >
+//    My Tasks > Store Requests Tasks (issue from stock, or a New PR in the
+//    asker's name). The DATABASE moves the complaint to Pending for
+//    Material and, once everything asked is in, to Material Received; this
+//    page only asks and shows. Every tab move is in cmp_status_log.
+// ============================================================
+const IR_STATE_TONE = { "Open":"amber", "PR Raised":"violet", "Received":"emerald", "Withdrawn":"slate" };
+const IR_TAB_LABEL = { "Pending":"Pending", "In Progress":"In-progress", "MatPending":"Pending for Material", "MatReceived":"Material Received",
+                       "MaintInfo":"Maintenance Info", "Awaiting":"Awaiting OK", "Completed":"Completed" };
+// The PR's step, as My Requests names it (mr_pr_json_ state).
+const IR_PR_STEP = { WAITING_PO:"PR raised, waiting for a PO", IN_PROGRESS:"PO placed, waiting for delivery", PARTIAL:"Partly received",
+                     READY:"Received", CONFIRMED:"Received", ISSUE:"Received (problem reported)", REJECTED:"PR rejected, being corrected",
+                     // Field Boy PR (Purchaser FIELD BOY / a user ticked Field Boy): its own states, as in My Requests (mr_fb_json_)
+                     FB_WORKING:"Field Boy is buying", FB_APPROVAL:"Waiting for the requester to approve the items",
+                     FB_APPROVED:"Items approved, waiting for the Store", FB_RECEIVING:"Partly received", FB_DONE:"Done" };
+
+function ItemRequestModal({c, D, onClose, onDone, toast, onView}){
+  const [txt, setTxt] = useState("");
+  const [qty, setQty] = useState("");
+  const [photos, setPhotos] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const submit = async () => {
+    const t = txt.trim(), n = Number(qty);
+    if (t.length < 3) return setErr("Describe the item (3 characters or more).");
+    if (!(n > 0) || Math.abs(Math.round(n * 1000) - n * 1000) > 1e-6) return setErr("Enter a quantity more than 0 (at most 3 decimals).");
+    if (!photos.length) return setErr("Attach at least one photo of the item.");
+    setBusy(true); setErr("");
+    const { data, error } = await sb.rpc("cmp_item_request_create",
+      { p_domain: D.key, p_complaint_id: c.id, p_item_text: t, p_qty: n, p_photos: photos });
+    setBusy(false);
+    if (error) return setErr(friendlyError(error));
+    if (!data || !data.success) return setErr(friendlyError((data && data.error) || "The request was not saved."));
+    toast(`${c.complaint_no}: item requested. It now waits for the Store.`);
+    onDone();
+  };
+  return (
+    <Modal title="Request Item" subtitle={`${c.complaint_no} · ${subjectOf(c, D)}`} onClose={() => { if (!busy) onClose(); }}
+      footer={<>
+        <Btn variant="outline" onClick={onClose} disabled={busy}>Cancel</Btn>
+        <Btn variant="primary" onClick={submit} disabled={busy}>{busy ? <Spinner/> : null}Submit request</Btn>
+      </>}>
+      <div className="space-y-4">
+        <Field label="Item description / specification" hindi="सामान / स्पेसिफिकेशन" required>
+          <textarea className={inputCls(false) + " min-h-[84px]"} maxLength={500} value={txt} onChange={e => setTxt(e.target.value)}
+            placeholder="e.g. Bearing 6205 ZZ, motor side" />
+        </Field>
+        <Field label="Qty" hindi="मात्रा" required>
+          <input type="number" inputMode="decimal" min="0" step="any" className={inputCls(false)} value={qty} onChange={e => setQty(e.target.value)} />
+        </Field>
+        <Field label="Photo" hindi="फोटो" required hint="1 to 3 photos of the old part or the item needed.">
+          <PhotoCapture photos={photos} setPhotos={setPhotos} onView={onView} toast={toast} max={3} />
+        </Field>
+        {err ? <p className="text-[12.5px] text-rose-600">{err}</p> : null}
+      </div>
+    </Modal>
+  );
+}
+
+/* Requests of one complaint with their whole pipeline (asked, Store issue /
+   PR, PO, receipt) and the complaint's tab history. Read through
+   cmp_item_requests_for (it checks the reader may see the complaint);
+   cmp_item_request_sync first, so a PR received a minute ago shows now. */
+function ItemRequestsCard({c, D, profile, toast, onView, onChanged}){
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  const [pics, setPics] = useState({});        // request id -> photos (loaded on tap)
+  const [wd, setWd] = useState(null);          // {id, reason} while withdrawing
+  const [ov, setOv] = useState(null);          // {to, reason} Admin override
+  const [prv, setPrv] = useState(null);        // {id, reqNo} while the View PR popup is open
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    try { await sb.rpc("cmp_item_request_sync"); } catch(e){ /* the cron job syncs anyway */ }
+    const { data, error } = await sb.rpc("cmp_item_requests_for", { p_domain: D.key, p_complaint_id: c.id });
+    if (error || !data || !data.success) { setErr(friendlyError(error || (data && data.error) || "Could not load the item requests.")); return; }
+    setErr(""); setD(data);
+  }, [c.id, D.key]);
+  useEffect(() => { load(); }, [load]);
+
+  const isAdmin = profile.role === "Admin";
+  const isTriager = profile.role === D.triager;
+  const showPics = async (id) => {
+    if (pics[id]) return setPics(p => { const n = {...p}; delete n[id]; return n; });
+    const { data, error } = await sb.rpc("cmp_item_request_photos_get", { p_request_id: id });
+    if (error || !data || !data.success) return toast(friendlyError(error || (data && data.error)), true);
+    setPics(p => ({...p, [id]: data.photos || []}));
+  };
+  const doWithdraw = async () => {
+    if (!wd || wd.reason.trim().length < 3) return toast("Write why the request is withdrawn.", true);
+    setBusy(true);
+    const { data, error } = await sb.rpc("cmp_item_request_cancel", { p_request_id: wd.id, p_reason: wd.reason.trim() });
+    setBusy(false);
+    if (error || !data || !data.success) return toast(friendlyError(error || (data && data.error)), true);
+    toast("Request withdrawn."); setWd(null); onChanged();
+  };
+  const doOverride = async () => {
+    if (!ov || ov.reason.trim().length < 5) return toast("Write the reason (5 characters or more).", true);
+    setBusy(true);
+    const { data, error } = await sb.rpc("cmp_item_request_override_save",
+      { p_domain: D.key, p_complaint_id: c.id, p_to_status: ov.to, p_reason: ov.reason.trim() });
+    setBusy(false);
+    if (error || !data || !data.success) return toast(friendlyError(error || (data && data.error)), true);
+    toast(`${c.complaint_no} moved to ${ov.to}.`); setOv(null); onChanged();
+  };
+
+  if (err) return <p className="text-[12px] text-rose-600 mb-4">{err}</p>;
+  if (!d) return <p className="text-[12px] text-slate-500 mb-4">Loading item requests…</p>;
+  const reqs = d.requests || [], hist = d.history || [];
+  return (
+    <>
+      {reqs.length > 0 && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/5 p-3.5 mb-4">
+          <p className="text-[10.5px] uppercase tracking-wide text-amber-800 font-semibold mb-2">Item Requests / सामान की मांग</p>
+          <div className="space-y-3">
+            {reqs.map(r => {
+              const mine = r.requestedBy && profile.name && r.requestedBy === profile.name;
+              const canWd = r.state === "Open" && Number(r.issuedQty) === 0 && !(r.prs || []).length && (mine || isAdmin || isTriager);
+              return (
+                <div key={r.id} className="rounded-lg bg-white border border-slate-200 p-3">
+                  <div className="flex items-start gap-2">
+                    <p className="flex-1 text-[13px] font-semibold text-slate-800 break-words">{r.itemText}</p>
+                    <Badge tone={IR_STATE_TONE[r.state] || "slate"}>{r.state}</Badge>
+                  </div>
+                  <p className="text-[11.5px] text-slate-500 mt-0.5">Qty {r.qty} · asked by {r.requestedBy || "—"} · {fmtDateTime(r.requestedAt)}</p>
+                  {r.needsRedecide && r.state === "Open" ? <p className="text-[11.5px] text-amber-700 mt-1 font-semibold">The PR was cancelled; the Store must decide again.</p> : null}
+                  {/* Pipeline: Store issues, then each PR with its live step */}
+                  <div className="mt-2 border-l-2 border-slate-200 pl-3 space-y-1.5">
+                    {(r.issues || []).map((i, k) => (
+                      <div key={"i"+k}>
+                        <p className="text-[12px] text-slate-700">Issued <b>{i.qty}</b> by {i.by || "Store"} · {fmtDateTime(i.at)}{i.remarks ? ` · ${i.remarks}` : ""}</p>
+                        {/* What the Store handed over (Item Master lines) */}
+                        {(i.lines || []).length ? <p className="text-[11.5px] text-slate-500 pl-2">{i.lines.map(l => `${l.item} ${l.qty} ${l.uom || ""}`.trim()).join(" · ")}</p> : null}
+                      </div>
+                    ))}
+                    {(r.prs || []).map((p, k) => {
+                      const t = p.track || {};
+                      return (
+                        <div key={"p"+k} className="text-[12px] text-slate-700">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p>PR <span className="font-mono">{p.reqNo}</span> · qty {p.qty} · {p.state === "Cancelled" ? "Cancelled" : (IR_PR_STEP[t.state] || t.prStatus || "Raised")} · {fmtDateTime(p.at)}</p>
+                            <Btn size="sm" variant="outline" onClick={() => setPrv({id: r.id, reqNo: p.reqNo})}>View PR</Btn>
+                          </div>
+                          {(t.pos || []).map((po, j) => <p key={"po"+j} className="text-[11.5px] text-slate-500 pl-2">PO <span className="font-mono">{po.poNo}</span> · {po.status}{po.vendor ? ` · ${po.vendor}` : ""}{po.deliveryDate ? ` · due ${fmtDate(po.deliveryDate)}` : ""}</p>)}
+                          {(t.receipts || []).map((rc, j) => <p key={"rc"+j} className="text-[11.5px] text-emerald-700 pl-2">Received in <span className="font-mono">{rc.docNo}</span> · {fmtDateTime(rc.createdAt)}</p>)}
+                        </div>
+                      );
+                    })}
+                    {!(r.issues || []).length && !(r.prs || []).length && r.state === "Open" ? <p className="text-[12px] text-slate-500">Waiting for the Store.</p> : null}
+                    {r.state === "Received" ? <p className="text-[12px] text-emerald-700 font-semibold">Received · {fmtDateTime(r.receivedAt)}{r.closedNote ? ` · ${r.closedNote}` : ""}</p> : null}
+                    {r.state === "Withdrawn" ? <p className="text-[12px] text-slate-500">Withdrawn · {fmtDateTime(r.closedAt)}{r.closedNote ? ` · ${r.closedNote}` : ""}</p> : null}
+                  </div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {r.photoCount > 0 ? <Btn size="sm" variant="outline" onClick={() => showPics(r.id)}>{pics[r.id] ? "Hide photos" : `Photos (${r.photoCount})`}</Btn> : null}
+                    {canWd ? <Btn size="sm" variant="outline" onClick={() => setWd({id: r.id, reason: ""})}>Withdraw</Btn> : null}
+                  </div>
+                  {pics[r.id] ? (
+                    <div className="flex gap-2 flex-wrap mt-2">
+                      {pics[r.id].map(p => <img key={p.id} src={p.image} alt={p.kind === "issue" ? "Issue proof" : "Item photo"} title={p.kind === "issue" ? "Store issue proof" : "Item photo"}
+                                                className="w-16 h-16 rounded-lg object-cover border border-slate-300 cursor-zoom-in" onClick={() => onView && onView(p.image)} />)}
+                    </div>
+                  ) : null}
+                  {wd && wd.id === r.id ? (
+                    <div className="mt-2 flex gap-2">
+                      <input className={inputCls(false)} placeholder="Why is it not needed?" value={wd.reason} onChange={e => setWd({...wd, reason: e.target.value})} />
+                      <Btn size="sm" variant="danger" onClick={doWithdraw} disabled={busy}>Withdraw</Btn>
+                      <Btn size="sm" variant="outline" onClick={() => setWd(null)} disabled={busy}>Cancel</Btn>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          {/* Admin only, for a complaint stuck in a material step: logged as ADMIN with the reason */}
+          {isAdmin && IR_STATUSES.includes(c.status) ? (
+            ov ? (
+              <div className="mt-3 rounded-lg border border-slate-300 bg-white p-3 space-y-2">
+                <select className={inputCls(false)} value={ov.to} onChange={e => setOv({...ov, to: e.target.value})}>
+                  <option value="Material Received">Mark Material Received (open requests count as received)</option>
+                  <option value="In Progress">Back to In-progress (open requests are withdrawn)</option>
+                </select>
+                <input className={inputCls(false)} placeholder="Reason (kept in the history)" value={ov.reason} onChange={e => setOv({...ov, reason: e.target.value})} />
+                <div className="flex gap-2 justify-end">
+                  <Btn size="sm" variant="outline" onClick={() => setOv(null)} disabled={busy}>Cancel</Btn>
+                  <Btn size="sm" variant="primary" onClick={doOverride} disabled={busy}>Save</Btn>
+                </div>
+              </div>
+            ) : <button className="mt-3 text-[11.5px] text-slate-500 underline" onClick={() => setOv({to: "Material Received", reason: ""})}>Admin: move this complaint by hand</button>
+          ) : null}
+        </div>
+      )}
+      {hist.length > 0 && (
+        <details className="rounded-xl border border-slate-200 mb-4">
+          <summary className="cursor-pointer px-3.5 py-2.5 text-[12.5px] font-semibold text-slate-600">Status history ({hist.length})</summary>
+          <div className="divide-y divide-slate-100">
+            {hist.map((h, k) => (
+              <div key={k} className="px-3.5 py-2 text-[12px] flex flex-wrap gap-x-2">
+                <span className="font-semibold text-slate-700">{h.fromTab ? `${IR_TAB_LABEL[h.fromTab] || h.fromTab} → ` : ""}{IR_TAB_LABEL[h.toTab] || h.toTab}</span>
+                <span className="text-slate-500">{fmtDateTime(h.at)}</span>
+                {h.by ? <span className="text-slate-500">· {h.by}</span> : null}
+                {h.via && h.via !== "USER" ? <span className="text-[10.5px] text-slate-400 uppercase">{h.via === "SERVER" ? "auto" : h.via === "BACKFILL" ? "from old record" : h.via}</span> : null}
+              </div>
+            ))}
+          </div>
+        </details>
+      )}
+      {/* View PR: on <body>, above the complaint sheet (its transform / overflow would clip a nested popup) */}
+      {prv ? ReactDOM.createPortal(<PrPipelineModal requestId={prv.id} reqNo={prv.reqNo} onClose={() => setPrv(null)} />, document.body) : null}
+    </>
+  );
+}
+
+/* ── View PR: one PR's whole pipeline (cmp_item_request_pr_view = the same
+   record My Requests reads, mr_pr_json_). Six steps like My Requests'
+   tracking line (keep the two in step, my-requests.html stage()), each with
+   its time, who and remark; then the PR, its items, every PO with its lines,
+   approvals, vendor follow-up and receipts, and the requester's confirmation. */
+const IR_LIVE_PO = p => !["Cancelled", "Rejected"].includes(p.status);
+const irWho = s => s ? [s.by, s.as && s.as !== s.by ? `(${s.as})` : ""].filter(Boolean).join(" ") : "";
+const irTime = s => { if (!s) return null; const d = new Date(s); return isNaN(d) ? null : d; };
+// Earliest (or latest) entry that has a readable time.
+const irPick = (list, last) => {
+  const ok = list.filter(x => irTime(x.at)).sort((a, b) => irTime(a.at) - irTime(b.at));
+  return ok.length ? ok[last ? ok.length - 1 : 0] : null;
+};
+function irPrPct(pr){
+  let o = 0, r = 0;
+  (pr.pos || []).filter(IR_LIVE_PO).forEach(p => (p.lines || []).forEach(l => { o += Number(l.ordered) || 0; r += Math.min(Number(l.received) || 0, Number(l.ordered) || 0); }));
+  return o > 0 ? Math.round(r * 100 / o) : null;
+}
+/* Field Boy PR: no PO, no vendor; the five steps of My Requests' fbStage (keep in step):
+     Requested · Pickup (a photo on any item) · Approved (the requester approved every item;
+     half = some, red = one sent back) · Received (Store entry against the PR, half until in full)
+     · Confirmed (the requester confirmed receipt). Finished under the old tick list = all done. */
+const irIsFb = pr => !!(pr && pr.fieldBoy && pr.field);
+function irFbSteps(pr){
+  const f = pr.field, c = f.counts || { total: 0, photo: 0, sent: 0, approved: 0, back: 0 }, lines = f.lines || [], legacy = !!f.legacyDone;
+  const pick = irPick(lines.filter(l => l.photoAt).map(l => ({ at: l.photoAt })), true);
+  const dec = irPick((f.history || []).filter(h => h.ev === "DECIDED").map(h => ({ at: h.at, by: h.by })), true);
+  const store = irPick((pr.looseInwards || []).map(w => ({ at: w.createdAt || w.date })), true);
+  const conf = (pr.confirmations || []).slice(-1)[0];
+  const nIn = (pr.looseInwards || []).length, full = !!f.allReceived;
+  return [
+    { t: "Requested", s: "done", x: { at: pr.createdAt || pr.requestDate, who: pr.requestedBy || "", rem: pr.purpose || "" } },
+    { t: "Pickup", s: legacy || c.photo ? "done" : "", x: pick ? { at: pick.at, who: "Field Boy", rem: c.total ? `${c.photo}/${c.total} items photographed` : "" } : null },
+    { t: "Approved", s: legacy || (c.total && c.approved >= c.total) ? "done" : (c.back ? "bad" : (c.approved ? "half" : "")),
+      x: dec ? { at: dec.at, who: dec.by || "", rem: `${c.approved}/${c.total} approved` + (c.back ? ` · ${c.back} sent back` : "") } : null },
+    { t: "Received", s: legacy || full ? "done" : (nIn ? "half" : ""),
+      x: store ? { at: store.at, rem: `${nIn} store entr${nIn > 1 ? "ies" : "y"}` + (full ? "" : " · partly") } : null },
+    { t: "Confirmed", s: legacy || pr.state === "CONFIRMED" ? "done" : (pr.state === "ISSUE" ? "bad" : ""),
+      x: conf && ["CONFIRMED", "ISSUE"].includes(pr.state) ? { at: conf.at, who: conf.by || "", rem: conf.remarks || `Quality ${conf.qualityOk ? "OK" : "not OK"}, Qty ${conf.quantityOk ? "OK" : "not OK"}` } : null },
+  ];
+}
+// A Field Boy item's state, in the words My Requests uses.
+const IR_FB_LINE = { NEW: "Waiting for the Field Boy", PHOTO: "Photo taken", SENT: "Sent to the requester for approval", APPROVED: "Approved", REJECTED: "Sent back" };
+function irPrSteps(pr){
+  if (irIsFb(pr)) return irFbSteps(pr);
+  const live = (pr.pos || []).filter(IR_LIVE_PO);
+  const md = live.some(p => p.md || ["MD Approved", "Vendor Verified", "Partially Received", "Received", "Closed (Short)"].includes(p.status));
+  const sent = live.some(p => p.sentAt);
+  const recv = ["READY", "CONFIRMED", "ISSUE"].includes(pr.state), part = pr.state === "PARTIAL";
+  const conf = (pr.confirmations || []).slice(-1)[0];
+  const lots = live.reduce((a, p) => a.concat((p.inwards || []).map(w => ({ at: w.createdAt || w.date }))), [])
+    .concat((pr.looseInwards || []).map(w => ({ at: w.createdAt || w.date })));
+  const appr = pr.rejection ? { at: pr.rejection.at, who: irWho(pr.rejection), rem: pr.rejection.remarks || "Rejected" }
+    : pr.gmSign ? { at: pr.gmSign.at, who: irWho(pr.gmSign), rem: pr.gmSign.remarks || "" } : null;
+  const ord = md ? irPick(live.filter(p => p.md).map(p => ({ at: p.md.at, who: irWho(p.md), rem: p.poNo })))
+    : live.length ? irPick(live.map(p => ({ at: p.createdAt || p.poDate, rem: `${p.poNo} made, waiting for approval` }))) : null;
+  const snt = sent ? irPick(live.filter(p => p.sentAt).map(p => ({ at: p.sentAt, who: p.vendor || "", rem: "" }))) : null;
+  if (snt) {
+    const fu = irPick(live.reduce((a, p) => a.concat((p.followups || []).map(f => ({ at: f.at, f }))), []), true);
+    if (fu) snt.rem = (fu.f.revisedDate ? `New date ${fmtDate(fu.f.revisedDate)}${fu.f.remarks ? ": " : ""}` : "") + (fu.f.remarks || "");
+  }
+  const rcv = (recv || part) ? irPick(lots, true) : null;
+  if (rcv) { const pct = irPrPct(pr); rcv.rem = `${lots.length} lot${lots.length === 1 ? "" : "s"}` + (part && pct != null ? ` · ${pct}%` : ""); }
+  const cnf = conf && ["CONFIRMED", "ISSUE"].includes(pr.state)
+    ? { at: conf.at, who: conf.by || "", rem: conf.remarks || `Quality ${conf.qualityOk ? "OK" : "not OK"}, Qty ${conf.quantityOk ? "OK" : "not OK"}` } : null;
+  return [
+    { t: "Requested", s: "done", x: { at: pr.createdAt || pr.requestDate, who: pr.requestedBy || "", rem: pr.purpose || "" } },
+    { t: "Approved", s: (pr.gmSign || live.length) ? "done" : (pr.state === "REJECTED" ? "bad" : ""), x: appr },
+    { t: "Ordered", s: md ? "done" : (live.length ? "half" : ""), x: ord },
+    { t: "Sent to vendor", s: sent ? "done" : "", x: snt },
+    { t: "Received", s: recv ? "done" : (part ? "half" : ""), x: rcv },
+    { t: "Confirmed", s: pr.state === "CONFIRMED" ? "done" : (pr.state === "ISSUE" ? "bad" : ""), x: cnf },
+  ];
+}
+const IR_STEP_CLS = { done: "bg-emerald-500 border-emerald-500 text-white", half: "bg-amber-400 border-amber-400 text-white",
+                      bad: "bg-rose-500 border-rose-500 text-white", "": "bg-white border-slate-300 text-slate-400" };
+
+function PrPipelineModal({requestId, reqNo, onClose}){
+  const [d, setD] = useState(null);
+  const [err, setErr] = useState("");
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await sb.rpc("cmp_item_request_pr_view", { p_request_id: requestId, p_req_no: reqNo });
+      if (!alive) return;
+      if (error || !data || !data.success) return setErr(friendlyError(error || (data && data.error) || "The PR could not be opened."));
+      setD(data);
+    })();
+    return () => { alive = false; };
+  }, [requestId, reqNo]);
+  const pr = d && d.pr, link = (d && d.link) || {};
+  const Row = ({k, v}) => v ? <div className="min-w-0"><p className="text-[10.5px] uppercase tracking-wide text-slate-500">{k}</p><p className="text-[13px] text-slate-800 break-words">{v}</p></div> : null;
+  const Sig = ({k, s}) => s ? <p className="text-[11.5px] text-slate-600">{k}: <b>{irWho(s) || "—"}</b>{s.at ? ` · ${fmtDateTime(s.at)}` : ""}{s.remarks ? ` · ${s.remarks}` : ""}</p> : null;
+  return (
+    <Modal title={`PR ${reqNo}`} subtitle={d ? `${d.request.complaintNo || ""} · ${d.request.itemText}` : "Loading…"} onClose={onClose} wide
+      footer={<Btn variant="outline" onClick={onClose}>Close</Btn>}>
+      {err ? <p className="text-[13px] text-rose-600">{err}</p>
+      : !d ? <p className="text-[13px] text-slate-500">Loading the PR…</p>
+      : !pr ? <p className="text-[13px] text-slate-600">This PR is no longer in the ERP{link.state === "Cancelled" ? " (cancelled)" : ""}. The Store will decide again.</p>
+      : <div className="space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {irIsFb(pr) ? <Badge tone="amber">Field Boy PR</Badge> : null}
+            <Badge tone={link.state === "Cancelled" ? "slate" : ["READY", "CONFIRMED", "ISSUE", "FB_DONE"].includes(pr.state) ? "emerald" : pr.state === "REJECTED" ? "rose" : "violet"}>
+              {link.state === "Cancelled" ? "Cancelled" : (IR_PR_STEP[pr.state] || pr.prStatus || "Raised")}
+            </Badge>
+            {pr.prStatus ? <Badge tone="slate">PR status: {pr.prStatus}</Badge> : null}
+            {pr.priority ? <Badge tone={pr.priority === "Normal" ? "slate" : "amber"}>{pr.priority}</Badge> : null}
+            {!irIsFb(pr) && irPrPct(pr) != null ? <Badge tone="sky">{irPrPct(pr)}% received</Badge> : null}
+          </div>
+
+          {/* The steps (6, or 5 for a Field Boy PR), each with when / who / remark */}
+          <div className={`grid grid-cols-3 ${irIsFb(pr) ? "sm:grid-cols-5" : "sm:grid-cols-6"} gap-2`}>
+            {irPrSteps(pr).map((s, i) => (
+              <div key={i} className="text-center min-w-0">
+                <div className={`w-8 h-8 mx-auto rounded-full border-2 grid place-items-center text-[12px] font-bold ${IR_STEP_CLS[s.s] || IR_STEP_CLS[""]}`}>{s.s === "done" ? "✓" : s.s === "bad" ? "✕" : i + 1}</div>
+                <p className={`text-[11.5px] font-semibold mt-1 ${s.s ? "text-slate-800" : "text-slate-400"}`}>{s.t}</p>
+                {s.x && s.x.at ? <p className="text-[10.5px] text-slate-500">{fmtDateTime(s.x.at)}</p> : null}
+                {s.x && s.x.who ? <p className="text-[10.5px] text-slate-500 truncate" title={s.x.who}>{s.x.who}</p> : null}
+                {s.x && s.x.rem ? <p className="text-[10.5px] text-slate-400 break-words">{s.x.rem}</p> : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 rounded-xl border border-slate-200 p-3">
+            <Row k="Requested by" v={pr.requestedBy} />
+            <Row k="Request date" v={pr.requestDate ? fmtDate(pr.requestDate) : ""} />
+            <Row k="Required by" v={pr.requiredBy ? fmtDate(pr.requiredBy) : ""} />
+            <Row k="Purchaser" v={pr.purchaser} />
+            <Row k="Department" v={pr.department} />
+            <Row k="Raised by Store" v={link.by ? `${link.by} · ${fmtDateTime(link.at)}` : ""} />
+            {pr.notes ? <div className="col-span-2 sm:col-span-3"><Row k="Notes" v={pr.notes} /></div> : null}
+          </div>
+          <div className="space-y-0.5">
+            <Sig k="Store" s={pr.storeSign} />
+            <Sig k="GM / CEO" s={pr.gmSign} />
+            {pr.rejection ? <p className="text-[12px] text-rose-700">Rejected by {irWho(pr.rejection) || "—"}{pr.rejection.at ? ` · ${fmtDateTime(pr.rejection.at)}` : ""}{pr.rejection.remarks ? ` · ${pr.rejection.remarks}` : ""}</p> : null}
+          </div>
+
+          {(pr.items || []).length ? (
+            <div>
+              <p className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Items</p>
+              <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {pr.items.map((it, i) => (
+                  <div key={i} className="px-3 py-2 text-[12.5px] flex flex-wrap gap-x-3">
+                    <span className="font-semibold text-slate-800">{it.item}</span>
+                    <span className="text-slate-600">{it.qty} {it.uom || ""}</span>
+                    {it.machine ? <span className="text-slate-500">{it.machine}</span> : null}
+                    {it.spec ? <span className="text-slate-400 w-full">{it.spec}</span> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {/* Field Boy PR: each item with its pickup photo and the requester's approval (approved in My Requests) */}
+          {irIsFb(pr) ? (
+            <div>
+              <p className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Field Boy items</p>
+              {(pr.field.counts && pr.field.counts.sent) ? <p className="text-[12px] text-amber-700 mb-1.5">{pr.requestedBy || "The requester"} must approve the item(s) in My Requests (Track My Store Request) before the Store takes them in.</p> : null}
+              <div className="rounded-xl border border-slate-200 divide-y divide-slate-100">
+                {(pr.field.lines || []).map((l, i) => (
+                  <div key={l.id || i} className="px-3 py-2 text-[12.5px]">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-slate-800">{l.item || "—"}</span>
+                      <span className="text-slate-600">{l.qty} {l.uom || ""}</span>
+                      <Badge tone={l.status === "APPROVED" ? "emerald" : l.status === "REJECTED" ? "rose" : l.status === "SENT" ? "amber" : "slate"}>{IR_FB_LINE[l.status] || l.status}</Badge>
+                    </div>
+                    {l.spec ? <p className="text-[11.5px] text-slate-400">{l.spec}</p> : null}
+                    <p className="text-[11.5px] text-slate-500">
+                      {l.photoAt ? `Photo ${fmtDateTime(l.photoAt)}` : "No photo yet"}{l.sentAt ? ` · sent for approval ${fmtDateTime(l.sentAt)}` : ""}
+                      {l.decision && (l.decision.at || l.decision.by) ? ` · decided ${l.decision.by ? "by " + l.decision.by + " " : ""}${l.decision.at ? fmtDateTime(l.decision.at) : ""}` : ""}
+                      {l.decision && (l.decision.remarks || l.decision.reason) ? ` · ${l.decision.remarks || l.decision.reason}` : ""}
+                    </p>
+                    {l.photo && /^https?:\/\//.test(l.photo) ? <a href={l.photo} target="_blank" rel="noopener noreferrer" className="text-[11.5px] text-teal-700 underline">Open item photo</a> : null}
+                  </div>
+                ))}
+                {!(pr.field.lines || []).length ? <p className="px-3 py-2 text-[12px] text-slate-500">No items on this PR.</p> : null}
+              </div>
+              {(pr.looseInwards || []).map((w, i) => (
+                <p key={"fw"+i} className="text-[11.5px] text-emerald-700 mt-1">Store entry <span className="font-mono">{w.docNo}</span> · {fmtDateTime(w.createdAt || w.date)}</p>
+              ))}
+            </div>
+          ) : (
+          <div>
+            <p className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Purchase orders</p>
+            {!(pr.pos || []).length ? <p className="text-[12.5px] text-slate-500">No PO yet: Purchasing is getting quotes and preparing the order.</p> : null}
+            <div className="space-y-2">
+              {(pr.pos || []).map(p => {
+                const fu = irPick((p.followups || []).map(f => ({ at: f.at, f })), true);
+                return (
+                  <div key={p.poNo} className={`rounded-xl border p-3 ${IR_LIVE_PO(p) ? "border-slate-200" : "border-slate-200 opacity-60"}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-[12.5px] font-semibold">{p.poNo}</span>
+                      <Badge tone={["Received", "Closed (Short)"].includes(p.status) ? "emerald" : IR_LIVE_PO(p) ? "violet" : "slate"}>{p.status}</Badge>
+                      {p.vendor ? <span className="text-[12px] text-slate-600">{p.vendor}</span> : null}
+                    </div>
+                    <p className="text-[11.5px] text-slate-500 mt-1">
+                      {p.poDate ? `PO date ${fmtDate(p.poDate)}` : ""}{p.deliveryDate ? ` · delivery ${fmtDate(p.deliveryDate)}` : ""}{p.sentAt ? ` · sent to vendor ${fmtDateTime(p.sentAt)}` : ""}
+                    </p>
+                    <Sig k="GM" s={p.gm} />
+                    <Sig k="MD" s={p.md} />
+                    {p.cancellation ? <p className="text-[11.5px] text-rose-700">Cancelled: {irWho(p.cancellation)}{p.cancellation.remarks ? ` · ${p.cancellation.remarks}` : ""}</p> : null}
+                    {fu ? <p className="text-[11.5px] text-amber-700">Vendor follow-up {fmtDateTime(fu.at)}{fu.f.revisedDate ? ` · new date ${fmtDate(fu.f.revisedDate)}` : ""}{fu.f.remarks ? ` · ${fu.f.remarks}` : ""}</p> : null}
+                    {(p.lines || []).map((l, i) => (
+                      <p key={i} className="text-[12px] text-slate-700">{l.item}: ordered {l.ordered ?? "—"} {l.uom || ""} · received <b>{l.received ?? 0}</b></p>
+                    ))}
+                    {(p.inwards || []).map((w, i) => (
+                      <p key={"w"+i} className="text-[11.5px] text-emerald-700">Received in <span className="font-mono">{w.docNo}</span> · {fmtDateTime(w.createdAt || w.date)}{w.invoiceNo ? ` · bill ${w.invoiceNo}` : ""}</p>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+            {(pr.looseInwards || []).map((w, i) => (
+              <p key={"lw"+i} className="text-[11.5px] text-emerald-700 mt-1">Received without a PO in <span className="font-mono">{w.docNo}</span> · {fmtDateTime(w.createdAt || w.date)}</p>
+            ))}
+          </div>
+          )}
+
+          {(pr.confirmations || []).length ? (
+            <div>
+              <p className="text-[10.5px] uppercase tracking-wide text-slate-500 font-semibold mb-1.5">Requester's confirmation</p>
+              {pr.confirmations.map((c, i) => (
+                <p key={i} className="text-[12px] text-slate-700">{fmtDateTime(c.at)} · {c.by || "—"} · {c.outcome === "OK" ? "Received OK" : "Problem reported"}{c.remarks ? ` · ${c.remarks}` : ""}</p>
+              ))}
+            </div>
+          ) : null}
+        </div>}
+    </Modal>
+  );
+}
+
+// ============================================================
 // 10. COMPLAINT DETAIL — the action panel changes with your role
 // ============================================================
-function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast, onView}){
+function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast, onView, irOn}){
   const c = complaint;
+  const [showReq, setShowReq] = useState(false);   // Request Item popup
   const isFabric = D.key === "fabric";
   const [photos, setPhotos] = useState(null);        // null = loading
   const [proofPhotos, setProofPhotos] = useState(null); // host proof photos
@@ -1678,7 +2187,10 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
   const isMaint = profile.role === "Admin" || profile.role === D.triager;
   const isAssignedHost = profile.role === "Host" && c.host_user_id === profile.id;
   const canAssign = isMaint && c.status === "Pending";
-  const canComplete = (isAssignedHost || isMaint) && c.status === "In Progress";
+  /* Material Received = the requested item is in; the host completes from
+     there exactly as from In Progress. Never while Pending for Material: the
+     database refuses that too (WAITING_MATERIAL). */
+  const canComplete = (isAssignedHost || isMaint) && (c.status === "In Progress" || c.status === "Material Received");
   /* Re-assigning: the triager may move the complaint to another host at
      any point until that host marks it Completed. The database enforces the
      same window and roles (cmp_unit_guard). */
@@ -1689,6 +2201,10 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
   const [chReason, setChReason] = useState("");
   // The raiser's OK only once the Maintenance Info entry is in (c._needInfo)
   const canFeedback = isOwner && c.status === "Completed" && !c._needInfo;
+  /* Request Item: the assigned host, this register's triager or the Admin, while
+     the complaint is being worked on (a new request from Material Received sends
+     it back to Pending for Material). The database checks the same. */
+  const canRequestItem = !!irOn && (isAssignedHost || isMaint) && isWorking(c.status);
   const canDelete = profile.role === "Admin" || (isOwner && c.status === "Pending");
 
   /* --- Maintenance Info step (CMP_MAINT_INFO_MIGRATION.sql). The register's
@@ -1902,6 +2418,8 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
           <Btn variant="outline" onClick={onClose}>Close</Btn>
           {canAssign &&
             <Btn variant="primary" onClick={assignHost} disabled={busy}>{busy?<Spinner/>:null}Assign &amp; Start</Btn>}
+          {canRequestItem &&
+            <Btn variant="outline" onClick={()=>setShowReq(true)} disabled={busy}>Request Item</Btn>}
           {canComplete &&
             <Btn variant="ok" onClick={markCompleted} disabled={busy}>{busy?<Spinner/>:null}Mark Completed</Btn>}
           {canMaintInfo &&
@@ -1953,6 +2471,13 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
           )}
         </div>
       )}
+
+      {/* Request Item: requests + pipeline + tab history; the popup goes to <body> so the
+          detail sheet's own transform / overflow cannot clip it */}
+      {irOn ? <ItemRequestsCard c={c} D={D} profile={profile} toast={toast} onView={onView} onChanged={onSaved} /> : null}
+      {showReq ? ReactDOM.createPortal(
+        <ItemRequestModal c={c} D={D} toast={toast} onView={onView} onClose={()=>setShowReq(false)}
+          onDone={()=>{ setShowReq(false); onSaved(); }} />, document.body) : null}
 
       {/* Timeline */}
       <div className="rounded-xl border border-slate-200 divide-y divide-slate-200 mb-4">
@@ -2251,7 +2776,7 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
       )}
 
       {/* User info panel — In Progress read-only view */}
-      {isOwner && c.status === "In Progress" && c.expected_completion && !isMaint && (
+      {isOwner && isWorking(c.status) && c.expected_completion && !isMaint && (
         <div className="rounded-xl border border-teal-500/30 bg-teal-500/5 p-4 mt-5 flex items-start gap-3">
           <Ico d={I.clock} className="w-5 h-5 text-teal-700 mt-0.5 shrink-0" />
           <div>
@@ -2294,18 +2819,22 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
 // ============================================================
 // 11. COMPLAINTS VIEW (3 tabs)
 // ============================================================
-function ComplaintRow({c, profile, D, onOpen, showUnit}){
-  // needsMe logic per workflow:
-  // Pending → this domain's triager needs to classify + assign
-  // In Progress → assigned Host needs to complete
-  // Completed, Maintenance Info missing → the triager fills it
-  // Completed (info done) → complaint raiser needs to give feedback
+/* Does this complaint wait for MY step? One rule for the row's amber dot and
+   the "Steps" count above the list, so the two can never disagree:
+     Pending                              → this register's triager classifies + assigns
+     In Progress / Material Received      → the assigned Host completes it
+     Completed, Maintenance Info missing  → the triager fills it
+     Completed (info done)                → the person who raised it gives the OK
+   Pending for Material waits for the Store, so it is nobody's step here. */
+function needsMeOf(c, profile, D){
   const isMaint = profile.role === "Admin" || profile.role === D.triager;
-  const needsMe =
-    (c.status === "Pending" && isMaint) ||
-    (c.status === "In Progress" && profile.role === "Host" && c.host_user_id === profile.id) ||
+  return (c.status === "Pending" && isMaint) ||
+    ((c.status === "In Progress" || c.status === "Material Received") && profile.role === "Host" && c.host_user_id === profile.id) ||
     (c.status === "Completed" && c._needInfo && isMaint) ||
     (c.status === "Completed" && !c._needInfo && c.raised_by_user_id === profile.id);
+}
+function ComplaintRow({c, profile, D, onOpen, showUnit}){
+  const needsMe = needsMeOf(c, profile, D);
   // Blue double-tick: complaint raiser sees it when host has opened the complaint
   const showBlueTick = c.seen_by_host_at && c.raised_by_user_id === profile.id;
   /* Rose means "machine is down". A fabric complaint stops no machine, so
@@ -2313,16 +2842,21 @@ function ComplaintRow({c, profile, D, onOpen, showUnit}){
   const borderColor = c.status==="Closed" ? "#10b981"
     : (D.tracksDowntime && isDown(c)) ? "#f43f5e"
     : c.status==="In Progress" ? "#14b8a6"
+    : c.status==="Pending for Material" ? "#f59e0b"
+    : c.status==="Material Received" ? "#0ea5e9"
     : (c.status==="Completed" && c._needInfo) ? "#f97316"
     : c.status==="Completed" ? "#a78bfa" : "#f59e0b";
+  /* iOS inset-grouped row: a status dot leads (the old coloured left edge), a
+     grey chevron ends it; content-visibility (ios-row) keeps long lists fast. */
   return (
     <button onClick={()=>onOpen(c)}
-      className="w-full text-left px-3 sm:px-4 py-3 sm:py-3.5 hover:bg-slate-100/80 active:bg-slate-100 transition-colors border-l-[3px] card-press"
-      style={{borderLeftColor: borderColor}}>
+      className="ios-row w-full text-left flex items-stretch gap-3 pl-4 pr-2 py-3">
+      <span className="mt-[7px] w-2.5 h-2.5 rounded-full shrink-0" style={{background: borderColor}} aria-hidden="true" />
+      <div className="min-w-0 flex-1">
       {/* Top row: what it is about + status.
           Machine reads "KM-04 · Raschel"; fabric reads "RASCHEL · Quality 220". */}
       <div className="flex items-center gap-2 mb-1">
-        <span className="font-semibold text-[13px] sm:text-[13.5px] truncate flex-1">
+        <span className="font-semibold text-[15px] tracking-tight truncate flex-1">
           {D.key === "fabric"
             ? <>{subjectOf(c, D)} <span className="font-normal text-slate-500">·</span> <span className="font-normal text-[12px] text-slate-600">{subjectDetailOf(c, D) || "—"}</span></>
             : <>{c.machine_no || "—"} <span className="font-normal text-slate-500">·</span> <span className="font-normal text-[12px] text-slate-600">{machineLabel(c)}</span></>}
@@ -2335,9 +2869,9 @@ function ComplaintRow({c, profile, D, onOpen, showUnit}){
         </div>
       </div>
       {/* Problem description */}
-      <p className="text-[12.5px] sm:text-[13px] text-slate-700 truncate leading-snug">{c.problem_desc}</p>
+      <p className="text-[14px] text-[#3c3c43] truncate leading-snug">{c.problem_desc}</p>
       {/* Bottom row: meta info */}
-      <div className="flex items-center gap-2 mt-1.5 text-[10.5px] sm:text-[11.5px] text-slate-500">
+      <div className="flex items-center gap-2 mt-1 text-[12px] text-[#8e8e93]">
         <span className="font-mono">{c.complaint_no}</span>
         {/* Only for someone looking at more than one unit; for everybody
             else every row would carry the same tag. */}
@@ -2349,17 +2883,21 @@ function ComplaintRow({c, profile, D, onOpen, showUnit}){
         {c.photo_count > 0 && <span className="ml-auto shrink-0">{c.photo_count}</span>}
       </div>
       {/* In Progress: show assigned host + plan date */}
-      {c.status === "In Progress" && (c.host_name || c.expected_completion) ? (
-        <div className="mt-1.5 flex items-center gap-2 text-[10.5px] text-teal-700 font-medium">
+      {isWorking(c.status) && (c.host_name || c.expected_completion) ? (
+        <div className="mt-1 flex items-center gap-2 text-[12px] text-[#007aff] font-medium">
           {c.host_name && <span>{c.host_name}</span>}
           {c.expected_completion && <span>· Plan: {fmtDateTime(c.expected_completion)}</span>}
         </div>
       ) : null}
+      </div>
+      <Ico d={I.chevR} className="ios-chev w-4 h-4 self-center shrink-0" />
     </button>
   );
 }
 
-function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, tabSeenMap, onTabSeenRefresh, showUnit}){
+function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, tabSeenMap, onTabSeenRefresh, showUnit, irOn}){
+  // The two material tabs only once the database has them (irOn from the probe in loadRows).
+  const TABS_ = useMemo(() => TABS.filter(t => !t.ir || irOn), [irOn]);
   const [tab, setTab] = useState("Pending");
   const [q, setQ] = useState("");
   const [type, setType] = useState("All");
@@ -2370,23 +2908,23 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
 
   const counts = useMemo(()=>{
     const o = {};
-    TABS.forEach(t => o[t.key] = rows.filter(r => inTab(t, r)).length);
+    TABS_.forEach(t => o[t.key] = rows.filter(r => inTab(t, r)).length);
     return o;
-  },[rows]);
+  },[rows, TABS_]);
 
   // Unseen count per sub-tab: items created_at > last seen time for that sub-tab
   const unseenCounts = useMemo(()=>{
     const o = {};
-    TABS.forEach(t => {
+    TABS_.forEach(t => {
       const lastSeen = tabSeenMap?.["complaints:" + t.key];
       if (!lastSeen) { o[t.key] = rows.filter(r => inTab(t, r)).length; return; }
       o[t.key] = rows.filter(r => inTab(t, r) && r.updated_at > lastSeen).length;
     });
     return o;
-  },[rows, tabSeenMap]);
+  },[rows, tabSeenMap, TABS_]);
 
   const shown = useMemo(()=>{
-    const tabDef = TABS.find(t => t.key === tab);
+    const tabDef = TABS_.find(t => t.key === tab) || TABS_[0];
     const needle = q.trim().toLowerCase();
     return rows.filter(r => {
       if (!inTab(tabDef, r)) return false;
@@ -2399,60 +2937,164 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
       }
       return true;
     });
-  },[rows, tab, q, type, D]);
+  },[rows, tab, q, type, D, TABS_]);
 
   // Swipe to switch sub-tabs
-  const tabKeys = TABS.map(t=>t.key);
+  const tabKeys = TABS_.map(t=>t.key);
   const swipeRef = useSwipe(
     () => { const i = tabKeys.indexOf(tab); if (i < tabKeys.length-1) switchTab(tabKeys[i+1]); },
     () => { const i = tabKeys.indexOf(tab); if (i > 0) switchTab(tabKeys[i-1]); }
   );
 
-  // Tab colors per status
-  const tabColors = { "Pending": { active:"bg-amber-500/15 border-amber-500/60 text-amber-800", dot:"bg-amber-500" },
-                      "In Progress": { active:"bg-teal-500/15 border-teal-500/60 text-teal-800", dot:"bg-teal-500" },
-                      "MaintInfo": { active:"bg-orange-500/15 border-orange-500/60 text-orange-800", dot:"bg-orange-500" },
-                      "Awaiting": { active:"bg-violet-500/15 border-violet-500/60 text-violet-800", dot:"bg-violet-500" },
-                      "Completed": { active:"bg-emerald-500/15 border-emerald-500/60 text-emerald-800", dot:"bg-emerald-500" } };
   const ownLabel = profile.role === "User";
+
+  /* Tabs side bar: the tabs live in a drawer that slides in from the left
+     (☰ next to the title); the chosen tab's name is the large title above
+     the list. dr: 0 shut, 1 open, 2 sliding out (unmounted after it). A pull
+     to the left on the drawer closes it too. */
+  const [dr, setDr] = useState(0);
+  const drawerRef = useRef(null), drDrag = useRef(null);
+  const openDrawer = () => setDr(1);
+  const closeDrawer = useCallback(() => {
+    setDr(d => d === 1 ? 2 : d);
+    setTimeout(() => setDr(d => d === 2 ? 0 : d), iosReduce() ? 0 : 240);
+  }, []);
+  useEffect(() => {
+    if (dr !== 1) return;
+    const h = e => { if (e.key === "Escape") closeDrawer(); };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [dr, closeDrawer]);
+  const pickTab = key => { switchTab(key); closeDrawer(); };
+  const onDrStart = e => { if (!drawerRef.current) return; drDrag.current = { x: e.touches[0].clientX, dx: 0 }; drawerRef.current.classList.add("dragging"); };
+  const onDrMove = e => { const d = drDrag.current; if (!d || !drawerRef.current) return; d.dx = Math.min(0, e.touches[0].clientX - d.x); drawerRef.current.style.transform = `translate3d(${d.dx}px,0,0)`; };
+  const onDrEnd = () => {
+    const d = drDrag.current, el = drawerRef.current; drDrag.current = null; if (!d || !el) return;
+    el.classList.remove("dragging"); el.classList.add("snap");
+    if (d.dx < -80) { el.style.transform = "translate3d(-100%,0,0)"; setTimeout(() => setDr(0), iosReduce() ? 0 : 300); }
+    else { el.style.transform = ""; setTimeout(() => el && el.classList.remove("snap"), 340); }
+  };
+  // Each tab's colour (dot in the side bar), iOS system colours.
+  const TAB_DOT = { "Pending":"#ff9500", "In Progress":"#30b0c7", "MatPending":"#ff9f0a", "MatReceived":"#007aff",
+                    "MaintInfo":"#ff6b00", "Awaiting":"#af52de", "Completed":"#34c759" };
+  const curTab = TABS_.find(t => t.key === tab) || TABS_[0];
+  const tabLabel = t => (ownLabel ? t.label : (t.labelOthers || t.label));
+  const tabHi = t => (ownLabel ? t.hi : (t.hiOthers || t.hi));
+  // Unseen in the OTHER tabs: shown on the ☰ button so nothing new hides in the closed side bar.
+  const otherUnseen = TABS_.reduce((n, t) => n + (t.key === tab ? 0 : (unseenCounts[t.key] || 0)), 0);
+  /* "Steps": the complaints waiting for MY step (needsMeOf, the row's amber dot), in all tabs, and per tab for
+     the side bar. Counted over the rows on screen (after the unit filter), whatever tab is open. */
+  const myTodo = useMemo(() => {
+    const by = {}; let total = 0;
+    rows.forEach(r => {
+      if (!needsMeOf(r, profile, D)) return;
+      total++;
+      const t = TABS_.find(x => inTab(x, r));
+      if (t) by[t.key] = (by[t.key] || 0) + 1;
+    });
+    return { total, by };
+  }, [rows, profile, D, TABS_]);
+
+  /* Fast scrolling: draw 40 rows, and 40 more each time the end comes near
+     (IntersectionObserver), instead of every row of a long tab at once. */
+  const [lim, setLim] = useState(40);
+  useEffect(() => { setLim(40); }, [tab, q, type, D.key]);
+  const moreRef = useRef(null);
+  useEffect(() => {
+    const el = moreRef.current;
+    if (!el || !window.IntersectionObserver) return;
+    const io = new IntersectionObserver(es => { if (es[0].isIntersecting) setLim(l => l + 40); }, { rootMargin: "0px 0px 600px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [shown.length, lim]);
 
   return (
     <div ref={swipeRef}>
-      {/* Sub-tabs — compact pill style for mobile */}
-      <div className="flex gap-1.5 mb-3 overflow-x-auto pb-0.5">
-        {TABS.map(t => {
-          const tc = tabColors[t.key] || tabColors["Pending"];
-          const isActive = tab === t.key;
-          const unseen = unseenCounts[t.key] || 0;
-          return (
-            <button key={t.key} onClick={()=>switchTab(t.key)}
-              className={`shrink-0 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-left transition-all border relative ${
-                isActive ? tc.active : "bg-white border-slate-200 hover:border-slate-300 text-slate-700"}`}>
-              {unseen > 0 && !isActive && (
-                <span className={`absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full ${tc.dot} text-white text-[9px] font-bold flex items-center justify-center px-0.5 shadow-sm`}>
-                  {unseen > 99 ? "99+" : unseen}
-                </span>
-              )}
-              <span className="block text-[12px] sm:text-[13px] font-semibold">
-                {(ownLabel ? t.label : (t.labelOthers || t.label))} <span className="font-mono text-[10.5px] sm:text-[11.5px] opacity-70">{counts[t.key]}</span>
-              </span>
-              <span className="block text-[9.5px] sm:text-[11px] text-slate-500">{ownLabel ? t.hi : (t.hiOthers || t.hi)}</span>
-            </button>
-          );
-        })}
+      {/* The chosen tab as an iOS large title; ☰ opens the tabs side bar */}
+      <div className="flex items-center gap-3 mb-3">
+        <button type="button" onClick={openDrawer} aria-label="Show all tabs" aria-expanded={dr === 1}
+          className="ios-btn relative shrink-0 w-11 h-11 rounded-xl bg-white shadow-[0_1px_3px_rgba(0,0,0,0.08)] grid place-items-center text-[#007aff]">
+          <Ico d={I.menu} className="w-6 h-6" />
+          {otherUnseen > 0 ? <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] rounded-full bg-[#ff3b30] text-white text-[11px] font-semibold flex items-center justify-center px-1">{otherUnseen > 99 ? "99+" : otherUnseen}</span> : null}
+        </button>
+        {curTab ? (
+          <button type="button" onClick={openDrawer} className="min-w-0 flex-1 text-left">
+            <h2 className="text-[24px] sm:text-[26px] font-bold tracking-tight leading-tight truncate">
+              {tabLabel(curTab)} <span className="text-[18px] font-semibold text-[#8e8e93]">{counts[curTab.key]}</span>
+            </h2>
+            <p className="text-[13px] text-[#8e8e93] truncate">{curTab.sub ? curTab.sub + " · " : ""}{tabHi(curTab)}</p>
+          </button>
+        ) : null}
+        {/* Steps: how many complaints wait for my step (any tab); opens the side bar, where each tab says how many */}
+        <button type="button" onClick={openDrawer} aria-label={`Steps: ${myTodo.total} waiting for you`}
+          title="Complaints waiting for your step"
+          className={`ios-btn shrink-0 h-9 pl-3 pr-1.5 rounded-full flex items-center gap-1.5 text-[14px] font-semibold ${
+            myTodo.total ? "bg-[#ff9500]/15 text-[#c93400]" : "bg-[#767680]/12 text-[#3c3c43]/70"}`}>
+          Steps
+          <span className={`min-w-[24px] h-[24px] rounded-full px-1.5 grid place-items-center text-[12px] font-bold tabular-nums ${
+            myTodo.total ? "bg-[#ff3b30] text-white" : "bg-white text-[#8e8e93]"}`}>
+            {myTodo.total > 99 ? "99+" : myTodo.total}
+          </span>
+        </button>
       </div>
 
-      {/* Filters — stacked on small mobile */}
+      {/* Tabs side bar (on <body>, above the bars) */}
+      {dr ? ReactDOM.createPortal(
+        <div className="fixed inset-0 z-[70]" data-no-ios-pop>
+          <div className={`ios-backdrop ${dr === 2 ? "out" : ""} absolute inset-0`} onClick={closeDrawer} />
+          <aside ref={drawerRef} role="dialog" aria-label="Complaint tabs"
+            className={`ios-drawer ${dr === 2 ? "out" : ""} absolute inset-y-0 left-0 w-[82vw] max-w-[320px] bg-[#f2f2f7] shadow-2xl flex flex-col`}
+            style={{paddingTop:'env(safe-area-inset-top,0px)', paddingBottom:'env(safe-area-inset-bottom,0px)'}}
+            onTouchStart={onDrStart} onTouchMove={onDrMove} onTouchEnd={onDrEnd} onTouchCancel={onDrEnd}>
+            <div className="px-5 pt-5 pb-3 flex items-start gap-2">
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium uppercase tracking-wide text-[#8e8e93] truncate">{D.title}</p>
+                <h3 className="text-[28px] font-bold tracking-tight leading-tight">Complaints</h3>
+                <p className={`text-[13px] font-medium mt-0.5 ${myTodo.total ? "text-[#c93400]" : "text-[#8e8e93]"}`}>
+                  {myTodo.total ? `${myTodo.total} waiting for your step` : "Nothing waiting for your step"}
+                </p>
+              </div>
+              <button type="button" onClick={closeDrawer} aria-label="Close"
+                className="ios-btn shrink-0 mt-1 w-[30px] h-[30px] rounded-full bg-[#767680]/15 text-[#3c3c43]/70 grid place-items-center">
+                <Ico d={I.x} className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="px-3 pb-4 overflow-y-auto flex-1 overscroll-contain">
+              <div className="ios-group">
+                {TABS_.map(t => {
+                  const isActive = t.key === tab, unseen = unseenCounts[t.key] || 0;
+                  return (
+                    <button key={t.key} type="button" onClick={() => pickTab(t.key)} aria-current={isActive ? "page" : undefined}
+                      className={`ios-drawer-item w-full flex items-center gap-3 pl-4 pr-3 py-3 text-left ${isActive ? "bg-[#007aff]/10" : ""}`}>
+                      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{background: TAB_DOT[t.key] || "#8e8e93"}} aria-hidden="true" />
+                      <span className="min-w-0 flex-1">
+                        <span className={`block text-[16px] truncate ${isActive ? "font-semibold text-[#007aff]" : "text-black"}`}>{tabLabel(t)}</span>
+                        <span className="block text-[12px] text-[#8e8e93] truncate">{t.sub ? t.sub + " · " : ""}{tabHi(t)}</span>
+                        {myTodo.by[t.key] ? <span className="inline-block mt-1 rounded-full px-2 py-[1px] text-[11px] font-semibold bg-[#ff9500]/15 text-[#c93400]">{myTodo.by[t.key]} waiting for your step</span> : null}
+                      </span>
+                      {unseen > 0 && !isActive ? <span className="min-w-[20px] h-[20px] rounded-full bg-[#ff3b30] text-white text-[11px] font-semibold flex items-center justify-center px-1.5">{unseen > 99 ? "99+" : unseen}</span> : null}
+                      <span className="text-[15px] text-[#8e8e93] tabular-nums">{counts[t.key]}</span>
+                      {isActive ? <Ico d={I.checkMark} className="w-5 h-5 text-[#007aff]" /> : <span className="w-5" />}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="px-2 mt-3 text-[12px] text-[#8e8e93]">Tip: swipe the list left / right to go to the next tab.</p>
+            </div>
+          </aside>
+        </div>, document.body) : null}
+
+      {/* Filters: iOS search field + type menu */}
       <div className="flex gap-2 mb-3 flex-wrap">
         <div className="relative grow min-w-0 w-full sm:w-auto sm:min-w-[180px]">
-          <Ico d={I.search} className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-          <input className={inputCls(false)+" pl-9 text-[14px]"} value={q} onChange={e=>setQ(e.target.value)}
+          <Ico d={I.search} className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#8e8e93]" />
+          <input type="search" className={inputCls(false)+" pl-9 py-2"} value={q} onChange={e=>setQ(e.target.value)}
                  placeholder={`Search ${D.unitWord.toLowerCase()}, problem…`} />
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           {/* Types are per domain, plus a filter for the ones nobody has
               classified yet — that is the triager's actual work queue. */}
-          <select className={inputCls(false)+" flex-1 sm:w-auto text-[14px]"} value={type} onChange={e=>setType(e.target.value)}>
+          <select className={inputCls(false)+" flex-1 sm:w-auto py-2"} value={type} onChange={e=>setType(e.target.value)}>
             <option value="All">All types</option>
             <option value="__none">Type pending (untriaged)</option>
             {D.types.map(t=><option key={t} value={t}>{t}</option>)}
@@ -2461,26 +3103,30 @@ function ComplaintsView({profile, rows, loading, D, onRefresh, onOpen, toast, ta
         </div>
       </div>
 
-      {/* Complaint list — card-style on mobile */}
-      <div className="rounded-xl border border-slate-200 bg-white sm:bg-slate-50 overflow-hidden divide-y divide-slate-100 sm:divide-slate-200 shadow-sm">
+      {/* Complaint list: iOS inset-grouped card, hairlines between rows */}
+      <div className="ios-group">
         {loading ? (
           Array.from({length:4}).map((_,i)=>(
-            <div key={i} className="px-3 py-3.5 sm:px-4 sm:py-4"><div className="h-3 rounded bg-slate-100 animate-pulse" style={{width:`${55+i*9}%`}} /></div>
+            <div key={i} className="px-4 py-4"><div className="h-3 rounded-full bg-[#767680]/12 animate-pulse" style={{width:`${55+i*9}%`}} /></div>
           ))
         ) : shown.length === 0 ? (
           <div className="px-4 py-12 sm:py-16 text-center">
-            <Ico d={I.clipboard} className="w-8 h-8 sm:w-9 sm:h-9 mx-auto text-slate-300 mb-2.5" />
-            <p className="font-semibold text-slate-700 text-[13.5px] sm:text-[14px]">
+            <Ico d={I.clipboard} className="w-9 h-9 mx-auto text-[#c7c7cc] mb-2.5" />
+            <p className="font-semibold text-black text-[15px]">
               {tab === "Pending" ? "No pending complaints" : tab === "In Progress" ? "Nothing in progress"
+                : tab === "MatPending" ? "Nothing waiting for material"
+                : tab === "MatReceived" ? "No complaint waiting for completion"
                 : tab === "MaintInfo" ? "No Maintenance Info pending"
                 : tab === "Awaiting" ? "Nothing waiting for an OK" : "Nothing completed yet"}
             </p>
-            <p className="text-[12px] sm:text-[13px] text-slate-500 mt-1">
+            <p className="text-[13px] text-[#8e8e93] mt-1">
               {rows.length ? "Try clearing the filter or search." : 'Log a new complaint with "New Complaint".'}
             </p>
           </div>
-        ) : shown.map(c => <ComplaintRow key={c.id} c={c} profile={profile} D={D} onOpen={onOpen} showUnit={showUnit} />)}
+        ) : shown.slice(0, lim).map(c => <ComplaintRow key={c.id} c={c} profile={profile} D={D} onOpen={onOpen} showUnit={showUnit} />)}
       </div>
+      {/* The next 40 rows are drawn when this comes near the screen */}
+      {!loading && shown.length > lim ? <div ref={moreRef} className="py-4 text-center text-[13px] text-[#8e8e93]">Loading more…</div> : null}
     </div>
   );
 }
@@ -3423,50 +4069,9 @@ function NoticeBoard({profile, toast, onView}){
   );
 }
 
-// ============================================================
-// 13. STATS STRIP
-// ============================================================
-function Stats({rows, profile, D}){
-  const s = useMemo(()=>{
-    const open = rows.filter(r => r.status === "Pending" || r.status === "In Progress");
-    // What a complaint is counted against: a machine, or a process+quality.
-    const keyOf = r => D.key === "fabric"
-      ? `${r.process_name||""}|${r.fabric_quality ?? ""}`
-      : `${machineLabel(r)}|${r.machine_no||""}`;
-    const subjects = new Set(open.map(keyOf));
-    const awaiting = rows.filter(r => r.status === "Completed" && !r._needInfo &&
-      (profile.role === "User" ? r.raised_by_user_id === profile.id : true)).length;
-    const base = [
-      { n: rows.filter(r=>r.status==="Pending").length, l:"Pending", c:"text-amber-600" },
-      { n: rows.filter(r=>r.status==="In Progress").length, l:"In-progress", c:"text-teal-600" },
-      { n: awaiting, l: profile.role==="User" ? "Needs your OK" : "Awaiting user OK", c:"text-violet-600" },
-    ];
-    /* The fourth tile differs because the two domains measure different
-       damage. For machines it is downtime — how many are stopped right now.
-       For fabric nothing is stopped, so the useful number is how many
-       complaints are still waiting to be classified, which is exactly the
-       Production Manager's queue. */
-    if (D.tracksDowntime){
-      const down = new Set(open.filter(isDown).map(keyOf));
-      base.push({ n: down.size, l:"Machines down", c:"text-rose-600" });
-      base.push({ n: subjects.size, l:"Machines affected", c:"text-slate-800" });
-    } else {
-      base.push({ n: open.filter(r=>!r.complaint_type).length, l:"Type pending", c:"text-rose-600" });
-      base.push({ n: subjects.size, l:"Qualities affected", c:"text-slate-800" });
-    }
-    return base;
-  },[rows, profile, D]);
-  return (
-    <div className="flex gap-2 mb-4 overflow-x-auto pb-1 sm:grid sm:grid-cols-5 sm:overflow-visible">
-      {s.map(t=>(
-        <div key={t.l} className="shrink-0 w-[110px] sm:w-auto rounded-xl border border-slate-200 bg-white sm:bg-slate-50 px-3 py-2.5 sm:px-3.5 sm:py-3 shadow-sm">
-          <p className={`font-mono font-semibold text-xl sm:text-2xl leading-none ${t.c}`}>{t.n}</p>
-          <p className="text-[9.5px] sm:text-[10.5px] uppercase tracking-wide text-slate-500 mt-1">{t.l}</p>
-        </div>
-      ))}
-    </div>
-  );
-}
+/* 13. The stats strip (Pending / In-progress / Awaiting OK / Machines down ...
+   cards above the list) was removed on request: the tab pills under it show
+   the same counts. */
 
 // ============================================================
 // 13B. ALERTS — asks for notification permission from a real click.
@@ -3507,6 +4112,8 @@ function App(){
   const [profile, setProfile] = useState(null);
   const [profileErr, setProfileErr] = useState("");
   const [rows, setRows] = useState([]);
+  // Request Item set up on the server (CMP_ITEM_REQUEST_MIGRATION.sql)? Probed in loadRows; false = the app as before.
+  const [irOn, setIrOn] = useState(false);
   const [machines, setMachines] = useState([]);
   const [processes, setProcesses] = useState([]);   // fabric side's subject master
   const [fabricQualities, setFabricQualities] = useState([]);   // ERP Fabric Master › FABRIC NAME values
@@ -3686,6 +4293,11 @@ function App(){
         (mi.data || []).forEach(m => miDone.add(String(m.complaint_id) + "|" + new Date(m.completed_at).getTime()));
       }
     } catch(e){ console.warn("Maintenance Info:", e.message || e); }
+    // Request Item probe: one id, never a photo. Any error (table missing) = feature off.
+    try {
+      const pr = await sb.from("cmp_item_requests").select("id").limit(1);
+      setIrOn(!pr.error);
+    } catch(e){ setIrOn(false); }
     setLoading(false);
     setRows((data||[]).map(r => {
       const doneAt = r.completed_at ? new Date(r.completed_at).getTime() : NaN;
@@ -3937,7 +4549,7 @@ function App(){
 
   return (
     <UnitsCtx.Provider value={units}>
-    <div className="min-h-screen flex flex-col bg-slate-50 sm:bg-white">
+    <div className="min-h-screen flex flex-col ios-page">
 
       {/* ===== MOBILE TOP BAR =====
            The register switch is the pair of large buttons under the title:
@@ -3947,14 +4559,15 @@ function App(){
            smaller and outlined. They are real buttons (keyboard and screen
            readers reach them, aria-pressed says which is on), and a swipe
            either way across the pair still toggles, as the title used to. */}
-      <header className="sticky top-0 z-40 bg-white border-b border-slate-200 shadow-sm">
+      {/* iOS navigation bar: translucent, hairline edge, under the notch */}
+      <header className="ios-navbar sticky top-0 z-40" style={{paddingTop:'env(safe-area-inset-top,0px)'}}>
         <div className="max-w-3xl mx-auto flex items-center gap-2.5 px-3 pt-2.5 pb-2 sm:px-4 sm:pt-3">
           <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-lg text-white grid place-items-center font-extrabold text-[12px] sm:text-[13px] shrink-0 transition-colors ${D.badgeCls}`}>
             {D.badge}
           </div>
           <div className="min-w-0 flex-1">
-            <h1 className="font-bold text-[14px] sm:text-[15px] leading-tight truncate">{D.title}</h1>
-            <p className="text-[10.5px] sm:text-[11.5px] text-slate-500 truncate">
+            <h1 className="font-semibold text-[17px] leading-tight truncate tracking-tight">{D.title}</h1>
+            <p className="text-[12px] text-[#8e8e93] truncate">
               {profile.name} · {profile.role}{dp.role !== profile.role ? ` (${dp.role} here)` : ""}
               {hasUnits && <> · <span className="font-semibold text-violet-700">{allUnits ? "All units" : (profile.unit ? unitName(units, profile.unit) : "No unit")}</span></>}
             </p>
@@ -4003,8 +4616,8 @@ function App(){
                 : dRows.filter(r => r.unit === u.code).length;
               return (
                 <button key={u.code} type="button" onClick={()=>setUnitF(u.code)} aria-pressed={on}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-[12px] font-semibold transition-colors ${
-                    on ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                  className={`ios-btn shrink-0 rounded-full border px-3.5 py-1.5 text-[13px] font-semibold ${
+                    on ? "bg-[#007aff] border-[#007aff] text-white" : "bg-white border-black/10 text-[#3c3c43]"}`}>
                   {u.name} <span className="font-mono text-[10.5px] opacity-70">{n}</span>
                 </button>
               );
@@ -4027,10 +4640,9 @@ function App(){
                 <span><b>Your unit is not set yet.</b> You can't raise a complaint until the Admin sets Unit-1 / Unit-2 on your user.</span>
               </div>
             )}
-            <Stats rows={viewRows} profile={dp} D={D} />
             <ComplaintsView profile={dp} rows={viewRows} loading={loading} D={D}
               onRefresh={()=>loadRows(true)} onOpen={setDetail} toast={toast}
-              tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen}
+              tabSeenMap={tabSeenMap} onTabSeenRefresh={reloadTabSeen} irOn={irOn}
               showUnit={allUnits && (effUnitF === "All" || effUnitF === MINE)} />
           </>
         )}
@@ -4039,31 +4651,28 @@ function App(){
       {/* ===== FAB — New Complaint (mobile: bottom-right above nav, desktop: inline) ===== */}
       <button onClick={openNew}
         title="New Complaint (Machine / Fabric, or scan)"
-        className={`sm:hidden fixed z-50 right-4 bottom-20 w-14 h-14 rounded-full text-white shadow-lg flex items-center justify-center active:scale-95 transition-transform ${D.fabCls}`}
+        className={`ios-btn sm:hidden fixed z-50 right-4 bottom-20 w-14 h-14 rounded-full text-white shadow-[0_8px_24px_rgba(0,0,0,0.22)] flex items-center justify-center ${D.fabCls}`}
         style={{marginBottom:'env(safe-area-inset-bottom,0px)'}}>
         <Ico d={I.plus} className="w-7 h-7" />
       </button>
 
-      {/* ===== BOTTOM NAVIGATION BAR (Android-style) ===== */}
-      <nav className="fixed bottom-0 inset-x-0 z-40 bg-white border-t border-slate-200 shadow-[0_-2px_10px_rgba(0,0,0,0.06)] sm:hidden pb-safe">
+      {/* ===== BOTTOM TAB BAR (iOS: translucent, tint = active, red badge) ===== */}
+      <nav className="ios-tabbar fixed bottom-0 inset-x-0 z-40 sm:hidden pb-safe">
         <div className="flex items-stretch">
           {navItems.map(n => {
             const isActive = view === n.key;
             const unseen = mainUnseenCounts[n.key] || 0;
             return (
               <button key={n.key} onClick={()=>switchView(n.key)}
-                className={`flex-1 flex flex-col items-center justify-center py-1.5 min-h-[56px] relative transition-colors ${
-                  isActive ? n.color + " font-semibold" : "text-slate-400"}`}>
-                {/* Unseen badge */}
+                className={`flex-1 flex flex-col items-center justify-center pt-1.5 pb-1 min-h-[50px] relative ${
+                  isActive ? "text-[#007aff]" : "text-[#8e8e93]"}`}>
                 {(unseen > 0 || unseen === -1) && !isActive && (
-                  <span className={`absolute top-1 left-1/2 ml-2 min-w-[16px] h-[16px] rounded-full ${n.dot} text-white text-[9px] font-bold flex items-center justify-center px-0.5`}>
+                  <span className="absolute top-0.5 left-1/2 ml-2.5 min-w-[18px] h-[18px] rounded-full bg-[#ff3b30] text-white text-[11px] font-semibold flex items-center justify-center px-1">
                     {unseen === -1 ? "" : (unseen > 99 ? "99+" : unseen)}
                   </span>
                 )}
-                <Ico d={n.icon} className={`w-5 h-5 ${isActive ? "nav-pop" : ""}`} />
-                <span className="text-[10px] mt-0.5 leading-tight">{n.label}</span>
-                {/* Active indicator dot */}
-                {isActive && <span className={`absolute bottom-0.5 w-5 h-[3px] rounded-full ${n.bg}`} />}
+                <Ico d={n.icon} className={`w-6 h-6 ${isActive ? "nav-pop" : ""}`} />
+                <span className="text-[10px] font-medium mt-0.5 leading-tight">{n.label}</span>
               </button>
             );
           })}
@@ -4118,7 +4727,7 @@ function App(){
           onSaved={()=>{ setShowNew(false); setNewPrefill(null); loadRows(false); loadMachines(); loadProcesses(); loadFabricMasters(); }} />
       )}
       {detail && (
-        <ComplaintDetail complaint={detail} profile={dp} hosts={hostsIn(hosts, D)} D={D} toast={toast} onView={setLightbox}
+        <ComplaintDetail complaint={detail} profile={dp} hosts={hostsIn(hosts, D)} D={D} toast={toast} onView={setLightbox} irOn={irOn}
           onClose={()=>setDetail(null)} onSaved={()=>{ setDetail(null); loadRows(false); }} />
       )}
       {lightbox && <Lightbox src={lightbox} onClose={()=>setLightbox(null)} />}

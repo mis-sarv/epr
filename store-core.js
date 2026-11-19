@@ -7514,6 +7514,10 @@ const SARV_TABS=[
      tm_cl_can_; its default there is the same Admin + MD). Every employee reads and
      signs their own letters under My Tasks without any right. */
   {key:'TM_CONSULT_LETTER',label:'Consult Letters',hint:'Make letter formats, issue them to all / chosen employees, track signatures and open the signed PDFs',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
+  /* My Tasks button "Store Requests Tasks": the complaints' Request Item, answered by the
+     Store (issue from stock, or a New PR in the asker's name). Decided again on the server by
+     scr_can_ (CMP_ITEM_REQUEST_MIGRATION.sql), whose default is this same Store Incharge + Admin. */
+  {key:'TM_STORE_REQUESTS',label:'Store Requests Tasks',hint:'Answer complaint item requests: issue from stock or raise a PR for the requester',def:['USER_IC_PIN','ADMIN_PIN'],lock:['ADMIN_PIN']},
   /* hr-payroll.html's rights. As with TM_*, the SERVER checks the same key on
      every read and write (hr_perms_ in HR_PAYROLL_MIGRATION.sql), and these
      defaults MUST match hr_perm_default_() there. Any HR right also gives
