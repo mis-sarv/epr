@@ -96,7 +96,13 @@ function tmRulesFor(t, ds) {
   if (TM_RECUR[t.frequency || 'daily']) { at = tmDateAt(ds); if (created && created > at) at = created; }
   else at = created || tmDateAt(t.assignedDate || ds);
   let v = null; for (const x of TT.tm.versions) { if (x.at <= at) v = x; else break; }
-  return Object.assign({}, tmMergeRules(v ? v.value : null)[cat], { cat });
+  const out = Object.assign({}, tmMergeRules(v ? v.value : null)[cat], { cat, live: !!(t.live || t.liveOut) });
+  // Live Photo Check-in / Check-out own grace minutes (Score Master › Live Photo card, `live` {inMin, outMin}); blank = the daily rule's grace. Same as task_manager.html rulesFor.
+  if (out.live && v && v.value && v.value.live) {
+    const g = t.liveOut ? v.value.live.outMin : v.value.live.inMin;
+    if (g != null && g !== '' && isFinite(Number(g))) out.graceHours = Math.round(Math.min(2880, Math.max(0, Number(g)))) / 60;
+  }
+  return out;
 }
 function tmDeadline(t, ds, rec) { const fu = rec && (rec.status === 'pending-reschedule' || rec.status === 'rescheduled-done') && rec.time; const p = tmParse12h(fu || t.time); return p ? tmDateAt(ds, p.h, p.m) : tmDateAt(ds, 23, 59); }
 function tmDoneMoment(rec, ds) { if (rec.doneAt) return new Date(rec.doneAt); const p = tmParse12h(rec.legacyTime); const day = rec.completedDate || ds; if (p) return tmDateAt(day, p.h, p.m); return rec.updatedAt ? new Date(rec.updatedAt) : tmDateAt(day, 23, 59); }
@@ -105,7 +111,7 @@ function tmScoreAt(t, ds, rec, when) {
   const dl = tmDeadline(t, ds, rec), graceEnd = new Date(dl.getTime() + gMs);
   const postpones = (t.frequency === 'ea' && t.isPostponed) ? Math.max(1, (t.postponeHistory || []).length - 1) : 0; const extra = postpones * (r.postponePenalty || 0);
   let phase, cut = 0, units = 0;
-  if (when <= dl) phase = 'on-time'; else if (when <= graceEnd && gMs > 0) { phase = 'grace'; cut = r.gracePenalty; } else { phase = 'late'; cut = r.gracePenalty; units = Math.max(1, Math.ceil((when - graceEnd) / unitMs)); }
+  if (when <= dl) phase = 'on-time'; else if (when <= graceEnd && gMs > 0) { phase = 'grace'; cut = r.live ? 0 : r.gracePenalty; } else { phase = 'late'; cut = r.gracePenalty; units = Math.max(1, Math.ceil((when - graceEnd) / unitMs)); }
   const raw = base - cut - units * r.penalty - extra; const pts = r.minPoints != null && raw <= r.minPoints ? r.minPoints : raw;
   return { pts, base, phase, deadline: dl, extra };
 }

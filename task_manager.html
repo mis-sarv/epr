@@ -876,8 +876,8 @@
                             <div class="text-[10px] font-bold text-slate-400 mt-1">Only what a new Live Photo row shows first; change it per employee there.</div></div>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-in grace (minutes)</label><input type="number" min="0" max="2880" step="1" id="liveSetGraceIn" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800">
-                            <div class="text-[10px] font-bold text-slate-400 mt-1">After the Check-in time, full points are cut once inside this time (the Daily grace cut). Blank = the Daily task grace. Applies from the next day.</div></div>
+                        <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-in grace / tolerance (minutes)</label><input type="number" min="0" max="2880" step="1" id="liveSetGraceIn" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800">
+                            <div class="text-[10px] font-bold text-slate-400 mt-1">Tolerance: a Check-in done up to this many minutes after its time still gets FULL points, nothing is deducted. After it, the normal late cut starts. Blank = the Daily task grace (also no cut). Applies from the next day.</div></div>
                     </div>
                     <!-- Check-out (TM_DONE_REMARKS_CHECKOUT_MIGRATION.sql): hidden until the server sends outOn. -->
                     <div id="liveSetOutBox" class="hidden border-t border-slate-100 pt-4 space-y-3">
@@ -885,7 +885,7 @@
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out name (new rows)</label><input type="text" id="liveSetOutDesc" placeholder="LIVE PHOTO CHECK-OUT" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></div>
                             <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out starting time (new rows)</label><select id="liveSetOutHour" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"></select></div>
-                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out grace (minutes)</label><input type="number" min="0" max="2880" step="1" id="liveSetGraceOut" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"><div class="text-[10px] font-bold text-slate-400 mt-1">Blank = the Daily task grace.</div></div>
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Check-out grace / tolerance (minutes)</label><input type="number" min="0" max="2880" step="1" id="liveSetGraceOut" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-fuchsia-400 font-bold text-slate-800"><div class="text-[10px] font-bold text-slate-400 mt-1">Same tolerance for the Check-out: done inside it = full points, no deduction. Blank = the Daily task grace.</div></div>
                         </div>
                     </div>
                     <div id="liveSetInfo" class="text-[11px] font-bold text-slate-500 leading-relaxed"></div>
@@ -2286,6 +2286,8 @@
                             type: document.getElementById(`penType_${c}`).value, penalty: num(document.getElementById(`penAmount_${c}`).value, 0), minPoints: minPts(c) };
                 if (c === 'ea') next.ea.postponePenalty = num(document.getElementById('penAmount_ea_postpone').value, 10);
             });
+            // The Live Photo card keeps its Check-in / Check-out grace minutes (`live`) inside the same version; a save built from scratch would wipe them.
+            { const lv = appState.scoreVersions.length ? appState.scoreVersions[appState.scoreVersions.length - 1].value : null; if (lv && lv.live) next.live = JSON.parse(JSON.stringify(lv.live)); }
             next.followup = fupCollect();
             if (next.followup.on && !next.followup.coords.length) return showCustomModal('Pending Follow-ups Task', 'It is switched on but no coordinator is chosen. Add at least one, or switch it off.', true);
             if (!confirm('Save these rules? They apply to tasks assigned from now on. Scores already earned do not change.')) return;
