@@ -6435,7 +6435,7 @@ function sarvFinishLogin_(){
 const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS',
   'HOME_TRACKER','HOME_MASTER','HOME_REPAIR','HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT',
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
-  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK',
+  'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
   'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2'];
 function sarvAllowedApps_(){
@@ -7390,6 +7390,10 @@ const SARV_TABS=[
   {key:'RPT_CHK_MD1',label:'Bill check · MD-1',hint:'Print History › Preview: MD-1 Bill Check step (Emp Code MD-1)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'RPT_CHK_MD2',label:'Bill check · MD-2',hint:'Print History › Preview: MD-2 Bill Check step (Emp Code MD-2)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'RPT_CHK_AC',label:'Bill check · Accounts',hint:'Print History › Preview: Accounts Check step',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
+  /* Issue bills have their own pipeline (sql/ISSUE_BILL_CHECK_MIGRATION.sql, scs_issue_flow_()): keep these defaults = its roles.
+     Prefix ISS_CHK_ (not RPT_CHK_) so a Stock Auditor ticked here gets the Issue Bill Check app, not the Bill Check app. */
+  {key:'ISS_CHK_SA',label:'Issue bill check · Stock Auditor',hint:'Issue Bill Check app / Print History › Preview of an Issue: Stock Auditor Check step, signs the Stock Auditor Sign cell (tick the auditor in Manage access)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'ISS_CHK_AUTH',label:'Issue bill check · Authority Sign',hint:'Issue Bill Check app / Print History › Preview of an Issue: Authority Sign step, signs the Authority Sign cell',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'RPT_DEBIT_RAISE',label:'Debit Note · Raise',hint:'Print History › Preview: raise / withdraw a Debit Note (MD-1 / MD-2)',def:['ADMIN_PIN','USER_MD_PIN'],lock:['ADMIN_PIN']},
   {key:'RPT_DEBIT_VERIFY',label:'Debit Note · Verify with proof',hint:'Print History › Preview: attach proof and verify a raised Debit Note (Accountant)',def:['ADMIN_PIN','USER_AC_PIN'],lock:['ADMIN_PIN']},
   {key:'HOME_MYDAY',label:'My Day (daily tasks)',hint:'Daily task list: Below-MSV PRs, inform requester, rejected PRs, stock count … (store-mytasks.js)',def:['USER_IC_PIN','ADMIN_PIN']},
@@ -7459,6 +7463,7 @@ const SARV_TABS=[
      default: turn it ON for the supervisor(s) here or under Users › Apps.
      The same default as launcher.html's APPS entry (its defRoles). */
   {key:'HOME_BILL_CHECK',label:'Bill Check',hint:'Bill Check app (bill-check.html, opens from the launcher): the records waiting for the user\x27s own pipeline step, Pending / Done lists, Preview of every attachment. WHAT a person may check is decided by the RPT_CHK_* rights',def:['ADMIN_PIN','USER_GM_PIN','USER_MD_PIN','USER_AC_PIN']},
+  {key:'HOME_ISSUE_BILL_CHECK',label:'Issue Bill Check',hint:'Issue Bill Check app (bill-check.html#issue, opens from the launcher): Issue bills only, Stock Auditor Check > Authority Sign. WHAT a person may check is decided by the ISS_CHK_* rights',def:['ADMIN_PIN','USER_MD_PIN']},
   {key:'HOME_UNLOADER',label:'Unloader Supervisor',hint:'Verify every new Inward at unloading: item photos + own PIN, approve or reject (unloader.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Inward PDF)',def:['ADMIN_PIN']},
   // Same default as the launcher tile (defRoles) and the key iss_list / iss_decide check on the server.
   {key:'HOME_ISSUER',label:'Issue Supervisor',hint:'Approve every new Store 1 / Store 2 Issue: photos + own PIN; the Issue and its PDF are saved the moment it is approved (issuer.html, opens from the launcher). Users need Emp Code and Contact No (printed on the Issue PDF)',def:['ADMIN_PIN']},
@@ -8016,6 +8021,7 @@ function sarvShowApPane_(p){
   document.querySelectorAll('#sarvAdminPanel .ap-tab').forEach(b=>b.classList.toggle('active',b.dataset.ap===p));
   document.querySelectorAll('#sarvAdminPanel .ap-pane').forEach(x=>x.style.display=x.dataset.apPane===p?'':'none');
   if(p==='pdf')sarvRenderPdfSettings_();   // PDF Settings: built on opening, with a fresh preview
+  if(p==='uploads')sarvUpLoad_();          // Uploads: the list is read fresh on every opening
 }
 function sarvRoleLabelOf_(code){const r=SARV_PERM_ROLES.find(x=>x.code===code);return r?r.label:(SARV_ROLE_LABEL[code]||code);}
 function sarvRenderUsers_(){
@@ -8259,9 +8265,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8477,7 +8483,7 @@ function sarvUserAppsHtml_(u){
 const SARV_ACCESS_AREAS=[
   {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
   {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
-  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE2']},
+  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE2']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
@@ -8500,6 +8506,7 @@ const SARV_STORE_SCREENS=[
   {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'RPT_REC_STATUS',l:'Reports · Change record status'},
   {k:'RPT_CHK_GM',l:'Reports · GM Bill Check'},{k:'RPT_CHK_EA',l:'Reports · EA Bill Check'},{k:'RPT_CHK_MD1',l:'Reports · MD-1 Bill Check'},
   {k:'RPT_CHK_MD2',l:'Reports · MD-2 Bill Check'},{k:'RPT_CHK_AC',l:'Reports · Accounts Check'},
+  {k:'ISS_CHK_SA',l:'Issue · Stock Auditor Check'},{k:'ISS_CHK_AUTH',l:'Issue · Authority Sign'},
   {k:'RPT_DEBIT_RAISE',l:'Reports · Raise Debit Note'},{k:'RPT_DEBIT_VERIFY',l:'Reports · Verify Debit Note'},{k:'HOME_STORE_TRANSFER',l:'Store Transfer'}];
 const sarvAccExtraKey_=k=>/^S[12]_/.test(k)||k==='ERP_STORE1'||k==='ERP_WAREHOUSE'||k==='CMP_MACHINE'||k==='CMP_FABRIC';
 // A readable name for any app_access key (user list tooltip, panel).
@@ -18385,13 +18392,15 @@ async function syncPoReceiptsForLines(lineIds){
 window.downloadFilteredExcel=function(){
   if(!sarvCan('DOWNLOAD_CSV'))return sarvDeny('DOWNLOAD_CSV');
   if(!sarvLastReportsFiltered.length)return showToast('Load data with Search / All Records first','warn');
+  // Both pipelines' columns (Issue bills fill only the Stock Auditor / Authority ones), when any Issue is in the list
+  const chkFlow=scsFlow.concat(sarvLastReportsFiltered.some(scsIsIssue_)?scsIssueFlow:[]);
   const headers=['Type','Record No','Invoice No','Date','Party / Supplier','Receiver Name','Amount','Total Qty','Items',
-    ...scsFlow.flatMap(s=>[s.label+' Status',s.label+' Remarks',s.label+' By',s.label+' At']),
+    ...chkFlow.flatMap(s=>[s.label+' Status',s.label+' Remarks',s.label+' By',s.label+' At']),
     'Debit Status','Debit Reason','Debit Amount','Debit Raised By','Debit Verified By','Debit Verified At','Debit Proofs',
     'Old Status','Old Status Remarks','Old Status By','Old Status At'];
   const rows=sarvLastReportsFiltered.map(r=>{const st=srsOf_(r)||{},d=scsDebit_(r)||{};
     return [r.type||'',r.no||'',r.invoice||'',r.date||'',r.party||'',r.receiver||'',r.amount||0,r.qty||0,r.items||'',
-      ...scsFlow.flatMap(s=>{const x=scsStep_(r,s.code)||{};return [x.status||'',x.remarks||'',x.by||'',x.at?pStamp(x.at):''];}),
+      ...chkFlow.flatMap(s=>{const x=scsStep_(r,s.code)||{};return [x.status||'',x.remarks||'',x.by||'',x.at?pStamp(x.at):''];}),
       d.status||'',d.reason||'',d.amount!=null?d.amount:'',d.raisedBy||'',d.verifiedBy||'',d.verifiedAt?pStamp(d.verifiedAt):'',d.proofs||0,
       st.status?srsLabel_(st.status):'',st.remarks||'',st.by||'',st.at?pStamp(st.at):''];});
   downloadCSV('SARV_Reports_'+today()+'.csv',[headers,...rows]);
@@ -20016,8 +20025,11 @@ window.addEventListener('DOMContentLoaded',()=>{
    /* Below the signature line: the label, then the "Printed:" stamp. Their
       room is worked out from their own sizes (PDF Settings may make them
       bigger), never less than the space set in PDF Settings. */
+   /* An Issue's Accountant Copy is signed by its own pipeline (sql/ISSUE_BILL_CHECK_MIGRATION.sql): Stock Auditor in
+      the old GM cell, Authority in the old MD cell (sarvStoreSignStage_ keeps them on slots gm / md). */
    const sigLabels=isOut
-     ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']:['Store In-Charge','GM Sign','MD Sign'])
+     ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']
+       :(kind==='ISSUE'||String(d.entryType||'').toUpperCase()==='ISSUE')?['Store In-Charge','Stock Auditor Sign','Authority Sign']:['Store In-Charge','GM Sign','MD Sign'])
      :(title.toUpperCase().includes('SUPPLIER')?['Store In-Charge','Gateman Sign']:['Store In-Charge','GM Sign','MD 1 Sign','MD 2 Sign']);
    const sigRole=l=>'sig.'+l.toLowerCase().replace(/[^a-z0-9]+/g,'_');
    const mmPt=pt=>pt*0.3528;
@@ -20293,8 +20305,8 @@ window.addEventListener('DOMContentLoaded',()=>{
  function sarvStoreSignStage_(label){
    const u=String(label||'').toUpperCase();
    if(u==='STORE IN-CHARGE')return 'store';
-   if(u==='GM SIGN')return 'gm';
-   if(u==='MD SIGN'||u==='MD 1 SIGN')return 'md';
+   if(u==='GM SIGN'||u==='STOCK AUDITOR SIGN')return 'gm';   // Issue: Stock Auditor Check signs the gm slot
+   if(u==='MD SIGN'||u==='MD 1 SIGN'||u==='AUTHORITY SIGN')return 'md';   // Issue: Authority Sign signs the md slot
    if(u==='MD 2 SIGN')return 'md2';   // Bill Check app (Accountant Copy): the MD-2 step
    return null;
  }
@@ -30927,6 +30939,8 @@ const SARV_PDF_EL={store:[
   {id:'sig.store_in_charge',l:'Signature label — STORE IN-CHARGE',text:true,max:130},
   {id:'sig.gm_sign',l:'Signature label — GM SIGN',text:true,max:130},
   {id:'sig.md_sign',l:'Signature label — MD SIGN',text:true,max:130},
+  {id:'sig.stock_auditor_sign',l:'Signature label — STOCK AUDITOR SIGN (Issue)',text:true,max:130},
+  {id:'sig.authority_sign',l:'Signature label — AUTHORITY SIGN (Issue)',text:true,max:130},
   {id:'sig.md_1_sign',l:'Signature label — MD 1 SIGN',text:true,max:130},
   {id:'sig.md_2_sign',l:'Signature label — MD 2 SIGN',text:true,max:130},
   {id:'sig.gateman_sign',l:'Signature label — GATEMAN SIGN',text:true,max:130},
@@ -31668,8 +31682,18 @@ function srsCanSet_(){
        Check slide says what to run. */
 const SCS_FLOW_DEFAULT=[
   {code:'GM',label:'GM Bill Check',short:'GM'},{code:'EA',label:'EA Bill Check',short:'EA'},
-  {code:'MD1',label:'MD-1 Bill Check',short:'MD1'},{code:'MD2',label:'MD-2 Bill Check',short:'MD2'},
+  // MD-2 Bill Check left the pipeline (sql/BILL_CHECK_REMOVE_MD2.sql): after MD-1 a bill goes straight to Accounts.
+  {code:'MD1',label:'MD-1 Bill Check',short:'MD1'},
   {code:'AC',label:'Accounts Check',short:'AC'}];
+/* Issue bills have a pipeline of their own (sql/ISSUE_BILL_CHECK_MIGRATION.sql, scs_issue_flow_(); the server sends it as
+   issueFlow): Stock Auditor Check (signs the "Stock Auditor Sign" cell) > Authority Sign (the "Authority Sign" cell), no
+   Debit Note, no Actual Invoice No. They are checked in the Issue Bill Check app (bill-check.html#issue). Every pipeline
+   helper below takes the record's own flow through scsFlowOf_(r). */
+const SCS_ISSUE_FLOW_DEFAULT=[
+  {code:'SA',label:'Stock Auditor Check',short:'SA',sign:'gm'},{code:'AUTH',label:'Authority Sign',short:'AUTH',sign:'md'}];
+let scsIssueFlow=SCS_ISSUE_FLOW_DEFAULT;
+const scsIsIssue_=r=>!!r&&r.kind==='outward'&&String(r.type||'').toUpperCase()==='ISSUE';
+const scsFlowOf_=r=>scsIsIssue_(r)?scsIssueFlow:scsFlow;
 const SCS_LOOK={
   OKAY:{bg:'#dcfce7',fg:'#166534',bd:'#86efac'},HOLD:{bg:'#fef3c7',fg:'#92400e',bd:'#fcd34d'},
   NEXT:{bg:'#dbeafe',fg:'#1d4ed8',bd:'#93c5fd'},WAIT:{bg:'#f8fafc',fg:'#94a3b8',bd:'#e2e8f0'}};
@@ -31685,15 +31709,19 @@ const SCS_ERR={
   REMARK_REQUIRED:SRS_ERR.REMARK_REQUIRED,BAD_STATUS:'That status is not valid for a check step.',BAD_STEP:'This step is not known to the server. Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql again.',
   BAD_DATA:SRS_ERR.BAD_DATA,NOT_FOUND:SRS_ERR.NOT_FOUND,CANCELLED:'This record is cancelled; it cannot be checked.',TOO_MANY:SRS_ERR.TOO_MANY,
   DEBIT_EXISTS:'A Debit Note is already raised on this record.',WRONG_STATE:'The Debit Note is not in the state this needs (reload the Preview).',
-  PROOF_REQUIRED:'Attach at least one proof (photo / PDF) before verifying.',BAD_FILE:'Only a photo or a PDF can be attached.',
+  PROOF_REQUIRED:'Attach at least one approval document (photo / PDF) first.',BAD_FILE:'Only a photo or a PDF can be attached.',
   FILE_TOO_BIG:'That file is too big. Use a smaller photo / PDF.',TOO_MANY_FILES:'At most 6 proof files per Debit Note.',
-  DEBIT_PENDING:'A Debit Note is waiting for the Accountant. Verify it first.',DEBIT_NO_REQUIRED:'Enter the Debit No.',
+  DEBIT_PENDING:'The Party Consent of the Debit Note is not done yet. Do it first.',DEBIT_NO_REQUIRED:'Enter the Debit No.',
+  // sql/BILL_CHECK_PARTY_CONSENT.sql
+  CONSENT_NAME_REQUIRED:'Enter the name of the person who gave the consent.',MOBILE_INVALID:'Enter a valid 10-digit mobile number.',
+  INVOICE_REQUIRED:'Enter the Actual Invoice No. to pass the Accounts Check.',
+  NO_DEBIT:'An Issue bill has no Debit Note.',
   AMOUNT_REQUIRED:'Enter the Debit amount (more than 0).',BAD_STATUS:'This choice is not possible on this step.'
 };
 const scsOf_=r=>scsMap[srsKey_(r)]||null;
 const scsStep_=(r,code)=>((scsOf_(r)||{}).steps||{})[code]||null;
 const scsDebit_=r=>{const d=(scsOf_(r)||{}).debit;return d&&d.status!=='WITHDRAWN'?d:null;};   // a withdrawn one is history only
-const scsLabelOf_=code=>code==='DEBIT'?'Debit Note':((scsFlow.find(s=>s.code===code)||{}).label||code);
+const scsLabelOf_=code=>code==='DEBIT'?'Debit Note':((scsFlow.concat(scsIssueFlow).find(s=>s.code===code)||{}).label||code);
 function scsMissingErr_(e){
   const m=String((e&&e.message)||e||'');
   return /scs_|store_check|store_debit/i.test(m)&&/does not exist|could not find|schema cache|not found/i.test(m);
@@ -31710,17 +31738,17 @@ async function scsRpc_(fn,args){
 }
 /* First step that is not OKAY = where the record is now. */
 function scsStage_(r){
-  for(const s of scsFlow){const x=scsStep_(r,s.code);if(!x||x.status!=='OKAY')return {step:s,hold:!!x&&x.status==='HOLD'};}
+  for(const s of scsFlowOf_(r)){const x=scsStep_(r,s.code);if(!x||x.status!=='OKAY')return {step:s,hold:!!x&&x.status==='HOLD'};}
   return {step:null,hold:false};
 }
 function scsPrevOk_(r,code){
-  for(const s of scsFlow){if(s.code===code)return {ok:true};const x=scsStep_(r,s.code);if(!x||x.status!=='OKAY')return {ok:false,label:s.label};}
+  for(const s of scsFlowOf_(r)){if(s.code===code)return {ok:true};const x=scsStep_(r,s.code);if(!x||x.status!=='OKAY')return {ok:false,label:s.label};}
   return {ok:true};
 }
 function scsCanRight_(code,store){
   if(scsMissing)return false;
   if(scsCan&&scsCan[code]&&typeof scsCan[code][store]==='boolean')return scsCan[code][store];
-  const key=code==='DEBIT_RAISE'||code==='DEBIT_VERIFY'?'RPT_'+code:'RPT_CHK_'+code;   // page rule by role only; the server also narrows MD-1 / MD-2 by Emp Code
+  const key=code==='DEBIT_RAISE'||code==='DEBIT_VERIFY'?'RPT_'+code:scsIssueFlow.some(s=>s.code===code)?'ISS_CHK_'+code:'RPT_CHK_'+code;   // page rule by role only; the server also narrows MD-1 / MD-2 by Emp Code
   return typeof sarvStoreTabVisible==='function'?sarvStoreTabVisible(store,key):sarvTabVisible(key);
 }
 /* One bucket per record, for the filter and the counts. */
@@ -31754,7 +31782,7 @@ function scsCountsText_(list){
 function scsCellHtml_(r,big){
   if(scsMissing)return srsChipHtml_(r,big);
   const o=scsOf_(r),stage=scsStage_(r),fs=big?'11px':'9px',pd=big?'3px 8px':'1px 4px';
-  const boxes=scsFlow.map(s=>{
+  const boxes=scsFlowOf_(r).map(s=>{
     const x=scsStep_(r,s.code);
     const k=x?x.status:(stage.step&&stage.step.code===s.code?'NEXT':'WAIT'),c=SCS_LOOK[k]||SCS_LOOK.WAIT;
     const tip=s.label+': '+(x?x.status+(x.remarks?' "'+x.remarks+'"':'')+(x.by?' · '+x.by:'')+(x.at?' · '+pStamp(x.at):''):(k==='NEXT'?'waiting here':'not reached'));
@@ -31775,6 +31803,7 @@ async function scsLoad_(list){
     const d=await scsRpc_('scs_get',{p_keys:keys});
     scsMissing=false;
     if(Array.isArray(d.flow)&&d.flow.length)scsFlow=d.flow;
+    if(Array.isArray(d.issueFlow)&&d.issueFlow.length)scsIssueFlow=d.issueFlow;   // ISSUE_BILL_CHECK_MIGRATION.sql
     const got=new Set();
     (d.rows||[]).forEach(x=>{scsMap[x.key]=x;got.add(x.key);});
     keys.forEach(k=>{if(!got.has(k))delete scsMap[k];});
@@ -31791,7 +31820,7 @@ function scsFillFilter_(){
   const sel=byId('searchStatusFilter');if(!sel)return;
   const was=sel.value||'ALL';
   sel.innerHTML='<option value="ALL">All Status</option><option value="MINE">Waiting for me</option><option value="NEW">Not started</option>'
-    +scsFlow.map(s=>'<option value="AT_'+escText(s.code)+'">At '+escText(s.label)+'</option>').join('')
+    +scsFlow.concat(scsIssueFlow).map(s=>'<option value="AT_'+escText(s.code)+'">At '+escText(s.label)+'</option>').join('')
     +'<option value="HOLD">On hold</option><option value="DONE">All checks done</option>'
     +'<option value="DEBIT_RAISED">Debit: to verify</option><option value="DEBIT_VERIFIED">Debit: verified</option>';
   sel.value=[...sel.options].some(o=>o.value===was)?was:'ALL';
@@ -32583,7 +32612,8 @@ function srvPaintStatus_(){
     SRV.stepSel=mineNow?stage.step.code:'';
   }
   // The pipeline: everybody sees every step, a person acts only on his / her own.
-  html+='<div class="pl">'+scsFlow.map((s,k)=>{
+  const fl=scsFlowOf_(r),iss=scsIsIssue_(r);
+  html+='<div class="pl">'+fl.map((s,k)=>{
     const x=scsStep_(r,s.code),can=scsCanRight_(s.code,store)&&!cancelled,pv=scsPrevOk_(r,s.code);
     const kind=x?x.status:(stage.step&&stage.step.code===s.code?'NEXT':'WAIT'),c=SCS_LOOK[kind];
     const tag=x?x.status:(kind==='NEXT'?'WAITING HERE':'NOT REACHED');
@@ -32598,6 +32628,8 @@ function srvPaintStatus_(){
             return '<button type="button" class="sb" data-scs-pick="'+v+'"'+(v==='OKAY'&&!allSeen?' disabled title="Look at every page / photo first"':'')
               +' style="'+(on?'border-color:'+l.fg+';background:'+l.bg+';':'')+'"><b style="color:'+l.fg+'">'+v+'</b><small>'+(v==='OKAY'?'Bill and papers match':'Something to sort out first')+'</small></button>';}).join('')+'</div>'
           +'<textarea data-v="rm" data-keep="rm" placeholder="Remarks'+(pick==='HOLD'?' (needed for HOLD)':' (optional for OKAY)')+'"></textarea>'
+          // Accounts Check (the last step): OKAY needs the Actual Invoice No. (sql/BILL_CHECK_PARTY_CONSENT.sql)
+          +(pick==='OKAY'&&!iss&&k===fl.length-1?'<input type="text" data-v="inv" data-keep="scsInv" maxlength="60" placeholder="Actual Invoice No. (needed)'+(r.invoice?' · entered: '+escText(r.invoice):'')+'">':'')
           +'<button type="button" class="go" data-v="save">Confirm</button></div>';
       }
     }
@@ -32607,7 +32639,7 @@ function srvPaintStatus_(){
       +act+'</div>'
       +(can&&!sel&&pv.ok?'<button type="button" class="sel" data-scs-sel="'+escText(s.code)+'">'+(x?'Change':'Check')+'</button>':'')+'</div>';
   }).join('')+'</div>';
-  html+=srvDebitHtml_(r,store,cancelled);
+  if(!iss)html+=srvDebitHtml_(r,store,cancelled);   // an Issue has no Debit Note
   if(cancelled)html+='<div class="note">This record is cancelled; it cannot be checked.</div>';
   html+='<div class="hist"><h4>History</h4>'+(SRV.hist==null?'<div><small>Loading…</small></div>'
     :SRV.histErr?'<div><small>'+escText(SRV.histErr)+'</small></div>'
@@ -32646,17 +32678,21 @@ function srvDebitHtml_(r,store,cancelled){
     +'<div style="margin-top:6px"><b>“'+escText(d.reason||'')+'”</b>'+(d.amount!=null?' · Rs '+escText(String(d.amount)):'')+'<br><small style="color:#64748b">Raised by '
     +escText((d.raisedBy||'')+(d.raisedEmp?' ('+d.raisedEmp+')':''))+(d.raisedAt?' · '+escText(pStamp(d.raisedAt)):'')+'</small></div>'+proofs();
   if(d.status==='VERIFIED'){
-    h+='<div style="margin-top:6px"><small style="color:#166534">Verified by '+escText((d.verifiedBy||'')+(d.verifiedEmp?' ('+d.verifiedEmp+')':''))+(d.verifiedAt?' · '+escText(pStamp(d.verifiedAt)):'')
+    h+=(d.consentName?'<div style="margin-top:6px"><b>Party Consent:</b> '+escText(d.consentName)+(d.consentMobile?' · '+escText(d.consentMobile):'')+'</div>':'')
+      +'<div style="margin-top:6px"><small style="color:#166534">Verified by '+escText((d.verifiedBy||'')+(d.verifiedEmp?' ('+d.verifiedEmp+')':''))+(d.verifiedAt?' · '+escText(pStamp(d.verifiedAt)):'')
       +(d.verifyRemarks?' · “'+escText(d.verifyRemarks)+'”':'')+'</small></div>';
   }else{
-    if(canV)h+='<div style="margin-top:8px"><b>Verify (Accountant):</b> attach the proof, then verify.</div>'
-      +'<input type="file" data-v="proof" accept="image/*,application/pdf" multiple style="margin-top:6px;font-size:12px">'
+    if(canV)h+='<div style="margin-top:8px"><b>Party Consent (Accountant):</b> who of the party agreed, the approval document, then Done.</div>'
+      +'<input type="text" data-keep="dbCn" maxlength="120" placeholder="Consent person name (needed)">'
+      +'<input type="tel" data-keep="dbMob" maxlength="15" placeholder="Contact mobile no., 10 digits (needed)">'
+      +'<div style="margin-top:6px;font-size:12px">Approval document (photo / PDF):</div>'
+      +'<input type="file" data-v="proof" data-up="erp-debit-proof" accept="image/*,application/pdf" multiple style="margin-top:4px;font-size:12px">'
       +(SRV.proofsBusy?'<div style="color:#64748b">Uploading…</div>':'')
       +'<input type="text" data-keep="dbNo" maxlength="60" placeholder="Debit No. (needed)">'
       +'<input type="number" data-keep="dbVAmt" min="0" step="0.01" placeholder="Amount, Rs (needed)">'
       +'<input type="text" data-keep="dbVer" maxlength="500" placeholder="Remarks (optional)">'
-      +'<button type="button" class="sb2" data-scs-db="verify"'+(d.proofs?'':' disabled title="Attach at least one proof"')+'>Verify Debit Note</button>';
-    else h+='<div style="margin-top:6px;color:#64748b">The Accountant attaches the proof and verifies it.</div>';
+      +'<button type="button" class="sb2" data-scs-db="verify"'+(d.proofs?'':' disabled title="Attach at least one approval document"')+'>Done: Party Consent</button>';
+    else h+='<div style="margin-top:6px;color:#64748b">The Accountant fills the Party Consent (consent person, mobile, approval document, Debit No., amount).</div>';
     if(canR)h+=' <button type="button" class="sb2 alt" data-scs-db="withdraw">Withdraw</button>';
   }
   return h+'</div>';
@@ -32690,15 +32726,18 @@ async function srvScsAct_(fn,args,doneMsg){
   }
 }
 async function srvSaveStatus_(){
-  const r=SRV.row,step=scsFlow.find(s=>s.code===SRV.stepSel),st=SRV.pick;if(!r||!step||!st)return;
+  const r=SRV.row,fl=scsFlowOf_(r),step=fl.find(s=>s.code===SRV.stepSel),st=SRV.pick;if(!r||!step||!st)return;
   const box=byId('srvView')?.querySelector('[data-v="stbox"]');
   const rm=(box?.querySelector('[data-v="rm"]')?.value||'').trim(),sc=srvSeenCount_();
   if(st==='OKAY'&&sc.n<sc.total)return showToast('Look at every page and photo first ('+sc.n+' of '+sc.total+' seen).','warn');
   if(st==='HOLD'&&rm.length<3)return showToast(SRS_ERR.REMARK_REQUIRED,'warn');
+  const isLast=!scsIsIssue_(r)&&fl[fl.length-1]&&fl[fl.length-1].code===step.code;   // Accounts Check; an Issue needs no invoice no.
+  const inv=(box?.querySelector('[data-v="inv"]')?.value||'').trim();
+  if(st==='OKAY'&&isLast&&!inv)return showToast(SCS_ERR.INVOICE_REQUIRED,'warn');
   const cur=scsStep_(r,step.code);
   if(!confirm(step.label+': mark '+r.type+' '+(r.no||'')+' as '+st+'?'+(cur?'\n(Now: '+cur.status+')':'')+(rm?'\n\nRemark: '+rm:'')))return;
   const go=box?.querySelector('[data-v="save"]');if(go){go.disabled=true;go.textContent='Saving…';}
-  const ok=await srvScsAct_('scs_check_save',{p_step:step.code,p_status:st,p_remarks:rm,p_seen:sc.n,p_total:sc.total},step.label+' <b>'+escText(st)+'</b>.');
+  const ok=await srvScsAct_('scs_check_save',Object.assign({p_step:step.code,p_status:st,p_remarks:rm,p_seen:sc.n,p_total:sc.total},st==='OKAY'&&isLast?{p_invoice_no:inv}:{}),step.label+' <b>'+escText(st)+'</b>.');
   if(ok){SRV.pick='';SRV.stepSel=null;SRV.dbOpen=false;srvPaintStatus_();}
 }
 /* ── Debit Note actions ── */
@@ -32720,11 +32759,15 @@ async function srvDebitAct_(a){
     return void await srvScsAct_('scs_debit_withdraw',{p_reason:why},'Debit Note <b>withdrawn</b>.');
   }
   if(a==='verify'){
-    const dno=val('dbNo'),vamt=Number(val('dbVAmt'));
+    // Party Consent (sql/BILL_CHECK_PARTY_CONSENT.sql): consent person + 10-digit mobile + approval doc, Debit No., amount
+    const dno=val('dbNo'),vamt=Number(val('dbVAmt')),cn=val('dbCn');
+    let mob=val('dbMob').replace(/\D/g,'');if(mob.length===12&&mob.startsWith('91'))mob=mob.slice(2);if(mob.length===11&&mob.startsWith('0'))mob=mob.slice(1);
+    if(cn.length<2)return showToast(SCS_ERR.CONSENT_NAME_REQUIRED,'warn');
+    if(!/^[6-9]\d{9}$/.test(mob))return showToast(SCS_ERR.MOBILE_INVALID,'warn');
     if(!dno)return showToast(SCS_ERR.DEBIT_NO_REQUIRED,'warn');
     if(!(vamt>0))return showToast(SCS_ERR.AMOUNT_REQUIRED,'warn');
-    if(!confirm('Verify the Debit Note on '+r.type+' '+(r.no||'')+'?\nDebit No. '+dno+', Rs '+vamt+', with the attached proof.'))return;
-    return void await srvScsAct_('scs_debit_verify',{p_remarks:val('dbVer'),p_debit_no:dno,p_amount:vamt},'Debit Note <b>verified</b>.');
+    if(!confirm('Party Consent on '+r.type+' '+(r.no||'')+'?\n'+cn+' · '+mob+'\nDebit No. '+dno+', Rs '+vamt+', with the attached approval document.'))return;
+    return void await srvScsAct_('scs_debit_verify',{p_remarks:val('dbVer'),p_debit_no:dno,p_amount:vamt,p_consent_name:cn,p_consent_mobile:mob},'Party Consent <b>done</b>.');
   }
 }
 /* Proofs are fetched (with their data) only when the Debit Note has some. */
@@ -32792,4 +32835,147 @@ function srvProofView_(id){
     for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
     window.open(URL.createObjectURL(new Blob([u],{type:p.mime})),'_blank','noopener');
   }catch(e){showToast('Proof could not be opened.','error');}
+}
+
+/* ══ UPLOAD CONTROL (Admin Panel › Uploads) ══════════════════════════════
+   Every file / photo upload box of the whole project (sql/UPLOAD_POLICY_MIGRATION.sql). upload-guard.js, loaded
+   by every page, reports each box it sees, so a box added in a later update appears here by itself the first time
+   anyone opens that screen, and it applies these rules whenever a box is used. Per row:
+     Upload from Files / device storage   on / off
+     Camera Upload                        on / off, and with the camera on:
+       Live Photo Required   the in-page live camera only (stamped LIVE PHOTO · name · date time, no gallery)
+       Normal Camera Photo   the phone's own camera app
+   At least one of the two stays on (the server refuses NEED_ONE); a box that takes no pictures (CSV / JSON / PSD /
+   PDF only) has files only. Only changed rows are sent, with the Admin PIN, like every Admin Panel save.
+   "Hide" takes an old box (one that no longer exists in the code) out of the list and out of the rules. */
+const UPC={rows:null,draft:{},q:'',page:'',show:'ACTIVE',err:'',busy:false};
+const UPC_PAGE={'index.html':'ERP','mobile.html':'Mobile approvals','my-requests.html':'Track My Store Request','task_manager.html':'Task Manager','complaint.html':'Complaint',
+  'gate_2.html':'Gate-2','packing.html':'Packing','unloader.html':'Unloader Supervisor','issuer.html':'Issue Supervisor','bill-check.html':'Bill Check','sop.html':'SOP',
+  'order-form.html':'Order Form','notepad.html':'My Notepad','launcher.html':'Launcher','catalog_maker.html':'Catalog Maker','price_list_generator.html':'Price List',
+  'hr-payroll.html':'HR & Payroll','printing-lot.html':'Printing Lot Card','lot-card-manager.html':'Lot Card Manager','google sheet links.html':'Sheet Links'};
+const sarvUpPageName_=p=>UPC_PAGE[p]||String(p||'').replace(/\.html$/,'');
+async function sarvUpLoad_(){
+  if(!byId('ap_upPane'))return;
+  UPC.busy=true;sarvUpRender_();
+  try{
+    const r=await SB.rpc('up_admin_list',{p_token:srsToken_()});
+    if(r.error)throw r.error;
+    if(r.data&&r.data.success===false)throw new Error(r.data.error==='NOT_ALLOWED'?'Only an Admin can see this list.':String(r.data.error||'Error'));
+    UPC.rows=(r.data&&r.data.rows)||[];UPC.err='';
+  }catch(e){
+    const m=String((e&&e.message)||e);
+    UPC.err=/up_admin_list|could not find|schema cache|does not exist/i.test(m)?'Not set up yet. Admin: run sql/UPLOAD_POLICY_MIGRATION.sql in the Supabase SQL Editor.':m;
+    UPC.rows=UPC.rows||[];
+  }finally{UPC.busy=false;}
+  sarvUpRender_();
+}
+const sarvUpVal_=(r,k)=>Object.prototype.hasOwnProperty.call(UPC.draft[r.key]||{},k)?UPC.draft[r.key][k]:r[k];
+function sarvUpSet_(key,k,v){
+  const r=(UPC.rows||[]).find(x=>x.key===key);if(!r)return;
+  const d=UPC.draft[key]=UPC.draft[key]||{};d[k]=v;
+  Object.keys(d).forEach(x=>{if(d[x]===r[x])delete d[x];});      // back to the saved value = no change
+  if(!Object.keys(d).length)delete UPC.draft[key];
+  sarvUpRender_();
+}
+function sarvUpCss_(){
+  if(byId('apUpCss'))return;
+  const s=document.createElement('style');s.id='apUpCss';
+  s.textContent='.up-sw{position:relative;width:46px;height:28px;border-radius:14px;border:0;background:#d1d5db;cursor:pointer;transition:background .2s;vertical-align:middle}'
+    +'.up-sw::after{content:"";position:absolute;top:2px;left:2px;width:24px;height:24px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:transform .25s cubic-bezier(.32,.72,0,1)}'
+    +'.up-sw.on{background:#34c759}.up-sw.on::after{transform:translateX(18px)}.up-sw[disabled]{opacity:.35;cursor:not-allowed}'
+    +'.up-mode{display:inline-flex;background:#eef0f3;border-radius:8px;padding:2px;gap:2px}'
+    +'.up-mode button{border:0;background:none;border-radius:6px;padding:5px 9px;font-size:11px;font-weight:700;color:#475569;cursor:pointer;white-space:nowrap}'
+    +'.up-mode button.on{background:#fff;color:#0f172a;box-shadow:0 1px 3px rgba(0,0,0,.15)}.up-mode button.on.live{color:#b45309}'
+    +'.up-tbl td{vertical-align:middle}.up-tbl tr.chg td{background:#fffbeb}.up-tbl tr.bad td{background:#fef2f2}.up-tbl tr.arch td{opacity:.55}'
+    +'.up-k{font:10.5px ui-monospace,Menlo,Consolas,monospace;color:#94a3b8;word-break:break-all}.up-sub{font-size:10.5px;color:#64748b}'
+    +'.up-tag{display:inline-block;font-size:9.5px;font-weight:800;border-radius:4px;padding:1px 5px;margin-left:4px;vertical-align:1px}'
+    +'.up-tag.new{background:#dbeafe;color:#1d4ed8}.up-tag.set{background:#dcfce7;color:#166534}';
+  document.head.appendChild(s);
+}
+function sarvUpRender_(){
+  const box=byId('ap_upPane');if(!box)return;
+  sarvUpCss_();
+  if(!byId('ap_upTable')){
+    box.innerHTML='<div class="ap-bar">'
+      +'<input type="text" class="form-control" id="ap_upQ" placeholder="Search upload point, screen, key..." style="flex:1;min-width:160px;height:32px;font-size:11px;">'
+      +'<select class="form-control" id="ap_upPage" style="width:170px;height:32px;font-size:11px;"></select>'
+      +'<select class="form-control" id="ap_upShow" style="width:130px;height:32px;font-size:11px;"><option value="ACTIVE">In use</option><option value="CHANGED">Changed, not saved</option><option value="NEW">Never set by Admin</option><option value="HIDDEN">Hidden</option><option value="ALL">All</option></select>'
+      +'<button type="button" class="btn btn-neutral" id="ap_upReload" style="height:32px;font-size:11px;">Refresh</button>'
+      +'<button type="button" class="btn btn-success" id="ap_upSave" style="height:32px;font-size:11px;">Save</button></div>'
+      +'<div id="ap_upInfo" class="ap-hint" style="margin:6px 2px 8px;display:block"></div>'
+      +'<div class="table-container"><table class="ap-table up-tbl"><thead><tr><th>#</th><th>Screen</th><th>Upload point</th>'
+      +'<th style="text-align:center;">Upload from Files /<br>device storage</th><th style="text-align:center;">Camera<br>Upload</th><th style="text-align:center;">Camera type</th><th style="text-align:center;">Hide</th></tr></thead>'
+      +'<tbody id="ap_upTable"></tbody></table></div>'
+      +'<div class="ap-note">New upload boxes appear here by themselves the first time anyone opens that screen after an update. A new box starts with what its screen offers, so nothing changes until you change it here. '
+      +'<b>Live Photo Required</b> opens the in-app camera only (the photo is stamped with the name and time, a gallery photo is not possible); <b>Normal Camera Photo</b> opens the phone\'s camera. '
+      +'With both Files and Camera on, the user is asked which one. Changes reach every phone within 10 minutes (at once on a page opened after the save).</div>';
+    box.addEventListener('input',e=>{if(e.target.id==='ap_upQ'){UPC.q=e.target.value;sarvUpRender_();}});
+    box.addEventListener('change',e=>{if(e.target.id==='ap_upPage'){UPC.page=e.target.value;sarvUpRender_();}if(e.target.id==='ap_upShow'){UPC.show=e.target.value;sarvUpRender_();}});
+    box.addEventListener('click',e=>{
+      const t=e.target;
+      if(t.closest('#ap_upReload')){if(Object.keys(UPC.draft).length&&!confirm('Drop the changes that are not saved?'))return;UPC.draft={};return sarvUpLoad_();}
+      if(t.closest('#ap_upSave'))return sarvUpSave_();
+      const sw=t.closest('[data-upsw]');if(sw&&!sw.disabled){const r=UPC.rows.find(x=>x.key===sw.dataset.key);if(r)sarvUpSet_(r.key,sw.dataset.upsw,!sarvUpVal_(r,sw.dataset.upsw));return;}
+      const md=t.closest('[data-upmode]');if(md){sarvUpSet_(md.dataset.key,'mode',md.dataset.upmode);return;}
+    });
+  }
+  const rows=UPC.rows||[],tb=byId('ap_upTable');
+  const pages=[...new Set(rows.map(r=>r.page))].sort((a,b)=>sarvUpPageName_(a).localeCompare(sarvUpPageName_(b)));
+  const ps=byId('ap_upPage');
+  ps.innerHTML='<option value="">All screens ('+rows.length+')</option>'+pages.map(p=>'<option value="'+escText(p)+'"'+(UPC.page===p?' selected':'')+'>'+escText(sarvUpPageName_(p))+' ('+rows.filter(r=>r.page===p).length+')</option>').join('');
+  byId('ap_upShow').value=UPC.show;
+  const nChg=Object.keys(UPC.draft).length;
+  const sv=byId('ap_upSave');sv.textContent=nChg?'Save '+nChg+' change'+(nChg>1?'s':''):'Save';sv.disabled=!nChg;
+  if(UPC.busy&&!UPC.rows){tb.innerHTML='<tr><td colspan="7" class="ap-empty">Loading…</td></tr>';return;}
+  if(UPC.err&&!rows.length){tb.innerHTML='<tr><td colspan="7" class="ap-empty">'+escText(UPC.err)+'</td></tr>';byId('ap_upInfo').textContent='';return;}
+  const list=rows.filter(r=>{
+    const arch=sarvUpVal_(r,'archived');
+    if(UPC.show==='ACTIVE'&&arch)return false;
+    if(UPC.show==='HIDDEN'&&!arch)return false;
+    if(UPC.show==='CHANGED'&&!UPC.draft[r.key])return false;
+    if(UPC.show==='NEW'&&(r.customized||arch))return false;
+    if(UPC.page&&r.page!==UPC.page)return false;
+    return !UPC.q||sarvSearchMatch([r.label,r.key,r.page,sarvUpPageName_(r.page),r.accept],UPC.q);
+  });
+  const nNew=rows.filter(r=>!r.customized&&!r.archived).length;
+  byId('ap_upInfo').textContent=list.length+' of '+rows.length+' upload points'+(nNew?' · '+nNew+' never set by the Admin (they work as their screen offers)':'')+(UPC.err?' · '+UPC.err:'');
+  tb.innerHTML=list.length?list.map((r,i)=>{
+    const f=!!sarvUpVal_(r,'file'),c=!!sarvUpVal_(r,'camera')&&r.image,m=sarvUpVal_(r,'mode')||'NORMAL',arch=!!sarvUpVal_(r,'archived');
+    const bad=!arch&&!f&&!c,chg=!!UPC.draft[r.key];
+    const seen=r.lastSeen?'Last used '+pStamp(r.lastSeen)+(r.seenBy?' by '+r.seenBy:''):'Not seen in use yet';
+    const sw=(k,on,dis,tip)=>'<button type="button" class="up-sw'+(on?' on':'')+'" role="switch" aria-checked="'+on+'" data-upsw="'+k+'" data-key="'+escText(r.key)+'"'+(dis?' disabled title="'+escText(tip)+'"':'')+'></button>';
+    return '<tr class="'+(bad?'bad':chg?'chg':'')+(arch?' arch':'')+'"><td>'+(i+1)+'</td><td><b>'+escText(sarvUpPageName_(r.page))+'</b></td>'
+      +'<td><div><b>'+escText(r.label||r.key)+'</b>'+(r.customized?'<span class="up-tag set">SET</span>':'<span class="up-tag new">DEFAULT</span>')+'</div>'
+      +'<div class="up-k">'+escText(r.key)+'</div><div class="up-sub">'+escText((r.accept?'Accepts '+r.accept+' · ':'')+(r.multiple?'many files · ':'')+seen)
+      +(r.updatedBy?' · set by '+escText(r.updatedBy)+(r.updatedAt?' '+escText(pStamp(r.updatedAt)):''):'')+'</div>'
+      +(bad?'<div class="up-sub" style="color:#b91c1c;font-weight:700">Keep Files or Camera on, or users cannot attach anything here.</div>':'')+'</td>'
+      +'<td style="text-align:center;">'+sw('file',f)+'</td>'
+      +'<td style="text-align:center;">'+(r.image?sw('camera',c):sw('camera',false,true,'This box takes no pictures (files only)')+'<div class="up-sub">Files only</div>')+'</td>'
+      +'<td style="text-align:center;">'+(c?'<span class="up-mode"><button type="button" class="'+(m==='LIVE'?'on live':'')+'" data-upmode="LIVE" data-key="'+escText(r.key)+'">Live Photo Required</button>'
+        +'<button type="button" class="'+(m!=='LIVE'?'on':'')+'" data-upmode="NORMAL" data-key="'+escText(r.key)+'">Normal Camera Photo</button></span>':'<span class="up-sub">—</span>')+'</td>'
+      +'<td style="text-align:center;">'+sw('archived',arch)+'</td></tr>';
+  }).join(''):'<tr><td colspan="7" class="ap-empty">'+(UPC.busy?'Loading…':'Nothing matches.')+'</td></tr>';
+}
+async function sarvUpSave_(){
+  const keys=Object.keys(UPC.draft);if(!keys.length)return;
+  const rows=keys.map(k=>{const r=UPC.rows.find(x=>x.key===k);return {key:k,file:!!sarvUpVal_(r,'file'),camera:!!sarvUpVal_(r,'camera')&&r.image,mode:sarvUpVal_(r,'mode')||'NORMAL',archived:!!sarvUpVal_(r,'archived')};});
+  const bad=rows.filter(x=>!x.archived&&!x.file&&!x.camera);
+  if(bad.length)return showToast('Keep Files or Camera on for: '+bad.map(x=>escText((UPC.rows.find(r=>r.key===x.key)||{}).label||x.key)).join(', '),'warn');
+  const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To save '+rows.length+' upload rule'+(rows.length>1?'s':''),
+    recordInfo:'Applies on every screen and phone (within 10 minutes)',label:'Admin PIN',confirmText:'Save'});
+  if(pin==null)return;
+  if(!pin.trim())return showToast('The Admin PIN cannot be empty','warn');
+  try{
+    const r=await SB.rpc('up_policy_save',{p_token:srsToken_(),p_admin_pin:pin.trim(),p_rows:rows});
+    if(r.error)throw r.error;
+    const d=r.data||{};
+    if(d.success===false){
+      const E={PIN_INVALID:'Incorrect Admin PIN',NOT_ALLOWED:'Only an Admin can change these rules',NEED_ONE:'Keep Files or Camera on for: '+(d.detail||''),NOT_FOUND:'Not found: '+(d.detail||'')+' (refresh the list)'};
+      return showToast(escText(E[d.error]||d.error||'Not saved'),'error');
+    }
+    showToast(escText((d.saved||rows.length)+' upload rule'+(rows.length>1?'s':'')+' saved'));
+    UPC.draft={};
+    if(window.SARV_UPLOAD&&window.SARV_UPLOAD.reload)window.SARV_UPLOAD.reload();
+    sarvUpLoad_();
+  }catch(e){showToast('Not saved: '+escText(e.message||e),'error');}
 }

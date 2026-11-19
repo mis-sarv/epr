@@ -10,7 +10,7 @@
     <script src="date-dmy.js"></script>
     <script src="caps-input.js"></script><script src="hover-tip.js"></script>
     <script src="sso-preboot.js"></script>
-    <script src="sso-gate.js"></script>
+    <script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Price List Generator</title>
     <!-- Tailwind CSS -->
@@ -693,7 +693,7 @@
                                 <div className="space-y-6">
                                     <div className="bg-white p-4 rounded border">
                                         <h3 className="font-semibold mb-3 border-b pb-2">Company Logo (Floating)</h3>
-                                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setLogoImg, 600, true)} className="text-xs w-full mb-3" />
+                                        <input type="file" data-up="pl-logo" accept="image/*" onChange={(e) => handleImageUpload(e, setLogoImg, 600, true)} className="text-xs w-full mb-3" />
                                         {logoImg && (
                                             <div className="space-y-3 bg-gray-50 p-3 rounded">
                                                 <div><label className="flex justify-between text-xs text-gray-500"><span>Size (Scale)</span> <span>{logoSettings.scale}%</span></label><input type="range" min="10" max="300" value={logoSettings.scale} onChange={e => setLogoSettings({...logoSettings, scale: e.target.value})} className="w-full" /></div>
@@ -705,7 +705,7 @@
                                     </div>
                                     <div className="bg-white p-4 rounded border">
                                         <h3 className="font-semibold mb-3 border-b pb-2">Page Background Image</h3>
-                                        <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, setBgImg, 1600, false)} className="text-xs w-full mb-3" />
+                                        <input type="file" data-up="pl-bg" accept="image/*" onChange={(e) => handleImageUpload(e, setBgImg, 1600, false)} className="text-xs w-full mb-3" />
                                         {bgImg && (
                                             <div className="space-y-3 bg-gray-50 p-3 rounded">
                                                 <div><label className="flex justify-between text-xs text-gray-500"><span>Opacity</span> <span>{bgSettings.opacity}%</span></label><input type="range" min="0" max="100" value={bgSettings.opacity} onChange={e => setBgSettings({...bgSettings, opacity: e.target.value})} className="w-full" /></div>

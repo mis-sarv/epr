@@ -485,7 +485,7 @@
                         <label for="inwPhotoCameraInput" id="inwCameraBtnLabel" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; border:1.5px dashed #93c5fd; color:#1d4ed8; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Take Photo
                         </label>
-                        <input type="file" id="inwPhotoCameraInput" accept="image/*" capture="environment" style="display:none;">
+                        <input type="file" id="inwPhotoCameraInput" data-up="inwPhoto" accept="image/*" capture="environment" style="display:none;">
 
                         <button type="button" id="inwWebcamBtnLabel" onclick="openWebcamModal('INWARD')" style="display:none; align-items:center; gap:6px; background:#fdf4ff; border:1.5px dashed #d8b4fe; color:#7e22ce; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Use Webcam
@@ -494,7 +494,7 @@
                         <label for="inwPhotoGalleryInput" style="display:inline-flex; align-items:center; gap:6px; background:#f0fdf4; border:1.5px dashed #86efac; color:#166534; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Choose Files / Gallery
                         </label>
-                        <input type="file" id="inwPhotoGalleryInput" accept="image/*" multiple style="display:none;">
+                        <input type="file" id="inwPhotoGalleryInput" data-up="inwPhoto" accept="image/*" multiple style="display:none;">
 
                         <span id="inwPhotoCount" style="font-size:11px; color:#64748b; font-weight:600;"></span>
                     </div>
@@ -685,7 +685,7 @@
                         <label for="outPhotoCameraInput" id="outCameraBtnLabel" style="display:inline-flex; align-items:center; gap:6px; background:#eff6ff; border:1.5px dashed #93c5fd; color:#1d4ed8; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Take Photo
                         </label>
-                        <input type="file" id="outPhotoCameraInput" accept="image/*" capture="environment" style="display:none;">
+                        <input type="file" id="outPhotoCameraInput" data-up="outPhoto" accept="image/*" capture="environment" style="display:none;">
 
                         <button type="button" id="outWebcamBtnLabel" onclick="openWebcamModal('OUTWARD')" style="display:none; align-items:center; gap:6px; background:#fdf4ff; border:1.5px dashed #d8b4fe; color:#7e22ce; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Use Webcam
@@ -694,7 +694,7 @@
                         <label for="outPhotoGalleryInput" style="display:inline-flex; align-items:center; gap:6px; background:#f0fdf4; border:1.5px dashed #86efac; color:#166534; border-radius:8px; padding:8px 16px; font-size:12px; font-weight:700; cursor:pointer;">
                             Choose Files / Gallery
                         </label>
-                        <input type="file" id="outPhotoGalleryInput" accept="image/*" multiple style="display:none;">
+                        <input type="file" id="outPhotoGalleryInput" data-up="outPhoto" accept="image/*" multiple style="display:none;">
 
                         <span id="outPhotoCount" style="font-size:11px; color:#64748b; font-weight:600;"></span>
                     </div>
@@ -1713,6 +1713,7 @@
                                 <button type="button" class="ap-tab" data-ap="perms">Feature Access</button>
                                 <button type="button" class="ap-tab" data-ap="tabs">Tab Visibility</button>
                                 <button type="button" class="ap-tab" data-ap="pdf">PDF Settings</button>
+                                <button type="button" class="ap-tab" data-ap="uploads">Uploads</button>
                                 <button type="button" class="ap-fs-btn" id="ap_fullScreenBtn" title="Open the Admin Panel full screen (Esc to exit)">Full Screen</button>
                             </div>
                         </div>
@@ -1771,6 +1772,12 @@
                              with a live preview (SARV_PDF_DEFS / sarvRenderPdfSettings_ in store-core.js). -->
                         <div class="ap-pane" data-ap-pane="pdf" style="display:none;">
                             <div id="ap_pdfPane"><div class="ap-empty">Loading…</div></div>
+                        </div>
+
+                        <!-- Uploads: every file / photo upload box of the whole project, with Files / Camera switches and the
+                             camera type (UPLOAD CONTROL section of store-core.js, upload-guard.js, UPLOAD_POLICY_MIGRATION.sql). -->
+                        <div class="ap-pane" data-ap-pane="uploads" style="display:none;">
+                            <div id="ap_upPane"><div class="ap-empty">Loading…</div></div>
                         </div>
                     </div>
 
@@ -4231,6 +4238,8 @@
 <script src="erp-shell.js"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
+<!-- Admin rules for every upload box (Admin Panel › Uploads). Independent of the scripts above, so it can come last. -->
+<script src="upload-guard.js?v=20261119a"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
 <script src="cursor-glow.js"></script>
 <!-- OTA update readiness: confirms the running bundle to capacitor-updater so

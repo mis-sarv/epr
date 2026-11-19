@@ -9,7 +9,7 @@
 <title>Sarv India — Complaint System</title>
 <!-- Prevents the login screen from flashing; must run first. -->
 <script src="sso-preboot.js"></script>
-<script src="sso-gate.js"></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
 
 <!-- Tailwind CSS (play CDN) -->
 <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
@@ -967,8 +967,8 @@ function PhotoCapture({photos, setPhotos, onView, toast, max}){
         <Btn size="sm" variant="outline" icon={I.upload} type="button" onClick={()=>upRef.current?.click()}>Upload</Btn>
       </div>
       {/* capture="environment" opens the rear camera straight away on a phone */}
-      <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>handle(e.target.files)} />
-      <input ref={upRef} type="file" accept="image/*" multiple className="hidden" onChange={e=>handle(e.target.files)} />
+      <input ref={camRef} data-up="cmp-photos" type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>handle(e.target.files)} />
+      <input ref={upRef} data-up="cmp-photos" type="file" accept="image/*" multiple className="hidden" onChange={e=>handle(e.target.files)} />
       {(photos.length > 0 || busy > 0) && (
         <div className="flex gap-2 flex-wrap mt-3">
           {photos.map((src,i)=>(
@@ -1094,7 +1094,7 @@ function LivePhotoModal({stampText, onShot, onClose}){
             ? <Btn variant="primary" icon={I.camera} className="w-full justify-center" onClick={capture} disabled={!ready}>{ready ? "Capture" : <><Spinner/> Opening camera…</>}</Btn>
             : <>
                 <Btn variant="primary" icon={I.camera} className="w-full justify-center" onClick={()=>fileRef.current?.click()}>Open camera</Btn>
-                <input ref={fileRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>fromCameraApp(e.target.files && e.target.files[0])} />
+                <input ref={fileRef} data-up="cmp-camera-app" type="file" accept="image/*" capture="environment" className="hidden" onChange={e=>fromCameraApp(e.target.files && e.target.files[0])} />
               </>}
           <p className="text-[11px] text-slate-500 text-center">The date, time and complaint no. are printed on the photo.</p>
         </div>
@@ -3917,8 +3917,8 @@ function NoticeComposer({profile, users, toast}){
           {imgBusy ? "Adding…" : "Photo"}
         </Btn>
         <Btn size="sm" variant="outline" icon={I.doc} type="button" disabled={!!att} onClick={()=>pdfRef.current?.click()}>PDF</Btn>
-        <input ref={imgRef} type="file" accept="image/*" className="hidden" onChange={e=>pickImage(e.target.files?.[0])} />
-        <input ref={pdfRef} type="file" accept="application/pdf" className="hidden" onChange={e=>pickPdf(e.target.files?.[0])} />
+        <input ref={imgRef} data-up="cmp-attach-image" type="file" accept="image/*" className="hidden" onChange={e=>pickImage(e.target.files?.[0])} />
+        <input ref={pdfRef} data-up="cmp-attach-pdf" type="file" accept="application/pdf" className="hidden" onChange={e=>pickPdf(e.target.files?.[0])} />
         <Btn size="sm" variant="primary" icon={I.send} className="ml-auto" onClick={post} disabled={busy}>
           {busy ? <Spinner/> : null}Post
         </Btn>

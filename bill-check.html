@@ -10,12 +10,18 @@
 <title>Bill Check</title>
 <!-- First, so a logged-in user never sees a flash of anything else. -->
 <script src="sso-preboot.js"></script>
-<script src="sso-gate.js"></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <!--
   BILL CHECK: the inbox of the bill check pipeline
-  GM > EA > MD-1 > MD-2 > Accounts, then a Debit Note (raised by MD-1 / MD-2,
-  verified by the Accountant with proof files).
+  GM > EA > MD-1 > Accounts, then a Debit Note (raised by MD-1 / MD-2,
+  verified by the Accountant with proof files). Issue bills are NOT here.
+
+  ISSUE BILL CHECK = this same page opened as bill-check.html#issue (its own
+  launcher tile, app key HOME_ISSUE_BILL_CHECK): Issue bills only, pipeline
+  Stock Auditor Check (signs the "Stock Auditor Sign" cell) > Authority Sign
+  (signs the "Authority Sign" cell), rights ISS_CHK_SA / ISS_CHK_AUTH, no
+  Debit Note, no Actual Invoice No. (sql/ISSUE_BILL_CHECK_MIGRATION.sql).
 
   The same data as ERP › Print History / Reports › Preview, in its own app:
     - To Check  the records waiting at a step THIS user may do, shown on their
@@ -182,11 +188,20 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 .kv{display:flex;justify-content:space-between;gap:16px;padding:10px 16px;font-size:15px;position:relative}
 .kv+.kv::before{content:"";position:absolute;top:0;left:16px;right:0;height:.5px;background:var(--sep)}
 .kv span:first-child{color:var(--label2);flex:none}.kv span:last-child{text-align:right;min-width:0;overflow-wrap:anywhere}
-.film{display:flex;gap:10px;overflow-x:auto;padding:12px 14px;scroll-snap-type:x proximity;scrollbar-width:none}
-.film::-webkit-scrollbar{display:none}
-.th{flex:none;width:92px;scroll-snap-align:start;text-align:center;font-size:11px;color:var(--label2);transition:transform .15s}
+/* Every attachment at once as small previews (a wrapping grid, never a side-scroll that hides some) */
+.film{display:grid;grid-template-columns:repeat(auto-fill,minmax(68px,1fr));gap:8px;padding:12px 14px}
+.th{min-width:0;text-align:center;font-size:10.5px;color:var(--label2);transition:transform .15s}
 .th:active{transform:scale(.94)}
-.th .im{position:relative;width:92px;height:116px;border-radius:9px;background:var(--fill);overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px var(--sep)}
+.th .im{position:relative;width:100%;aspect-ratio:4/5;border-radius:8px;background:var(--fill);overflow:hidden;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 .5px var(--sep)}
+/* The bill's details in one or two short lines (type · date · invoice · store ...) */
+.meta{padding:10px 16px;font-size:13.5px;color:var(--label2);line-height:1.5}
+.meta b{color:var(--label);font-weight:600}
+.meta .dotsep{margin:0 6px;opacity:.5}
+.meta .items{display:block;margin-top:2px;overflow-wrap:anywhere}
+/* A step's own history, under it in the pipeline */
+.step .hx{margin-top:6px;padding-left:10px;border-left:2px solid var(--fill2)}
+.step .hx div{font-size:12.5px;color:var(--label2);margin-top:3px;overflow-wrap:anywhere}
+.step .hx div b{color:var(--label);font-weight:600}
 .th .im img,.th .im canvas{width:100%;height:100%;object-fit:cover}
 .th .tick{position:absolute;right:5px;bottom:5px;width:20px;height:20px;border-radius:50%;background:var(--green);color:#fff;display:none;align-items:center;justify-content:center;animation:pop .35s var(--spring)}
 .th.seen .tick{display:flex}
@@ -344,7 +359,12 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 'use strict';
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
-const APP_KEY = 'HOME_BILL_CHECK';
+/* One page, two apps. bill-check.html = Bill Check (Inward / Inward NB / Outward, GM > EA > MD-1 > Accounts).
+   bill-check.html#issue = Issue Bill Check (Issue bills only, Stock Auditor Check > Authority Sign, no Debit Note,
+   no Actual Invoice No.; sql/ISSUE_BILL_CHECK_MIGRATION.sql). Each has its own launcher tile and app key. */
+const ISSUE_MODE = /^#issue\b/i.test(location.hash) || /[?&]mode=issue\b/i.test(location.search);
+const APP_KEY = ISSUE_MODE ? 'HOME_ISSUE_BILL_CHECK' : 'HOME_BILL_CHECK';
+const APP_NAME = ISSUE_MODE ? 'Issue Bill Check' : 'Bill Check';
 /* Only records saved on or after this day are checked here; older ones stay hidden (Print History in the ERP still has them).
    One place to change it. Saved time (created_at), India time, so a back-dated entry saved today still shows. */
 const CHECK_FROM = '2026-11-17T00:00:00+05:30';
@@ -367,9 +387,11 @@ const IC = {
 };
 
 /* ══ State ═════════════════════════════════════════════════════════════ */
-const FLOW0 = [{code:'GM',label:'GM Bill Check',short:'GM'},{code:'EA',label:'EA Bill Check',short:'EA'},{code:'MD1',label:'MD-1 Bill Check',short:'MD1'},{code:'MD2',label:'MD-2 Bill Check',short:'MD2'},{code:'AC',label:'Accounts Check',short:'AC'}];
+const FLOW0 = [{code:'GM',label:'GM Bill Check',short:'GM'},{code:'EA',label:'EA Bill Check',short:'EA'},{code:'MD1',label:'MD-1 Bill Check',short:'MD1'},{code:'AC',label:'Accounts Check',short:'AC'}];
+// Keep in step with scs_issue_flow_() (the server sends it as issueFlow; this is only shown before the first answer)
+const ISS_FLOW0 = [{code:'SA',label:'Stock Auditor Check',short:'SA',sign:'gm'},{code:'AUTH',label:'Authority Sign',short:'AUTH',sign:'md'}];
 const S = {
-  user:null, flow:FLOW0, can:null, missing:false, rows:[], loaded:false, loading:false,
+  user:null, flow:ISSUE_MODE ? ISS_FLOW0 : FLOW0, can:null, missing:false, rows:[], loaded:false, loading:false,
   seg:'TODO', type:'ALL', store:'ALL', q:'', days:60, show:{},
   map:{},                 // 'inward:12' -> pipeline row from scs_get
   att:{},                 // key -> {state, slides, errs}
@@ -381,9 +403,12 @@ const ERR = {
   WAIT_PREV:'Not yet: {x} must be OKAY first.', REMARK_REQUIRED:'Write a reason of at least 3 letters.',
   CANCELLED:'This record is cancelled.', NOT_FOUND:'This record was not found. Refresh the list.',
   DEBIT_EXISTS:'A Debit Note is already raised on this record.', WRONG_STATE:'The Debit Note is not in the state this needs. Refresh.',
-  PROOF_REQUIRED:'Attach at least one proof (photo / PDF) first.', DEBIT_PENDING:'A Debit Note is waiting for the Accountant. Verify it first.', PIN_INVALID:'Incorrect PIN.', NO_BASE:'This bill has no Accountant Copy to stamp.',
+  PROOF_REQUIRED:'Attach at least one approval document (photo / PDF) first.', DEBIT_PENDING:'The Party Consent of the Debit Note is not done yet. Do it first.', PIN_INVALID:'Incorrect PIN.', NO_BASE:'This bill has no Accountant Copy to stamp.',
+  CONSENT_NAME_REQUIRED:'Enter the name of the person who gave the consent.', MOBILE_INVALID:'Enter a valid 10-digit mobile number.',
+  INVOICE_REQUIRED:'Enter the Actual Invoice No. to pass the Accounts Check.',
   DEBIT_NO_REQUIRED:'Enter the Debit No.', AMOUNT_REQUIRED:'Enter the Debit amount (more than 0).', BAD_STATUS:'This choice is not possible on this step.', BAD_FILE:'Only a photo or a PDF can be attached.',
-  FILE_TOO_BIG:'That file is too big. Use a smaller photo / PDF.', TOO_MANY_FILES:'At most 6 proof files per Debit Note.'
+  FILE_TOO_BIG:'That file is too big. Use a smaller photo / PDF.', TOO_MANY_FILES:'At most 6 proof files per Debit Note.',
+  NO_DEBIT:'An Issue bill has no Debit Note.', BAD_STEP:'This step is not part of this bill’s pipeline. Refresh the list.'
 };
 const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1 };
 
@@ -493,11 +518,14 @@ async function loadList(){
     const inSel = 'id,document_no,entry_type,receiving_date,invoice_no,supplier_name,po_number,notes,created_at,inward_lines(qty,line_total,items(name))';
     const outSel = 'id,document_no,entry_type,outward_date,gate_pass_no,party_name,receiver_name,notes,created_at,outward_lines(qty,items(name))';
     const get = async (table, sel, extra) => {
-      const base = (s) => table + '?select=' + s + '&created_at=gte.' + since + '&order=created_at.desc';
+      const base = (s) => table + '?select=' + s + '&created_at=gte.' + since + (extra || '') + '&order=created_at.desc';
       try { return await restAll(base(sel.replace('created_at,', 'created_at,store,'))); }      // store column (STORE1_MIGRATION)
       catch (e) { return await restAll(base(sel)); }
     };
-    const [ins, outs] = await Promise.all([get('inward_entries', inSel), get('outward_entries', outSel)]);
+    // Issue Bill Check reads Issues only; Bill Check reads everything else (an Outward with no type counts as Outward)
+    const [ins, outs] = await Promise.all([
+      ISSUE_MODE ? [] : get('inward_entries', inSel),
+      get('outward_entries', outSel, ISSUE_MODE ? '&entry_type=eq.ISSUE' : '&or=(entry_type.is.null,entry_type.neq.ISSUE)')]);
     const rows = [];
     ins.forEach(e => { const L = e.inward_lines || [];
       rows.push({ kind:'inward', id:e.id, key:'inward:' + e.id, type:e.entry_type || 'INWARD', no:e.document_no, invoice:e.invoice_no || '', date:e.receiving_date || (e.created_at || '').slice(0, 10),
@@ -520,7 +548,9 @@ async function loadPipelines(){
     const keys = S.rows.map(r => r.key);
     const d = await rpc('scs_get', { p_keys: keys });
     S.missing = false;
-    if (Array.isArray(d.flow) && d.flow.length) S.flow = d.flow;
+    const fl = ISSUE_MODE ? d.issueFlow : d.flow;
+    if (ISSUE_MODE && !Array.isArray(fl)) { S.missing = true; S.missingIssue = true; return; }   // ISSUE_BILL_CHECK_MIGRATION.sql not run yet
+    if (Array.isArray(fl) && fl.length) S.flow = fl;
     S.map = {}; (d.rows || []).forEach(x => { S.map[x.key] = x; });
     if (d.can) S.can = d.can;
     S.loadErr = '';
@@ -597,7 +627,7 @@ async function attAccount(r, ctx){
   try { d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) }); }
   catch (e) { if (e.missing || /acc_get|store_account_copy|schema cache/i.test(e.message || '')) return { slides:[], empty:'The Accountant Copy is not set up yet (Admin: run sql/STORE_ACCOUNT_COPY_MIGRATION.sql).' }; throw e; }
   const a = ctx.acc = d.row || {};
-  if (!a.currentUrl) return { slides:[], empty:a.hasBase ? 'Not generated yet: it is made when the GM checks this bill.' : 'No Accountant Copy for this bill: it was saved before this step existed, or its upload from the ERP did not finish (open the bill in the ERP on the same computer, or ask the Admin to Edit and save it again).' };
+  if (!a.currentUrl) return { slides:[], empty:a.hasBase ? 'Not generated yet: it is made when the ' + (ISSUE_MODE ? 'Stock Auditor' : 'GM') + ' checks this bill.' : 'No Accountant Copy for this bill: it was saved before this step existed, or its upload from the ERP did not finish (open the bill in the ERP on the same computer, or ask the Admin to Edit and save it again).' };
   const doc = await pdfDoc(a.currentUrl), slides = [];
   const who = S.flow.filter(s => a.stamps && a.stamps[s.code]).map(s => s.short + ' ' + (a.stamps[s.code].by || '')).join(', ');
   for (let p = 1; p <= doc.numPages; p++) slides.push({ type:'pdf', doc, page:p, open:a.currentUrl, caption:'Accountant Copy' + (who ? ' · signed: ' + who : '') + (doc.numPages > 1 ? ' · page ' + p + ' of ' + doc.numPages : '') });
@@ -683,7 +713,10 @@ function segData(rows){
   const todo = {}, done = {}, deb = { RAISED:[], VERIFIED:[] }, all = {}, view = {};
   rows.forEach(r => {
     const m = mineStep(r); if (m) (todo[m.step.code] = todo[m.step.code] || []).push({ r, hold:m.hold });
-    const hv = heldForMe(r); if (hv) (view[hv.code] = view[hv.code] || []).push({ r, view:true });
+    /* Hold tab: EVERY bill on hold, at any step, is shown to the people of every step. One held at the user's own step
+       is theirs to re-check (todo, above); one held at any other step is view only here (only that step can pass it). */
+    const hs = stageOf(r);
+    if (!r.cancelled && hs.step && hs.hold && !(m && m.hold)) (view[hs.step.code] = view[hs.step.code] || []).push({ r, view:true });
     const d = doneStep(r); if (d) (done[d.code] = done[d.code] || []).push({ r });
     const db = debitOf(r); if (db) deb[db.status].push({ r });
     const st = rowOf(r) && Object.keys(rowOf(r).steps || {}).length ? stageOf(r) : null;
@@ -725,15 +758,20 @@ function paintHeader(){
   $('meBtn').textContent = ((S.user && (S.user.user_name || S.user.name)) || '?').trim().charAt(0).toUpperCase();
   const d = segData(baseRows()), cnt = o => Object.keys(o).reduce((n, k) => n + o[k].length, 0);
   const heldMine = Object.keys(d.todo).reduce((n, k) => n + d.todo[k].filter(x => x.hold).length, 0), freshMine = cnt(d.todo) - heldMine;
-  // Only the people of the MD-1, MD-2 and Accounts steps get the colour alert; every bill in the Hold tab (held by them or view only) counts
-  const alertUser = S.flow.some(s => /^(MD1|MD2|AC)$/.test(s.code) && (canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2')));
+  // The people of EVERY step get the colour alert (Hold yellow, Debit red) while any bill is on hold / any Debit Note waits;
+  // every bill in the Hold tab (held by them or view only) counts
+  const alertUser = S.flow.some(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2'));
   const holdAny = heldMine + Object.keys(d.view).reduce((n, k) => n + d.view[k].length, 0), debitAny = d.deb.RAISED.length;
-  const defs = [['TODO', 'To Check', freshMine, 1, ''], ['DONE', 'Done', cnt(d.done), 0, ''], ['HOLD', 'Hold', heldMine, 1, alertUser && holdAny ? 't-hold' : ''], ['DEBIT', 'Debit', debitAny, 1, alertUser && debitAny ? 't-debit' : ''], ['ALL', 'All', 0, 0, '']];
+  const defs = [['TODO', 'To Check', freshMine, 1, ''], ['DONE', 'Done', cnt(d.done), 0, ''], ['HOLD', 'Hold', holdAny, 1, alertUser && holdAny ? 't-hold' : ''], ['DEBIT', 'Debit', debitAny, 1, alertUser && debitAny ? 't-debit' : ''], ['ALL', 'All', 0, 0, '']]
+    .filter(x => !(ISSUE_MODE && x[0] === 'DEBIT'));                 // an Issue has no Debit Note
+  if (!defs.some(x => x[0] === S.seg)) S.seg = 'TODO';
   const i = Math.max(0, defs.findIndex(x => x[0] === S.seg));
   $('seg').style.gridTemplateColumns = 'repeat(' + defs.length + ',1fr)';
   $('seg').innerHTML = '<div class="thumb" style="width:calc(' + (100 / defs.length) + '% - 2px);transform:translateX(' + (i * 100) + '%)"></div>'
     + defs.map(x => '<button class="' + (S.seg === x[0] ? 'on' : '') + (x[4] ? ' ' + x[4] : '') + '" data-seg="' + x[0] + '">' + x[1] + (x[2] ? '<span class="bdg' + (x[3] ? '' : ' q') + '">' + x[2] + '</span>' : '') + '</button>').join('');
-  const types = ['ALL', 'INWARD', 'INWARD NB', 'OUTWARD', 'ISSUE'], stores = ['ALL', 'STORE 1', 'STORE 2'];
+  // Issue Bill Check has one type only, so no type chips there
+  const types = ISSUE_MODE ? [] : ['ALL', 'INWARD', 'INWARD NB', 'OUTWARD'], stores = ['ALL', 'STORE 1', 'STORE 2'];
+  $('chips').style.display = types.length ? '' : 'none';
   $('chips').innerHTML = types.map(t => '<button class="chip' + (S.type === t ? ' on' : '') + '" data-type="' + esc(t) + '">' + (t === 'ALL' ? 'All types' : t.charAt(0) + t.slice(1).toLowerCase()) + '</button>').join('')
   $('chipsStore').innerHTML = stores.map(s => '<button class="chip' + (S.store === s ? ' on' : '') + '" data-store="' + esc(s) + '">' + (s === 'ALL' ? 'Both stores' : s.charAt(0) + s.slice(1).toLowerCase()) + '</button>').join('');
 }
@@ -741,7 +779,7 @@ function paintList(){
   LOCKS = null;
   const L = $('list');
   if (!S.loaded) { L.innerHTML = skeleton(); return; }
-  if (S.missing) { L.innerHTML = emptyHtml(IC.doc, 'Not set up yet', 'Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql in the Supabase SQL Editor (after STORE_RECORD_STATUS_MIGRATION.sql).'); return; }
+  if (S.missing) { L.innerHTML = emptyHtml(IC.doc, 'Not set up yet', S.missingIssue ? 'Admin: run sql/ISSUE_BILL_CHECK_MIGRATION.sql in the Supabase SQL Editor.' : 'Admin: run sql/STORE_CHECK_PIPELINE_MIGRATION.sql in the Supabase SQL Editor (after STORE_RECORD_STATUS_MIGRATION.sql).'); return; }
   if (S.loadErr && !S.rows.length) { L.innerHTML = emptyHtml(IC.bang, 'Could not load', S.loadErr); return; }
   const d = segData(baseRows());
   let h = '';
@@ -751,15 +789,15 @@ function paintList(){
     if (!h) h = emptyHtml(IC.inbox, noStep ? 'No step assigned' : 'All caught up', noStep ? 'The Admin gives a bill check step in Manage access. You can still browse All.' : 'Nothing is waiting for your check. New bills appear here on their own.');
   } else if (S.seg === 'HOLD') {
     S.flow.forEach(s => { const hd = (d.todo[s.code] || []).filter(x => x.hold); if (hd.length) h += sectionHtml('h' + s.code, s.label + ' · held by you', hd, 'Open one to check it again (OKAY, or keep holding).'); });
-    S.flow.forEach(s => { if (d.view[s.code]) h += sectionHtml('v' + s.code, 'On hold at ' + s.label + ' · view only', d.view[s.code], 'Held by ' + s.label + '. You can look at it; it reaches you when it is passed.'); });
-    if (!h) h = emptyHtml(IC.inbox, 'Nothing on hold', 'Bills you hold, and bills held at the step before yours, are listed here.');
+    S.flow.forEach(s => { if (d.view[s.code]) h += sectionHtml('v' + s.code, 'On hold at ' + s.label + ' · view only', d.view[s.code], 'Held at ' + s.label + '. Only ' + s.label + ' can check it again; you can open it and see why.'); });
+    if (!h) h = emptyHtml(IC.inbox, 'Nothing on hold', 'Every bill on hold at any step is listed here.');
   } else if (S.seg === 'DONE') {
     S.flow.slice().reverse().forEach(s => { if (d.done[s.code]) h += sectionHtml('d' + s.code, s.label + ' · done', d.done[s.code]); });
     if (!h) h = emptyHtml(IC.done, 'Nothing done yet', 'The bills you check show up here.');
   } else if (S.seg === 'DEBIT') {
     if (d.deb.RAISED.length) h += sectionHtml('dbR', 'Waiting for the Accountant', d.deb.RAISED, 'Debit Notes raised by MD-1 / MD-2, to be verified with proof');
     if (d.deb.VERIFIED.length) h += sectionHtml('dbV', 'Verified', d.deb.VERIFIED);
-    if (!h) h = emptyHtml(IC.doc, 'No Debit Notes', 'MD-1 / MD-2 raise a Debit Note from a bill; the Accountant verifies it with proof.');
+    if (!h) h = emptyHtml(IC.doc, 'No Debit Notes', 'MD-1 / MD-2 raise a Debit Note from a bill; the Accountant verifies it with proof. Every step sees them here.');
   } else {
     const order = ['NEW'].concat(S.flow.map(s => s.code), ['HOLD', 'DONE']);
     order.forEach(k => { if (d.all[k]) h += sectionHtml('a' + k, k === 'NEW' ? 'Not started' : k === 'HOLD' ? 'On hold' : k === 'DONE' ? 'All checks done' : 'At ' + labelOf(k), d.all[k]); });
@@ -811,9 +849,17 @@ function iosAlert(o){
       + btns.map((b, i) => '<button data-i="' + i + '" class="' + (b.s || '') + '">' + esc(b.t) + '</button>').join('') + '</div></div>';
     document.body.appendChild(sc); requestAnimationFrame(() => sc.classList.add('in'));
     const inp = sc.querySelector('[data-in]'); if (inp) setTimeout(() => inp.focus(), 300);
-    const done = i => { sc.classList.remove('in'); setTimeout(() => sc.remove(), 260); res({ i, value:inp ? inp.value.trim() : '' }); };
+    let fin = false, autoT = 0;
+    const done = i => { if (fin) return; fin = true; clearTimeout(autoT); sc.classList.remove('in'); setTimeout(() => sc.remove(), 260); res({ i, value:inp ? inp.value.trim() : '' }); };
+    const primary = () => { const bi = btns.findIndex(b => /b/.test(b.s || '')); return bi < 0 ? 0 : bi; };
     sc.addEventListener('click', e => { const b = e.target.closest('[data-i]'); if (b) done(+b.dataset.i); });
-    if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') { const bi = btns.findIndex(b => /b/.test(b.s || '')); done(bi < 0 ? 0 : bi); } });
+    if (inp) inp.addEventListener('keydown', e => { if (e.key === 'Enter') done(primary()); });
+    /* o.auto = n: a PIN of n or more digits submits by itself 0.6 s after the last key (like the launcher's login),
+       so a 6-digit PIN is not tried at 4. */
+    if (inp && o.auto) inp.addEventListener('input', () => {
+      clearTimeout(autoT);
+      if (/^[0-9]+$/.test(inp.value) && inp.value.length >= o.auto) autoT = setTimeout(() => done(primary()), 600);
+    });
   });
 }
 function iosMenu(o){
@@ -867,13 +913,15 @@ function paintSheet(){
   const r = CUR.r, a = S.att[r.key], look = TYPE_LOOK[r.type] || ['REC', '#8e8e93'], el = CUR.layer.el, body = CUR.layer.body;
   const keepScroll = body.scrollTop, keep = {}; body.querySelectorAll('[data-keep]').forEach(i => { keep[i.dataset.keep] = i.value; });
   const si = seenInfo(r), store = r.store, mine = mineStep(r), db = debitOf(r);
-  el.querySelector('.tt').textContent = r.no || 'Bill Check';
+  el.querySelector('.tt').textContent = r.no || APP_NAME;
   const nx = nextTodo(), rb = el.querySelector('[data-r]');
   rb.outerHTML = nx && S.seg === 'TODO' && mine ? '<button class="nbtn" data-r="1" data-next="' + esc(nx.key) + '">Next' + '<span style="margin-left:4px;display:inline-flex">' + IC.chev + '</span></button>' : '<span data-r="1" style="width:60px"></span>';
   let h = '<div class="hero"><span class="ico" style="background:' + look[1] + '">' + look[0] + '</span><div style="min-width:0"><div class="no">' + esc(r.no || '—') + '</div><div class="pt">' + esc(r.party || '—') + '</div></div></div><div class="gap"></div>'
-    + '<div class="grp">'
-    + [['Type', r.type], ['Date', fmtDate(r.date)], [r.kind === 'inward' ? 'Invoice No.' : 'Gate Pass', r.invoice || '—'], ['Store', r.store], r.amount > 0 ? ['Amount', fmtAmt(r.amount)] : null, ['Quantity', String(r.qty || 0)], r.items ? ['Items', r.items] : null]
-      .filter(Boolean).map(x => '<div class="kv"><span>' + esc(x[0]) + '</span><span>' + esc(x[1]) + '</span></div>').join('') + '</div>';
+    // Details in the least space: one line of facts, the items under it
+    + '<div class="grp"><div class="meta">'
+    + [r.type, fmtDate(r.date), (r.kind === 'inward' ? 'Inv ' : 'GP ') + (r.invoice || '—'), r.store, r.amount > 0 ? fmtAmt(r.amount) : '', 'Qty ' + (r.qty || 0)]
+      .filter(Boolean).map((v, i) => '<b>' + esc(v) + '</b>').join('<span class="dotsep">·</span>')
+    + (r.items ? '<span class="items">' + esc(r.items) + '</span>' : '') + '</div></div>';
   // Attachments
   h += '<div class="sec"><h3>Attachments' + (a && a.slides.length ? '<span class="n">' + a.slides.length + '</span>' : '') + '</h3><div class="grp">';
   if (!a || a.state === 'loading') h += '<div class="film">' + [0, 1, 2, 3].map(() => '<div class="th"><div class="im sk"></div></div>').join('') + '</div><div class="note" style="padding:0 16px 12px">Collecting the PDF, bill and photos…</div>';
@@ -889,42 +937,62 @@ function paintSheet(){
   h += '</div></div>';
   // Pipeline
   const stage = stageOf(r), started = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
-  h += '<div class="sec"><h3>Bill check pipeline</h3><div class="grp tl">' + S.flow.map(s => {
+  // Each step carries its own history (scs_history rows of that step, oldest first) instead of a separate list at the bottom.
+  const histOf = code => (CUR.hist || []).filter(x => x.step === code);
+  const hxHtml = code => { const l = histOf(code); return l.length ? '<div class="hx">' + l.map(x => '<div><b>' + esc(x.status) + '</b>' + (x.old ? ' (was ' + esc(x.old) + ')' : '')
+      + esc([x.remarks ? ' · “' + x.remarks + '”' : '', x.by ? ' · ' + x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? ' · ' + fmtStamp(x.at) : ''].join('')) + '</div>').join('') + '</div>' : ''; };
+  h += '<div class="sec"><h3>Bill check pipeline' + (CUR.hist == null ? '<span class="n">…</span>' : '') + '</h3><div class="grp tl">' + S.flow.map(s => {
     const x = stepOf(r, s.code), can = canDo(s.code, store) && !r.cancelled, cls = x ? (x.status === 'OKAY' ? 'ok' : 'hold') : (stage.step && stage.step.code === s.code ? 'next' : '');
     const onCopy = CUR.acc && CUR.acc.stamps && CUR.acc.stamps[s.code];
-    const sub = x ? [x.remarks ? '“' + x.remarks + '”' : '', onCopy ? 'signed on the Accountant Copy' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : '', x.total != null ? 'looked at ' + x.seen + ' of ' + x.total : ''].filter(Boolean).join(' · ')
+    const sub = x ? [x.invoiceNo ? 'Actual Invoice No. ' + x.invoiceNo : '', x.remarks ? '“' + x.remarks + '”' : '', onCopy ? 'signed on the Accountant Copy' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : '', x.total != null ? 'looked at ' + x.seen + ' of ' + x.total : ''].filter(Boolean).join(' · ')
       : (cls === 'next' ? 'Waiting here' : 'Not reached yet');
     return '<div class="step' + (x && x.status === 'OKAY' ? ' done' : '') + '"><span class="dot ' + cls + '">' + (cls === 'ok' ? IC.check : cls === 'hold' ? IC.bang : '') + '</span><div class="bd"><b>' + esc(s.label) + '</b>'
-      + (x ? '<span class="pill ' + (x.status === 'OKAY' ? 'ok' : 'hold') + ' me">' + esc(x.status) + '</span>' : '') + (can ? '<span class="pill blue me">Your step</span>' : '') + '<small>' + esc(sub) + '</small></div></div>';
+      + (x ? '<span class="pill ' + (x.status === 'OKAY' ? 'ok' : 'hold') + ' me">' + esc(x.status) + '</span>' : '') + (can ? '<span class="pill blue me">Your step</span>' : '') + '<small>' + esc(sub) + '</small>' + hxHtml(s.code) + '</div></div>'
+      + (s.code === 'MD1' ? consentStepHtml(r, store) : '');
   }).join('') + '</div>';
   if (r.cancelled) h += '<div class="foot">This record is cancelled; it cannot be checked.</div>';
   // Own step
   const myStage = mine && prevOk(r, mine.step.code).ok ? mine : null;
-  const mineAny = S.flow.filter(s => canDo(s.code, store) && !r.cancelled && prevOk(r, s.code).ok && stepOf(r, s.code) && !(myStage && myStage.step.code === s.code));
-  if (myStage || mineAny.length) {
+  /* No Review / Check button under the pipeline: the bill is checked from the viewer. Review the attachments (button
+     in the Attachments section); on the LAST one the green "Bill Check" pill / right arrow opens the Check popup of the
+     user's step (goCheck), only once every page and photo has been seen. A short line says so. A step the user already
+     checked is not re-opened from here (no "Change:" button), so a user with no pending step sees the "Waiting for" note. */
+  if (myStage) {
     h += '<div class="gap"></div>';
-    const lkd = myStage && lockOf(r);
+    const lkd = lockOf(r);
+    const reviewed = si.ready && si.n >= si.total;
     if (lkd) h += '<div class="note warn">Locked: bills of this series are checked in order. Check <b>' + esc(lkd.no) + '</b> first (OKAY, or HOLD it), then this one opens.</div><div class="gap"></div><button class="btn gray" data-next="' + esc(lkd.key) + '">Open ' + esc(lkd.no) + '</button>';
-    else if (myStage) h += '<button class="btn ' + (myStage.hold ? 'orange' : '') + '" data-check="' + esc(myStage.step.code) + '">' + (myStage.hold ? 'Re-check: ' : 'Check: ') + esc(myStage.step.label) + '</button>';
-    mineAny.forEach(s => { h += '<div class="gap"></div><button class="btn gray" data-check="' + esc(s.code) + '">Change: ' + esc(s.label) + '</button>'; });
+    else h += '<div class="note' + (reviewed ? '' : ' warn') + '">' + (si.err ? 'The attachments did not load. Load them again above, then review them.'
+        : !reviewed ? 'Review the attachments above (' + si.n + ' of ' + (si.total || 0) + ' seen). On the last one, tap <b>Bill Check</b> to ' + (myStage.hold ? 're-check' : 'check') + ' ' + esc(myStage.step.label) + '.'
+        : 'All seen. Open the last attachment and tap <b>Bill Check</b> to ' + (myStage.hold ? 're-check' : 'check') + ' ' + esc(myStage.step.label) + '.') + '</div>';
   } else if (!r.cancelled && stage.step && !canDo(stage.step.code, store) && started !== undefined) {
-    h += stage.hold ? '<div class="note warn">On hold at <b>' + esc(stage.step.label) + '</b>' + (heldForMe(r) ? ': view only. It reaches you when ' + esc(stage.step.label) + ' passes it.' : '.') + ' The reason is in History below.</div>' : '<div class="note">Waiting for ' + esc(stage.step.label) + '.</div>';
+    h += stage.hold ? '<div class="note warn">On hold at <b>' + esc(stage.step.label) + '</b>' + (heldForMe(r) ? ': view only. It reaches you when ' + esc(stage.step.label) + ' passes it.' : '.') + ' The reason is under that step in the pipeline above.</div>' : '<div class="note">Waiting for ' + esc(stage.step.label) + '.</div>';
   }
   h += '</div>';
   // A signing step of mine that is OKAY but not on the Accountant Copy yet (the stamp failed, or the PIN was skipped)
   const miss = S.flow.filter(s => signOf(s) && canDo(s.code, store) && stepOf(r, s.code) && stepOf(r, s.code).status === 'OKAY' && CUR.acc && CUR.acc.hasBase && !(CUR.acc.stamps && CUR.acc.stamps[s.code]) && meIs(stepOf(r, s.code)));
   miss.forEach(s => { h += '<div class="gap"></div><button class="btn gray" data-restamp="' + esc(s.code) + '">Sign Accountant Copy: ' + esc(s.label) + '</button>'; });
-  // Debit Note
-  h += debitHtml(r, store, db);
-  // History
-  h += '<div class="sec"><h3>History</h3><div class="grp">' + (CUR.hist == null ? '<div class="kv"><span>Loading…</span><span></span></div>'
-    : CUR.hist.length ? CUR.hist.map(x => '<div class="kv" style="display:block"><b>' + esc(labelOf(x.step)) + '</b> → ' + esc(x.status) + (x.old ? ' <span style="color:var(--label2)">(was ' + esc(x.old) + ')</span>' : '')
-        + '<div style="color:var(--label2);font-size:13px;margin-top:2px">' + esc([x.remarks ? '“' + x.remarks + '”' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : ''].filter(Boolean).join(' · ')) + '</div></div>').join('')
-    : '<div class="kv"><span>No check done yet</span><span></span></div>') + '</div></div>';
+  // Debit Note (not on an Issue)
+  if (!ISSUE_MODE) h += debitHtml(r, store, db);
+  // (History now sits under each step of the pipeline above.)
   body.innerHTML = h;
   body.scrollTop = keepScroll;
   body.querySelectorAll('[data-keep]').forEach(i => { if (keep[i.dataset.keep] != null) i.value = keep[i.dataset.keep]; });
   if (a && a.slides.length) body.querySelectorAll('[data-th]').forEach(b => { const s = a.slides[+b.dataset.th]; if (s) fillThumb(b, s); });
+}
+/* Party Consent: a step of the pipeline only while the bill has a Debit Note (raised at MD-1 / MD-2), drawn right after
+   MD-1. It is the Accountant's verification of that Debit Note (scs_debit_verify): consent person, 10-digit mobile,
+   approval document(s), Debit No. and amount. Until it is done the Accounts Check cannot pass (server DEBIT_PENDING). */
+function consentStepHtml(r, store){
+  const d = debitOf(r); if (!d) return '';
+  const done = d.status === 'VERIFIED', canV = canDo('DEBIT_VERIFY', store) && !r.cancelled;
+  const sub = done ? [d.consentName ? 'Consent: ' + d.consentName : '', d.consentMobile ? d.consentMobile : '', d.debitNo ? 'Debit No. ' + d.debitNo : '', d.amount != null ? '₹' + d.amount : '',
+                      d.proofs ? d.proofs + ' approval doc' + (d.proofs > 1 ? 's' : '') : '', d.verifiedBy ? d.verifiedBy : '', d.verifiedAt ? fmtStamp(d.verifiedAt) : ''].filter(Boolean).join(' · ')
+    : 'Debit Note: “' + (d.reason || '') + '”' + (d.amount != null ? ' · ₹' + d.amount : '') + ' · waiting for the Accountant';
+  return '<div class="step' + (done ? ' done' : '') + '"><span class="dot ' + (done ? 'ok' : 'next') + '">' + (done ? IC.check : '') + '</span><div class="bd"><b>Party Consent</b>'
+    + '<span class="pill ' + (done ? 'ok' : 'red') + ' me">' + (done ? 'DONE' : 'DEBIT NOTE') + '</span>' + (canV && !done ? '<span class="pill blue me">Your step</span>' : '')
+    + '<small>' + esc(sub) + '</small>'
+    + (canV && !done ? '<button class="btn sm" style="margin-top:8px" data-debit="verify">Fill Party Consent</button>' : '') + '</div></div>';
 }
 function debitHtml(r, store, d){
   const old = (rowOf(r) || {}).debit, canR = canDo('DEBIT_RAISE', store) && !r.cancelled, canV = canDo('DEBIT_VERIFY', store) && !r.cancelled;
@@ -944,18 +1012,19 @@ function debitHtml(r, store, d){
   h += '<div class="kv"><span>Status</span><span><span class="pill ' + (d.status === 'VERIFIED' ? 'ok' : 'red') + '">' + (d.status === 'VERIFIED' ? 'Verified' : 'Raised · waiting for Accountant') + '</span></span></div>'
     + '<div class="kv"><span>' + (d.status === 'RAISED' ? 'Remarks for Accountant' : 'Reason') + '</span><span style="' + (d.status === 'RAISED' ? 'color:var(--red);font-weight:600' : '') + '">' + esc(d.reason || '') + '</span></div>' + (d.raisedStep ? '<div class="kv"><span>Raised at</span><span>' + esc(labelOf(d.raisedStep)) + '</span></div>' : '') + (d.debitNo ? '<div class="kv"><span>Debit No.</span><span>' + esc(d.debitNo) + '</span></div>' : '') + (d.amount != null ? '<div class="kv"><span>Amount</span><span>' + esc(fmtAmt(+d.amount) || '₹' + d.amount) + '</span></div>' : '')
     + '<div class="kv"><span>Raised by</span><span>' + esc((d.raisedBy || '') + (d.raisedEmp ? ' (' + d.raisedEmp + ')' : '') + (d.raisedAt ? ' · ' + fmtStamp(d.raisedAt) : '')) + '</span></div>'
+    + (d.consentName ? '<div class="kv"><span>Party Consent</span><span>' + esc(d.consentName + (d.consentMobile ? ' · ' + d.consentMobile : '')) + '</span></div>' : '')
     + (d.status === 'VERIFIED' ? '<div class="kv"><span>Verified by</span><span>' + esc((d.verifiedBy || '') + (d.verifiedEmp ? ' (' + d.verifiedEmp + ')' : '') + (d.verifiedAt ? ' · ' + fmtStamp(d.verifiedAt) : '')) + '</span></div>' + (d.verifyRemarks ? '<div class="kv"><span>Remarks</span><span>' + esc(d.verifyRemarks) + '</span></div>' : '') : '')
     + proofs() + '</div>';
   if (d.status === 'RAISED') {
-    if (canV) h += '<div class="gap"></div><button class="btn green" data-debit="verify">Verify: Debit No., amount, attachment</button>';
-    else h += '<div class="foot">The Accountant attaches the proof and verifies it.</div>';
+    if (canV) h += '<div class="gap"></div><button class="btn green" data-debit="verify">Fill Party Consent</button>';
+    else h += '<div class="foot">The Accountant fills the Party Consent: consent person, mobile, approval document, Debit No. and amount.</div>';
     if (canR) h += '<div class="gap"></div><button class="btn gray" style="color:var(--red)" data-debit="withdraw">Withdraw Debit Note</button>';
   }
   return h + '</div>';
 }
 
 /* ══ Accountant Copy: PIN, then the sign / time / remark stamped on the latest file ══ */
-const SIGN_FALLBACK = { GM:'gm', MD1:'md', MD2:'md2' };
+const SIGN_FALLBACK = { GM:'gm', MD1:'md', MD2:'md2', SA:'gm', AUTH:'md' };   // Issue: Stock Auditor Sign = gm cell, Authority Sign = md cell
 const signOf = s => (s && (s.sign || SIGN_FALLBACK[s.code])) || '';
 const BUCKET = 'sarv-pdfs';
 const pubUrl = path => SUPABASE_URL + '/storage/v1/object/public/' + BUCKET + '/' + path.split('/').map(encodeURIComponent).join('/');
@@ -966,7 +1035,7 @@ const meIs = x => { const u = S.user || {}; return !!x && ((u.emp_code && x.emp 
 async function accOf(r){ const d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) }); return d.row || {}; }
 /* Own PIN → {name, signature|null}. Null when cancelled; a wrong PIN says so and returns null. */
 async function askPin(step, why){
-  const c = await iosAlert({ title:'Enter your PIN', message:why || ('To sign the Accountant Copy for ' + step.label), input:'PIN', inputType:'password', buttons:[{ t:'Cancel' }, { t:'Sign', s:'b' }] });
+  const c = await iosAlert({ title:'Enter your PIN', message:why || ('To sign the Accountant Copy for ' + step.label), input:'PIN', inputType:'password', auto:4, buttons:[{ t:'Cancel' }, { t:'Sign', s:'b' }] });
   if (c.i !== 1) return null;
   if (!c.value) { toast('Enter your PIN.', true); return null; }
   busy(true);
@@ -1044,14 +1113,16 @@ function openCheck(code){
   if (SAVING[r.key]) { toast('This bill is still saving. One moment.', true); return; }
   const lkd = lockOf(r), nowStep = mineStep(r);
   if (lkd && nowStep && nowStep.step.code === code) { toast('Check ' + lkd.no + ' first (OKAY, or HOLD it).', true); return; }
-  const f = { pick:'' }, last = S.flow[S.flow.length - 1].code === code;
-  const opts = last ? ['OKAY', 'HOLD'] : ['OKAY', 'HOLD', 'DEBIT'];
+  /* last = the Accounts Check (Actual Invoice No., no DEBIT). An Issue has neither a Debit Note nor an invoice:
+     every step there is OKAY / HOLD only. */
+  const f = { pick:'' }, last = !ISSUE_MODE && S.flow[S.flow.length - 1].code === code;
+  const opts = last || ISSUE_MODE ? ['OKAY', 'HOLD'] : ['OKAY', 'HOLD', 'DEBIT'];
   const COL = { OKAY:'var(--green)', HOLD:'var(--orange)', DEBIT:'var(--red)' };
   const SAYS = { OKAY:'The bill goes on to the next step.', HOLD:'The bill stays at this step; the next step does not see it until you pass it.', DEBIT:'The bill goes on, and the Accountant gets a highlighted Debit Note with your remark.' };
   const l = openSheet({ small:true, left:'Cancel' });
   const val = k => ((l.body.querySelector('[data-keep="' + k + '"]') || {}).value || '');
   const paint = () => {
-    const wasRm = val('rm'), wasAmt = val('amt');
+    const wasRm = val('rm'), wasAmt = val('amt'), wasInv = val('inv');
     const si2 = seenInfo(r), ok = si2.ready && si2.n >= si2.total, cur = stepOf(r, code), d = debitOf(r);
     const okBlocked = last && d && d.status === 'RAISED', debBlocked = !!d;
     l.el.querySelector('.tt').textContent = step.label;
@@ -1059,28 +1130,38 @@ function openCheck(code){
     l.body.innerHTML = '<div class="grp"><div class="kv"><span>Bill</span><span>' + esc(r.no) + '</span></div><div class="kv"><span>Party</span><span>' + esc(r.party || '—') + '</span></div>'
       + '<div class="kv"><span>Looked at</span><span style="color:' + (ok ? 'var(--green)' : 'var(--orange)') + '">' + (si2.ready ? si2.n + ' of ' + si2.total : si2.err ? 'Not loaded' : 'Loading…') + '</span></div></div>'
       + (ok ? '' : '<div class="note warn">OKAY and DEBIT are possible only after every page and photo of this bill has been looked at. HOLD can be given any time.</div><div class="gap"></div><button class="btn gray" data-fview="1">' + IC.eye + 'Review attachments</button>')
-      + (okBlocked ? '<div class="note warn">A Debit Note is waiting for you. Verify it (Debit No., amount, attachment) before passing this step.</div>' : '')
+      + (okBlocked ? '<div class="note warn">This bill has a Debit Note: fill the Party Consent (consent person, mobile, approval document, Debit No., amount) before passing this step.</div>'
+          + (canDo('DEBIT_VERIFY', r.store) ? '<div class="gap"></div><button class="btn" data-pc="1">Fill Party Consent</button>' : '') : '')
       + '<div class="gap"></div><div class="seg2" style="grid-template-columns:repeat(' + opts.length + ',1fr)"><div class="thumb" style="width:calc(' + (100 / opts.length) + '% - 2px);background:' + (COL[f.pick] || 'var(--green)') + ';transform:translateX(' + (idx * 100) + '%);opacity:' + (f.pick ? 1 : 0) + '"></div>'
       + opts.map(o => '<button data-p="' + o + '" class="' + (f.pick === o ? 'on' : '') + '"' + (((o === 'OKAY' || o === 'DEBIT') && !ok) || (o === 'OKAY' && okBlocked) || (o === 'DEBIT' && debBlocked) ? ' disabled' : '') + '>' + o + '</button>').join('') + '</div>'
       + (f.pick ? '<div class="note">' + esc(SAYS[f.pick]) + '</div>' : '') + (debBlocked && !last ? '<div class="note">A Debit Note is already raised on this bill.</div>' : '')
       + '<div class="gap"></div><textarea class="field" data-keep="rm" rows="3" placeholder="' + (f.pick === 'DEBIT' ? 'Debit: remarks for the Accountant (needed)' : f.pick === 'HOLD' ? 'Reason (needed for HOLD)' : 'Remarks (optional)') + '"></textarea>'
       + (f.pick === 'DEBIT' ? '<input class="field" data-keep="amt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Debit amount, ₹ (optional)">' : '')
+      // Accounts Check (the last step): OKAY needs the Actual Invoice No. (server INVOICE_REQUIRED)
+      + (last && f.pick === 'OKAY' ? '<input class="field" data-keep="inv" maxlength="60" autocomplete="off" placeholder="Actual Invoice No. (needed)' + (r.invoice ? ' · entered: ' + esc(r.invoice) : '') + '">' : '')
       + '<div class="gap"></div><button class="btn ' + (f.pick === 'HOLD' ? 'orange' : f.pick === 'DEBIT' ? 'red' : 'green') + '" data-go="1" disabled>' + (f.pick ? 'Confirm ' + f.pick : 'Pick ' + opts.join(', ').replace(/, ([A-Z]+)$/, ' or $1')) + '</button>'
       + (cur ? '<div class="note">Now: ' + esc(cur.status) + (cur.by ? ' by ' + esc(cur.by) : '') + '</div>' : '');
     const a = l.body.querySelector('[data-keep="rm"]'); if (a) a.value = wasRm;
     const b = l.body.querySelector('[data-keep="amt"]'); if (b) b.value = wasAmt;
+    const iv = l.body.querySelector('[data-keep="inv"]'); if (iv) iv.value = wasInv;
     sync();
   };
-  const sync = () => { const go = l.body.querySelector('[data-go]'); if (go) go.disabled = !f.pick || ((f.pick === 'HOLD' || f.pick === 'DEBIT') && val('rm').trim().length < 3); };
+  const sync = () => { const go = l.body.querySelector('[data-go]'); if (go) go.disabled = !f.pick || ((f.pick === 'HOLD' || f.pick === 'DEBIT') && val('rm').trim().length < 3)
+    || (last && f.pick === 'OKAY' && !val('inv').trim()); };
   l.body.addEventListener('input', sync);
   l.body.addEventListener('click', async e => {
     const p = e.target.closest('[data-p]');
     if (p && !p.disabled) { f.pick = p.dataset.p; paint(); return buzz(); }
     if (e.target.closest('[data-fview]')) { openViewer(r, 'next', () => paint()); return; }
+    if (e.target.closest('[data-pc]')) { closeLayer(l); setTimeout(() => debitAct('verify'), 320); return; }
     if (e.target.closest('[data-go]')) {
       const rm = val('rm').trim(), amt = val('amt'), si3 = seenInfo(r);
-      const c = await iosAlert({ title:step.label + ': ' + f.pick + '?', message:(r.no || '') + (rm ? '\n“' + rm + '”' : '') + (f.pick === 'DEBIT' && amt ? '\n₹' + amt : ''), buttons:[{ t:'Cancel' }, { t:'Confirm', s:'b' }] });
-      if (c.i !== 1) return;
+      /* OKAY: no "are you sure" box. A signing step goes straight to the PIN (it submits itself once typed) and is
+         then saved; any other step is saved at once. HOLD / DEBIT still ask to confirm (they stop or flag the bill). */
+      if (f.pick !== 'OKAY') {
+        const c = await iosAlert({ title:step.label + ': ' + f.pick + '?', message:(r.no || '') + (rm ? '\n“' + rm + '”' : '') + (f.pick === 'DEBIT' && amt ? '\n₹' + amt : ''), buttons:[{ t:'Cancel' }, { t:'Confirm', s:'b' }] });
+        if (c.i !== 1) return;
+      }
       /* A signing step passing the bill asks the checker's own PIN FIRST (a wrong PIN saves nothing); the
          Accountant Copy is stamped after the check is saved. A bill without a copy base is checked as before. */
       let sig = null;
@@ -1094,7 +1175,8 @@ function openCheck(code){
       const u = S.user || {}, row0 = S.map[r.key] || (S.map[r.key] = { key:r.key, steps:{} });
       row0.steps = row0.steps || {}; row0.steps[code] = { status:f.pick === 'HOLD' ? 'HOLD' : 'OKAY', remarks:rm, by:u.user_name || u.name || '', emp:u.emp_code || '', at:new Date().toISOString(), seen:si3.n, total:si3.total };
       SAVING[r.key] = true;
-      const body = Object.assign({ p_kind:r.kind, p_record_id:String(r.id), p_step:code, p_status:f.pick, p_remarks:rm, p_seen:si3.n, p_total:si3.total }, f.pick === 'DEBIT' ? { p_amount:amt === '' ? null : Number(amt) } : {});
+      const body = Object.assign({ p_kind:r.kind, p_record_id:String(r.id), p_step:code, p_status:f.pick, p_remarks:rm, p_seen:si3.n, p_total:si3.total },
+        f.pick === 'DEBIT' ? { p_amount:amt === '' ? null : Number(amt) } : {}, last && f.pick === 'OKAY' ? { p_invoice_no:val('inv').trim() } : {});
       const pickWas = f.pick;
       (async () => {
         try {
@@ -1154,27 +1236,34 @@ async function debitAct(a){
     return void await act('scs_debit_withdraw', { p_reason:c.value }, 'Debit Note withdrawn');
   }
   if (a === 'verify') {
+    /* Party Consent (the Accountant): who of the party agreed (name + 10-digit mobile), the approval document(s),
+       the Debit No. and amount. Done = the Debit Note is verified and the Accounts Check can pass. */
     const d = debitOf(r); if (!d) return;
-    const l = openSheet({ small:true, left:'Cancel' }); l.el.querySelector('.tt').textContent = 'Verify Debit Note';
+    const l = openSheet({ small:true, left:'Cancel' }); l.el.querySelector('.tt').textContent = 'Party Consent';
     const val = k => ((l.body.querySelector('[data-keep="' + k + '"]') || {}).value || '').trim();
+    const mob10 = s => { let m = String(s || '').replace(/\D/g, ''); if (m.length === 12 && m.startsWith('91')) m = m.slice(2); if (m.length === 11 && m.startsWith('0')) m = m.slice(1); return /^[6-9]\d{9}$/.test(m) ? m : ''; };
     const paint = () => {
-      const keep = { no:val('no'), amt:val('amt'), rm:val('rm') }, n = (debitOf(r) || {}).proofs || 0;
-      l.body.innerHTML = '<div class="grp"><div class="kv"><span>Bill</span><span>' + esc(r.no) + '</span></div><div class="kv"><span>Remarks</span><span>' + esc(d.reason || '') + '</span></div></div><div class="gap"></div>'
+      const keep = { cn:val('cn'), mob:val('mob'), no:val('no'), amt:val('amt'), rm:val('rm') }, n = (debitOf(r) || {}).proofs || 0;
+      l.body.innerHTML = '<div class="grp"><div class="kv"><span>Bill</span><span>' + esc(r.no) + '</span></div><div class="kv"><span>Party</span><span>' + esc(r.party || '—') + '</span></div>'
+        + '<div class="kv"><span>Debit Note</span><span>' + esc(d.reason || '') + (d.amount != null ? ' · ₹' + esc(String(d.amount)) : '') + '</span></div></div><div class="gap"></div>'
+        + '<input class="field" data-keep="cn" maxlength="120" autocomplete="off" placeholder="Consent person name (needed)">'
+        + '<input class="field" data-keep="mob" type="tel" inputmode="numeric" maxlength="15" autocomplete="off" placeholder="Contact mobile no. (10 digits, needed)">'
+        + '<div class="grp"><div class="kv"><span>Approval documents</span><span style="color:' + (n ? 'var(--green)' : 'var(--red)') + '">' + (n ? n + ' attached' : 'Needed') + '</span></div></div><div class="gap"></div>'
+        + '<label class="btn gray" style="cursor:pointer">' + IC.plus + 'Attach approval document (photo / PDF)<input type="file" data-proof="1" data-up="bc-debit-proof" accept="image/*,application/pdf" multiple hidden></label><div class="gap"></div>'
         + '<input class="field" data-keep="no" maxlength="60" placeholder="Debit No. (needed)"><input class="field" data-keep="amt" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Amount, ₹ (needed)">'
-        + '<input class="field" data-keep="rm" maxlength="500" placeholder="Remarks (optional)"><div class="gap"></div>'
-        + '<div class="grp"><div class="kv"><span>Attachment</span><span style="color:' + (n ? 'var(--green)' : 'var(--red)') + '">' + (n ? n + ' attached' : 'Needed') + '</span></div></div><div class="gap"></div>'
-        + '<label class="btn gray" style="cursor:pointer">' + IC.plus + 'Attach proof (photo / PDF)<input type="file" data-proof="1" accept="image/*,application/pdf" multiple hidden></label>'
-        + '<div class="gap"></div><button class="btn green" data-vgo="1" disabled>Verify Debit Note</button>';
-      const first = !keep.no && !keep.amt && !keep.rm;
-      [['no', keep.no], ['amt', keep.amt || (first && d.amount != null ? String(d.amount) : '')], ['rm', keep.rm]].forEach(([k, v]) => { const i = l.body.querySelector('[data-keep="' + k + '"]'); if (i) i.value = v; });
+        + '<input class="field" data-keep="rm" maxlength="500" placeholder="Remarks (optional)">'
+        + '<div class="gap"></div><button class="btn green" data-vgo="1" disabled>Done: Party Consent</button>';
+      const first = !keep.no && !keep.amt && !keep.rm && !keep.cn && !keep.mob;
+      [['cn', keep.cn], ['mob', keep.mob], ['no', keep.no], ['amt', keep.amt || (first && d.amount != null ? String(d.amount) : '')], ['rm', keep.rm]].forEach(([k, v]) => { const i = l.body.querySelector('[data-keep="' + k + '"]'); if (i) i.value = v; });
       sync();
     };
-    const sync = () => { const g = l.body.querySelector('[data-vgo]'), nn = (debitOf(r) || {}).proofs || 0; if (g) g.disabled = !val('no') || !(Number(val('amt')) > 0) || nn < 1; };
+    const sync = () => { const g = l.body.querySelector('[data-vgo]'), nn = (debitOf(r) || {}).proofs || 0;
+      if (g) g.disabled = val('cn').length < 2 || !mob10(val('mob')) || nn < 1 || !val('no') || !(Number(val('amt')) > 0); };
     l.body.addEventListener('input', sync);
     l.body.addEventListener('click', async e => {
       if (!e.target.closest('[data-vgo]')) return;
-      const c = await iosAlert({ title:'Verify the Debit Note?', message:'Debit No. ' + val('no') + '\n₹' + val('amt'), buttons:[{ t:'Cancel' }, { t:'Verify', s:'b' }] });
-      if (c.i === 1 && await act('scs_debit_verify', { p_remarks:val('rm'), p_debit_no:val('no'), p_amount:Number(val('amt')) }, 'Debit Note verified')) closeLayer(l);
+      const c = await iosAlert({ title:'Party Consent done?', message:val('cn') + ' · ' + mob10(val('mob')) + '\nDebit No. ' + val('no') + ' · ₹' + val('amt'), buttons:[{ t:'Cancel' }, { t:'Done', s:'b' }] });
+      if (c.i === 1 && await act('scs_debit_verify', { p_remarks:val('rm'), p_debit_no:val('no'), p_amount:Number(val('amt')), p_consent_name:val('cn'), p_consent_mobile:mob10(val('mob')) }, 'Party Consent done')) closeLayer(l);
     });
     VF = { l, paint }; l.onClose = () => { if (VF && VF.l === l) VF = null; };
     paint(); return;
@@ -1376,7 +1465,8 @@ async function refresh(manual){ if (manual) toast('Refreshing…'); await loadLi
 
 /* ══ Boot ══════════════════════════════════════════════════════════════ */
 (async function boot(){
-  S.user = await SARV_GATE.boot({ url:SUPABASE_URL, key:SUPABASE_ANON, app:APP_KEY, label:'Bill Check' });
+  if (ISSUE_MODE) { document.title = APP_NAME; document.querySelector('#nav .ttl').textContent = APP_NAME; $('q').placeholder = 'Search Issue no., receiver, item'; }
+  S.user = await SARV_GATE.boot({ url:SUPABASE_URL, key:SUPABASE_ANON, app:APP_KEY, label:APP_NAME });
   paintAll();
   try { await loadList(); } finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
   // New bills show up on their own; never while a sheet is open, so nothing moves under the checker.
