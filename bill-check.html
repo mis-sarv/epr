@@ -54,6 +54,14 @@
   time and the check remark onto the LATEST copy with pdf-lib (CHECK REMARKS box under the
   signatures); the next step receives that updated copy, and ERP › Preview shows it.
   HOLD signs nothing. A bill from before this feature has no base: it is checked as before.
+  WHO SEES IT (Bill Check, not Issue): the Accountant Copy is an attachment ONLY for a user with
+  the EA step, and only once MD-1 Bill Check is OKAY (accVisible); for everyone else, and before
+  MD-1, it is not shown at all. The signing steps still stamp it in the background (acc_get).
+  PRINT ACCOUNT COPY (EA only, button under the tabs, S.seg 'PRINT'): every bill past MD-1, series
+  by series, oldest first; only the oldest not-yet-printed bill of a series can be printed or
+  downloaded, the later ones are locked like the check order. Printed state on the server
+  (sql/BILL_CHECK_ACCOUNT_PRINT_MIGRATION.sql, acc_print_list / acc_print_mark); without it, on this
+  device only (localStorage bc_acc_printed:<user id>).
 -->
 <style>
 :root{
@@ -127,6 +135,13 @@ body.sheeted #app{transform:translateY(calc(var(--sat) + 8px)) scale(.925);borde
 .chip:active{transform:scale(.95)}
 .chip.on{background:var(--blue);color:#fff}
 .chip.sp{width:1px;padding:0;background:var(--sep);height:20px;align-self:center;border-radius:0}
+/* EA only: the separate Print Account Copy filter under the tabs */
+.accp{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:34px;border-radius:9px;background:rgba(88,86,214,.12);color:#5856d6;font-size:14px;font-weight:600;transition:background .2s,color .2s,transform .15s}
+.accp:active{transform:scale(.98)}
+.accp.on{background:#5856d6;color:#fff}
+.accp .bdg{min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#5856d6;color:#fff;font-size:12px;display:inline-flex;align-items:center;justify-content:center}
+.accp.on .bdg{background:#fff;color:#5856d6}
+.accp[hidden]{display:none}
 
 /* ── grouped inset lists ── */
 .sec{margin:22px 0 0}
@@ -337,6 +352,7 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
     <div class="chips" id="chipsStore"></div>
     <div class="chips" id="chips"></div>
     <div class="seg" id="seg"></div>
+    <button class="accp" id="accPrint" hidden></button>
     <label class="search" id="searchBox">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search record, party, invoice" autocomplete="off">
@@ -395,7 +411,8 @@ const S = {
   seg:'TODO', type:'ALL', store:'ALL', q:'', days:60, show:{},
   map:{},                 // 'inward:12' -> pipeline row from scs_get
   att:{},                 // key -> {state, slides, errs}
-  seen:{}                 // key -> Set of slide numbers looked at in the viewer
+  seen:{},                // key -> Set of slide numbers looked at in the viewer
+  printed:{}, printMissing:false   // Print Account Copy (EA): key -> printed state
 };
 const TYPE_LOOK = { 'INWARD':['IN','#0a84ff'], 'INWARD NB':['NB','#ff3b30'], 'OUTWARD':['OUT','#34c759'], 'ISSUE':['ISS','#af52de'] };
 const ERR = {
@@ -408,7 +425,8 @@ const ERR = {
   INVOICE_REQUIRED:'Enter the Actual Invoice No. to pass the Accounts Check.',
   DEBIT_NO_REQUIRED:'Enter the Debit No.', AMOUNT_REQUIRED:'Enter the Debit amount (more than 0).', BAD_STATUS:'This choice is not possible on this step.', BAD_FILE:'Only a photo or a PDF can be attached.',
   FILE_TOO_BIG:'That file is too big. Use a smaller photo / PDF.', TOO_MANY_FILES:'At most 6 proof files per Debit Note.',
-  NO_DEBIT:'An Issue bill has no Debit Note.', BAD_STEP:'This step is not part of this bill’s pipeline. Refresh the list.'
+  NO_DEBIT:'An Issue bill has no Debit Note.', BAD_STEP:'This step is not part of this bill’s pipeline. Refresh the list.',
+  WAIT_MD1:'Not yet: MD-1 Bill Check must be OKAY first.'
 };
 const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1 };
 
@@ -503,6 +521,111 @@ function heldForMe(r){
   const nx = S.flow[S.flow.findIndex(s => s.code === st.step.code) + 1];
   return nx && canDo(nx.code, r.store) ? st.step : null;
 }
+/* ── Accountant Copy: who sees it ─────────────────────────────────────────
+   Bill Check: only a user with the EA step for the bill's store, and only after MD-1 Bill Check is OKAY. Nobody else sees it at
+   all (not even as "not generated yet"). Issue Bill Check has no EA / MD-1: there it stays as before. */
+const isEa = store => canDo('EA', store);
+const anyEa = () => !ISSUE_MODE && (isEa('STORE 1') || isEa('STORE 2'));
+const md1Ok = r => { const x = stepOf(r, 'MD1'); return !!x && x.status === 'OKAY'; };
+const accVisible = r => ISSUE_MODE || (isEa(r.store) && md1Ok(r));
+
+/* ── Print Account Copy (EA only) ─────────────────────────────────────────
+   Every bill past MD-1 (not cancelled) of a store where the user is EA, series by series (seqSeries / seqCmp, the check order),
+   oldest first. Only the OLDEST not-yet-printed bill of a series can be printed / downloaded; the later ones are locked
+   ("Print <no> first"). A printed bill can be printed again any time. A bill without an Accountant Copy is SKIPPED (on purpose,
+   by the EA) so it does not hold up its series. Computed over ALL loaded rows, never over the search / filter.
+   S.printed: key -> {lastAt, lastBy, how, times} from acc_print_list (or this device's own list before the migration). */
+const PRINT_LS = () => 'bc_acc_printed:' + ((S.user && S.user.id) || '');
+const printRows = () => S.rows.filter(r => !r.cancelled && md1Ok(r) && isEa(r.store));
+const isPrinted = r => !!S.printed[r.key];
+let PLOCKS = null;
+function printLocks(){
+  if (PLOCKS) return PLOCKS;
+  const by = {}; PLOCKS = {};
+  printRows().filter(r => !isPrinted(r)).forEach(r => { (by[seqSeries(r)] = by[seqSeries(r)] || []).push(r); });
+  Object.keys(by).forEach(k => { const l = by[k].sort(seqCmp); l.forEach((r, i) => { if (i) PLOCKS[r.key] = { no:l[0].no, key:l[0].key }; }); });
+  return PLOCKS;
+}
+const printLockOf = r => printLocks()[r.key] || null;
+async function loadPrinted(){
+  S.printed = {};
+  if (!anyEa()) return;
+  const keys = printRows().map(r => r.key);
+  try {
+    const d = await rpc('acc_print_list', { p_keys:keys });
+    S.printed = d.rows || {}; S.printMissing = false;
+  } catch (e) {
+    if (!e.missing) return;
+    S.printMissing = true;                                         // BILL_CHECK_ACCOUNT_PRINT_MIGRATION.sql not run yet: this device's own list
+    try { S.printed = JSON.parse(localStorage.getItem(PRINT_LS()) || '{}') || {}; } catch (x) { S.printed = {}; }
+  }
+}
+async function markPrinted(r, how){
+  if (S.printMissing) {
+    S.printed[r.key] = { lastAt:new Date().toISOString(), lastBy:(S.user && (S.user.user_name || S.user.name)) || '', how, times:((S.printed[r.key] || {}).times || 0) + 1 };
+    try { localStorage.setItem(PRINT_LS(), JSON.stringify(S.printed)); } catch (e) {}
+  } else {
+    await rpc('acc_print_mark', { p_kind:r.kind, p_record_id:String(r.id), p_action:how });
+    S.printed[r.key] = { lastAt:new Date().toISOString(), lastBy:(S.user && (S.user.user_name || S.user.name)) || '', how, times:((S.printed[r.key] || {}).times || 0) + 1 };
+  }
+  PLOCKS = null;
+}
+// the latest Accountant Copy of one bill as a file (the page's own blob, so it can be printed / saved here)
+async function accBlob(r){
+  const d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) });
+  const a = d.row || {};
+  if (!a.currentUrl) return null;
+  const res = await fetch(a.currentUrl + (a.currentUrl.indexOf('?') < 0 ? '?' : '&') + 'dl=' + Date.now(), { cache:'no-store' });
+  if (!res.ok) throw new Error('The Accountant Copy could not be downloaded (' + res.status + ').');
+  return await res.blob();
+}
+function printBlob(blob){
+  const url = URL.createObjectURL(blob);
+  const f = document.createElement('iframe');
+  f.style.cssText = 'position:fixed;right:0;bottom:0;width:1px;height:1px;border:0;opacity:0';
+  f.src = url;
+  f.onload = () => {
+    try { f.contentWindow.focus(); f.contentWindow.print(); }
+    catch (e) { window.open(url, '_blank'); }                    // a browser that cannot print a PDF in a frame: open it, print from there
+    setTimeout(() => { f.remove(); URL.revokeObjectURL(url); }, 60000);
+  };
+  document.body.appendChild(f);
+}
+function saveBlob(blob, name){
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
+}
+async function accPrintAct(r){
+  const lk = printLockOf(r);
+  if (lk) {
+    const c = await iosAlert({ title:'Print ' + lk.no + ' first', message:(r.no || '') + ' comes after ' + lk.no + ' in its series. Print or download ' + lk.no + ' first, then this one opens.', buttons:[{ t:'Close' }, { t:'Go to ' + lk.no, s:'b' }] });
+    if (c.i === 1) { const o = S.rows.find(x => x.key === lk.key); if (o) accPrintAct(o); }
+    return;
+  }
+  const done = S.printed[r.key];
+  const i = await iosMenu({ title:'Accountant Copy · ' + (r.no || ''), message:done ? 'Printed ' + (done.times || 1) + '× · last ' + fmtStamp(done.lastAt) + (done.lastBy ? ' by ' + done.lastBy : '') : (r.party || ''),
+    items:[{ t:done ? 'Print again' : 'Print' }, { t:done ? 'Download again' : 'Download PDF' }, { t:'Open the bill' }] });
+  if (i === 2) return openRecord(r.key);
+  if (i !== 0 && i !== 1) return;
+  busy(true);
+  let blob;
+  try { blob = await accBlob(r); }
+  catch (e) { busy(false); return toast(e.message || String(e), true); }
+  busy(false);
+  if (!blob) {
+    if (done) return toast('This bill has no Accountant Copy.', true);
+    const c = await iosAlert({ title:'No Accountant Copy', message:(r.no || '') + ' has no Accountant Copy (saved before this step existed, or its upload from the ERP did not finish). Skip it, so the next bill of the series can be printed?', buttons:[{ t:'Cancel' }, { t:'Skip', s:'d' }] });
+    if (c.i !== 1) return;
+    try { await markPrinted(r, 'SKIP'); toast(r.no + ' skipped'); } catch (e) { toast(e.message || String(e), true); }
+    return paintAll();
+  }
+  if (i === 0) printBlob(blob); else saveBlob(blob, String(r.no || 'bill').replace(/[\\/:*?"<>|\s]+/g, '_') + '_ACCOUNT_COPY.pdf');
+  try { await markPrinted(r, i === 0 ? 'PRINT' : 'DOWNLOAD'); }
+  catch (e) { toast('Printed, but not recorded: ' + (e.message || e), true); }
+  paintAll();
+}
+
 function doneStep(r){                         // the latest step of this user's that is OKAY
   let hit = null;
   S.flow.forEach(s => { const x = stepOf(r, s.code); if (x && x.status === 'OKAY' && canDo(s.code, r.store)) hit = s; });
@@ -538,6 +661,7 @@ async function loadList(){
     rows.sort((a, b) => (b.created || '').localeCompare(a.created || ''));
     S.rows = rows.slice(0, 2800);
     await loadPipelines();
+    await loadPrinted();
     S.loaded = true;
   } catch (e) { S.loadErr = e.message || String(e); S.loaded = true; }
   finally { S.loading = false; }
@@ -583,8 +707,9 @@ const ATT_LABEL = { STORE:r => r.kind === 'inward' ? 'Supplier Copy' : 'Receiver
 
 async function loadAttachments(r, force){
   let a = S.att[r.key];
-  if (a && !force && a.state !== 'error') return a;
-  a = S.att[r.key] = { state:'loading', slides:[], errs:[] };
+  // the set is made again when the Accountant Copy has to appear / go (MD-1 passed it meanwhile)
+  if (a && !force && a.state !== 'error' && a.accShown === accVisible(r)) return a;
+  a = S.att[r.key] = { state:'loading', slides:[], errs:[], accShown:accVisible(r) };
   paintSheet();
   try {
     const q = await rest((r.kind === 'inward' ? 'inward_entries' : 'outward_entries') + '?select=*&id=eq.' + encodeURIComponent(r.id));
@@ -608,7 +733,7 @@ async function loadAttachments(r, force){
       list.forEach((s, i) => slides.push(Object.assign({ group:id, label, pos:i + 1, of:list.length }, s)));
     });
     slides.forEach((s, i) => { s.n = i; });
-    a.slides = slides; a.state = a.errs.length ? 'error' : 'ready'; a.accUrl = (ctx.acc && ctx.acc.currentUrl) || '';
+    a.slides = slides; a.state = a.errs.length ? 'error' : 'ready'; a.accUrl = (a.accShown && ctx.acc && ctx.acc.currentUrl) || '';
     if (CUR && CUR.r === r && ctx.acc) CUR.acc = ctx.acc;
   } catch (e) { a.state = 'error'; a.errs.push(e.message || String(e)); }
   paintSheet();
@@ -627,6 +752,7 @@ async function attAccount(r, ctx){
   try { d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) }); }
   catch (e) { if (e.missing || /acc_get|store_account_copy|schema cache/i.test(e.message || '')) return { slides:[], empty:'The Accountant Copy is not set up yet (Admin: run sql/STORE_ACCOUNT_COPY_MIGRATION.sql).' }; throw e; }
   const a = ctx.acc = d.row || {};
+  if (!accVisible(r)) return null;                               // not the EA, or MD-1 not OKAY yet: not shown at all (ctx.acc still feeds the signing)
   if (!a.currentUrl) return { slides:[], empty:a.hasBase ? 'Not generated yet: it is made when the ' + (ISSUE_MODE ? 'Stock Auditor' : 'GM') + ' checks this bill.' : 'No Accountant Copy for this bill: it was saved before this step existed, or its upload from the ERP did not finish (open the bill in the ERP on the same computer, or ask the Admin to Edit and save it again).' };
   const doc = await pdfDoc(a.currentUrl), slides = [];
   const who = S.flow.filter(s => a.stamps && a.stamps[s.code]).map(s => s.short + ' ' + (a.stamps[s.code].by || '')).join(', ');
@@ -731,14 +857,15 @@ function rowHtml(x, i){
   const r = x.r, look = TYPE_LOOK[r.type] || ['REC', '#8e8e93'], st = stageOf(r), has = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
   const dots = S.flow.map(s => { const y = stepOf(r, s.code); const c = y ? (y.status === 'OKAY' ? 'ok' : 'hold') : (st.step && st.step.code === s.code && has ? 'next' : ''); return '<i class="' + c + '" title="' + esc(s.label) + '"></i>'; }).join('');
   const db = debitOf(r);
-  const lk = lockOf(r);
+  const lk = x.print ? printLockOf(r) : lockOf(r), pr = x.print ? S.printed[r.key] : null;
   const hs = x.view ? stageOf(r) : null, hx = hs && hs.step ? stepOf(r, hs.step.code) : null;
-  const tags = (SAVING[r.key] ? '<span class="pill blue">Saving…</span>' : '') + (lk ? '<span class="pill gray">Locked</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
+  const tags = (SAVING[r.key] ? '<span class="pill blue">Saving…</span>' : '') + (lk ? '<span class="pill gray">Locked</span>' : '')
+    + (x.print && !lk && !pr ? '<span class="pill blue">Print next</span>' : '') + (pr ? '<span class="pill ' + (pr.how === 'SKIP' ? 'gray">Skipped' : 'ok">Printed' + ((pr.times || 1) > 1 ? ' ×' + pr.times : '')) + '</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
     + (db ? '<span class="pill red">' + (db.status === 'VERIFIED' ? 'Debit ✓' : 'Debit') + '</span>' : '');
   const hl = db && db.status === 'RAISED' ? '<div class="dbn">Debit: ' + esc(db.reason || '') + (db.amount != null ? ' · ₹' + esc(String(db.amount)) : '') + '</div>' : '';
   return '<button class="cell rec' + (lk ? ' locked' : '') + '" style="--i:' + Math.min(i, 14) + '" data-open="' + esc(r.key) + '">'
     + '<span class="ico" style="background:' + look[1] + '">' + look[0] + '</span>'
-    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? 'Check ' + lk.no + ' first' : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
+    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? (x.print ? 'Print ' : 'Check ') + lk.no + ' first' : pr ? (pr.how === 'SKIP' ? 'Skipped (no Accountant Copy)' : 'Printed ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '')) : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
     + '<span class="end"><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (fmtAmt(r.amount) ? '<span class="a">' + esc(fmtAmt(r.amount)) + '</span>' : '') + tags + '</span>'
     + '<span class="chev">' + IC.chev + '</span></button>';
 }
@@ -764,10 +891,19 @@ function paintHeader(){
   const holdAny = heldMine + Object.keys(d.view).reduce((n, k) => n + d.view[k].length, 0), debitAny = d.deb.RAISED.length;
   const defs = [['TODO', 'To Check', freshMine, 1, ''], ['DONE', 'Done', cnt(d.done), 0, ''], ['HOLD', 'Hold', holdAny, 1, alertUser && holdAny ? 't-hold' : ''], ['DEBIT', 'Debit', debitAny, 1, alertUser && debitAny ? 't-debit' : ''], ['ALL', 'All', 0, 0, '']]
     .filter(x => !(ISSUE_MODE && x[0] === 'DEBIT'));                 // an Issue has no Debit Note
-  if (!defs.some(x => x[0] === S.seg)) S.seg = 'TODO';
-  const i = Math.max(0, defs.findIndex(x => x[0] === S.seg));
+  // Print Account Copy: the EA's own filter, a separate button under the tabs (not one more tab)
+  const ea = anyEa(), pb = $('accPrint');
+  if (S.seg === 'PRINT' && !ea) S.seg = 'TODO';
+  if (S.seg !== 'PRINT' && !defs.some(x => x[0] === S.seg)) S.seg = 'TODO';
+  pb.hidden = !ea;
+  if (ea) {
+    const waiting = printRows().filter(r => !isPrinted(r)).length;
+    pb.className = 'accp' + (S.seg === 'PRINT' ? ' on' : '');
+    pb.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2"/><path d="M7 14h10v7H7z"/></svg>Print Account Copy' + (waiting ? '<span class="bdg">' + waiting + '</span>' : '');
+  }
+  const i = defs.findIndex(x => x[0] === S.seg);
   $('seg').style.gridTemplateColumns = 'repeat(' + defs.length + ',1fr)';
-  $('seg').innerHTML = '<div class="thumb" style="width:calc(' + (100 / defs.length) + '% - 2px);transform:translateX(' + (i * 100) + '%)"></div>'
+  $('seg').innerHTML = '<div class="thumb" style="width:calc(' + (100 / defs.length) + '% - 2px);transform:translateX(' + (Math.max(0, i) * 100) + '%)' + (i < 0 ? ';opacity:0' : '') + '"></div>'
     + defs.map(x => '<button class="' + (S.seg === x[0] ? 'on' : '') + (x[4] ? ' ' + x[4] : '') + '" data-seg="' + x[0] + '">' + x[1] + (x[2] ? '<span class="bdg' + (x[3] ? '' : ' q') + '">' + x[2] + '</span>' : '') + '</button>').join('');
   // Issue Bill Check has one type only, so no type chips there
   const types = ISSUE_MODE ? [] : ['ALL', 'INWARD', 'INWARD NB', 'OUTWARD'], stores = ['ALL', 'STORE 1', 'STORE 2'];
@@ -784,7 +920,18 @@ function paintList(){
   const d = segData(baseRows());
   let h = '';
   const noStep = !S.flow.some(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2'));
-  if (S.seg === 'TODO') {
+  if (S.seg === 'PRINT') {
+    // series by series, oldest first; the next one to print of each series is open, the rest locked; printed ones below, newest first
+    PLOCKS = null;
+    const shown = new Set(baseRows().map(r => r.key)), all = printRows().filter(r => shown.has(r.key));
+    const todo = all.filter(r => !isPrinted(r)).sort(seqCmp), done = all.filter(isPrinted).sort((a, b) => String((S.printed[b.key] || {}).lastAt || '').localeCompare(String((S.printed[a.key] || {}).lastAt || '')));
+    const series = [];
+    todo.forEach(r => { const k = seqSeries(r); let g = series.find(x => x.k === k); if (!g) series.push(g = { k, label:(r.store === 'STORE 1' ? 'Store 1' : 'Store 2') + ' · ' + (r.type || ''), list:[] }); g.list.push({ r, print:true }); });
+    series.forEach(g => { h += sectionHtml('p' + g.k, g.label + ' · to print', g.list, 'Print in series order, oldest first. The next one opens after this one is printed or downloaded.'); });
+    if (done.length) h += sectionHtml('pDone', 'Printed', done.map(r => ({ r, print:true })), 'Open one to print or download it again.');
+    if (S.printMissing) h += '<div class="foot" style="margin:14px 16px 0;font-size:13px;color:var(--orange)">Printed bills are kept on this device only. Admin: run sql/BILL_CHECK_ACCOUNT_PRINT_MIGRATION.sql so every device and every EA follows the same order.</div>';
+    if (!todo.length && !done.length) h = emptyHtml(IC.doc, 'Nothing to print', 'A bill comes here once MD-1 Bill Check gives it OKAY.');
+  } else if (S.seg === 'TODO') {
     S.flow.forEach(s => { const fr = (d.todo[s.code] || []).filter(x => !x.hold); if (fr.length) h += sectionHtml('t' + s.code, s.label, fr, 'Check in series order, oldest first. Hold a bill to move on to the next one.'); });
     if (!h) h = emptyHtml(IC.inbox, noStep ? 'No step assigned' : 'All caught up', noStep ? 'The Admin gives a bill check step in Manage access. You can still browse All.' : 'Nothing is waiting for your check. New bills appear here on their own.');
   } else if (S.seg === 'HOLD') {
@@ -894,10 +1041,12 @@ async function openRecord(key){
 async function refreshAtt(r){
   const a = S.att[r.key];
   if (!a || a.state !== 'ready') return loadAttachments(r, !!a);
+  if (a.accShown !== accVisible(r)) { S.seen[r.key] = new Set(); return loadAttachments(r, true); }
   try {
     const d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) });
     if (CUR && CUR.r === r) CUR.acc = d.row || null;
-    if (((d.row || {}).currentUrl || '') !== (a.accUrl || '')) { S.seen[r.key] = new Set(); return loadAttachments(r, true); }
+    // only a copy that is shown can be "newer than what was looked at"
+    if (a.accShown && ((d.row || {}).currentUrl || '') !== (a.accUrl || '')) { S.seen[r.key] = new Set(); return loadAttachments(r, true); }
   } catch (e) {}
   paintSheet();
 }
@@ -1410,6 +1559,8 @@ function attachZoom(box, car){
 document.addEventListener('click', async e => {
   const t = e.target;
   const open = t.closest('[data-open]');
+  if (open && S.seg === 'PRINT') { const rr = S.rows.find(x => x.key === open.dataset.open); if (rr) accPrintAct(rr); return; }
+  if (t.closest('#accPrint')) { S.seg = S.seg === 'PRINT' ? 'TODO' : 'PRINT'; paintAll(); return buzz(6); }
   if (open) {
     const rr = S.rows.find(x => x.key === open.dataset.open), lk = rr && S.seg === 'TODO' ? lockOf(rr) : null;
     if (lk) {

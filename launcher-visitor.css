@@ -1,0 +1,79 @@
+/* ════════════════════════════════════════════════════════════════════
+   LAUNCHER: Visitor Approvals (iOS look)
+   Used by launcher.html together with launcher-visitor.js. The sheet frame,
+   buttons and toast are the Lock add-on's own (.ls-scrim / .ls-sheet / .ls-btn /
+   #ls-toast and the --ls-* colours of launcher-lock.css, loaded before this
+   file); only the visitor rows, the detail and the PIN step are drawn here.
+   Everything is prefixed lv- so it cannot clash.
+   ════════════════════════════════════════════════════════════════════ */
+
+/* ── the tile on the home grid (an a.app like the others, full width) ── */
+a.app.lv-tile{grid-column:1 / -1; cursor:pointer;}
+a.app.lv-tile .cnt.wait{background:#f59e0b; color:#1f1300;}
+a.app.lv-tile .cnt.none{background:var(--surface-2); color:var(--txt-2); border:1px solid var(--hairline);}
+a.app.lv-tile.lv-new{animation:lvPulse 1.6s ease-out 2;}
+@keyframes lvPulse{0%{box-shadow:0 0 0 0 rgba(245,158,11,.55);}100%{box-shadow:0 0 0 14px rgba(245,158,11,0);}}
+
+/* ── list ── */
+.lv-head{display:flex; align-items:center; justify-content:space-between; gap:10px; margin:2px 0 4px;}
+.lv-head .ls-title{margin:0; text-align:left;}
+.lv-ref{width:34px; height:34px; border-radius:50%; border:0; background:var(--ls-fill2); color:var(--ls-blue); cursor:pointer; display:flex; align-items:center; justify-content:center;}
+.lv-ref.spin svg{animation:lvSpin .9s linear infinite;}
+@keyframes lvSpin{to{transform:rotate(360deg);}}
+.lv-sec{font-size:12.5px; font-weight:600; color:var(--ls-txt2); text-transform:uppercase; letter-spacing:.04em; margin:18px 4px 7px;}
+.lv-group{background:var(--ls-bg2); border-radius:14px; overflow:hidden;}
+.lv-row{display:flex; align-items:center; gap:12px; width:100%; padding:11px 14px; border:0; background:none; color:var(--ls-txt); font-family:var(--ls-font); text-align:left; cursor:pointer; position:relative;}
+.lv-row + .lv-row::before{content:''; position:absolute; top:0; left:66px; right:0; border-top:.5px solid var(--ls-sep);}
+.lv-row:active{background:var(--ls-fill2);}
+.lv-av{width:40px; height:40px; border-radius:50%; flex:0 0 auto; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:16px; color:#fff; background:#10b981;}
+.lv-av.r{background:#ef4444;} .lv-av.g{background:#8e8e93;}
+.lv-tx{flex:1; min-width:0;}
+.lv-tx b{display:block; font-size:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.lv-tx small{display:block; font-size:12.5px; color:var(--ls-txt2); line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.lv-chip{flex:0 0 auto; font-size:11px; font-weight:700; border-radius:999px; padding:3px 8px; background:rgba(245,158,11,.18); color:#f59e0b;}
+.lv-chip.ok{background:rgba(48,209,88,.18); color:var(--ls-green);}
+.lv-chip.no{background:rgba(255,69,58,.16); color:var(--ls-red);}
+.lv-chip.gr{background:var(--ls-fill2); color:var(--ls-txt2);}
+.lv-chev{flex:0 0 auto; color:var(--ls-txt2); opacity:.6;}
+.lv-empty{text-align:center; color:var(--ls-txt2); font-size:14px; padding:26px 10px;}
+
+/* ── detail ── */
+.lv-photos{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:6px 0 4px;}
+.lv-photos.one{grid-template-columns:1fr;}
+.lv-ph{position:relative; border-radius:16px; overflow:hidden; background:var(--ls-bg2); aspect-ratio:1 / 1; cursor:zoom-in; border:0; padding:0;}
+.lv-photos.one .lv-ph{aspect-ratio:4 / 3;}
+.lv-ph img{width:100%; height:100%; object-fit:cover; display:block;}
+.lv-ph span{position:absolute; left:8px; bottom:8px; font-size:11px; font-weight:700; color:#fff; background:rgba(0,0,0,.55); border-radius:999px; padding:3px 8px;}
+.lv-ph.wait{display:flex; align-items:center; justify-content:center; color:var(--ls-txt2); font-size:13px; cursor:default;}
+.lv-kv{display:flex; justify-content:space-between; gap:14px; padding:11px 14px; position:relative; font-size:15px;}
+.lv-kv + .lv-kv::before{content:''; position:absolute; top:0; left:14px; right:0; border-top:.5px solid var(--ls-sep);}
+.lv-kv span{color:var(--ls-txt2); flex:0 0 auto;}
+.lv-kv b{font-weight:500; text-align:right; min-width:0; word-break:break-word;}
+.lv-kv a{color:var(--ls-blue); text-decoration:none; font-weight:600;}
+.lv-state{border-radius:14px; padding:12px 14px; font-size:14px; line-height:1.4; margin-top:12px;}
+.lv-state.ok{background:rgba(48,209,88,.14); color:var(--ls-txt);}
+.lv-state.no{background:rgba(255,69,58,.13); color:var(--ls-txt);}
+.lv-state.wait{background:rgba(245,158,11,.14); color:var(--ls-txt);}
+.lv-state img{display:block; height:56px; max-width:180px; object-fit:contain; background:#fff; border-radius:8px; margin-top:8px;}
+.lv-acts{display:flex; gap:10px; margin-top:16px;}
+.ls-btn.green{background:var(--ls-green); color:#fff;}
+
+/* ── PIN / reason step ── */
+.lv-pinbox{display:flex; justify-content:center; margin:6px 0 4px;}
+.lv-pin{width:210px; height:54px; border-radius:14px; border:0; outline:none; text-align:center; font:600 26px var(--ls-font); letter-spacing:.45em; color:var(--ls-txt); background:var(--ls-fill2); padding:0 0 0 .45em;}
+.lv-pin:focus{box-shadow:0 0 0 3px rgba(10,132,255,.35);}
+.lv-pin.shake{animation:lvShake .4s;}
+@keyframes lvShake{0%,100%{transform:translateX(0);}20%,60%{transform:translateX(-9px);}40%,80%{transform:translateX(9px);}}
+.lv-reason{width:100%; min-height:78px; border-radius:14px; border:0; outline:none; resize:vertical; font:400 16px var(--ls-font); color:var(--ls-txt); background:var(--ls-fill2); padding:12px 14px; margin-bottom:12px;}
+.lv-reason:focus{box-shadow:0 0 0 3px rgba(10,132,255,.35);}
+.lv-err{min-height:20px; text-align:center; color:var(--ls-red); font-size:14px; margin:8px 0 2px;}
+
+/* ── full-screen photo ── */
+.lv-zoom{position:fixed; inset:0; z-index:9200; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; opacity:0; transition:opacity .2s ease;}
+.lv-zoom.in{opacity:1;}
+.lv-zoom img{max-width:96vw; max-height:92vh; object-fit:contain; border-radius:10px;}
+
+@media (prefers-reduced-motion: reduce){
+  a.app.lv-tile.lv-new{animation:none;}
+  .lv-ref.spin svg,.lv-pin.shake{animation:none;}
+}

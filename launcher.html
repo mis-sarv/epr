@@ -436,6 +436,8 @@ button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
 <link rel="stylesheet" href="launcher-lock.css?v=20261118a">
 <!-- Login helpers (launcher-login.js): cursor flow, auto login, wrong-PIN wait, Help popup -->
 <link rel="stylesheet" href="launcher-login.css?v=20261118a">
+<!-- Visitor Approvals (launcher-visitor.js): the Gate-2 visitors waiting for this user's PIN. Uses launcher-lock.css's sheet styles, so after it -->
+<link rel="stylesheet" href="launcher-visitor.css?v=20261120a">
 <style>
 /* iOS touch: a tile gives a little under the finger */
 a.app{transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .2s,background .2s;}
@@ -1600,6 +1602,8 @@ function renderHome(user){
   $('noApps').style.display   = n ? 'none' : 'block';
   notepadTile();
   sopTile();
+  // Visitor Approvals (launcher-visitor.js): visitors at Gate-2 waiting for this user's PIN; kept first in the grid
+  if (window.visApprovalTile) visApprovalTile();
 }
 
 /* ── My Notepad ────────────────────────────────────────────────────────
@@ -1876,6 +1880,7 @@ async function fillEmpDatalist(){
 <!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
 <script src="launcher-lock.js?v=20261118a"></script>
 <script src="launcher-login.js?v=20261118a"></script>
+<script src="launcher-visitor.js?v=20261120a"></script>
 <!-- The splash that prevents the login screen from flashing does not run on
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->

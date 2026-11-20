@@ -226,7 +226,8 @@
                     </button>
 
                     <!-- VISITOR BUTTON -->
-                    <button onclick="showView('visitorForm')" class="ios-btn bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-emerald-600">
+                    <button onclick="showView('visitorMenu')" class="ios-btn relative bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-emerald-600">
+                        <span id="visMainBadge" class="hidden absolute top-2.5 right-2.5 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs"></span>
                         <div class="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-500/30">
                             <i class="fa-solid fa-user-tie"></i>
                         </div>
@@ -698,10 +699,79 @@
                 </form>
             </div>
 
+            <!-- VIEW 5A: VISITOR MENU (New entry -> host approves on the launcher -> Done -> Existing -> Out) -->
+            <div id="view-visitorMenu" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Visitor</h2>
+                    <span class="w-10"></span>
+                </div>
+                <div class="space-y-3">
+                    <button onclick="showView('visitorForm')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-500/30 shrink-0"><i class="fa-solid fa-user-plus"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-emerald-800 uppercase tracking-wide">New Visitor Entry</span>
+                            <span class="block text-[11px] font-semibold text-emerald-700/80">Visitor pass form: photo, mobile, whom to meet</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-emerald-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('visitorPending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-amber-500/10 border border-amber-500/25 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-md shadow-amber-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-amber-800 uppercase tracking-wide">Approval Pending</span>
+                            <span id="visPendSub" class="block text-[11px] font-semibold text-amber-700/80">Waiting for the host's PIN approval</span>
+                        </div>
+                        <span id="visPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-amber-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-amber-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('visitorExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-users"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">Existing Visitor</span>
+                            <span class="block text-[11px] font-semibold text-blue-700/80">Inside the premises: mark Out with photo + remarks</span>
+                        </div>
+                        <span id="visInsideBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 5B: APPROVAL PENDING (waiting for the host / approved -> Digital Pass + Done / rejected) -->
+            <div id="view-visitorPending" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('visitorMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Approval Pending</h2>
+                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="visPollIcon" class="fa-solid fa-rotate"></i></button>
+                </div>
+                <p id="visPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
+                <div id="visPendList" class="space-y-2.5"></div>
+            </div>
+
+            <!-- VIEW 5C: EXISTING VISITOR (every visitor still inside + the ones out in the last 2 days) -->
+            <div id="view-visitorExisting" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('visitorMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Existing Visitor</h2>
+                    <span class="w-10"></span>
+                </div>
+                <input type="text" id="visExistSearch" oninput="renderVisitorExisting()" autocomplete="off" placeholder="Search name, mobile, vehicle, host, pass no..." class="w-full px-3.5 py-2.5 mb-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl mb-3">
+                    <button id="visTabIn" onclick="visExistTab('in')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Inside <span id="visTabInN"></span></button>
+                    <button id="visTabOut" onclick="visExistTab('out')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Out · last 2 days <span id="visTabOutN"></span></button>
+                </div>
+                <div id="visExistList" class="space-y-2.5"></div>
+            </div>
+
             <!-- VIEW 5: VISITOR ENTRY FORM -->
             <div id="view-visitorForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
                 <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
-                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                    <button onclick="showView('visitorMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
                     <h2 class="text-[16px] font-bold text-gray-900">New Visitor Pass</h2>
@@ -731,9 +801,16 @@
                         </div>
                     </div>
 
+                    <!-- Whom to Meet: only an ERP user (gateCombo), because that user approves the visitor from the launcher with his PIN -->
                     <div>
-                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Whom to Meet / Department *</label>
-                        <input type="text" id="hostName" list="gateHostList" autocomplete="off" required placeholder="e.g. Mr. Sharma (HR)" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Whom to Meet *</label>
+                            <span class="text-[10px] font-semibold text-emerald-600">Approves with his PIN</span>
+                        </div>
+                        <div class="relative">
+                            <input type="text" id="hostName" autocomplete="off" required placeholder="Type to search the person..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                            <div id="hostNameList" class="gate-combo hidden"></div>
+                        </div>
                     </div>
 
                     <div>
@@ -774,7 +851,7 @@
                     </div>
 
                     <button type="submit" class="ios-btn w-full bg-emerald-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 text-sm mt-2">
-                        <i class="fa-solid fa-id-badge"></i> Generate Visitor Pass
+                        <i class="fa-solid fa-paper-plane"></i> Send for Approval
                     </button>
                 </form>
             </div>
@@ -1000,6 +1077,13 @@
                     <p id="modalPurpose" class="text-xs text-gray-700 font-medium">-</p>
                 </div>
 
+                <!-- Visitor: the host's decision; on approve his ERP signature (photo 'hostSign') prints here -->
+                <div id="modalApprovalBox" class="hidden"></div>
+                <div id="modalOutRemarkRow" class="hidden bg-gray-50 p-3 rounded-xl border border-gray-100">
+                    <p class="text-[10px] font-bold text-gray-400 uppercase">Out Remarks</p>
+                    <p id="modalOutRemark" class="text-xs text-gray-800 font-semibold mt-0.5 break-words">-</p>
+                </div>
+
                 <!-- Dynamic Photo Gallery inside Pass Modal -->
                 <div id="modalPhotosBox" class="hidden grid grid-cols-2 gap-2.5 pt-1"></div>
             </div>
@@ -1012,6 +1096,38 @@
                     <i class="fa-solid fa-print"></i> Print Pass
                 </button>
                 <button onclick="closePassModal()" class="ios-btn px-4 py-3 rounded-2xl bg-gray-200/80 text-gray-700 font-bold text-xs">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Visitor Out: out photo (camera) + remarks, both compulsory -->
+    <div id="visOutModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeVisitorOut()"></div>
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 border-b border-gray-100 shrink-0 flex items-center justify-between gap-3">
+                <h3 class="text-base font-bold text-gray-900">Visitor Out</h3>
+                <button type="button" onclick="closeVisitorOut()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto space-y-3.5">
+                <div id="visOutWho" class="flex items-center gap-3"></div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Photo at Out *</label>
+                    <label class="ios-btn flex flex-col items-center justify-center p-4 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
+                        <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-base mb-1.5 shadow-sm"><i class="fa-solid fa-camera"></i></div>
+                        <span id="visOutPhotoLabel" class="text-xs font-bold text-blue-800 truncate w-full">Tap to capture the visitor</span>
+                        <input type="file" id="visOutPhoto" data-up="gate-visitor-out" accept="image/*" capture="user" class="hidden" onchange="handleCompressedUpload(this, 'visOutPhotoLabel', 'visOutPreviewImg', 'visOut', 'visOutPreviewBox')">
+                    </label>
+                    <div id="visOutPreviewBox" class="hidden mt-2.5 rounded-2xl overflow-hidden border border-blue-200 bg-gray-50 h-32">
+                        <img id="visOutPreviewImg" class="w-full h-full object-cover" alt="Visitor at out">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Remarks *</label>
+                    <textarea id="visOutRemarks" rows="2" placeholder="e.g. Meeting done, no material taken" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"></textarea>
+                </div>
+                <button type="button" id="visOutSaveBtn" onclick="saveVisitorOut()" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
+                    <i class="fa-solid fa-right-from-bracket"></i> Mark Visitor Out
+                </button>
             </div>
         </div>
     </div>
@@ -1313,7 +1429,8 @@
             visPerson: null,
             visVehicle: null,
             dkVehicle: null,
-            hydraIn: null
+            hydraIn: null,
+            visOut: null
         };
 
         let generatedStoreNo = '';
@@ -1430,6 +1547,7 @@
             // the register: give old entries their uid, send what is waiting, take what others saved
             gateNormalizeEntries();
             gateSync(false);
+            visLoadHosts();
             clearInterval(gateRegTimer);
             gateRegTimer = setInterval(() => gateSync(false), GATE_REG_REFRESH_MS);
             if (!gateStart._online) {
@@ -1606,7 +1724,8 @@
                server and are fetched again when the pass is opened), so the 5 MB of the phone never fills up;
              - a delete is a soft delete on the server (who, when, how), checked with the user's ERP PIN. Offline it
                uses the phone's own PIN and is queued. Newest write wins. */
-        const GATE_PHOTO_FIELDS = ['billPhoto', 'itemPhoto', 'passPhoto', 'visitorPhoto', 'vehiclePhoto', 'inwardPhoto', 'stopPhoto'];
+        // outPhoto = the visitor at Out. The host's signature ('hostSign') is a photo too, but only the server writes it (gate_vis_decide)
+        const GATE_PHOTO_FIELDS = ['billPhoto', 'itemPhoto', 'passPhoto', 'visitorPhoto', 'vehiclePhoto', 'inwardPhoto', 'stopPhoto', 'outPhoto'];
         const GATE_CURSOR_KEY = 'gate2_cursor_v1', GATE_DELQ_KEY = 'gate2_delq_v1';
         const GATE_TRIM_DAYS = 3;
         const GATE_REG_REFRESH_MS = 3 * 60 * 1000;
@@ -1614,6 +1733,7 @@
         if (!Array.isArray(gateDeleteQueue)) gateDeleteQueue = [];
         let gateRegState_ = { state: 'idle', at: null, err: '' }, gateRegBusy = false, gateRegSoonTimer = null, gateRegTimer = null;
         const GATE_PHOTO_CACHE = {};   // uid -> { field: dataUrl, _loaded: true } fetched from the server (memory only)
+        const GATE_PHOTO_INFLIGHT = {}; // uid -> the call on its way
 
         const newUid = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
             : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); });
@@ -1622,7 +1742,8 @@
         // what goes to the server: the entry without photos and without this page's own bookkeeping
         function gateEntryData(e) {
             const o = {};
-            Object.keys(e).forEach(k => { if (GATE_PHOTO_FIELDS.indexOf(k) < 0 && ['uid', '_dirty', '_rev', '_photoDirty', '_syncedAt', '_err', 'photoKeys'].indexOf(k) < 0) o[k] = e[k]; });
+            // visApproval is server-owned (GATE2_VISITOR_APPROVAL_MIGRATION.sql drops it anyway): never sent back
+            Object.keys(e).forEach(k => { if (GATE_PHOTO_FIELDS.indexOf(k) < 0 && ['uid', '_dirty', '_rev', '_photoDirty', '_syncedAt', '_err', 'photoKeys', 'visApproval'].indexOf(k) < 0) o[k] = e[k]; });
             return o;
         }
 
@@ -1647,6 +1768,7 @@
 
         function gateRegUi() {
             try { renderDkPending(); dkVehicleCheck(); } catch (e) { }   // every add / change / delete / pull passes here
+            try { visRefreshUi(); } catch (e) { }
             const n = gatePendingCount(), st = gateRegState_.state;
             const badge = document.getElementById('gatePendingBadge'), txt = document.getElementById('gateRegText');
             if (badge) { badge.textContent = n; badge.classList.toggle('hidden', !n); }
@@ -1681,6 +1803,7 @@
                     if (r.data.deleted) { gateEntries = gateEntries.filter(x => x.uid !== e.uid); changed = true; continue; }
                     if ((e._rev || 0) === rev) { e._dirty = false; e._photoDirty = false; }   // changed again meanwhile: stays dirty
                     e._syncedAt = new Date().toISOString(); e.photoKeys = r.data.photoKeys || e.photoKeys || []; delete e._err;
+                    if (r.data.visApproval) e.visApproval = r.data.visApproval;
                 }
                 saveEntries();
 
@@ -1730,7 +1853,8 @@
                 if (gateDeleteQueue.some(d => d.uid === uid)) return;
                 const data = x.data || {};
                 if (local) {
-                    if (local._dirty) return;
+                    // a row changed here and not sent yet keeps its own data, but the approval belongs to the server
+                    if (local._dirty) { if (data.visApproval) { local.visApproval = data.visApproval; local.photoKeys = x.photoKeys || local.photoKeys; changed = true; } return; }
                     Object.assign(local, data); local.photoKeys = x.photoKeys || []; local._syncedAt = x.updatedAt; changed = true;
                 } else {
                     gateEntries.push(Object.assign({}, data, { uid, photoKeys: x.photoKeys || [], _syncedAt: x.updatedAt })); changed = true;
@@ -1753,13 +1877,20 @@
         // The photos of one entry from the server (once per page visit), for a pass opened after they were trimmed
         async function gateEnsurePhotos(e) {
             if (!e || !e.uid || !(e.photoKeys || []).length) return false;
-            if (GATE_PHOTO_CACHE[e.uid] && GATE_PHOTO_CACHE[e.uid]._loaded) return false;
+            // fetched once per page visit, again only when the server has a new photo (the host's signature after an approval)
+            const keySig = (e.photoKeys || []).join(',');
+            if (GATE_PHOTO_CACHE[e.uid] && GATE_PHOTO_CACHE[e.uid]._loaded && GATE_PHOTO_CACHE[e.uid]._keys === keySig) return false;
             if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) return false;
             const need = (e.photoKeys || []).some(f => !photoOf(e, f));
             if (!need) return false;
-            const r = await gateRpc('gate_entry_photos_get', { p_uid: e.uid });
+            // the lists ask for the same entry's photos while one call is on its way: one call only
+            if (GATE_PHOTO_INFLIGHT[e.uid]) return GATE_PHOTO_INFLIGHT[e.uid];
+            const call = gateRpc('gate_entry_photos_get', { p_uid: e.uid });
+            GATE_PHOTO_INFLIGHT[e.uid] = call.then(() => false);
+            const r = await call;
+            delete GATE_PHOTO_INFLIGHT[e.uid];
             if (!r.ok) return false;
-            GATE_PHOTO_CACHE[e.uid] = Object.assign({ _loaded: true }, r.data.photos || {});
+            GATE_PHOTO_CACHE[e.uid] = Object.assign({ _loaded: true, _keys: keySig }, r.data.photos || {});
             return true;
         }
 
@@ -1771,6 +1902,7 @@
             if (hv && hv.classList.contains('active') && !typing) renderActiveHydraSessions();
             const qm = document.getElementById('qrVerifyModal');
             if (qm && !qm.classList.contains('hidden') && !typing) lookupPassForVerify();
+            visRefreshUi();
         }
 
         // ── Store Gate Passes: the ERP's outward documents (last 30 days) + passes made on this device ──
@@ -1873,6 +2005,7 @@
             gateCombo({ inputId: 'inVehicle', listId: 'inVehicleList', options: inwardVehicleOptions, emptyText: 'No such vehicle in the list.' });
             gateCombo({ inputId: 'dispDkSlipNo', listId: 'dispDkSlipList', options: dispDkSlipOptions, emptyText: 'No saved Dharam Kanta Slip. Create one in Dharam Kanta first.', onPick: lookupDispatchDkSlip });
             gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
+            gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
             const rn = document.getElementById('inRefNo'), rt = document.getElementById('inRefType');
             if (rn) { rn.addEventListener('input', refDetailSoon); rn.addEventListener('change', loadRefDetail); }
             if (rt) rt.addEventListener('change', () => { document.getElementById('inRefNo').value = ''; clearRefDetail(); });
@@ -2072,6 +2205,9 @@
                 'view-outwardMenu',
                 'view-outwardStoreForm',
                 'view-outwardDispatchForm',
+                'view-visitorMenu',
+                'view-visitorPending',
+                'view-visitorExisting',
                 'view-visitorForm',
                 'view-dharamKantaForm',
                 'view-hydraForm'
@@ -2120,6 +2256,12 @@
             if (viewId === 'visitorForm') {
                 initVisitorForm();
             }
+
+            // Approval Pending is checked every few seconds while it is open (the host may approve any moment)
+            visPollStop();
+            if (viewId === 'visitorPending') { renderVisitorPending(); visPollStart(); }
+            if (viewId === 'visitorExisting') renderVisitorExisting();
+            if (viewId === 'visitorMenu') visRefreshUi();
 
             if (viewId === 'hydraForm') {
                 initHydraView();
@@ -2579,7 +2721,8 @@
                 }
                 document.getElementById('visitorName').value = prevEntry.name || '';
                 document.getElementById('vehicleNo').value = (prevEntry.vehicle && prevEntry.vehicle !== 'N/A') ? prevEntry.vehicle : '';
-                document.getElementById('hostName').value = prevEntry.host || '';
+                // only if that person is still an ERP user (the box takes list values only)
+                if (GATE_COMBOS.hostName) GATE_COMBOS.hostName.set(prevEntry.host || '', true);
                 const cleanPurpose = (prevEntry.purpose || '').split('•')[0].trim();
                 document.getElementById('purpose').value = cleanPurpose;
 
@@ -2629,7 +2772,13 @@
             }
             const name = document.getElementById('visitorName').value.trim();
             const vehicle = document.getElementById('vehicleNo').value.trim().toUpperCase() || 'N/A';
-            const host = document.getElementById('hostName').value.trim();
+            const hostOpt = GATE_COMBOS.hostName ? GATE_COMBOS.hostName.match(document.getElementById('hostName').value) : null;
+            if (!hostOpt) {
+                showIosBanner('Choose Whom to Meet from the list (an ERP user)', 'error');
+                document.getElementById('hostName').focus();
+                return;
+            }
+            const host = hostOpt.value;
             const purpose = document.getElementById('purpose').value.trim();
 
             const photoTags = [];
@@ -2649,7 +2798,12 @@
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
                 outTime: null,
-                status: 'IN'
+                status: 'IN',
+                // the host approves it on the launcher (GATE2_VISITOR_APPROVAL_MIGRATION.sql makes the request when it reaches the server)
+                needApproval: true,
+                hostUserId: hostOpt.id || null,
+                hostEmpCode: hostOpt.emp || null,
+                hostDept: hostOpt.dept || null
             };
 
             commitEntry(newVisitor);
@@ -2662,10 +2816,288 @@
             document.getElementById('visVehiclePreview').classList.add('hidden');
             document.getElementById('visitorPreviewRow').classList.add('hidden');
 
-            showView('actionMenu');
-            showIosBanner('Visitor Gate Pass Generated', 'success');
-            openPassModal(newVisitor.id);
+            showView('visitorPending');
+            showIosBanner(`Sent to ${host} for approval`, 'success');
         });
+
+        // ==========================================
+        // 7B. VISITOR APPROVAL FLOW (sql/GATE2_VISITOR_APPROVAL_MIGRATION.sql, launcher-visitor.js)
+        // ==========================================
+        /* New Visitor Entry -> the request reaches the server with the entry (gate_entry_save) -> the Whom to Meet user
+           approves it on the launcher with his own PIN (or rejects with a reason) -> his ERP signature comes back as the
+           photo 'hostSign' and prints on the Digital Visitor Pass -> here the guard prints the pass and presses Done ->
+           Existing Visitor -> Out with an out photo + remarks.
+           The decision (entry.visApproval) is SERVER-OWNED: it comes with the normal sync (gate_entries_list) and, while
+           Approval Pending is open, from a quick poll (gate_vis_status). The guard's own steps (visDoneAt, Out) are
+           ordinary entry fields. Visitors from before this flow (no needApproval) are treated as already done. */
+        const VIS_HOSTS_KEY = 'gate2_vis_hosts_v1';
+        const VIS_POLL_MS = 15000;
+        const VIS_OUT_DAYS = 2;                   // Existing Visitor › Out shows the last 2 days
+        let VIS_HOSTS = readLS(VIS_HOSTS_KEY, null);
+        let VIS_NOMIG = false, visPollTimer = null, visPollBusy = false, VIS_EXIST_TAB = 'in', VIS_OUT_ID = null;
+
+        const isVisitor = e => !!e && e.category === 'VISITOR';
+        const visApr = e => (e && e.visApproval) || null;
+        const visAprStatus = e => (visApr(e) || {}).status || '';
+        // waiting for (or just got) the host's decision; Done moves it to Existing Visitor
+        const isVisPending = e => isVisitor(e) && e.needApproval && e.status === 'IN' && !e.visDoneAt;
+        const isVisInside = e => isVisitor(e) && e.status === 'IN' && (!e.needApproval || !!e.visDoneAt);
+        const isVisRecentOut = e => isVisitor(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
+        const visPurpose = e => String((e && e.purpose) || '').split('•')[0].trim();
+
+        // Whom to Meet = the ERP users (gate_vis_hosts); before the migration, the Employee Master list of gate_masters
+        async function visLoadHosts() {
+            if (!GATE_USER || GATE_OFFLINE) return;
+            const r = await gateRpc('gate_vis_hosts', {});
+            if (r.ok && Array.isArray(r.data.hosts)) { VIS_HOSTS = { at: new Date().toISOString(), hosts: r.data.hosts }; writeLS(VIS_HOSTS_KEY, VIS_HOSTS); VIS_NOMIG = false; }
+            else if (r.error === 'NO_MIGRATION') VIS_NOMIG = true;
+        }
+        function visHostOptions() {
+            const list = (VIS_HOSTS && Array.isArray(VIS_HOSTS.hosts) && VIS_HOSTS.hosts.length)
+                ? VIS_HOSTS.hosts.map(h => ({ id: h.id, name: h.name, emp: h.empCode, desig: h.desig, dept: h.dept }))
+                : (GATE_MASTERS.hosts || []).map(h => ({ id: null, name: h.name, emp: h.empCode, desig: h.desig, dept: h.dept }));
+            const count = {};
+            list.forEach(h => { const k = normKey(h.name); count[k] = (count[k] || 0) + 1; });
+            // two users of one name: the Emp Code tells them apart (the value must be unique in the box)
+            return list.filter(h => h.name).map(h => ({
+                value: count[normKey(h.name)] > 1 && h.emp ? `${h.name} (${h.emp})` : h.name,
+                sub: [h.desig, h.dept].filter(Boolean).join(' · ') || (h.emp || ''),
+                hay: [h.emp, h.dept, h.desig].filter(Boolean).join(' '),
+                id: h.id, emp: h.emp, dept: h.dept
+            }));
+        }
+
+        // ── fast poll while Approval Pending is open ──
+        function visPollStart() { visPollStop(); visPollNow(false); visPollTimer = setInterval(() => visPollNow(false), VIS_POLL_MS); }
+        function visPollStop() { clearInterval(visPollTimer); visPollTimer = null; }
+        async function visPollNow(manual) {
+            if (visPollBusy) return;
+            const uids = gateEntries.filter(e => isVisPending(e) && e._syncedAt && e.uid).map(e => e.uid);
+            if (manual) gateSync(false);   // sends what is waiting (a new visitor) and pulls the rest
+            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) renderVisitorPending(); return; }
+            visPollBusy = true;
+            const icon = document.getElementById('visPollIcon'); if (icon) icon.classList.add('fa-spin');
+            const r = await gateRpc('gate_vis_status', { p_uids: uids });
+            visPollBusy = false; if (icon) icon.classList.remove('fa-spin');
+            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); } return; }
+            VIS_NOMIG = false;
+            let changed = false;
+            const rows = r.data.rows || {};
+            gateEntries.forEach(e => {
+                const a = rows[e.uid]; if (!a) return;
+                const { photoKeys, ...apr } = a;
+                const was = visAprStatus(e);
+                if (JSON.stringify(apr) !== JSON.stringify(e.visApproval || null)) { e.visApproval = apr; changed = true; }
+                if (Array.isArray(photoKeys) && photoKeys.join(',') !== (e.photoKeys || []).join(',')) { e.photoKeys = photoKeys; changed = true; }
+                if (was === 'PENDING' && apr.status === 'APPROVED') showIosBanner(`${e.name}: approved by ${apr.decidedBy || apr.host}`, 'success');
+                if (was === 'PENDING' && apr.status === 'REJECTED') showIosBanner(`${e.name}: rejected by ${apr.decidedBy || apr.host}`, 'error');
+            });
+            if (changed) { saveEntries(); visRefreshUi(); }
+        }
+
+        // ── badges + whichever visitor list is open ──
+        function visRefreshUi() {
+            const pend = gateEntries.filter(isVisPending), inside = gateEntries.filter(isVisInside);
+            const ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
+            const pb = document.getElementById('visPendBadge'), ib = document.getElementById('visInsideBadge'), mb = document.getElementById('visMainBadge');
+            if (pb) { pb.textContent = pend.length; pb.classList.toggle('hidden', !pend.length); }
+            if (ib) { ib.textContent = inside.length; ib.classList.toggle('hidden', !inside.length); }
+            const sub = document.getElementById('visPendSub');
+            if (sub) sub.textContent = ready ? `${ready} approved: print the pass and press Done` : "Waiting for the host's PIN approval";
+            if (mb) { mb.textContent = ready ? ready + ' APPROVED' : pend.length ? pend.length + ' PENDING' : ''; mb.classList.toggle('hidden', !pend.length); mb.classList.toggle('bg-amber-500', !ready); mb.classList.toggle('bg-emerald-600', !!ready); }
+            const active = id => { const v = document.getElementById(id); return v && v.classList.contains('active'); };
+            if (active('view-visitorPending')) renderVisitorPending();
+            if (active('view-visitorExisting')) renderVisitorExisting();
+            // an open visitor pass shows the decision / signature as soon as it arrives
+            const pm = document.getElementById('passModal');
+            const oe = pm && !pm.classList.contains('hidden') && GATE_OPEN_PASS ? gateEntries.find(x => x.id === GATE_OPEN_PASS) : null;
+            if (oe && isVisitor(oe)) {
+                const sig = JSON.stringify(oe.visApproval || null) + (oe.photoKeys || []).join(',') + oe.status;
+                if (sig !== visRefreshUi._open) { visRefreshUi._open = sig; openPassModal(oe.id); }
+            }
+        }
+
+        function visThumb(e, cls) {
+            const src = photoOf(e, 'visitorPhoto');
+            if (!src && (e.photoKeys || []).indexOf('visitorPhoto') >= 0) gateEnsurePhotos(e).then(got => { if (got) visRefreshUi(); });
+            return src ? `<img src="${src}" alt="" class="${cls} object-cover">`
+                : `<div class="${cls} bg-emerald-100 text-emerald-700 flex items-center justify-center font-extrabold text-lg">${esc(String(e.name || '?').trim().charAt(0).toUpperCase())}</div>`;
+        }
+        const visBadge = (txt, cls) => `<span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase tracking-wide ${cls}">${esc(txt)}</span>`;
+
+        function renderVisitorPending() {
+            const box = document.getElementById('visPendList'), note = document.getElementById('visPendNote');
+            if (!box) return;
+            const rows = gateEntries.filter(isVisPending).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const offline = !GATE_USER || GATE_OFFLINE || navigator.onLine === false;
+            const msg = VIS_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin: run it in the Supabase SQL Editor). Until then a visitor can be let in with Done (no approval).'
+                : offline ? 'No internet: new visitors are sent for approval as soon as the net is back.' : '';
+            note.textContent = msg; note.classList.toggle('hidden', !msg);
+            if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No visitor is waiting for approval.</p>'; return; }
+            box.innerHTML = rows.map(e => {
+                const a = visApr(e), st = a ? a.status : '';
+                let badge, line, acts;
+                if (!e._syncedAt) {
+                    badge = visBadge('Waiting to send', 'bg-gray-200 text-gray-700');
+                    line = 'On this phone only: it goes to ' + esc(e.host) + ' with the next sync.';
+                } else if (!a) {
+                    badge = visBadge(VIS_NOMIG ? 'No approval system' : 'Sending', 'bg-gray-200 text-gray-700');
+                    line = VIS_NOMIG ? 'Server migration missing.' : 'Request is being made on the server...';
+                } else if (st === 'PENDING') {
+                    badge = visBadge('Approval Pending', 'bg-amber-100 text-amber-800');
+                    line = a.hostFound ? 'Waiting for ' + esc(a.host || e.host) + ' (PIN on the launcher)' : esc(e.host) + ' has no ERP login: the Admin can approve it.';
+                } else if (st === 'APPROVED') {
+                    badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '');
+                } else if (st === 'REJECTED') {
+                    badge = visBadge('Rejected', 'bg-red-100 text-red-700');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-');
+                } else {
+                    badge = visBadge(st || '-', 'bg-gray-200 text-gray-700');
+                    line = esc(a.remarks || '');
+                }
+                const canDone = st === 'APPROVED' || (VIS_NOMIG && !a);
+                acts = `<button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl ${st === 'APPROVED' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-700'} text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-print"></i> Digital Pass</button>`
+                    + (canDone ? `<button onclick="visMarkDone('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-check"></i> Done</button>` : '')
+                    + (st === 'REJECTED' || st === 'PENDING' || !a ? `<button onclick="openVisitorOut('${esc(e.id)}')" class="ios-btn px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>` : '');
+                return `<div class="rounded-2xl border ${st === 'APPROVED' ? 'border-emerald-300 bg-emerald-50/40' : st === 'REJECTED' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${visThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)} · ${esc(formatDateTimeShort(e.inTime))}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">Meet: ${esc(e.host)} · ${esc(visPurpose(e))}</p>
+                            <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">${acts}</div>
+                </div>`;
+            }).join('');
+        }
+
+        function visMarkDone(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e) return;
+            if (visAprStatus(e) !== 'APPROVED' && !(VIS_NOMIG && !visApr(e))) { showIosBanner('Done only after the host approves', 'error'); return; }
+            e.visDoneAt = new Date().toISOString();
+            e.visDoneBy = `${appSettings.guardName} (${appSettings.shiftName})`;
+            touchEntry(e);
+            showIosBanner(`${e.name} moved to Existing Visitor`, 'success');
+            renderVisitorPending();
+        }
+
+        function visExistTab(tab) {
+            VIS_EXIST_TAB = tab === 'out' ? 'out' : 'in';
+            const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
+            document.getElementById('visTabIn').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (VIS_EXIST_TAB === 'in' ? on : off);
+            document.getElementById('visTabOut').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (VIS_EXIST_TAB === 'out' ? on : off);
+            renderVisitorExisting();
+        }
+
+        // Inside = every visitor not yet out (any date); Out = the ones out in the last VIS_OUT_DAYS days
+        function renderVisitorExisting() {
+            const box = document.getElementById('visExistList');
+            if (!box) return;
+            const words = String((document.getElementById('visExistSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+            const hit = e => !words.length || words.every(w => [e.id, e.name, e.mobile, e.vehicle, e.host, visPurpose(e), e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
+            const inside = gateEntries.filter(isVisInside).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const out = gateEntries.filter(isVisRecentOut).sort((a, b) => new Date(b.outTime) - new Date(a.outTime));
+            document.getElementById('visTabInN').textContent = '(' + inside.length + ')';
+            document.getElementById('visTabOutN').textContent = '(' + out.length + ')';
+            const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
+            document.getElementById('visTabIn').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (VIS_EXIST_TAB === 'in' ? on : off);
+            document.getElementById('visTabOut').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (VIS_EXIST_TAB === 'out' ? on : off);
+            const rows = (VIS_EXIST_TAB === 'in' ? inside : out).filter(hit);
+            if (!rows.length) { box.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${VIS_EXIST_TAB === 'in' ? 'No visitor inside.' : 'No visitor went out in the last ' + VIS_OUT_DAYS + ' days.'}</p>`; return; }
+            box.innerHTML = rows.map(e => {
+                const a = visApr(e), mins = Math.max(0, Math.round(((e.outTime ? new Date(e.outTime) : new Date()) - new Date(e.inTime)) / 60000));
+                const dur = mins >= 60 ? Math.floor(mins / 60) + 'h ' + (mins % 60) + 'm' : mins + 'm';
+                const old = VIS_EXIST_TAB === 'in' && (Date.now() - new Date(e.inTime).getTime()) > 86400000;
+                return `<div class="rounded-2xl border ${old ? 'border-amber-300 bg-amber-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${visThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${VIS_EXIST_TAB === 'in' ? visBadge((old ? 'Inside since ' : 'Inside ') + dur, old ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800') : visBadge('Out', 'bg-emerald-100 text-emerald-800')}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)}${e.vehicle && e.vehicle !== 'N/A' ? ' · ' + esc(e.vehicle) : ''}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">Meet: ${esc(e.host)} · ${esc(visPurpose(e))}</p>
+                            <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${e.outTime ? ' · Out ' + esc(formatDateTimeShort(e.outTime)) + ' (' + dur + ')' : ''}${a && a.status === 'APPROVED' ? ' · Approved by ' + esc(a.decidedBy || a.host) : ''}</p>
+                            ${e.outRemarks ? `<p class="text-[11px] font-semibold text-gray-700 mt-0.5">Remarks: ${esc(e.outRemarks)}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-id-badge"></i> Pass</button>
+                        ${VIS_EXIST_TAB === 'in' ? `<button onclick="openVisitorOut('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Out: photo + remarks, both compulsory ──
+        function openVisitorOut(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || e.status !== 'IN') return;
+            VIS_OUT_ID = id;
+            tempPhotos.visOut = null;
+            document.getElementById('visOutPhoto').value = '';
+            document.getElementById('visOutPhotoLabel').textContent = 'Tap to capture the visitor';
+            document.getElementById('visOutPreviewBox').classList.add('hidden');
+            document.getElementById('visOutRemarks').value = '';
+            document.getElementById('visOutWho').innerHTML = `${visThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
+                <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)} · Meet: ${esc(e.host)}</p>
+                <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}</p></div>`;
+            closePassModal(); closeQrVerifyModal();
+            document.getElementById('visOutModal').classList.remove('hidden');
+        }
+        function closeVisitorOut() { document.getElementById('visOutModal').classList.add('hidden'); VIS_OUT_ID = null; }
+        function saveVisitorOut() {
+            const e = gateEntries.find(x => x.id === VIS_OUT_ID);
+            if (!e) { closeVisitorOut(); return; }
+            const remarks = document.getElementById('visOutRemarks').value.trim();
+            if (!tempPhotos.visOut) { showIosBanner('Capture the visitor photo at Out', 'error'); return; }
+            if (!remarks) { showIosBanner('Write the remarks', 'error'); document.getElementById('visOutRemarks').focus(); return; }
+            e.status = 'OUT';
+            e.outTime = new Date().toISOString();
+            e.outPhoto = tempPhotos.visOut;
+            e.outRemarks = remarks;
+            e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            touchEntry(e, true);
+            tempPhotos.visOut = null;
+            closeVisitorOut();
+            lookupPassForVerify();
+            showIosBanner(`${e.name} (${e.id}) Marked Out`, 'success');
+        }
+
+        // The host's decision on the pass (and on its print): approved by, time, his signature
+        function renderPassApproval(entry) {
+            const box = document.getElementById('modalApprovalBox');
+            if (!box) return;
+            const a = isVisitor(entry) && entry.needApproval ? visApr(entry) : null;
+            if (!isVisitor(entry) || !entry.needApproval) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            box.classList.remove('hidden');
+            if (!a || a.status === 'PENDING') {
+                box.innerHTML = `<div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-center text-xs font-bold text-amber-800">Waiting for ${esc((a && a.host) || entry.host)}'s approval: not valid until approved</div>`;
+                return;
+            }
+            if (a.status !== 'APPROVED') {
+                box.innerHTML = `<div class="rounded-xl border border-red-300 bg-red-50 p-3 text-center text-xs font-bold text-red-700">${esc(a.status)} by ${esc(a.decidedBy || a.host || '-')}${a.remarks ? ': ' + esc(a.remarks) : ''}</div>`;
+                return;
+            }
+            const sign = photoOf(entry, 'hostSign');
+            box.innerHTML = `<div class="rounded-xl border border-emerald-300 bg-emerald-50/60 p-3 flex items-end justify-between gap-3">
+                <div class="min-w-0">
+                    <p class="text-[10px] font-bold text-emerald-700 uppercase">Approved by (Whom to Meet)</p>
+                    <p class="text-sm font-extrabold text-gray-900 break-words">${esc(a.decidedBy || a.host)}</p>
+                    <p class="text-[11px] font-semibold text-gray-600">${esc([a.decidedDesig, a.decidedEmp].filter(Boolean).join(' · '))}</p>
+                    <p class="text-[11px] font-semibold text-gray-600">${esc(formatDateTimeShort(a.decidedAt))} · PIN verified${a.via === 'ADMIN' ? ' (Admin for ' + esc(a.host || entry.host) + ')' : ''}</p>
+                </div>
+                <div class="text-center shrink-0">
+                    ${sign ? `<img src="${sign}" alt="Signature" class="h-14 max-w-[140px] object-contain bg-white rounded-lg border border-emerald-200">`
+                        : ((entry.photoKeys || []).indexOf('hostSign') >= 0 ? '<div class="h-14 w-28 flex items-center justify-center text-[10px] text-gray-400 bg-white rounded-lg border border-emerald-200">Loading sign...</div>' : '<div class="h-14 w-28 flex items-center justify-center text-[10px] text-gray-400 bg-white rounded-lg border border-emerald-200">No saved sign</div>')}
+                    <p class="text-[9.5px] font-bold text-gray-500 uppercase mt-1">Signature</p>
+                </div>
+            </div>`;
+        }
 
         // ==========================================
         // 8. DHARAM KANTA STANDALONE (LOCKED AUTO NET WEIGHT)
@@ -3283,6 +3715,14 @@
                 approvalBadge.innerHTML = `<i class="fa-solid fa-circle-check"></i> STORE APPROVED`;
                 approvalBadge.className = 'inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-700 border border-emerald-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase';
                 approvalBadge.classList.remove('hidden');
+            } else if (isVisitor(entry) && entry.needApproval) {
+                const st = visAprStatus(entry) || 'PENDING';
+                const look = st === 'APPROVED' ? ['fa-circle-check', 'APPROVED', 'bg-emerald-500/15 text-emerald-700 border-emerald-300']
+                    : st === 'PENDING' ? ['fa-clock', 'APPROVAL PENDING', 'bg-amber-500/15 text-amber-700 border-amber-300']
+                    : ['fa-circle-xmark', st, 'bg-red-500/15 text-red-700 border-red-300'];
+                approvalBadge.innerHTML = `<i class="fa-solid ${look[0]}"></i> ${esc(look[1])}`;
+                approvalBadge.className = 'inline-flex items-center gap-1 border text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase ' + look[2];
+                approvalBadge.classList.remove('hidden');
             } else {
                 approvalBadge.classList.add('hidden');
             }
@@ -3294,6 +3734,10 @@
             } else {
                 outRow.classList.add('hidden');
             }
+            const remRow = document.getElementById('modalOutRemarkRow');
+            if (entry.outRemarks) { document.getElementById('modalOutRemark').textContent = entry.outRemarks; remRow.classList.remove('hidden'); }
+            else remRow.classList.add('hidden');
+            if (isVisitor(entry)) document.getElementById('modalPurpose').textContent = visPurpose(entry) || '-';
 
             // Generate QR Code
             const qrContainer = document.getElementById('modalQrContainer');
@@ -3341,11 +3785,12 @@
 
         let GATE_OPEN_PASS = null;
         function renderPassPhotos(entry) {
+            renderPassApproval(entry);
             const photoList = [];
             const add = (f, label) => { const src = photoOf(entry, f); if (src) photoList.push({ label, src }); };
             add('billPhoto', 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', 'Gate Pass Photo');
             add('visitorPhoto', 'Visitor Photo'); add('vehiclePhoto', 'Vehicle Photo');
-            add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo');
+            add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', 'Visitor at Out');
 
             const photosBox = document.getElementById('modalPhotosBox');
             if (photoList.length > 0) {
@@ -3465,6 +3910,7 @@
         function quickMarkOutFromVerify(id) {
             const entry = gateEntries.find(e => e.id === id);
             if (!entry) return;
+            if (isVisitor(entry)) { openVisitorOut(id); return; }   // a visitor goes out only with a photo + remarks
             entry.status = 'OUT';
             entry.outTime = new Date().toISOString();
             touchEntry(entry);
@@ -3660,7 +4106,7 @@
                 showIosBanner('No records to export', 'info');
                 return;
             }
-            const headers = ['Pass ID', 'Category', 'Name/Party', 'Details/Ref', 'Vehicle', 'Purpose', 'In Time', 'Out Time', 'Status', 'Guard'];
+            const headers = ['Pass ID', 'Category', 'Name/Party', 'Details/Ref', 'Vehicle', 'Purpose', 'In Time', 'Out Time', 'Status', 'Guard', 'Host Approval', 'Approved / Decided By', 'Decided At', 'Out Remarks'];
             const rows = gateEntries.map(e => [
                 e.id,
                 e.category,
@@ -3671,7 +4117,11 @@
                 formatDateTimeShort(e.inTime),
                 e.outTime ? formatDateTimeShort(e.outTime) : 'Inside',
                 e.status,
-                `"${(e.guard || '').replace(/"/g, '""')}"`
+                `"${(e.guard || '').replace(/"/g, '""')}"`,
+                e.needApproval ? (visAprStatus(e) || 'PENDING') : '',
+                `"${((visApr(e) || {}).decidedBy || '').replace(/"/g, '""')}"`,
+                (visApr(e) || {}).decidedAt ? formatDateTimeShort(visApr(e).decidedAt) : '',
+                `"${(e.outRemarks || '').replace(/"/g, '""')}"`
             ]);
 
             const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
