@@ -2319,9 +2319,16 @@ function ComplaintDetail({complaint, profile, hosts, D, onClose, onSaved, toast,
     const ok1 = await savePhotos(newPhotos, "complaint");
     const ok2 = await savePhotos(newProofs, "proof");
     if (!ok1 || !ok2){ setBusy(false); return; }
-    const { error } = await sb.from(D.table).update(patch).eq("id", c.id);
+    /* .select: a row-level security rule refuses an update WITHOUT an error
+       (0 rows changed), so without it the page would say "completed" while
+       nothing was saved. */
+    const { data, error } = await sb.from(D.table).update(patch).eq("id", c.id).select("id");
     setBusy(false);
     if (error){ setErr(friendlyError(error)); return; }
+    if (Array.isArray(data) && data.length === 0){
+      setErr("Not saved: your login is not allowed to change this complaint. Ask the Admin to check your role / host types.");
+      return;
+    }
     toast(successMsg);
     onSaved();
   };

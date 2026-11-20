@@ -645,9 +645,10 @@ async function loadList(){
       try { return await restAll(base(sel.replace('created_at,', 'created_at,store,'))); }      // store column (STORE1_MIGRATION)
       catch (e) { return await restAll(base(sel)); }
     };
-    // Issue Bill Check reads Issues only; Bill Check reads everything else (an Outward with no type counts as Outward)
+    // Issue Bill Check reads Issues only; Bill Check reads everything else (an Outward with no type counts as Outward).
+    // An Issue Return (entry type ISSUE RETURN, the ERP's Store › Issue Return) is stock coming back, not a bill: left out.
     const [ins, outs] = await Promise.all([
-      ISSUE_MODE ? [] : get('inward_entries', inSel),
+      ISSUE_MODE ? [] : get('inward_entries', inSel, '&entry_type=neq.' + encodeURIComponent('ISSUE RETURN')),
       get('outward_entries', outSel, ISSUE_MODE ? '&entry_type=eq.ISSUE' : '&or=(entry_type.is.null,entry_type.neq.ISSUE)')]);
     const rows = [];
     ins.forEach(e => { const L = e.inward_lines || [];

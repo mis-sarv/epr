@@ -277,9 +277,13 @@ function sarvFinancialYear(shortStart){
    fields (UNIT-I / UNIT-1 for Store 1). Store 2's values are exactly the
    text that was hard-coded before, so nothing of Store 2 changes. */
 const SARV_STORES={
-  'STORE 1':{label:'Store 1',code:'SIHF-I',unit:'UNIT-I',unitNo:'UNIT-1',inPre:'SIHF-I/',nbPre:'NB/1/',outPre:'SIHF-I/OUT/',issuePre:'SIHF-I/ISSUE/'},
-  'STORE 2':{label:'Store 2',code:'SIHF-II',unit:'UNIT-II',unitNo:'UNIT-2',inPre:'SIHF-II/',nbPre:'NB/2/',outPre:'SIHF-II/OUT/',issuePre:'SIHF-II/ISSUE/'}
+  'STORE 1':{label:'Store 1',code:'SIHF-I',unit:'UNIT-I',unitNo:'UNIT-1',inPre:'SIHF-I/',nbPre:'NB/1/',outPre:'SIHF-I/OUT/',issuePre:'SIHF-I/ISSUE/',irPre:'SIHF-I/IR/'},
+  'STORE 2':{label:'Store 2',code:'SIHF-II',unit:'UNIT-II',unitNo:'UNIT-2',inPre:'SIHF-II/',nbPre:'NB/2/',outPre:'SIHF-II/OUT/',issuePre:'SIHF-II/ISSUE/',irPre:'SIHF-II/IR/'}
 };
+/* irPre = the Issue Return series (ISSUE RETURN section). The SERVER hands out
+   these numbers (sir_save, sql/ISSUE_RETURN_MIGRATION.sql › sir_prefix_), so
+   keep the two the same; "IR", not "ISSUE", so no rule that looks for ISSUE in
+   a number ever takes a return for an Issue. */
 // The store's short code (SIHF-I / SIHF-II): of `s` when given (a record's own store), else the store in use.
 function sarvStoreCode_(s){return (SARV_STORES[s]||SARV_STORES[sarvStore]||SARV_STORES['STORE 2']).code;}
 let sarvStore='STORE 2';
@@ -561,6 +565,303 @@ async function sarvSaveStoreTransfer(){
   }finally{btn.disabled=false;btn.textContent='Save Transfer';}
 }
 window.sarvOpenStoreTransfer=sarvOpenStoreTransfer;
+
+/* ══ ISSUE RETURN (sql/ISSUE_RETURN_MIGRATION.sql) ══════════════════════
+   Store 1 / Store 2 › Issue Return: material ISSUED from a store that comes
+   back unused. The popup lists the store's Issues of the last SIR_DAYS days
+   (today and the two days before), each item with Issued / Already returned /
+   Left; the store types what came back, who brought it and why, confirms with
+   the PIN, and the SERVER saves it (sir_save) as an inward record of entry
+   type ISSUE RETURN in the same store, numbered SIHF-I/IR/... or SIHF-II/IR/...
+   Because it is an ordinary inward record, every stock figure (Item Stock,
+   Item Tracker, the Outward stock check, the PR form's Balance Stock,
+   Consumption Tracker) adds the qty back with no special case. The server
+   decides everything that matters: the right (sir_can_, HOME_ISSUE_RETURN),
+   the 3-day window, "never more than issued − already returned" (with the
+   Issue row locked, so two desks cannot both return the last pieces), and the
+   number. The page then builds the PDF ("ISSUE RETURN", RETURN COPY) with the
+   Inward builder (drawStoreCopyNative_ › isRet) and the usual outbox upload.
+   Such a record is never edited through the Inward form (loadInwardForEdit);
+   an Issue with a live return cannot be edited or cancelled until the return
+   is cancelled (cancelStoreRecord / loadOutwardForEdit). Without the migration
+   the popup says so and saves nothing. */
+const SARV_IR_TYPE='ISSUE RETURN';
+const SIR_DAYS=3;          // = sir_days_() on the server (shown only; the server decides)
+function sarvIsIssueReturn_(d){return String((d&&(d.entryType||d.entry_type))||'').trim().toUpperCase()===SARV_IR_TYPE;}
+const SIR_ERR={
+  NO_TOKEN:'You are not logged in. Open the ERP from the launcher.',
+  NO_SESSION:'Your login has ended. Log in again from the launcher.',
+  USER_INACTIVE:'Your user is inactive.',
+  NOT_ALLOWED:'You do not have the Issue Return right for this store (Admin Panel › Manage access).',
+  NOT_FOUND:'That Issue was not found.',
+  CANCELLED:'That Issue has been cancelled.',
+  TOO_OLD:'That Issue is older than '+SIR_DAYS+' days; it can no longer take a return.',
+  BAD_DATE:'The Return Date must be between the Issue date and today.',
+  NEED_RETURNED_BY:'Write who is returning the material.',
+  NEED_REASON:'Write the reason for the return.',
+  NOTHING:'Enter the return qty of at least one item.',
+  BAD_QTY:'A return qty must be more than 0, and a weight cannot be negative.',
+  OVER_RETURN:'That is more than what is left to return.',
+  BAD_DATA:'The return could not be read. Please try again.'
+};
+const SIR_REASONS=['NOT USED','EXCESS ISSUED','WRONG ITEM ISSUED','WORK COMPLETED','MACHINE NOT RUNNING','DAMAGED / NOT USABLE'];
+let sirS={issues:[],returns:[],issue:null,tab:'NEW',from:'',today:'',busy:false,ready:null};
+function sirNotSetUp_(e){
+  const m=String((e&&(e.message||e.details||e.hint))||e||''),c=String((e&&e.code)||'');
+  return c==='PGRST202'||c==='42883'||c==='42P01'||(/sir_|store_issue_returns|srs_ctx_/i.test(m)&&/does not exist|schema cache|could not find/i.test(m));
+}
+async function sirRpc_(fn,args){
+  let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+  const r=await SB.rpc(fn,Object.assign({p_token:tok},args||{}));
+  if(r.error){if(sirNotSetUp_(r.error)){sirS.ready=false;const e=new Error('Issue Return is not set up yet. Admin: run sql/ISSUE_RETURN_MIGRATION.sql in the Supabase SQL Editor.');e.code='NOT_SET_UP';throw e;}throw r.error;}
+  const d=r.data;
+  if(d&&d.success===false){
+    const c=String(d.error||''),e=new Error(SIR_ERR[c]||c||'Unknown error');
+    e.code=c;e.data=d;throw e;
+  }
+  sirS.ready=true;
+  return d;
+}
+const sirN_=v=>nNum_(pNum(v));
+// One line per refused item: "ITEM: issued 10, already returned 4, asked 8".
+function sirOverText_(detail){
+  return (detail||[]).map(b=>b.why==='NOT_IN_ISSUE'?(b.item+': not on this Issue')
+    :(b.item+': '+(b.why==='OVER_WEIGHT'?'weight ':'')+'issued '+sirN_(b.issued)+', already returned '+sirN_(b.returned)+', asked '+sirN_(b.asked))).join('\n');
+}
+async function sarvOpenIssueReturn(){
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
+  if(!(await sarvStoreReady_()))return showToast(sarvStoreLabel()+' needs sql/STORE1_MIGRATION.sql to be run first.','warn');
+  let m=byId('sirModal');
+  if(!m){
+    m=document.createElement('div');m.id='sirModal';
+    m.style.cssText='position:fixed;inset:0;z-index:5000;background:rgba(15,23,42,.55);display:none;align-items:flex-start;justify-content:center;padding:24px 12px;overflow:auto;';
+    m.innerHTML='<div style="background:#fff;border-radius:12px;width:100%;max-width:980px;padding:16px 18px;box-shadow:0 10px 30px rgba(15,23,42,.25);">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;">'
+      +'<h3 id="sirTitle" style="margin:0;font-size:17px;">Issue Return</h3>'
+      +'<button type="button" onclick="sarvCloseIssueReturn()" title="Close" style="border:1px solid #cbd5e1;background:#fff;border-radius:6px;padding:3px 10px;cursor:pointer;">✕</button></div>'
+      +'<div id="sirIntro" style="font-size:12px;color:#475569;margin-bottom:10px;"></div>'
+      +'<div style="display:flex;gap:0;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;width:max-content;margin-bottom:10px;">'
+      +'<button type="button" id="sirTabNew" onclick="sirTab_(\'NEW\')" style="border:0;padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;">New Return</button>'
+      +'<button type="button" id="sirTabDone" onclick="sirTab_(\'DONE\')" style="border:0;border-left:1px solid #cbd5e1;padding:7px 14px;font-size:12px;font-weight:800;cursor:pointer;">Recent Returns</button></div>'
+      +'<div id="sirBody"></div></div>';
+    document.body.appendChild(m);
+  }
+  sirS.issue=null;sirS.tab='NEW';
+  byId('sirTitle').textContent='Issue Return · '+sarvStoreLabel();
+  byId('sirIntro').innerHTML='Issues of <b>'+escText(sarvStoreLabel())+'</b> from the last <b>'+SIR_DAYS+' days</b> (today and the '+(SIR_DAYS-1)+' days before). '
+    +'The returned qty is added back to this store\'s stock; the PDF shows <b>ISSUE RETURN</b>.';
+  m.style.display='flex';
+  await sirTab_('NEW');
+}
+function sarvCloseIssueReturn(){const m=byId('sirModal');if(m)m.style.display='none';sirS.issue=null;}
+async function sirTab_(t){
+  sirS.tab=t;
+  const on=(id,yes)=>{const b=byId(id);if(b){b.style.background=yes?'#0e7490':'#fff';b.style.color=yes?'#fff':'#0f172a';}};
+  on('sirTabNew',t==='NEW');on('sirTabDone',t==='DONE');
+  const body=byId('sirBody');
+  body.innerHTML='<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">Loading…</div>';
+  try{
+    if(t==='NEW'){
+      const d=await sirRpc_('sir_issues',{p_store:sarvStore});
+      sirS.issues=d.issues||[];sirS.from=d.from||'';sirS.today=d.today||today();
+      if(sirS.issue){const again=sirS.issues.find(x=>x.id===sirS.issue.id);sirS.issue=again||null;}
+      sirS.issue?sirRenderForm_():sirRenderIssues_();
+    }else{
+      const d=await sirRpc_('sir_returns',{p_store:sarvStore,p_days:30});
+      sirS.returns=d.rows||[];
+      sirRenderReturns_();
+    }
+  }catch(e){
+    body.innerHTML='<div style="padding:18px;border:1px solid #fecaca;background:#fef2f2;color:#991b1b;border-radius:8px;font-size:13px;font-weight:700;">'+escText(e.message||e)+'</div>';
+  }
+}
+// What is still left to return on an Issue (all items together).
+const sirLeft_=iss=>(iss.items||[]).reduce((s,x)=>s+pNum(x.balance),0);
+function sirRenderIssues_(){
+  const body=byId('sirBody');
+  const q=(byId('sirSearch')&&byId('sirSearch').value)||'';
+  const list=sirS.issues.filter(i=>!q||sarvSearchMatch([i.no,i.party,i.receiver,i.department,i.lotNo,i.location,(i.items||[]).map(x=>x.name).join(' ')],q));
+  const rows=list.map(i=>{
+    const left=sirLeft_(i),done=left<=0;
+    const its=(i.items||[]).map(x=>escText(x.name)+' <b>'+sirN_(x.issued)+'</b>'+(pNum(x.returned)?' <span style="color:#0e7490;">(ret '+sirN_(x.returned)+')</span>':'')).join(', ');
+    return '<tr style="border-top:1px solid #e2e8f0;'+(done?'opacity:.55;':'cursor:pointer;')+'"'+(done?'':' onclick="sirPick_(\''+escText(i.id)+'\')"')+'>'
+      +'<td style="padding:7px 6px;white-space:nowrap;"><b>'+escText(i.no)+'</b><div style="font-size:11px;color:#64748b;">'+fmtDate_(i.date)+'</div></td>'
+      +'<td style="padding:7px 6px;">'+escText(i.party||'-')+(i.receiver?'<div style="font-size:11px;color:#64748b;">Receiver: '+escText(i.receiver)+(i.department?' · '+escText(i.department):'')+'</div>':'')
+      +(i.lotNo?'<div style="font-size:11px;color:#7c3aed;">Lot '+escText(i.lotNo)+'</div>':'')+'</td>'
+      +'<td style="padding:7px 6px;font-size:12px;">'+(its||'-')+'</td>'
+      +'<td style="padding:7px 6px;white-space:nowrap;text-align:right;">'+(done
+        ?'<span style="font-size:11px;font-weight:800;color:#64748b;">All returned</span>'
+        :'<button type="button" class="btn btn-primary" style="padding:5px 12px;font-size:12px;">Return ▸</button>')+'</td></tr>';
+  }).join('');
+  body.innerHTML='<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">'
+    +'<input id="sirSearch" class="form-control" placeholder="Search Issue No, party, receiver, item, lot…" value="'+escText(q)+'" oninput="sirRenderIssues_()" style="flex:1;min-width:220px;padding:7px;">'
+    +'<button type="button" class="btn btn-neutral" onclick="sirTab_(\'NEW\')" style="padding:6px 12px;">↻ Refresh</button></div>'
+    +(list.length
+      ?'<div style="max-height:58vh;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+        +'<thead><tr style="background:#f8fafc;text-align:left;position:sticky;top:0;"><th style="padding:7px 6px;">Issue No / Date</th><th style="padding:7px 6px;">Issued To</th><th style="padding:7px 6px;">Items (issued qty)</th><th></th></tr></thead>'
+        +'<tbody>'+rows+'</tbody></table></div>'
+      :'<div style="padding:22px;text-align:center;color:#64748b;font-size:13px;border:1px dashed #cbd5e1;border-radius:8px;">'
+        +(sirS.issues.length?'No Issue matches the search.':'No Issue in '+escText(sarvStoreLabel())+' since '+fmtDate_(sirS.from)+'.')+'</div>');
+  const s=byId('sirSearch');if(s&&q){s.focus();s.setSelectionRange(q.length,q.length);}
+}
+function sirPick_(id){
+  sirS.issue=sirS.issues.find(x=>x.id===id)||null;
+  if(sirS.issue)sirRenderForm_();
+}
+function sirRenderForm_(){
+  const i=sirS.issue,body=byId('sirBody');if(!i)return sirRenderIssues_();
+  const anyWt=(i.items||[]).some(x=>pNum(x.issuedWt)>0);
+  const rows=(i.items||[]).map((x,k)=>{
+    const left=pNum(x.balance),dis=left<=0;
+    return '<tr style="border-top:1px solid #e2e8f0;" data-k="'+k+'">'
+      +'<td style="padding:6px;"><b>'+escText(x.name)+'</b>'+(x.desc?'<div style="font-size:11px;color:#64748b;">'+escText(x.desc)+'</div>':'')
+      +(x.machine?'<div style="font-size:11px;color:#64748b;">Machine: '+escText(x.machine)+'</div>':'')+'</td>'
+      +'<td style="padding:6px;text-align:center;">'+sirN_(x.issued)+' '+escText(x.uom||'')+'</td>'
+      +'<td style="padding:6px;text-align:center;color:#0e7490;">'+(pNum(x.returned)?sirN_(x.returned):'-')+'</td>'
+      +'<td style="padding:6px;text-align:center;font-weight:800;color:'+(dis?'#94a3b8':'#15803d')+';">'+sirN_(left)+'</td>'
+      +'<td style="padding:6px;white-space:nowrap;"><input class="sir-qty" type="number" min="0" step="any" max="'+left+'" '+(dis?'disabled ':'')+'style="width:90px;padding:6px;" placeholder="0">'
+      +(dis?'':' <button type="button" class="sir-all" title="Return all that is left" style="border:1px solid #cbd5e1;background:#fff;border-radius:5px;padding:3px 7px;font-size:11px;cursor:pointer;">All</button>')+'</td>'
+      +(anyWt?'<td style="padding:6px;">'+(pNum(x.issuedWt)>0?'<input class="sir-wt" type="number" min="0" step="any" '+(dis?'disabled ':'')+'style="width:80px;padding:6px;" placeholder="'+sirN_(x.balanceWt)+'"> <span style="font-size:11px;color:#64748b;">'+escText(x.wunit||'KGS')+'</span>':'<span style="color:#94a3b8;">-</span>')+'</td>':'')
+      +'</tr>';
+  }).join('');
+  body.innerHTML='<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;background:#ecfeff;border:1px solid #a5f3fc;border-radius:8px;padding:9px 11px;margin-bottom:10px;">'
+    +'<div><div style="font-size:14px;font-weight:800;">Against Issue '+escText(i.no)+' <span style="font-weight:600;color:#475569;">· '+fmtDate_(i.date)+'</span></div>'
+    +'<div style="font-size:12px;color:#334155;">Issued to <b>'+escText(i.party||'-')+'</b>'+(i.receiver?' · Receiver '+escText(i.receiver):'')+(i.department?' · '+escText(i.department):'')+(i.lotNo?' · Lot '+escText(i.lotNo):'')+'</div></div>'
+    +'<button type="button" class="btn btn-neutral" onclick="sirS.issue=null;sirRenderIssues_()" style="padding:5px 12px;">‹ Other Issue</button></div>'
+    +'<div style="overflow:auto;border:1px solid #e2e8f0;border-radius:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+    +'<thead><tr style="background:#f8fafc;text-align:left;"><th style="padding:7px 6px;">Item</th><th style="padding:7px 6px;text-align:center;">Issued</th><th style="padding:7px 6px;text-align:center;">Already returned</th>'
+    +'<th style="padding:7px 6px;text-align:center;">Left</th><th style="padding:7px 6px;">Return Qty</th>'+(anyWt?'<th style="padding:7px 6px;">Return Weight</th>':'')+'</tr></thead>'
+    +'<tbody id="sirLines">'+rows+'</tbody></table></div>'
+    +'<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;margin-top:12px;">'
+    +'<label style="font-size:12px;font-weight:700;">Return Date<input id="sirDate" type="date" style="width:100%;padding:7px;margin-top:3px;"></label>'
+    +'<label style="font-size:12px;font-weight:700;">Returned By <span style="color:#dc2626;">*</span><input id="sirBy" style="width:100%;padding:7px;margin-top:3px;" placeholder="Who brought it back"></label>'
+    +'<label style="font-size:12px;font-weight:700;">Reason <span style="color:#dc2626;">*</span><input id="sirWhy" list="sirWhyDl" style="width:100%;padding:7px;margin-top:3px;" placeholder="Why is it returned"></label></div>'
+    +'<datalist id="sirWhyDl">'+SIR_REASONS.map(r=>'<option value="'+escText(r)+'">').join('')+'</datalist>'
+    +'<div id="sirErr" style="color:#b91c1c;font-size:12px;font-weight:700;min-height:16px;margin-top:8px;white-space:pre-line;"></div>'
+    +'<div style="display:flex;justify-content:flex-end;gap:8px;margin-top:6px;">'
+    +'<button type="button" class="btn btn-neutral" onclick="sarvCloseIssueReturn()">Cancel</button>'
+    +'<button type="button" id="sirSaveBtn" class="btn btn-primary" onclick="sirSave_()">Save Issue Return</button></div>';
+  const dt=byId('sirDate');
+  if(dt){dt.value=sirS.today||today();dt.min=String(i.date||'').slice(0,10);dt.max=sirS.today||today();}
+  const by=byId('sirBy');if(by)by.value=i.receiver||'';
+  body.querySelectorAll('#sirLines tr').forEach(tr=>{
+    const x=i.items[+tr.dataset.k],b=tr.querySelector('.sir-all');
+    if(b)b.addEventListener('click',()=>{
+      tr.querySelector('.sir-qty').value=pNum(x.balance);
+      const w=tr.querySelector('.sir-wt');if(w&&pNum(x.balanceWt)>0)w.value=pNum(x.balanceWt);
+    });
+  });
+}
+async function sirSave_(){
+  const i=sirS.issue;if(!i||sirS.busy)return;
+  const err=byId('sirErr');err.textContent='';
+  const lines=[],over=[];
+  byId('sirLines').querySelectorAll('tr').forEach(tr=>{
+    const x=i.items[+tr.dataset.k];
+    const qEl=tr.querySelector('.sir-qty'),wEl=tr.querySelector('.sir-wt');
+    const qty=pNum(qEl&&qEl.value),wt=pNum(wEl&&wEl.value);
+    if(!qty&&!wt)return;
+    if(!(qty>0)){over.push(x.name+': enter the return qty (more than 0)');return;}
+    if(qty>pNum(x.balance)+1e-9)over.push(x.name+': only '+sirN_(x.balance)+' '+(x.uom||'')+' is left to return');
+    if(wt<0)over.push(x.name+': the weight cannot be negative');
+    lines.push({itemId:x.itemId,qty,weight:wt||0,_x:x});
+  });
+  if(over.length)return err.textContent=over.join('\n');
+  if(!lines.length)return err.textContent=SIR_ERR.NOTHING;
+  const date=byId('sirDate').value||today(),by=byId('sirBy').value.trim(),why=byId('sirWhy').value.trim();
+  if(date>(sirS.today||today())||date<String(i.date||'').slice(0,10))return err.textContent=SIR_ERR.BAD_DATE;
+  if(by.length<2)return err.textContent=SIR_ERR.NEED_RETURNED_BY;
+  if(why.length<3)return err.textContent=SIR_ERR.NEED_REASON;
+  const sign=await sarvSubmitPinGate_('Issue Return against '+i.no);
+  if(!sign)return;
+  await withStoreSaveLock_('ISSUE_RETURN',async()=>{
+    sirS.busy=true;
+    const btn=byId('sirSaveBtn');if(btn){btn.disabled=true;btn.textContent='Saving…';}
+    const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText');
+    if(overlay){if(msgEl)msgEl.textContent='Saving Issue Return…';overlay.classList.add('active');}
+    let res=null;
+    try{
+      res=await sirRpc_('sir_save',{p_issue_id:i.id,p_lines:lines.map(l=>({itemId:l.itemId,qty:l.qty,weight:l.weight})),
+        p_date:date,p_returned_by:by,p_reason:why});
+    }catch(e){
+      if(overlay)overlay.classList.remove('active');
+      if(btn){btn.disabled=false;btn.textContent='Save Issue Return';}
+      sirS.busy=false;
+      err.textContent=(e.message||String(e))+(e.code==='OVER_RETURN'?'\n'+sirOverText_(e.data&&e.data.detail):'');
+      // Someone else may have returned part of it meanwhile: show the fresh figures.
+      if(e.code==='OVER_RETURN'){const keep=err.textContent;await sirTab_('NEW');const e2=byId('sirErr');if(e2)e2.textContent=keep;}
+      return;
+    }
+    // Saved: stock is back. Now the PDF (the record is safe even if this part fails).
+    try{
+      if(msgEl)msgEl.textContent='Generating PDF…';
+      const d=sirPdfData_({no:res.no,date:res.date||date,store:res.store||sarvStore,party:i.party,issueNo:i.no,issueDate:i.date,
+        lotNo:i.lotNo,department:i.department,machine:[...new Set(lines.map(l=>l._x.machine).filter(Boolean))].join(', '),
+        returnedBy:by.toUpperCase(),receivedBy:sign.name||res.byName||'',reason:why});
+      const items=lines.map(l=>({name:l._x.name,desc:l._x.desc||'',make:l._x.make||'',cat:l._x.category||'',qty:l.qty,uom:l._x.uom||'',
+        weight:l.weight,wunit:l._x.wunit||'KGS',issuedQty:l._x.issued}));
+      const pdfs=await generateStorePdfs('INWARD',d,items,res.id,null,{images:[],sign:{name:sign.name||'',dataUrl:sign.dataUrl||null}});
+      const b=pdfs.SINGLE&&pdfs.SINGLE.blob;
+      showSarvPdfPreview(b,(pdfs.SINGLE&&pdfs.SINGLE.name)||storePdfFilename_('INWARD',d,'SINGLE'),b?'':((pdfs.SINGLE&&pdfs.SINGLE.html)||''),
+        {docNo:res.no,party:i.party,receiver:by,pdfUrl:'',text:'ISSUE RETURN '+res.no+' — against Issue '+i.no+' ('+(i.party||'-')+')'});
+    }catch(e){
+      console.warn('[SARV] Issue Return PDF failed:',e.message||e);
+      showToast('Issue Return '+escText(res.no)+' is saved, but its PDF could not be built: '+escText(e.message||e)+'. Use Recent Returns › Rebuild PDF.','warn');
+    }finally{
+      if(overlay)overlay.classList.remove('active');
+      sirS.busy=false;
+    }
+    showToast('Issue Return saved: '+escText(res.no)+' · '+lines.length+' item(s) back in '+escText(sarvStoreLabel(res.store))+' stock.','success');
+    sirS.issue=null;
+    await sirTab_('NEW');
+  });
+}
+// The PDF's data object, the same shape for a fresh return and a rebuild.
+function sirPdfData_(o){
+  return {inwardNo:o.no,entryType:SARV_IR_TYPE,receivingDate:o.date,supplier:o.party||'',store:o.store||sarvStore,
+    issueNo:o.issueNo||'',issueDate:o.issueDate||'',gatePass:o.issueNo||'',lotNo:o.lotNo||'',machineName:o.machine||'',
+    department:o.department||'',natureOfInward:'Issue Return',returnedBy:o.returnedBy||'',receivedBy:o.receivedBy||'',reason:o.reason||'',
+    // no prices on a return: the Inward totals stay 0
+    baseTotal:0,totalTax:0,taxable:0,finalAmt:0,gstRate:0,remarks:''};
+}
+function sirRenderReturns_(){
+  const body=byId('sirBody'),rows=sirS.returns;
+  if(!rows.length){body.innerHTML='<div style="padding:22px;text-align:center;color:#64748b;font-size:13px;border:1px dashed #cbd5e1;border-radius:8px;">No Issue Return in '+escText(sarvStoreLabel())+' in the last 30 days.</div>';return;}
+  body.innerHTML='<div style="max-height:62vh;overflow:auto;border:1px solid #e2e8f0;border-radius:8px;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+    +'<thead><tr style="background:#f8fafc;text-align:left;position:sticky;top:0;"><th style="padding:7px 6px;">Return No / Date</th><th style="padding:7px 6px;">Against Issue</th><th style="padding:7px 6px;">Items returned</th><th style="padding:7px 6px;">Returned By / Reason</th><th style="padding:7px 6px;">PDF</th></tr></thead><tbody>'
+    +rows.map((r,k)=>'<tr style="border-top:1px solid #e2e8f0;'+(r.cancelled?'opacity:.55;':'')+'">'
+      +'<td style="padding:7px 6px;white-space:nowrap;"><b>'+escText(r.no)+'</b><div style="font-size:11px;color:#64748b;">'+fmtDate_(r.date)+'</div>'
+      +(r.cancelled?'<div style="font-size:10.5px;font-weight:800;color:#dc2626;">CANCELLED</div>':'')+'</td>'
+      +'<td style="padding:7px 6px;">'+escText(r.issueNo||'-')+'<div style="font-size:11px;color:#64748b;">'+escText(r.party||'')+'</div></td>'
+      +'<td style="padding:7px 6px;font-size:12px;">'+((r.items||[]).map(x=>escText(x.name||'-')+' <b>'+sirN_(x.qty)+'</b> '+escText(x.uom||'')).join(', ')||'-')+'</td>'
+      +'<td style="padding:7px 6px;font-size:12px;">'+escText(r.returnedBy||'-')+'<div style="font-size:11px;color:#64748b;">'+escText(r.reason||r.notes||'')+'</div></td>'
+      +'<td style="padding:7px 6px;white-space:nowrap;">'
+      +(r.pdf?'<a href="'+escText(r.pdf)+'" target="_blank" rel="noopener" style="font-weight:700;color:#0284c7;">Open</a> · ':'')
+      +(r.cancelled?'':'<a href="#" onclick="sirRebuild_('+k+');return false;" style="font-weight:700;color:#0e7490;">'+(r.pdf?'Rebuild':'Make PDF')+'</a>')+'</td></tr>').join('')
+    +'</tbody></table></div>';
+}
+/* A return whose PDF failed (or must be made again): rebuilt from what the
+   server kept. The Store In-Charge sign comes from the record's store_checks
+   (isEdit), like any Admin re-save; Issued Qty is not stored on the return, so
+   that column prints "-". */
+async function sirRebuild_(k){
+  const r=sirS.returns[k];if(!r)return;
+  const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText');
+  if(overlay){if(msgEl)msgEl.textContent='Building the Issue Return PDF…';overlay.classList.add('active');}
+  try{
+    const d=sirPdfData_({no:r.no,date:r.date,store:r.store,party:r.party,issueNo:r.issueNo,issueDate:r.issueDate,lotNo:r.lotNo,
+      machine:r.machine,returnedBy:r.returnedBy,receivedBy:r.byName,reason:r.reason||r.notes});
+    const items=(r.items||[]).map(x=>({name:x.name||'',desc:x.desc||'',make:x.make||'',cat:x.category||'',qty:x.qty,uom:x.uom||'',
+      weight:x.weight,wunit:x.wunit||'KGS',issuedQty:null}));
+    const pdfs=await generateStorePdfs('INWARD',d,items,r.id,null,{images:[],sign:null,isEdit:true});
+    const b=pdfs.SINGLE&&pdfs.SINGLE.blob;
+    showSarvPdfPreview(b,(pdfs.SINGLE&&pdfs.SINGLE.name)||storePdfFilename_('INWARD',d,'SINGLE'),b?'':((pdfs.SINGLE&&pdfs.SINGLE.html)||''),
+      {docNo:r.no,party:r.party,receiver:r.returnedBy,pdfUrl:'',text:'ISSUE RETURN '+r.no+' — against Issue '+(r.issueNo||'')});
+  }catch(e){showToast('The PDF could not be built: '+escText(e.message||e),'error');}
+  finally{if(overlay)overlay.classList.remove('active');}
+}
+window.sarvOpenIssueReturn=sarvOpenIssueReturn;
+window.sarvCloseIssueReturn=sarvCloseIssueReturn;
 
 /* ══ ADMINISTRATION › PR-PO MASTER (table category_purchasers) ═══════════
    One row per item category:
@@ -7370,6 +7671,10 @@ const SARV_TABS=[
   {key:'HOME_IN_NB',label:'Inward (NB)',def:'ALL'},
   {key:'HOME_OUT',label:'Material Outward',def:'ALL'},
   {key:'HOME_ISSUE',label:'Issue',def:'ALL'},
+  /* Store 1 / Store 2 › Issue Return (ISSUE RETURN section): unused material of
+     an Issue of the last 3 days back into stock. Decided again by sir_can_
+     (sql/ISSUE_RETURN_MIGRATION.sql): keep def = sir_default_roles_() there. */
+  {key:'HOME_ISSUE_RETURN',label:'Issue Return',hint:'Store 1 / Store 2 › Issue Return: take back unused material of an Issue of the last 3 days; the qty is added back to the store\'s stock',def:['USER_IC_PIN','ADMIN_PIN']},
   {key:'HOME_REPORTS',label:'Print History / Reports',def:'ALL'},
   /* Print History › Preview slides › last slide: OKAY / HOLD / DEBIT on a
      record (RECORD STATUS section). Checked again on the server by
@@ -8481,7 +8786,7 @@ function sarvUserAppsHtml_(u){
    What a row SHOWS is what Save will write: own value if decided, else what
    the roles ticked in the form give now. */
 const SARV_ACCESS_AREAS=[
-  {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
+  {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_ISSUE_RETURN','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
   {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
   {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE2']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
@@ -8501,7 +8806,7 @@ const SARV_ACCESS_AREAS=[
      CMP_MACHINE / CMP_FABRIC    false = that Complaint register hidden */
 const SARV_STORE_SCREENS=[
   {k:'HOME_MYDAY',l:'My Day (Daily Tasks)'},{k:'HOME_IN',l:'Material Inward'},{k:'HOME_IN_NB',l:'Inward (NB)'},
-  {k:'HOME_OUT',l:'Material Outward'},{k:'HOME_ISSUE',l:'Issue'},{k:'HOME_MASTER',l:'Item Stock'},
+  {k:'HOME_OUT',l:'Material Outward'},{k:'HOME_ISSUE',l:'Issue'},{k:'HOME_ISSUE_RETURN',l:'Issue Return'},{k:'HOME_MASTER',l:'Item Stock'},
   {k:'HOME_TRACKER',l:'Item Tracker + Consumption'},{k:'HOME_REPAIR',l:'Repair Challans'},
   {k:'HOME_REPORTS',l:'Print History / Reports'},{k:'RPT_REC_STATUS',l:'Reports · Change record status'},
   {k:'RPT_CHK_GM',l:'Reports · GM Bill Check'},{k:'RPT_CHK_EA',l:'Reports · EA Bill Check'},{k:'RPT_CHK_MD1',l:'Reports · MD-1 Bill Check'},
@@ -15721,6 +16026,8 @@ const CONS_TYPES={
   'INWARD NB': {side:'IN',  table:'inward_entries',  dateCol:'receiving_date', partyCol:'supplier_name', natureCol:'nature_of_inward',   natures:['Purchase','Repaired','Transfer']},
   'OUTWARD':   {side:'OUT', table:'outward_entries', dateCol:'outward_date',   partyCol:'party_name',    natureCol:'nature_of_dispatch', natures:['Non-Returnable','Repair','Transfer','Sample']},
   'ISSUE':     {side:'OUT', table:'outward_entries', dateCol:'outward_date',   partyCol:'party_name',    natureCol:'nature_of_dispatch', natures:['CONSUMABLE']},
+  // Unused material of an Issue coming back (ISSUE RETURN section); without this row the report dropped it.
+  'ISSUE RETURN':{side:'IN', table:'inward_entries',  dateCol:'receiving_date', partyCol:'supplier_name', natureCol:'nature_of_inward',   natures:['Issue Return']},
 };
 // "Repaired" is what an inward Return is stored as; the form shows "Return".
 const CONS_NATURE_LABEL={Repaired:'Return (Repaired)'};
@@ -16898,7 +17205,7 @@ function consPrintFallbackTab_(html){
 function consResetFilters_(){
   // The four entry types ticked, not BALANCE: it is an extra column, not a
   // default (there's no reason to give every report a duplicated column).
-  consSetMulti_('consEntryType',['INWARD','INWARD NB','OUTWARD','ISSUE']);
+  consSetMulti_('consEntryType',['INWARD','INWARD NB','OUTWARD','ISSUE','ISSUE RETURN']);
   // A fortnight is what the reference sheet shows and what fits on a screen
   // without scrolling sideways — a sensible place to start, not a limit.
   const to=consIsoDate_(new Date()), from=consAddDays_(to,-13);
@@ -17546,13 +17853,14 @@ window.loadReports=async function(){
     const dateTo=byId('filterDateTo')?.value||'';
     const results=[];
     // ── Inward entries ────────────────────────────────────────
-    const fetchInward=['ALL','INWARD','INWARD_ONLY','INWARD NB'].includes(typeF);
+    const fetchInward=['ALL','INWARD','INWARD_ONLY','INWARD NB',SARV_IR_TYPE].includes(typeF);
     if(fetchInward){
       let q=SB.from('inward_entries').select(`id,document_no,entry_type,receiving_date,invoice_no,supplier_name,po_number,notes,created_at,inward_lines(qty,rate,line_total,items(name))`).order('created_at',{ascending:false}).limit(300);
       q=sarvStoreQ(q);   // this store's entries only (Store 1 / Store 2)
       if(typeF==='INWARD_ONLY')q=q.eq('entry_type','INWARD');
       else if(typeF==='INWARD NB')q=q.eq('entry_type','INWARD NB');
-      else if(typeF==='INWARD')q=q.in('entry_type',['INWARD','INWARD NB']);
+      else if(typeF===SARV_IR_TYPE)q=q.eq('entry_type',SARV_IR_TYPE);
+      else if(typeF==='INWARD')q=q.in('entry_type',['INWARD','INWARD NB',SARV_IR_TYPE]);
       if(dateFrom)q=q.gte('receiving_date',dateFrom);
       if(dateTo)q=q.lte('receiving_date',dateTo);
       const{data,error}=await q;
@@ -17615,7 +17923,7 @@ function sarvRenderReports_(){
     if(statusEl)statusEl.textContent=sarvStoreLabel()+' · '+filtered.length+' records found'
       +(stF!=='ALL'?' ('+scsFilterLabel_(stF)+', of '+sarvReportsAll.length+')':'')+scsCountsText_(sarvReportsAll);
     if(!filtered.length){tb.innerHTML='<tr><td colspan="11" style="text-align:center;padding:30px;color:#94a3b8;">No records found</td></tr>';return;}
-    const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed'};
+    const tc={'INWARD':'#0284c7','INWARD NB':'#dc2626','OUTWARD':'#166534','ISSUE':'#7c3aed','ISSUE RETURN':'#0e7490'};
     // Editing an already-saved record is an Admin-only action — everyone else
     // sees a dash in the Edit column.
     // Admin Panel → Feature Access: EDIT gives the, DELETE gives the.
@@ -17707,6 +18015,14 @@ window.cancelStoreRecord=async function(kind,id,no){
       if(!r2.error&&(r2.data||[]).some(e=>!isStoreRecordCancelled_(e.notes)))returned=true;
     }
     if(returned)return showToast(''+escText(no)+' cannot be cancelled: a Repair Return inward has already been made against this outward. Cancel that inward first.','error');
+    /* Same for an Issue whose material has partly come back: cancelling the
+       Issue puts ALL of it back in stock, and the Issue Return already did for
+       its part, so that part would be counted twice. */
+    if(String(h.data.entry_type||'').toUpperCase()==='ISSUE'){
+      const r3=await SB.from('inward_entries').select('document_no,notes').eq('entry_type',SARV_IR_TYPE).eq('gate_pass_no',no);
+      const live=(!r3.error?(r3.data||[]):[]).filter(e=>!isStoreRecordCancelled_(e.notes));
+      if(live.length)return showToast(''+escText(no)+' cannot be cancelled: Issue Return '+live.map(e=>escText(e.document_no)).join(', ')+' was made against it. Cancel the Issue Return first.','error');
+    }
   }
 
   const itemsTxt=lines.map(l=>(l.items?.name||'Item')+' × '+pNum(l.qty)+' '+(l.uom||l.items?.uom||'')).join(', ');
@@ -17871,6 +18187,12 @@ async function loadInwardForEdit(id,no){
   const h=await SB.from('inward_entries').select('*').eq('id',id).maybeSingle();
   if(h.error)throw h.error;
   if(!h.data){showToast(''+(no||'Record')+' is no longer in the database; it may have been deleted','error');return loadReports();}
+  /* An Issue Return is made and checked by the server against its Issue
+     (sir_save). Re-saved through the Inward form it would lose that link and
+     could return more than was issued, so it is not edited: cancel it and make
+     a new one from Issue Return. */
+  if(sarvIsIssueReturn_({entryType:h.data.entry_type}))
+    return showToast(escText(h.data.document_no||no||'')+' is an Issue Return; it cannot be edited. Cancel it here and make a new one from Store › Issue Return.','warn');
   const lq=await SB.from('inward_lines').select('*, items(name,description,make,category,uom)').eq('inward_id',id).order('id');
   if(lq.error)throw lq.error;
   const e=h.data, lines=lq.data||[];
@@ -18171,6 +18493,13 @@ async function loadOutwardForEdit(id,no){
   const h=await SB.from('outward_entries').select('*').eq('id',id).maybeSingle();
   if(h.error)throw h.error;
   if(!h.data){showToast(''+(no||'Record')+' is no longer in the database; it may have been deleted','error');return loadReports();}
+  /* An Issue with an Issue Return against it keeps its lines as they are: an
+     edit could bring an item's qty below what has already come back. */
+  if(String(h.data.entry_type||'').toUpperCase()==='ISSUE'){
+    const r=await SB.from('inward_entries').select('document_no,notes').eq('entry_type',SARV_IR_TYPE).eq('gate_pass_no',h.data.document_no||no);
+    const live=(!r.error?(r.data||[]):[]).filter(x=>!isStoreRecordCancelled_(x.notes));
+    if(live.length)return showToast(escText(h.data.document_no||no||'')+' cannot be edited: Issue Return '+live.map(x=>escText(x.document_no)).join(', ')+' was made against it. Cancel the Issue Return first.','warn');
+  }
   const lq=await SB.from('outward_lines').select('*, items(name,description,make,category,uom)').eq('outward_id',id).order('id');
   if(lq.error)throw lq.error;
   const e=h.data, lines=lq.data||[];
@@ -19711,6 +20040,11 @@ window.addEventListener('DOMContentLoaded',()=>{
     uploaded file at those same positions. */
  function drawStoreCopyNative_(doc,kind,d,items,title,x,y,w,areaH){
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
+   /* An Issue Return is an inward record (stock comes back), but it is not a
+      purchase: no supplier, no prices. It keeps the Inward builder (same table,
+      signature slots, outbox) and changes only what it prints: the details, the
+      item table (Issued / Returned, no money) and a Return Details box. */
+   const isRet=!isOut&&sarvIsIssueReturn_(d);
    // Every size / switch below comes from Admin Panel › PDF Settings (sarvPdfOpt_), defaulting to the built-in layout.
    const O=k=>sarvPdfOpt_('store',k);
    const K=(w>150?O('scaleTwo'):O('scaleSingle'))/100;
@@ -19731,7 +20065,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const R=r=>{doc.__role=r;doc.__orig=null;};
    // A label's own text (PDF Settings › Edit on page › rename label), keyed by its original text.
    const LBS=sarvPdfLabels_('store'), LB=t=>{const k=String(t);return LBS[k]!=null?LBS[k]:k;};
-   const tagRole='tag.'+(/SUPPLIER/i.test(title)?'supplier':/RECEIVER/i.test(title)?'receiver':'account');
+   const tagRole='tag.'+(/SUPPLIER|RETURN/i.test(title)?'supplier':/RECEIVER/i.test(title)?'receiver':'account');
    const titleTx=TX(tagRole,title);
    // Tag box (top-right). On a continuation page: the same tag + "(contd.)".
    // The tag never takes more than a third of the copy's width (a long new name is drawn smaller), so the heading always has room.
@@ -19772,7 +20106,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    R('head.code');fitFs(code,FS('head.code',15*K),w-2*tagW-6);
    doc.text(code,x+w/2,y+6*K,{align:'center'});
    const et=d.entryType||(isOut?'OUTWARD':'INWARD');
-   const etColor=isOut?[124,58,237]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
+   const etColor=isOut?[124,58,237]:isRet?[2,132,199]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
    R('head.type');fitFs(String(et),FS('head.type',9.5*K),w-2*tagW-6); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
    doc.text(String(et),x+w/2,y+10.8*K,{align:'center'});
    doc.setTextColor(0,0,0);
@@ -19781,7 +20115,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    // Meta info — two columns of label/value pairs
    const halfW=(w-4)/2;
    const leftPairs=[], rightPairs=[];
-   if(!isOut){
+   if(isRet){
+     leftPairs.push(['Return No:',d.inwardNo||'-']);
+     leftPairs.push(['Return Date:',fmtDate_(d.receivingDate)]);
+     leftPairs.push(['Issued To:',d.supplier||'-']);
+     if(d.department)leftPairs.push(['Department:',d.department]);
+     if(d.machineName)leftPairs.push(['Machine:',d.machineName]);
+     rightPairs.push(['Against Issue No:',d.issueNo||d.gatePass||'-']);
+     rightPairs.push(['Issue Date:',d.issueDate?fmtDate_(d.issueDate):'-']);
+     if(d.lotNo)rightPairs.push(['Lot No.:',d.lotNo]);
+     rightPairs.push(['Nature:','ISSUE RETURN']);
+   } else if(!isOut){
      leftPairs.push(['Inward No:',d.inwardNo||'-']);
      leftPairs.push(['Receiving Date:',fmtDate_(d.receivingDate)]);
      leftPairs.push(['Supplier Name:',d.supplier||'-']);
@@ -19864,7 +20208,18 @@ window.addEventListener('DOMContentLoaded',()=>{
       The PO / PR / Return strip on Inward, the LOT strip on Outward: both are
       collected here, so there is a single hook. */
    const stripRows={};
-   if(!isOut){
+   if(isRet){
+     // Issued = what the Issue gave out of this item (when known), Returned = this document's qty (what goes back into stock).
+     head=[['Item Name / Description','Make / Category','Issued Qty','Returned Qty','Weight']];
+     body=items.map(it=>[
+       (it.name||'-')+(it.desc?'\n'+it.desc:''),
+       (it.make||'-')+((it.cat||it.category)?'\n'+(it.cat||it.category):''),
+       it.issuedQty!=null&&it.issuedQty!==''?pNum(it.issuedQty)+' '+(it.uom||''):'-',
+       pNum(it.qty)+' '+(it.uom||''),
+       pNum(it.weight)?nWt_(it.weight)+' '+(it.wunit||'KGS'):'-']);
+     const totQty=items.reduce((s,x)=>s+pNum(x.qty),0),totWt=items.reduce((s,x)=>s+pNum(x.weight),0);
+     foot=[['TOTAL — '+items.length+' item(s)','','',String(totQty),totWt?nWt_(totWt):'-']];
+   } else if(!isOut){
      head=[['Material Configuration / Specs','Qty','Weight','List Price','Disc%','Rate','Total']];
      body=[];
      items.forEach(it=>{
@@ -19943,7 +20298,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const headOrig=head[0].slice();
    head[0]=head[0].map(h=>LB(h));
    foot[0][0]=String(foot[0][0]).replace(/^TOTAL/,LB('TOTAL'));
-   const nCols=head[0].length, numCols=isOut?[3,4]:[1,2,3,4,5,6];
+   const nCols=head[0].length, numCols=isOut?[3,4]:isRet?[2,3,4]:[1,2,3,4,5,6];
    const pad=1.15*K*O('padding')/100, tMin=O('tableMin');
    const colTexts=ci=>[head[0][ci]].concat(body.filter(r=>r.length===nCols).map(r=>r[ci]),foot.map(r=>r[ci]))
      .map(v=>String(v==null?'':v));
@@ -20030,6 +20385,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const sigLabels=isOut
      ?(title.toUpperCase().includes('RECEIVER')?['Store In-Charge','Gate Sign','Receiver Sign']
        :(kind==='ISSUE'||String(d.entryType||'').toUpperCase()==='ISSUE')?['Store In-Charge','Stock Auditor Sign','Authority Sign']:['Store In-Charge','GM Sign','MD Sign'])
+     :isRet&&!/ACCOUNT/i.test(title)?['Store In-Charge','Returned By Sign']
      :(title.toUpperCase().includes('SUPPLIER')?['Store In-Charge','Gateman Sign']:['Store In-Charge','GM Sign','MD 1 Sign','MD 2 Sign']);
    const sigRole=l=>'sig.'+l.toLowerCase().replace(/[^a-z0-9]+/g,'_');
    const mmPt=pt=>pt*0.3528;
@@ -20050,7 +20406,24 @@ window.addEventListener('DOMContentLoaded',()=>{
      const fresh=y+5.5*K+3;
      return (fresh+boxH+tailH<=bottomY)?nextPg():room(at,boxH);
    };
-   if(!isOut&&!showSec.freight){/* Freight / Totals switched off in PDF Settings */}
+   if(isRet){
+     /* Who brought it back and why, in the box the Outward uses for its receiver
+        (same element names, so PDF Settings sizes / renames apply to it too). */
+     const rfs=FS('box.line',7.5*K), rlh=rfs*0.52, rtfs=FS('box.receiver',7.5*K), rTitle='RETURN DETAILS';
+     doc.setFontSize(rfs); doc.setFont(undefined,'normal');
+     const rk=['Returned By:','Received By (Store):','Reason:'];
+     const rl=[d.returnedBy,d.receivedBy,d.reason].map((v,i)=>doc.splitTextToSize(LB(rk[i])+' '+(v||'-'),w-4));
+     const boxH=rtfs*0.55+2+rl.reduce((s,a)=>s+a.length,0)*rlh+1.4;
+     yy=roomWithTail(yy,boxH+2);
+     doc.setDrawColor(203,213,225); doc.setLineWidth(0.2);
+     doc.rect(x,yy,w,boxH);
+     R('box.receiver');doc.setFontSize(rtfs); doc.setFont(undefined,'bold'); doc.setTextColor(2,132,199);
+     fitFs(rTitle,rtfs,w-4);doc.text(rTitle,x+2,yy+rtfs*0.42+1.2);
+     doc.setFont(undefined,'normal'); doc.setTextColor(0,0,0);
+     let ry2=yy+rtfs*0.55+2+rlh*0.8;
+     R('box.line');doc.setFontSize(rfs);rl.forEach((a,i)=>{doc.__orig=rk[i];doc.text(a,x+2,ry2);ry2+=a.length*rlh;});
+     yy=yy+boxH+2;
+   } else if(!isOut&&!showSec.freight){/* Freight / Totals switched off in PDF Settings */}
    else if(!isOut){
      const boxW=halfW, bfs=FS('box.line',7*K), blh=bfs*0.52, hfs=FS('box.freight',7.5*K);
      const frTitle=TX('box.freight','FREIGHT CALCULATOR SUMMARY'), finLbl=TX('box.final','FINAL NET AMOUNT:'), ffs=FS('box.final',8*K);
@@ -20188,7 +20561,7 @@ window.addEventListener('DOMContentLoaded',()=>{
  function storeInvoiceLabel_(kind,d){
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
    const type=String(d.entryType||kind).toUpperCase();
-   return (isOut?(type==='ISSUE'?'Issue No: ':'Outward No: '):(type==='INWARD NB'?'Inward (NB) No: ':'Inward No: '))
+   return (isOut?(type==='ISSUE'?'Issue No: ':'Outward No: '):(type==='INWARD NB'?'Inward (NB) No: ':type==='ISSUE RETURN'?'Issue Return No: ':'Inward No: '))
      +(d.outwardNo||d.inwardNo||d.document_no||'-');
  }
  function buildStoreInvoicePdfBlob(kind,d,images){
@@ -20251,7 +20624,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.__sigSlots=[];
    const pageW=doc.internal.pageSize.getWidth(), pageH=doc.internal.pageSize.getHeight();
    const isOut=(kind==='OUTWARD'||kind==='ISSUE');
-   const copyATitle='ACCOUNT COPY', copyBTitle=isOut?'RECEIVER COPY':'SUPPLIER COPY';
+   const copyATitle='ACCOUNT COPY', copyBTitle=isOut?'RECEIVER COPY':sarvIsIssueReturn_(d)?'RETURN COPY':'SUPPLIER COPY';
    sarvPdfFillDoc_(sarvPdfElDoc_(doc,'store'),'store');   // cell / fill colours + element look (bold / colour / CAPS / hide) + where each element lands, for Edit on page
    if(oneCopy){
      const margin=sarvPdfOpt_('store','marginTwo');
@@ -21545,7 +21918,7 @@ let PR_TEAL=[13,92,83];
     const recordNo=d?.outwardNo||d?.inwardNo||d?.document_no||kind;
     const suffix=isOut
       ? (String(d?.entryType||kind).toUpperCase()==='ISSUE'?'ISSUE':'OUTWARD')
-      : (d?.invoiceNum||d?.invoice_no||'NA');
+      : (sarvIsIssueReturn_(d)?'ISSUE_RETURN':(d?.invoiceNum||d?.invoice_no||'NA'));
     return `${pdfSafeName_(recordNo)}__${pdfSafeName_(suffix)}_${variant}.pdf`;
   }
   /* ══ PDF ↔ DATABASE LINK: NOTHING IS ALLOWED TO GO MISSING ══════

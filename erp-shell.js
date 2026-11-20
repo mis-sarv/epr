@@ -77,6 +77,11 @@
       { label: 'Inward (NB) — Non-Billable', go: 'IN_NB' },
       { label: 'Material Outward', go: 'OUT' },
       { label: 'Issue', go: 'ISSUE' },
+      /* Unused material of an Issue of the last 3 days back into this store's
+         stock, saved as an ISSUE RETURN inward (store-core.js ›
+         sarvOpenIssueReturn, sql/ISSUE_RETURN_MIGRATION.sql). */
+      { label: 'Issue Return', action: 'sarvOpenIssueReturn', access: 'HOME_ISSUE_RETURN',
+        words: 'issue return returned back unused excess material stock add back wapas' },
       { label: 'Item Stock', go: 'MASTER', sub: 'itemMasterSub', tab: 'MD_ITEM', itemStock: true,
         words: 'item stock balance closing stock in out store wise' },
       { label: 'Item Tracker', go: 'TRACKER' },
