@@ -30,6 +30,8 @@
     <link rel="stylesheet" href="mobile.css?v=20261031d">
     <!-- iOS look, motion and phone / tablet / desktop fit. Loaded after mobile.css; only overrides it. -->
     <link rel="stylesheet" href="mobile-ios.css?v=20261118b">
+    <link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+    <link rel="stylesheet" href="ios-dialog.css?v=20261120a">
 </head>
 <body>
 
@@ -899,6 +901,9 @@
 <script src="mobile-core.js?v=20261118d"></script>
 <!-- Sliding tabs, sheet animations, swipe to close, pull to refresh, lazy PDF libraries. Optional: the app works without it. -->
 <script src="mobile-ios.js?v=20261118b"></script>
+<!-- Every <select> / datalist list opens as an iOS-style popover (sheet on a phone). See ios-dropdown.js. -->
+<script src="ios-dropdown.js?v=20261120a"></script>
+<script src="ios-dialog.js?v=20261120a"></script>
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->

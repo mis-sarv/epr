@@ -128,7 +128,11 @@
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+<link rel="stylesheet" href="ios-dialog.css?v=20261120a">
 <script src="ios-ui.js?v=20261118a" defer></script>
+<script src="ios-dropdown.js?v=20261120a" defer></script>
+<script src="ios-dialog.js?v=20261120a"></script>
 </head>
 <body class="text-gray-900 antialiased select-none">
 
@@ -276,9 +280,9 @@
                     <div>
                         <div class="flex items-center justify-between mb-1">
                             <label class="block text-[11px] font-bold text-gray-400 uppercase">Inward No *</label>
-                            <span class="text-[10px] font-semibold text-blue-600">Editable Gate No</span>
+                            <span id="inwardNoHint" class="text-[10px] font-semibold text-blue-600">Auto · next serial</span>
                         </div>
-                        <input type="text" id="inwardNo" required placeholder="e.g. IN-1001" class="w-full px-3.5 py-3 bg-blue-50/60 border border-blue-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                        <input type="text" id="inwardNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                     </div>
 
                     <!-- Entry Type: New Entry / Store Pending Entry -->
@@ -512,9 +516,9 @@
                     <div>
                         <div class="flex items-center justify-between mb-1">
                             <label class="block text-[11px] font-bold text-gray-400 uppercase">Outward No *</label>
-                            <span class="text-[10px] font-semibold text-orange-600">Editable Gate No</span>
+                            <span id="outStoreOutwardNoHint" class="text-[10px] font-semibold text-orange-600">Auto · next serial</span>
                         </div>
-                        <input type="text" id="outStoreOutwardNo" required placeholder="e.g. OUT-1001" class="w-full px-3.5 py-3 bg-orange-50/60 border border-orange-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white">
+                        <input type="text" id="outStoreOutwardNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                     </div>
 
                     <!-- Dynamic Store Gate Pass No Selection + Quick Add -->
@@ -621,9 +625,9 @@
                     <div>
                         <div class="flex items-center justify-between mb-1">
                             <label class="block text-[11px] font-bold text-gray-400 uppercase">Outward No *</label>
-                            <span class="text-[10px] font-semibold text-indigo-600">Editable Gate No</span>
+                            <span id="dispOutwardNoHint" class="text-[10px] font-semibold text-indigo-600">Auto · next serial</span>
                         </div>
-                        <input type="text" id="dispOutwardNo" required placeholder="e.g. OUT-1002" class="w-full px-3.5 py-3 bg-indigo-50/60 border border-indigo-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white">
+                        <input type="text" id="dispOutwardNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                     </div>
 
                     <!-- Auto-Generated Packing Slip Number -->
@@ -869,8 +873,8 @@
                 <form id="formDharamKanta" class="space-y-3.5">
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Slip No *</label>
-                            <input type="text" id="dkSlipNo" required placeholder="e.g. DK-4501" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Slip No <span id="dkSlipNoHint" class="normal-case font-semibold text-cyan-600">· Auto</span></label>
+                            <input type="text" id="dkSlipNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No *</label>
@@ -912,14 +916,14 @@
                     </button>
                 </form>
 
-                <!-- Vehicles whose Outward is still pending: no new slip for them until they are out (or the old slip is deleted) -->
+                <!-- Every saved Dharam Kanta slip whose vehicle has no Dispatch Packing slip submitted yet (dkAwaitingDispatch) -->
                 <div id="dkPendingBox" class="mt-5 hidden">
                     <div class="flex items-center justify-between px-1 mb-2">
-                        <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider">Outward pending vehicles</span>
+                        <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider">Saved slips · Dispatch slip pending</span>
                         <span id="dkPendingCount" class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">0</span>
                     </div>
                     <div id="dkPendingList" class="space-y-2"></div>
-                    <p class="text-[10px] font-semibold text-gray-400 mt-2 px-1">A new Dharam Kanta slip for these vehicles is possible only after the vehicle is marked Out, or after the saved slip is deleted (ERP PIN).</p>
+                    <p class="text-[10px] font-semibold text-gray-400 mt-2 px-1">A slip leaves this list when an Outward Dispatch Packing slip is submitted for its vehicle, or when the Admin deletes the slip (ERP PIN).</p>
                 </div>
             </div>
 
@@ -960,9 +964,11 @@
                                 <i class="fa-solid fa-plus-circle"></i> Add Party
                             </button>
                         </div>
-                        <select id="hydraSupplierName" required class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
-                            <!-- Populated dynamically from fixed partiesList -->
-                        </select>
+                        <!-- A search box over the ERP suppliers / local parties (gateCombo, hydraSupplierOptions): only a listed name can be chosen -->
+                        <div class="relative">
+                            <input type="text" id="hydraSupplierName" required autocomplete="off" placeholder="Type to search the supplier..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
+                            <div id="hydraSupplierList" class="gate-combo hidden"></div>
+                        </div>
                     </div>
 
                     <!-- Hydra / Crane Vehicle No (Optional) -->
@@ -1415,6 +1421,56 @@
         // the 4-digit part of a fresh gate number (the store ref is built from it)
         const genGateNum = prefix => genGateId(prefix).slice(prefix.length);
 
+        /* ── NUMBER SERIES FROM THE DATABASE (sql/GATE2_SERIES_MIGRATION.sql) ──
+           Inward No., Outward No. (Out From Store + Dispatch share OUT), Packing Slip No.
+           and Dharam Kanta Slip No. run on by one from the server (gate_next_no) and are
+           read-only on the forms. When a form opens its box SHOWS the next number
+           (gateFillNo, nothing kept); Save TAKES one (gateTakeNo, the server locks the
+           counter), so an abandoned form leaves no gap and two phones never share a
+           number. p_min = this phone's own next number, so a number saved offline and not
+           sent yet is never handed out again. Offline / before the migration the phone
+           continues from the highest number in its own copy of the register (newest
+           synced data + its own entries). Visitor / Hydra numbers are not a typed series
+           and stay as they were (genGateId). Keep GATE_SERIES = gate_series_prefix_(). */
+        const GATE_SERIES = { IN: 'IN-', OUT: 'OUT-', PKG: 'PKG-', DK: 'DK-' };
+        let gateSeriesOn = null;   // false = the server has no gate_next_no yet
+        const gateSeriesFmt = (s, n) => GATE_SERIES[s] + String(n).padStart(4, '0');
+        function gateSeriesLocalMax(s) {
+            const re = new RegExp('^' + GATE_SERIES[s] + '(\\d{1,15})$'); let mx = 0;
+            gateEntries.forEach(e => [e.id, s === 'OUT' ? e.outwardNo : null].forEach(v => { const m = re.exec(String(v || '')); if (m) mx = Math.max(mx, +m[1]); }));
+            return mx;
+        }
+        async function gateNextNo(s, reserve) {
+            const localNext = gateSeriesLocalMax(s) + 1;
+            const online = GATE_USER && !GATE_OFFLINE && navigator.onLine !== false;
+            if (online && gateSeriesOn !== false) {
+                const r = await gateRpc('gate_next_no', { p_series: s, p_reserve: !!reserve, p_min: localNext });
+                if (r.ok && r.data && r.data.no) {
+                    gateSeriesOn = true;
+                    if (!gateIdTaken(r.data.no)) return { no: r.data.no, server: true };
+                } else if (r.error === 'NO_MIGRATION') gateSeriesOn = false;
+            }
+            let n = localNext; while (gateIdTaken(gateSeriesFmt(s, n))) n++;
+            return { no: gateSeriesFmt(s, n), server: false };
+        }
+        // A form opened: show its next number in the read-only box (and the small hint next to it).
+        async function gateFillNo(s, boxId, hintId, after) {
+            const box = document.getElementById(boxId); if (!box) return;
+            box.value = ''; const r = await gateNextNo(s, false);
+            box.value = r.no;
+            const h = document.getElementById(hintId);
+            if (h) h.textContent = r.server ? 'Auto · next serial' : (gateSeriesOn === false ? 'Auto · this phone (server series not set up)' : 'Auto · offline, from this phone');
+            if (after) after(r.no);
+        }
+        // Save pressed: TAKE the number. Returns it, or '' when none could be made.
+        async function gateTakeNo(s, boxId) {
+            const r = await gateNextNo(s, true);
+            const box = boxId && document.getElementById(boxId); if (box) box.value = r.no;
+            return r.no;
+        }
+        // One save at a time per form (taking a number waits for the server).
+        const gateSaving = {};
+
         // Text from the ERP or typed by a guard goes into pages as HTML: always escaped
         const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -1523,7 +1579,8 @@
                 }
                 // Resolves only when this user may enter; otherwise it redirects to the launcher / shows the reason.
                 const u = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON_KEY, app: GATE_APP, label: 'Gate-2' });
-                GATE_USER = { id: u.id, name: u.name || '', emp_code: u.emp_code || '' };
+                // admin: kept in the offline copy too, so an Admin-only button stays right without internet
+                GATE_USER = { id: u.id, name: u.name || '', emp_code: u.emp_code || '', admin: !!(SARV_GATE.hasRole && SARV_GATE.hasRole('ADMIN_PIN')) };
                 writeLS(GATE_SESSION_KEY, { token: gateToken(), at: Date.now(), user: GATE_USER });
                 gateStart();
             } catch (e) {
@@ -1540,6 +1597,7 @@
                 writeLS('iosGateSettings_v2', appSettings);
             }
             updateShiftBadgeUI();
+            try { renderDkPending(); } catch (e) { }   // the user is known now: the Admin-only Delete in that list
             if (GATE_OFFLINE) showIosBanner('No internet: working with the last saved ERP lists', 'info');
             else gateLoadMasters(false);
             clearInterval(gateRefreshTimer);
@@ -1999,6 +2057,8 @@
             return out.sort((a, b) => a.value.localeCompare(b.value));
         }
         const inwardVehicleOptions = () => allVehicles().map(v => ({ value: v.no, sub: v.note }));
+        // Hydra / JCB Supplier Name: the same suppliers / local parties the old dropdown had (allParties), now searchable
+        const hydraSupplierOptions = () => allParties().map(p => ({ value: p, sub: '' }));
 
         function initInwardCombos() {
             gateCombo({ inputId: 'inPartyName', listId: 'inPartyList', options: inwardPartyOptions, emptyText: 'No such party. Use Add Party if it is new.', onPick: inwardPartyPicked });
@@ -2006,6 +2066,7 @@
             gateCombo({ inputId: 'dispDkSlipNo', listId: 'dispDkSlipList', options: dispDkSlipOptions, emptyText: 'No saved Dharam Kanta Slip. Create one in Dharam Kanta first.', onPick: lookupDispatchDkSlip });
             gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
             gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
+            gateCombo({ inputId: 'hydraSupplierName', listId: 'hydraSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
             const rn = document.getElementById('inRefNo'), rt = document.getElementById('inRefType');
             if (rn) { rn.addEventListener('input', refDetailSoon); rn.addEventListener('change', loadRefDetail); }
             if (rt) rt.addEventListener('change', () => { document.getElementById('inRefNo').value = ''; clearRefDetail(); });
@@ -2224,15 +2285,16 @@
             }
 
             if (viewId === 'inwardForm') {
-                const randIn = genGateNum('IN-');
-                document.getElementById('inwardNo').value = 'IN-' + randIn;
-                generatedStoreNo = 'STR-IN-' + randIn;
-                document.getElementById('autoStoreNo').textContent = generatedStoreNo;
+                // Store ref follows the Inward No.'s digits (STR-IN-0007 for IN-0007); set again on Save from the number taken.
+                gateFillNo('IN', 'inwardNo', 'inwardNoHint', no => {
+                    generatedStoreNo = 'STR-IN-' + no.slice(GATE_SERIES.IN.length);
+                    document.getElementById('autoStoreNo').textContent = generatedStoreNo;
+                });
             }
 
             if (viewId === 'outwardStoreForm') {
                 document.getElementById('formOutwardStore').reset();
-                document.getElementById('outStoreOutwardNo').value = genGateId('OUT-');
+                gateFillNo('OUT', 'outStoreOutwardNo', 'outStoreOutwardNoHint');
                 document.getElementById('storeFetchedBox').classList.add('hidden');
                 document.getElementById('outPassLabel').textContent = 'Mandatory Photo';
                 document.getElementById('outItemLabel').textContent = 'Mandatory Photo';
@@ -2249,6 +2311,7 @@
             }
 
             if (viewId === 'dharamKantaForm') {
+                gateFillNo('DK', 'dkSlipNo', 'dkSlipNoHint');
                 renderDkPending();
                 dkVehicleCheck();
             }
@@ -2301,13 +2364,9 @@
             }
         }
 
-        document.getElementById('formInward').addEventListener('submit', function(e) {
+        document.getElementById('formInward').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const customInwardNo = cleanGateId(document.getElementById('inwardNo').value) || genGateId('IN-');
-            if (gateIdTaken(customInwardNo)) {
-                showIosBanner('Inward No ' + customInwardNo + ' is already used. Change the number.', 'error');
-                return;
-            }
+            if (gateSaving.IN) return;
             if (!tempPhotos.inBill || !tempPhotos.inItem) {
                 showIosBanner('Both the Bill Photo and the Item Photo are required!', 'error');
                 return;
@@ -2335,6 +2394,13 @@
                 const dkNet = document.getElementById('inDkNet').value || '0.00';
                 dkSummary = ` | DK Slip: ${dkSlip} (G:${grossVal}, T:${tareVal}, Net:${dkNet} Kg)`;
             }
+
+            // Everything checked: now TAKE the Inward No. (the Store ref follows its digits)
+            gateSaving.IN = true;
+            let customInwardNo;
+            try { customInwardNo = await gateTakeNo('IN', 'inwardNo'); } finally { gateSaving.IN = false; }
+            generatedStoreNo = 'STR-IN-' + customInwardNo.slice(GATE_SERIES.IN.length);
+            document.getElementById('autoStoreNo').textContent = generatedStoreNo;
 
             const newEntry = {
                 id: customInwardNo,
@@ -2419,16 +2485,16 @@
             }
         }
 
-        document.getElementById('formOutwardStore').addEventListener('submit', function(e) {
+        document.getElementById('formOutwardStore').addEventListener('submit', async function(e) {
             e.preventDefault();
-            const customOutwardNo = cleanGateId(document.getElementById('outStoreOutwardNo').value) || genGateId('OUT-');
-            if (gateIdTaken(customOutwardNo)) {
-                showIosBanner('Outward No ' + customOutwardNo + ' is already used. Change the number.', 'error');
-                return;
-            }
+            if (gateSaving.OUT) return;
             const passNo = document.getElementById('storePassSelect').value;
             const data = getStorePass(passNo);
             if (!data) return;
+            // Everything checked: now TAKE the Outward No.
+            gateSaving.OUT = true;
+            let customOutwardNo;
+            try { customOutwardNo = await gateTakeNo('OUT', 'outStoreOutwardNo'); } finally { gateSaving.OUT = false; }
 
             const newOutward = {
                 id: customOutwardNo,
@@ -2481,9 +2547,10 @@
             matchedDispatchDkEntry = null;
             tempPhotos.dispVehicle = null;
 
-            document.getElementById('dispOutwardNo').value = genGateId('OUT-');
-            generatedPackingSlipNo = genGateId('PKG-');
-            document.getElementById('autoPackingSlipNo').textContent = generatedPackingSlipNo;
+            gateFillNo('OUT', 'dispOutwardNo', 'dispOutwardNoHint');
+            generatedPackingSlipNo = '';
+            document.getElementById('autoPackingSlipNo').textContent = '…';
+            gateNextNo('PKG', false).then(r => { generatedPackingSlipNo = r.no; document.getElementById('autoPackingSlipNo').textContent = r.no; });
 
             const badge = document.getElementById('dispDkMatchBadge');
             badge.textContent = 'Enter Slip to Fetch Tare';
@@ -2589,8 +2656,9 @@
             }
         }
 
-        document.getElementById('formOutwardDispatch').addEventListener('submit', function(e) {
+        document.getElementById('formOutwardDispatch').addEventListener('submit', async function(e) {
             e.preventDefault();
+            if (gateSaving.DISP) return;
             if (!matchedDispatchDkEntry) {
                 showIosBanner('Please enter a valid Dharam Kanta Slip No!', 'error');
                 return;
@@ -2608,11 +2676,14 @@
                 return;
             }
 
-            const customOutwardNo = cleanGateId(document.getElementById('dispOutwardNo').value) || genGateId('OUT-');
-            if (gateIdTaken(customOutwardNo)) {
-                showIosBanner('Outward No ' + customOutwardNo + ' is already used. Change the number.', 'error');
-                return;
-            }
+            // Everything checked: now TAKE the Outward No. and the Packing Slip No.
+            gateSaving.DISP = true;
+            let customOutwardNo;
+            try {
+                customOutwardNo = await gateTakeNo('OUT', 'dispOutwardNo');
+                generatedPackingSlipNo = await gateTakeNo('PKG');
+                document.getElementById('autoPackingSlipNo').textContent = generatedPackingSlipNo;
+            } finally { gateSaving.DISP = false; }
             const net = Math.max(0, gross - tare).toFixed(2);
             const vehicleNo = matchedDispatchDkEntry.vehicle || 'N/A';
             const dkSlipId = matchedDispatchDkEntry.id;
@@ -3115,9 +3186,32 @@
         }
 
         // ── One open Dharam Kanta slip per vehicle ──
-        // A saved slip keeps its vehicle "in the loop" until the vehicle is Out: the slip itself is marked Out, or a Dispatch
-        // Packing entry made from it (host "DK: <slip>") is. A deleted slip is gone from gateEntries, so it frees the vehicle too.
+        // A saved slip keeps its vehicle "in the loop" until the vehicle is Out: a Dispatch Packing entry made from it
+        // (host "DK: <slip>") is Out. A Dharam Kanta slip itself has no Mark Out any more (dkNoMarkOut); slips marked Out
+        // before that still count as out. A deleted slip is gone from gateEntries, so it frees the vehicle too.
         const dkVehKey = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        // A Dharam Kanta slip leaves the gate only through its Dispatch Packing entry, never by a Mark Out of its own.
+        const dkNoMarkOut = e => !!e && e.category === 'DHARAM KANTA';
+        // The logged-in ERP user has the Admin role (a login cached before this flag existed counts as not Admin until the next online start).
+        const gateIsAdmin = () => !!(GATE_USER && GATE_USER.admin);
+        /* The list under the Dharam Kanta form: EVERY saved slip (old ones too, whatever its status) whose vehicle has
+           no Dispatch Packing entry submitted yet. A slip is done when a Dispatch Packing entry was made from it
+           ("DK: <slip>" in its host), or when the same vehicle got a Dispatch Packing entry at or after the slip's
+           time (made from a newer slip of that vehicle). Only submitting it counts; its Out does not matter here. */
+        function dkAwaitingDispatch() {
+            const bySlip = new Set(), lastByVeh = {};
+            gateEntries.forEach(e => {
+                if (e.category !== 'DISPATCH PACKING' || e.deleted_at) return;
+                const m = /DK: ([^ |]+)/.exec(e.host || ''); if (m) bySlip.add(m[1]);
+                const k = dkVehKey(e.vehicle), t = Date.parse(e.inTime) || 0;
+                if (k && t > (lastByVeh[k] || 0)) lastByVeh[k] = t;
+            });
+            return getAllDharamKantaSlips().filter(d => {
+                if (d.deleted_at || bySlip.has(d.id)) return false;
+                const k = dkVehKey(d.vehicle);
+                return !(k && lastByVeh[k] && lastByVeh[k] >= (Date.parse(d.inTime) || 0));
+            });   // newest first, like gateEntries
+        }
         function dkPendingSlips() {
             const disp = {};
             gateEntries.forEach(e => {
@@ -3127,7 +3221,7 @@
             });
             const out = [];
             gateEntries.forEach(d => {
-                if (d.category !== 'DHARAM KANTA' || d.status === 'OUT' || !dkVehKey(d.vehicle)) return;
+                if (d.category !== 'DHARAM KANTA' || d.deleted_at || d.status === 'OUT' || !dkVehKey(d.vehicle)) return;
                 const ps = disp[d.id] || [];
                 if (ps.some(p => p.status === 'OUT')) return;   // dispatched and gone: the vehicle is free again
                 out.push({ key: dkVehKey(d.vehicle), slip: d, disp: ps[0] || null });
@@ -3136,7 +3230,7 @@
         }
         const dkPendingFor = veh => { const k = dkVehKey(veh); return k ? dkPendingSlips().find(x => x.key === k) || null : null; };
         function dkBlockText(p) {
-            return `Vehicle ${p.slip.vehicle} already has Slip ${p.slip.id}: ${p.disp ? 'loaded, not marked Out yet' : 'Outward pending'}. A new slip is possible after the vehicle is Out, or if that slip is deleted.`;
+            return `Vehicle ${p.slip.vehicle} already has Slip ${p.slip.id}: ${p.disp ? 'Dispatch Packing entry made, vehicle not out yet' : 'Dispatch Packing slip pending'}. A new slip is possible after its Dispatch Packing entry is Out, or if that slip is deleted.`;
         }
         function dkVehicleCheck() {
             const w = document.getElementById('dkVehicleWarn'), inp = document.getElementById('dkVehicleNo');
@@ -3154,25 +3248,26 @@
         function renderDkPending() {
             const box = document.getElementById('dkPendingBox'), list = document.getElementById('dkPendingList');
             if (!box || !list) return;
-            const rows = dkPendingSlips();
+            const rows = dkAwaitingDispatch(), admin = gateIsAdmin();   // Delete is shown to the Admin only
             box.classList.toggle('hidden', !rows.length);
             document.getElementById('dkPendingCount').textContent = rows.length;
             const fmt = iso => { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
-            list.innerHTML = rows.map(p => {
-                const d = p.slip;
+            list.innerHTML = rows.map(d => {
+                const gross = Number(d.grossWeight) || 0;
                 return `<div class="flex items-center gap-2 bg-amber-50/70 border border-amber-200 rounded-2xl px-3 py-2.5">
                     <button type="button" onclick="openPassModal('${esc(d.id)}')" class="ios-btn min-w-0 flex-1 text-left">
-                        <span class="block font-mono text-[13px] font-extrabold text-gray-900 truncate">${esc(d.vehicle)}</span>
-                        <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg · ${esc(fmt(d.inTime))}</span>
+                        <span class="block font-mono text-[13px] font-extrabold text-gray-900 truncate">${esc(d.vehicle || '-')}</span>
+                        <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg${gross ? ' · Gross ' + esc(gross) + ' Kg' : ''} · ${esc(fmt(d.inTime))}</span>
                     </button>
-                    <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase whitespace-nowrap ${p.disp ? 'b-part' : 'b-pend'}">${p.disp ? 'Loaded, not out' : 'Outward pending'}</span>
-                    <button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>
+                    <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase whitespace-nowrap b-pend">Dispatch slip pending</span>
+                    ${admin ? `<button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>` : ''}
                 </div>`;
             }).join('');
         }
 
-        document.getElementById('formDharamKanta').addEventListener('submit', function(e) {
+        document.getElementById('formDharamKanta').addEventListener('submit', async function(e) {
             e.preventDefault();
+            if (gateSaving.DK) return;
             const grossVal = parseFloat(document.getElementById('dkGrossWeight').value) || 0;
             const tareVal = parseFloat(document.getElementById('dkTareWeight').value) || 0;
 
@@ -3181,28 +3276,22 @@
                 return;
             }
 
-            const slipNo = cleanGateId(document.getElementById('dkSlipNo').value);
             const vehicleNo = document.getElementById('dkVehicleNo').value.trim().toUpperCase();
             const netVal = grossVal > 0 ? Math.max(0, grossVal - tareVal).toFixed(2) : '0.00';
-            const formattedId = slipNo.startsWith('DK-') ? slipNo : 'DK-' + slipNo;
-            if (!slipNo) {
-                showIosBanner('Enter the Dharam Kanta Slip No!', 'error');
-                return;
-            }
             const dkOpen = dkPendingFor(vehicleNo);
             if (dkOpen) {
                 dkVehicleCheck(); renderDkPending();
                 showIosBanner(dkBlockText(dkOpen), 'error');
                 return;
             }
-            if (gateIdTaken(formattedId)) {
-                showIosBanner('Slip ' + formattedId + ' is already saved. Use a new slip number.', 'error');
-                return;
-            }
             if (!tempPhotos.dkVehicle) {
                 showIosBanner('Please capture the Vehicle Photo!', 'error');
                 return;
             }
+            // Everything checked: now TAKE the Slip No. from the series (never typed)
+            gateSaving.DK = true;
+            let formattedId;
+            try { formattedId = await gateTakeNo('DK', 'dkSlipNo'); } finally { gateSaving.DK = false; }
 
             const newDkEntry = {
                 id: formattedId,
@@ -3413,9 +3502,11 @@
 
         document.getElementById('formHydraInward').addEventListener('submit', function(e) {
             e.preventDefault();
-            const supplier = document.getElementById('hydraSupplierName').value;
+            // only a name from the list (the box throws anything else back on blur; checked again here)
+            const supHit = GATE_COMBOS.hydraSupplierName ? GATE_COMBOS.hydraSupplierName.match(document.getElementById('hydraSupplierName').value) : null;
+            const supplier = supHit ? supHit.value : (GATE_COMBOS.hydraSupplierName ? '' : document.getElementById('hydraSupplierName').value.trim());
             if (!supplier) {
-                showIosBanner('Please select a Supplier from the dropdown!', 'error');
+                showIosBanner('Please choose the Supplier Name from the list!', 'error');
                 return;
             }
             if (!tempPhotos.hydraIn) {
@@ -3540,14 +3631,9 @@
         // 9. MASTER DATA DROPDOWNS & MANAGER MODAL
         // ==========================================
         function refreshMasterDropdowns() {
-            const fillParty = (id, placeholder) => {
-                const sel = document.getElementById(id);
-                if (!sel) return;
-                const cur = sel.value, list = allParties();
-                sel.innerHTML = `<option value="">${placeholder}</option>` + list.map(p => `<option value="${esc(p)}">${esc(p)}</option>`).join('');
-                if (list.indexOf(cur) >= 0) sel.value = cur;
-            };
-            fillParty('hydraSupplierName', '-- Select Fixed Supplier / Party --');
+            // the Hydra supplier box is a gateCombo over hydraSupplierOptions(): a chosen name that left the list is cleared
+            const hySup = document.getElementById('hydraSupplierName');
+            if (hySup && hySup.value && GATE_COMBOS.hydraSupplierName && !GATE_COMBOS.hydraSupplierName.match(hySup.value)) GATE_COMBOS.hydraSupplierName.set('', true);
 
             // the pass box is a gateCombo over storePassOptions(): a chosen pass that left the list (checked out, or the day changed) is cleared
             const passBox = document.getElementById('storePassSelect');
@@ -3755,9 +3841,9 @@
             GATE_OPEN_PASS = entry.id;
             renderPassPhotos(entry);
 
-            // Mark Out button in modal if still inside
+            // Mark Out button in modal if still inside (never for a Dharam Kanta slip: it goes out with its Dispatch Packing entry)
             const markOutBtn = document.getElementById('modalMarkOutBtn');
-            if (entry.status === 'IN') {
+            if (entry.status === 'IN' && !dkNoMarkOut(entry)) {
                 markOutBtn.classList.remove('hidden');
                 if (entry.category === 'HYDRA / JCB' && entry.hydraStage !== 'STORE_APPROVED') {
                     markOutBtn.innerHTML = `<i class="fa-solid fa-truck-monster"></i> Manage Hydra`;
@@ -3893,7 +3979,7 @@
                         </div>
                         <div class="flex items-center gap-1.5 shrink-0">
                             <button onclick="closeQrVerifyModal(); openPassModal('${esc(item.id)}')" class="ios-btn px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[11px] font-bold">Slip</button>
-                            ${isInside ? (
+                            ${isInside && !dkNoMarkOut(item) ? (
                                 item.category === 'HYDRA / JCB'
                                     ? `<button onclick="closeQrVerifyModal(); showView('hydraForm')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Hydra</button>`
                                     : `<button onclick="quickMarkOutFromVerify('${esc(item.id)}')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Mark Out</button>`
@@ -3911,6 +3997,7 @@
             const entry = gateEntries.find(e => e.id === id);
             if (!entry) return;
             if (isVisitor(entry)) { openVisitorOut(id); return; }   // a visitor goes out only with a photo + remarks
+            if (dkNoMarkOut(entry)) { showIosBanner('A Dharam Kanta slip has no Mark Out: make its Outward Dispatch Packing slip (or delete the slip).', 'error'); return; }
             entry.status = 'OUT';
             entry.outTime = new Date().toISOString();
             touchEntry(entry);

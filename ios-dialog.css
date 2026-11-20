@@ -1,0 +1,67 @@
+/* ios-dialog.css — the iOS alert (UIAlertController look) of ios-dialog.js: every alert(),
+   confirm() and prompt() of the project, and IosDialog.* for new code. A frosted 270 px
+   card in the middle of the screen, a bold title, the message under it, a text box for a
+   prompt, and the buttons on hair-lines in iOS blue (the preferred one bold, a destructive
+   one red). It pops in from 1.15× with a spring and fades out. Class names start with
+   iosdlg- so no page style touches them. */
+.iosdlg-root { position: fixed; inset: 0; z-index: 2147483600; display: flex; align-items: center; justify-content: center; padding: 24px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent; text-transform: none; letter-spacing: normal; text-align: center; }
+.iosdlg-root * { box-sizing: border-box; }
+.iosdlg-back { position: absolute; inset: 0; background: rgba(0, 0, 0, .4); opacity: 0; transition: opacity .25s ease; }
+.iosdlg-card { position: relative; width: 270px; max-width: 100%; max-height: calc(100vh - 48px); display: flex; flex-direction: column; overflow: hidden;
+  border-radius: 14px; background: rgba(242, 242, 247, .94); color: #000;
+  -webkit-backdrop-filter: blur(24px) saturate(180%); backdrop-filter: blur(24px) saturate(180%);
+  box-shadow: 0 16px 50px rgba(0, 0, 0, .22);
+  opacity: 0; transform: scale(1.15); transition: opacity .22s ease, transform .4s cubic-bezier(.32, .72, 0, 1); }
+.iosdlg-card.wide { width: 340px; }
+.iosdlg-root.in .iosdlg-back { opacity: 1; }
+.iosdlg-root.in .iosdlg-card { opacity: 1; transform: none; }
+.iosdlg-root.out .iosdlg-back { opacity: 0; transition: opacity .2s ease; }
+.iosdlg-root.out .iosdlg-card { opacity: 0; transform: scale(.96); transition: opacity .18s ease, transform .2s ease; }
+
+.iosdlg-body { padding: 19px 16px 17px; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.iosdlg-title { font-size: 17px; font-weight: 600; line-height: 1.3; white-space: pre-line; overflow-wrap: anywhere; }
+.iosdlg-msg { margin-top: 4px; font-size: 13px; font-weight: 400; line-height: 1.38; white-space: pre-line; overflow-wrap: anywhere; color: #1c1c1e; }
+.iosdlg-title + .iosdlg-msg { margin-top: 5px; }
+.iosdlg-msg.left { text-align: left; }
+.iosdlg-input { display: block; width: 100%; margin-top: 14px; padding: 7px 8px; border: .5px solid rgba(60, 60, 67, .36); border-radius: 7px;
+  background: #fff; color: #000; font-size: 13px; font-family: inherit; outline: none; -webkit-appearance: none; appearance: none; text-align: left; }
+.iosdlg-input:focus { border-color: #007aff; box-shadow: 0 0 0 1px #007aff; }
+
+.iosdlg-btns { display: flex; border-top: .5px solid rgba(60, 60, 67, .29); flex-shrink: 0; }
+.iosdlg-btns.col { flex-direction: column; }
+.iosdlg-btn { flex: 1 1 0; min-height: 44px; padding: 10px 8px; border: 0; background: transparent; color: #007aff; font-size: 17px; font-weight: 400;
+  font-family: inherit; cursor: pointer; line-height: 1.2; transition: background-color .1s ease; }
+.iosdlg-btns:not(.col) .iosdlg-btn + .iosdlg-btn { border-left: .5px solid rgba(60, 60, 67, .29); }
+.iosdlg-btns.col .iosdlg-btn + .iosdlg-btn { border-top: .5px solid rgba(60, 60, 67, .29); }
+.iosdlg-btn.bold { font-weight: 600; }
+.iosdlg-btn.red { color: #ff3b30; }
+.iosdlg-btn:hover { background: rgba(0, 0, 0, .035); }
+.iosdlg-btn:active, .iosdlg-btn.press { background: rgba(0, 0, 0, .09); }
+.iosdlg-btn:focus { outline: none; }
+.iosdlg-btn:focus-visible { outline: none; background: rgba(0, 0, 0, .05); }
+
+/* iOS banner for a page's own short message box (#toast of HR & Payroll, Issuer, SOP, Order Form,
+   Trims Manager): put class="ios-toast" on it. The page keeps showing / hiding it as before
+   (display, or the "show" class with ios-toast-tr); it drops in from the top with a spring,
+   frosted white, black text (red for an error kind). */
+.ios-toast { position: fixed !important; left: 50% !important; right: auto !important; bottom: auto !important;
+  top: calc(10px + env(safe-area-inset-top, 0px)) !important; transform: translateX(-50%); z-index: 2147483500 !important;
+  width: max-content !important; max-width: min(92vw, 460px) !important; padding: 12px 18px !important; border: 0 !important; border-radius: 14px !important;
+  background: rgba(255, 255, 255, .93) !important; color: #000 !important; -webkit-backdrop-filter: blur(20px) saturate(180%); backdrop-filter: blur(20px) saturate(180%);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, .16), 0 0 0 .5px rgba(0, 0, 0, .06) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif !important; font-size: 14px !important; font-weight: 600 !important;
+  line-height: 1.35 !important; text-align: center !important; white-space: normal !important;
+  animation: iosToastIn .5s cubic-bezier(.32, .72, 0, 1); }
+.ios-toast.err, .ios-toast.error, .ios-toast.bad { color: #ff3b30 !important; }
+.ios-toast.ok, .ios-toast.success { color: #000 !important; }
+@keyframes iosToastIn { from { transform: translate(-50%, -150%); opacity: 0; } to { transform: translate(-50%, 0); opacity: 1; } }
+/* the page shows it with a "show" class instead of display */
+.ios-toast.ios-toast-tr { animation: none; opacity: 0; transform: translate(-50%, -150%) !important; transition: opacity .25s ease, transform .5s cubic-bezier(.32, .72, 0, 1) !important; }
+.ios-toast.ios-toast-tr.show { opacity: 1; transform: translate(-50%, 0) !important; }
+
+/* Light only, like every app page of the project (none has a dark theme). */
+@media (prefers-reduced-motion: reduce) {
+  .iosdlg-back, .iosdlg-card, .iosdlg-root.out .iosdlg-card, .iosdlg-root.out .iosdlg-back { transition: none !important; }
+}

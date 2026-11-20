@@ -25,12 +25,21 @@
   --ls-fill:rgba(120,120,128,.20); --ls-fill2:rgba(120,120,128,.12); --ls-blue:#007aff; --ls-red:#ff3b30; --ls-green:#34c759;
 }
 
-/* ── The three buttons under each other, in the "who" bar ── */
-.who .acts{display:flex; flex-direction:column; gap:7px; flex:0 0 auto; align-items:stretch;}
-.who .acts .out{display:flex; align-items:center; gap:7px; justify-content:flex-start; min-width:124px; padding:9px 12px;}
-.who .acts .out svg{flex:0 0 auto; opacity:.9;}
+/* ── The three buttons in the "who" bar: small icon buttons in a row (Lock · Screen Saver · Logout) ──
+   The word is kept in .lbl (hidden on screen, read by screen readers; the title is the tooltip).
+   The Screen Saver's "10m" tag (launcher-lock.js › setBtnState) sits on the icon's corner as a badge. */
+.who .acts{display:flex; flex-direction:row; gap:6px; flex:0 0 auto; align-items:center;}
+.who .acts .out{position:relative; display:flex; align-items:center; justify-content:center; width:38px; height:38px; min-width:0; min-height:0; padding:0;
+  border-radius:11px; background:var(--surface-2); border:1px solid var(--hairline-s); color:var(--txt-2);
+  transition:background .16s, color .16s, border-color .16s, transform .12s;}
+.who .acts .out svg{flex:0 0 auto; opacity:.95;}
+.who .acts .out .lbl{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); clip-path:inset(50%); white-space:nowrap;}
 .who .acts .out.act:hover{color:var(--txt); border-color:var(--accent); background:var(--surface-2);}
-.who .acts .out .ls-tag{margin-left:auto; font-size:10px; font-weight:800; letter-spacing:.02em; color:#fff; background:var(--ls-blue); border-radius:999px; padding:1px 6px;}
+.who .acts #outBtn:hover{color:#fca5a5; border-color:var(--err-br); background:var(--err-bg);}
+.who .acts .out:active{transform:scale(.92);}
+.who .acts .out:focus-visible{outline:2px solid var(--ls-blue); outline-offset:2px;}
+.who .acts .out .ls-tag{position:absolute; top:-6px; right:-6px; margin:0; font-size:9px; font-weight:800; line-height:1; letter-spacing:.01em;
+  color:#fff; background:var(--ls-blue); border-radius:999px; padding:3px 5px; box-shadow:0 1px 3px rgba(0,0,0,.35); pointer-events:none;}
 
 /* ── Sheet (settings popups) ── */
 .ls-scrim{position:fixed; inset:0; z-index:9000; background:rgba(0,0,0,.42); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); opacity:0; transition:opacity .3s ease;}

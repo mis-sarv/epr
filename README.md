@@ -2181,8 +2181,14 @@ card shows who followed up, the complete-by time and the remark (`pcPromiseHtml`
 promises. The employee list counts them ("N from earlier days").
 
 **Score Master: Pending Follow-ups Task** (client only, no migration). A card in Score Master: on /
-off, **coordinators** (employees with a task list), the employees they follow up (none = everyone
-but themselves), points cut per task, hours allowed after the target, and an optional most-per-day.
+off, **coordinators** (employees with a task list), and PER COORDINATOR the employees they follow up
+(`followup.assign[code] = {units, depts, emps}`, `fupCovers`): named employees, or those matching the
+ticked Units AND the chosen Departments (Unit = the Store of the employee's ERP login, `app_users.store`
+by Emp Code, `loadUnitMap` / `unitOf`; Department compared in capitals, `deptKey`); nothing set =
+everyone but themselves. The older shared `covers` list still applies to versions saved before it and
+is moved into each coordinator's employees when the card opens. Points cut per task, hours allowed
+after the target, and an optional most-per-day. PC Follow-up's employee list has Unit / Department
+filters (`pcMatch`, also used by Notify all).
 A task counts against each coordinator when, that many hours after its target, it is neither done
 nor followed up (`tm_followups.at`, PC Follow-up or MD Oversight); one cut per task per day. The rule
 is saved as `followup` inside the Score Master version (`tm_save_settings` keeps the whole object), so

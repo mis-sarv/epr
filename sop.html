@@ -411,7 +411,11 @@
 </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+<link rel="stylesheet" href="ios-dialog.css?v=20261120a">
 <script src="ios-ui.js?v=20261118a" defer></script>
+<script src="ios-dropdown.js?v=20261120a" defer></script>
+<script src="ios-dialog.js?v=20261120a"></script>
 </head>
 <body>
 <header class="top">
@@ -506,7 +510,7 @@
     <button class="btn ghost" onclick="$('tgDlg').hidden=true">Cancel</button><button class="btn" id="tgGo" onclick="applyTargets()">Apply</button></div></div>
 </div>
 <div id="busy"><div class="spin"></div><div id="busyText">Working…</div></div>
-<div id="toast"></div>
+<div id="toast" class="ios-toast"></div>
 
 <script>
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";

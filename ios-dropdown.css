@@ -1,0 +1,71 @@
+/* ios-dropdown.css — the look of every dropdown list of the project (ios-dropdown.js).
+   The same card as Gate-2's search lists (.gate-combo): white, 14 px corners, a light
+   border and a soft shadow, 13 px semibold rows with hair-line separators, a pale blue
+   row under the finger. It opens with an iOS spring: a popover under / over its box
+   on a PC or tablet, a bottom sheet on a phone (< 768 px wide). Class names start
+   with iosdd- so no page style touches them; the page's own CSS is never changed. */
+.iosdd-root { position: fixed; inset: 0; z-index: 2147483000; pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-tap-highlight-color: transparent; text-transform: none; letter-spacing: normal; }
+.iosdd-root * { box-sizing: border-box; }
+.iosdd-panel { pointer-events: auto; }
+
+.iosdd-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .28); pointer-events: auto; opacity: 0; transition: opacity .28s ease; }
+.iosdd-root.in .iosdd-backdrop { opacity: 1; }
+
+/* PC / tablet: a popover anchored to its box */
+.iosdd-pop { position: fixed; display: flex; flex-direction: column; overflow: hidden; background: #fff;
+  border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 12px 30px rgba(0, 0, 0, .14);
+  opacity: 0; transform: translateY(-6px) scale(.96); transform-origin: top center;
+  transition: opacity .18s ease, transform .34s cubic-bezier(.32, .72, 0, 1); }
+.iosdd-pop.up { transform-origin: bottom center; transform: translateY(6px) scale(.96); }
+.iosdd-root.in .iosdd-pop { opacity: 1; transform: none; }
+.iosdd-root.out .iosdd-pop { transition: opacity .13s ease, transform .16s ease-in; }
+
+/* Phone: a bottom sheet with a grabber (pull it down to close) */
+.iosdd-sheet { position: absolute; left: 0; right: 0; bottom: 0; max-height: 78vh; display: flex; flex-direction: column;
+  background: #fff; border-radius: 16px 16px 0 0; box-shadow: 0 -10px 40px rgba(0, 0, 0, .18);
+  padding-bottom: env(safe-area-inset-bottom, 0px); transform: translateY(100%);
+  transition: transform .42s cubic-bezier(.32, .72, 0, 1); }
+.iosdd-root.in .iosdd-sheet { transform: none; }
+.iosdd-root.out .iosdd-sheet { transition: transform .24s ease-in; }
+.iosdd-root.out .iosdd-backdrop { transition: opacity .22s ease; }
+.iosdd-grab { width: 36px; height: 5px; border-radius: 3px; background: #d1d5db; margin: 8px auto 2px; flex-shrink: 0; }
+.iosdd-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 16px 10px;
+  border-bottom: 1px solid #f3f4f6; font-size: 15px; font-weight: 700; color: #111827; touch-action: none; flex-shrink: 0; }
+.iosdd-head span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iosdd-done { border: 0; background: none; color: #007aff; font-size: 15px; font-weight: 600; cursor: pointer; padding: 4px 0; flex-shrink: 0; }
+
+.iosdd-search { padding: 8px 10px; border-bottom: 1px solid #f3f4f6; flex-shrink: 0; }
+.iosdd-search input { width: 100%; padding: 8px 12px; border: 0; border-radius: 10px; background: #f2f2f7; color: #111827;
+  font-size: 14px; font-weight: 500; outline: none; -webkit-appearance: none; appearance: none; }
+.iosdd-search input:focus { box-shadow: 0 0 0 2px rgba(0, 122, 255, .35); background: #fff; }
+.iosdd-sheet .iosdd-search input { font-size: 16px; }   /* 16 px: iOS does not zoom the page into the box */
+
+.iosdd-list { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; flex: 1 1 auto; min-height: 0; }
+.iosdd-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 14px;
+  font-size: 13px; font-weight: 600; color: #111827; border-bottom: 1px solid #f3f4f6; cursor: pointer;
+  transition: background-color .12s ease; user-select: none; -webkit-user-select: none; }
+.iosdd-sheet .iosdd-opt { padding: 13px 16px; font-size: 15px; }
+.iosdd-opt:last-child { border-bottom: 0; }
+.iosdd-opt:hover, .iosdd-opt.act { background: #eff6ff; }
+.iosdd-opt:active { background: #dbeafe; }
+.iosdd-opt .v { min-width: 0; overflow-wrap: anywhere; }
+.iosdd-opt .s { font-size: 10px; font-weight: 700; color: #6b7280; flex-shrink: 0; max-width: 45%; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.iosdd-opt.sel { color: #007aff; }
+.iosdd-opt .ck { width: 16px; height: 16px; flex-shrink: 0; color: #007aff; }
+.iosdd-opt.ph { color: #9ca3af; font-weight: 500; }
+.iosdd-opt.dis { color: #c7c7cc; cursor: default; background: none; }
+.iosdd-grp { position: sticky; top: 0; z-index: 1; padding: 7px 14px 4px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+  text-transform: uppercase; color: #6b7280; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }
+.iosdd-empty, .iosdd-more { padding: 14px; font-size: 12px; font-weight: 600; color: #9ca3af; text-align: center; }
+.iosdd-more { padding: 9px 14px; font-size: 11px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .iosdd-pop, .iosdd-sheet, .iosdd-backdrop, .iosdd-root.out .iosdd-pop, .iosdd-root.out .iosdd-sheet { transition: none !important; }
+  .gate-combo:not(.hidden) { animation: none !important; }
+}
+
+/* Gate-2's own search lists (.gate-combo) open with the same spring */
+@keyframes iosddIn { from { opacity: 0; transform: translateY(-6px) scale(.97); } to { opacity: 1; transform: none; } }
+.gate-combo:not(.hidden) { animation: iosddIn .32s cubic-bezier(.32, .72, 0, 1); transform-origin: top center; }

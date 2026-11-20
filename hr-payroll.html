@@ -181,6 +181,25 @@ details.how code{font-family:'DM Mono',monospace;background:var(--input);border:
 .mdl-h .x{background:none;border:none;font-size:18px;color:var(--muted);cursor:pointer;padding:2px 8px}
 .mdl-b{padding:16px 18px;overflow:auto}
 .mdl-f{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+/* iOS look for every openModal() box: dimmed backdrop, frosted card that pops in with a spring,
+   a plain centred title, a round grey ✕, hair-lines; a bottom sheet on a phone */
+.mbg{background:rgba(0,0,0,.4)}
+.mbg.on{animation:hrIosFade .25s ease}
+.mbg.on .mdl{animation:hrIosPop .42s cubic-bezier(.32,.72,0,1)}
+.mdl{background:rgba(250,250,252,.98);box-shadow:0 16px 50px rgba(0,0,0,.22);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif}
+.mdl-h{border-bottom:.5px solid rgba(60,60,67,.2)}
+.mdl-h h2{font-size:17px;font-weight:600;color:#000;text-align:center}
+.mdl-h .x{width:28px;height:28px;padding:0;border-radius:50%;background:rgba(118,118,128,.12);color:#8e8e93;font-size:14px;line-height:28px}
+.mdl-f{border-top:.5px solid rgba(60,60,67,.2)}
+@keyframes hrIosPop{from{opacity:0;transform:scale(1.08)}to{opacity:1;transform:none}}
+@keyframes hrIosFade{from{background:rgba(0,0,0,0)}to{background:rgba(0,0,0,.4)}}
+@media (max-width:600px){
+  .mbg{align-items:flex-end;padding:0}
+  .mdl{border-radius:16px 16px 0 0;max-height:92vh;padding-bottom:env(safe-area-inset-bottom,0px)}
+  .mbg.on .mdl{animation:hrIosSheet .42s cubic-bezier(.32,.72,0,1)}
+  @keyframes hrIosSheet{from{transform:translateY(100%)}to{transform:none}}
+}
+@media (prefers-reduced-motion:reduce){.mbg.on,.mbg.on .mdl{animation:none}}
 .fgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px 14px}
 .fg label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
 .fg input,.fg select,.fg textarea{width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;background:var(--input);outline:none}
@@ -221,7 +240,11 @@ textarea.paste{width:100%;min-height:120px;padding:10px;border:1.5px dashed var(
 </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+<link rel="stylesheet" href="ios-dialog.css?v=20261120a">
 <script src="ios-ui.js?v=20261118a" defer></script>
+<script src="ios-dropdown.js?v=20261120a" defer></script>
+<script src="ios-dialog.js?v=20261120a"></script>
 </head>
 <body>
 
@@ -251,7 +274,7 @@ textarea.paste{width:100%;min-height:120px;padding:10px;border:1.5px dashed var(
     <div class="mdl-f" id="mdlFoot"></div>
   </div>
 </div>
-<div class="toast" id="toast"></div>
+<div class="toast ios-toast" id="toast"></div>
 <iframe id="printFrame" title="print"></iframe>
 <datalist id="empList"></datalist>
 <datalist id="deptList"></datalist>
@@ -344,7 +367,7 @@ const chunk = (a, n) => { const o = []; for (let i = 0; i < a.length; i += n) o.
 /* ── Small UI kit ─────────────────────────────────────────────────── */
 let toastT = null;
 function toast(msg, kind){
-  const t = $('toast'); t.textContent = msg; t.className = 'toast' + (kind ? ' ' + kind : ''); t.style.display = 'block';
+  const t = $('toast'); t.textContent = msg; t.className = 'toast ios-toast' + (kind ? ' ' + kind : ''); t.style.display = 'block';   // ios-toast: the iOS banner look (ios-dialog.css)
   clearTimeout(toastT); toastT = setTimeout(() => { t.style.display = 'none'; }, kind === 'err' ? 6500 : 3200);
 }
 function openModal(title, body, foot, wide){

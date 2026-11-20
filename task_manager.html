@@ -179,8 +179,34 @@
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+<link rel="stylesheet" href="ios-dialog.css?v=20261120a">
 <script>window.IOS_UI={overlays:false};</script>
 <script src="ios-ui.js?v=20261118a" defer></script>
+<script src="ios-dropdown.js?v=20261120a" defer></script>
+<script src="ios-dialog.js?v=20261120a"></script>
+<style>
+/* showCustomModal() (#customModal) in the iOS alert look: frosted card, small symbol, 17 px title,
+   13 px text, the button on a hair-line in iOS blue. Only CSS: the box, its JS and every message
+   stay as they are (ids win over the classes the code swaps on the icon / title). */
+#customModal { background: rgba(0, 0, 0, .4) !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+#customModalContent { border-radius: 14px !important; background: rgba(248, 248, 250, .97) !important; box-shadow: 0 16px 50px rgba(0, 0, 0, .22) !important;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif; transition: opacity .22s ease, transform .42s cubic-bezier(.32, .72, 0, 1) !important; }
+#customModalContent.scale-95 { --tw-scale-x: 1.12; --tw-scale-y: 1.12; }
+#customModalContent > button[title="Close"] { top: 10px !important; right: 10px !important; padding: 4px !important; border: 0 !important; box-shadow: none !important;
+  border-radius: 999px !important; background: rgba(118, 118, 128, .12) !important; color: #8e8e93 !important; }
+#customModalContent > button[title="Close"] i { font-size: 14px !important; }
+#modalIcon { width: 50px !important; height: 50px !important; border-width: 0 !important; box-shadow: none !important; margin-bottom: 10px !important; }
+#modalIcon i { font-size: 30px !important; }
+#modalTitle { font-size: 17px !important; font-weight: 600 !important; letter-spacing: 0 !important; color: #000 !important; margin-bottom: 4px !important; }
+#modalTitle.text-red-600 { color: #ff3b30 !important; }
+#modalMessage { font-size: 13px !important; color: #1c1c1e !important; line-height: 1.42; font-weight: 400 !important; }
+#customModalContent > div:last-child { padding: 0 !important; border-top: .5px solid rgba(60, 60, 67, .29) !important; background: transparent !important; }
+#modalOkBtn { background: transparent !important; color: #007aff !important; font-size: 17px !important; font-weight: 600 !important; border-radius: 0 !important;
+  box-shadow: none !important; padding: 12px !important; transform: none !important; }
+#modalOkBtn:hover { background: rgba(0, 0, 0, .035) !important; }
+#modalOkBtn:active { background: rgba(0, 0, 0, .09) !important; }
+</style>
 </head>
 <body class="text-slate-800 antialiased min-h-screen flex flex-col selection:bg-indigo-200">
 
@@ -811,6 +837,13 @@
                             <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass text-lg"></i></div>
                             <input type="text" id="pcSearch" oninput="renderPcEmpList()" autocomplete="off" placeholder="Search name, code, department" class="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-sm">
                         </div>
+                        <!-- Unit (= Store of the ERP login, unitOf) and Department filters; Notify all follows the same filter (pcMatch). -->
+                        <div class="grid grid-cols-2 gap-2 mb-3">
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Unit</label>
+                                <select id="pcUnit" onchange="renderPcEmpList()" class="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-slate-700 text-sm"></select></div>
+                            <div><label class="block text-[10px] font-bold text-slate-500 mb-1 uppercase tracking-wider">Department</label>
+                                <select id="pcDept" onchange="renderPcEmpList()" class="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 font-bold text-slate-700 text-sm"></select></div>
+                        </div>
                         <label class="flex items-center gap-2 text-[11px] font-bold text-slate-500 mb-3 cursor-pointer select-none"><input type="checkbox" id="pcOnlyPending" checked onchange="renderPcEmpList()" class="accent-violet-700"> Only employees with pending tasks</label>
                         <div class="flex items-center justify-between gap-2 mb-2"><div id="pcTotals" class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider"></div><button id="pcNotifyAllBtn" onclick="pcNotifyAll()" class="text-[10px] font-extrabold text-sky-800 bg-sky-50 hover:bg-sky-100 border border-sky-200 px-2.5 py-1.5 rounded-lg uppercase tracking-wider flex items-center gap-1 shrink-0" title="Ring the phone of every listed employee who has pending tasks"><i class="ph-bold ph-bell-ringing"></i> Notify all</button></div>
                         <div id="pcEmpList" class="space-y-2 max-h-[65vh] overflow-y-auto pr-1"></div>
@@ -938,20 +971,16 @@
                     </label>
                 </div>
                 <div class="p-6">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <!-- One card per coordinator: the Units / Departments / employees
+                         THAT coordinator follows up (fupCoordCard, rule followup.assign). -->
+                    <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
                         <div>
-                            <div class="flex items-center justify-between mb-2"><label class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">Coordinators (score is cut)</label>
-                                <button type="button" onclick="fupPick('coords')" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg">+ Add</button></div>
-                            <div id="fupCoords" class="flex flex-wrap gap-2 min-h-[42px] p-2 bg-slate-50 border border-slate-200 rounded-xl"></div>
-                            <p class="text-[11px] font-bold text-slate-400 mt-1">Only employees with a task list (they need a score to cut).</p>
+                            <label class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">Coordinators (score is cut) &amp; the employees each one follows up</label>
+                            <p class="text-[11px] font-bold text-slate-400 mt-0.5">A coordinator needs a task list (a score to cut). An employee counts when named, or when they match the ticked Units <b>and</b> the chosen Departments. Unit = the Store of their ERP login (Admin Panel › Users). Nothing set = every employee. A coordinator's own tasks never count against them.</p>
                         </div>
-                        <div>
-                            <div class="flex items-center justify-between mb-2"><label class="text-[11px] font-extrabold text-slate-600 uppercase tracking-wider">Employees they follow up</label>
-                                <button type="button" onclick="fupPick('covers')" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg">+ Add</button></div>
-                            <div id="fupCovers" class="flex flex-wrap gap-2 min-h-[42px] p-2 bg-slate-50 border border-slate-200 rounded-xl"></div>
-                            <p class="text-[11px] font-bold text-slate-400 mt-1">None chosen = every employee (a coordinator's own tasks never count against them here).</p>
-                        </div>
+                        <button type="button" onclick="fupPick('coords')" class="text-xs font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-1.5 rounded-lg shrink-0">+ Add coordinator</button>
                     </div>
+                    <div id="fupCoords" class="space-y-3"></div>
                     <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
                         <div><label class="block text-[11px] font-extrabold text-slate-600 mb-1.5 uppercase tracking-wider">Points cut per task</label>
                             <input type="number" id="fupPts" min="0" max="1000" step="1" oninput="fupExample()" class="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white font-bold"></div>
@@ -1885,7 +1914,8 @@
 
         async function loadData(from, to) {
             if (!from || !to) [from, to] = defaultRange();
-            const res = await tmRpc('tm_load', { p_from: from, p_to: to });
+            // The employees' Units are read alongside (coordinator assignment + PC Follow-up filter); ready before any score is worked out.
+            const [res] = await Promise.all([tmRpc('tm_load', { p_from: from, p_to: to }), loadUnitMap()]);
             if (!res.ok) { appState.dbReady = false; appState.dbError = res.error; return res; }
             const d = res.data;
             appState.dbReady = true; appState.dbError = '';
@@ -2335,10 +2365,44 @@
             await refreshAndRerender(); showCustomModal("Settings Saved", "New rules saved. They apply to tasks assigned from now on; past scores stay as they were.");
         };
 
+        /* ── UNIT + DEPARTMENT of an employee ──────────────────────────────
+           Unit = the Store of the employee's ERP login (Admin Panel › Users ›
+           Store), matched by Emp Code: STORE 1 = Unit-1, STORE 2 = Unit-2. An
+           employee without an ERP login has no unit (pick them by name or by
+           department instead). Read from app_users on every loadData (only
+           emp_code / store); a failed read leaves every unit empty, never a
+           wrong one. Department = the task list's own department, compared in
+           capitals with spaces squeezed, so "Maintenance" and "MAINTENANCE"
+           are one. Used by the Pending Follow-ups coordinators (fupCovers) and
+           the PC Follow-up filters. Changing a Store in Admin Panel changes the
+           unit for every day, the past included (it is not dated). */
+        const TM_UNITS = [['STORE 1', 'Unit-1'], ['STORE 2', 'Unit-2']];
+        let unitByCode = new Map();
+        async function loadUnitMap() {
+            try {
+                const r = await SB.from('app_users').select('emp_code,store,is_active').range(0, 4999);
+                if (r.error) throw r.error;
+                const m = new Map();
+                (r.data || []).forEach(u => {
+                    const c = String(u.emp_code || '').trim().toUpperCase(); if (!c || !u.store) return;
+                    if (!m.has(c) || u.is_active !== false) m.set(c, String(u.store).trim().toUpperCase());   // an active login wins over an inactive one
+                });
+                unitByCode = m;
+            } catch (e) { console.warn('Employee units (app_users.store) could not be read:', e); unitByCode = new Map(); }
+        }
+        const unitOf = code => unitByCode.get(String(code || '').trim().toUpperCase()) || '';
+        const unitLabel = u => (TM_UNITS.find(x => x[0] === u) || [])[1] || 'No unit';
+        const deptKey = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+        // Every department on a task list, with how many employees it has.
+        function deptCounts() {
+            const m = new Map(); appState.employees.forEach(e => { const d = deptKey(e.dept); if (d) m.set(d, (m.get(d) || 0) + 1); });
+            return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+        }
+
         /* ── PENDING FOLLOW-UPS TASK (coordinator deduction) ───────────────
            The chosen coordinators (an employee with a task list, so they have
            a score) lose `pts` points for every task of the employees they
-           follow up ("covers"; none = everyone but themselves) that, `graceHours`
+           follow up that, `graceHours`
            after its target, is neither done nor followed up (PC Follow-up / MD
            Oversight, tm_followups.at). One cut per task per day; `maxDay` caps a
            day's total (blank = no limit).
@@ -2349,14 +2413,38 @@
            rule on for that coordinator, so saving it never re-scores the past.
            The cut lowers the coordinator's gained points in dayScore (not the
            possible points), so it shows in every % of theirs: sheet header,
-           My Score, Score Card. Worked out in the page, like all scoring. */
-        const FUP_DEFAULT = { on: false, coords: [], covers: [], pts: 10, graceHours: 2, maxDay: null };
+           My Score, Score Card. Worked out in the page, like all scoring.
+           WHO each coordinator follows up is set per coordinator
+           (`assign[code] = {units, depts, emps}`): an employee counts when they
+           are named in `emps`, or when they match the ticked Units AND the
+           chosen Departments (an empty one of the two = any). A coordinator
+           with nothing set follows up every employee. `covers` is the older
+           shared list (one list for all coordinators): still read for versions
+           saved before, and for a coordinator without an assignment of their
+           own; the card moves it into each coordinator's employees, and new
+           saves leave it empty. */
+        const FUP_DEFAULT = { on: false, coords: [], covers: [], assign: {}, pts: 10, graceHours: 2, maxDay: null };
+        const fupArr = (x, f) => Array.isArray(x) ? [...new Set(x.map(f).filter(Boolean))] : [];
         function fupRuleOf(v) {
             const f = (v && typeof v === 'object' && v.followup) || {};
             const n = (x, d, hi) => { const k = Number(x); return isFinite(k) && k >= 0 ? Math.min(hi, k) : d; };
-            return { on: !!f.on, coords: Array.isArray(f.coords) ? f.coords.map(String) : [], covers: Array.isArray(f.covers) ? f.covers.map(String) : [],
+            const assign = {};
+            if (f.assign && typeof f.assign === 'object') Object.keys(f.assign).forEach(c => {
+                const a = f.assign[c] || {};
+                assign[String(c)] = { units: fupArr(a.units, u => String(u).trim().toUpperCase()), depts: fupArr(a.depts, deptKey), emps: fupArr(a.emps, x => String(x).trim()) };
+            });
+            return { on: !!f.on, coords: Array.isArray(f.coords) ? f.coords.map(String) : [], covers: Array.isArray(f.covers) ? f.covers.map(String) : [], assign,
                      pts: n(f.pts, FUP_DEFAULT.pts, 1000), graceHours: n(f.graceHours, FUP_DEFAULT.graceHours, 48),
                      maxDay: (f.maxDay === null || f.maxDay === '' || f.maxDay === undefined || !isFinite(Number(f.maxDay))) ? null : Math.max(0, Math.round(Number(f.maxDay))) };
+        }
+        const fupHasAssign = a => !!a && (a.units.length || a.depts.length || a.emps.length);
+        // Does coordinator `coord` follow up employee `e` under rule `rr`? (never themselves: the caller skips that)
+        function fupCovers(rr, coord, e) {
+            const a = rr.assign[coord];
+            if (!fupHasAssign(a)) return !rr.covers.length || rr.covers.includes(e.empCode);
+            if (a.emps.includes(e.empCode)) return true;
+            if (!a.units.length && !a.depts.length) return false;
+            return (!a.units.length || a.units.includes(unitOf(e.empCode))) && (!a.depts.length || a.depts.includes(deptKey(e.dept)));
         }
         // The rule in force at a moment (the Score Master version saved before it).
         function fupRuleAt(when) {
@@ -2391,7 +2479,7 @@
                     if (rec && rec.status === 'rescheduled') return;                 // followed up to a later day
                     // The rule in force at the task's target time decides (and gives the allowed hours).
                     const dl = deadlineOf(t, ds, rec), rr = fupRuleAt(dl);
-                    if (!rr.on || !rr.coords.includes(code) || (rr.covers.length && !rr.covers.includes(e.empCode))) return;
+                    if (!rr.on || !rr.coords.includes(code) || !fupCovers(rr, code, e)) return;
                     const cutoff = new Date(dl.getTime() + rr.graceHours * 3600000);
                     if (cutoff > now) return;                                                       // still within the allowed time
                     if (rec && rec.checked && doneMomentOf(rec, ds) <= cutoff) return;              // done in time
@@ -2416,32 +2504,89 @@
             document.getElementById('modalTitle').className = "text-2xl font-extrabold text-slate-800 tracking-tight mb-2";
         };
 
-        // The card: chips for the two employee lists (FUP.coords / FUP.covers), boxes read back on save.
-        const FUP = { coords: [], covers: [] };
+        /* The card: one block per coordinator (FUP.coords, in order) with that
+           coordinator's Units / Departments / employees (FUP.assign[code]);
+           the number boxes are read back on save. The older shared list
+           (`covers`) is moved into every coordinator's employees when the card
+           is filled, so saving keeps exactly who was covered before. */
+        const FUP = { coords: [], assign: {} };
+        const fupA = code => FUP.assign[code] || (FUP.assign[code] = { units: [], depts: [], emps: [] });
         function fupFill() {
             const r = fupCurrent();
-            FUP.coords = r.coords.slice(); FUP.covers = r.covers.slice();
+            FUP.coords = r.coords.slice(); FUP.assign = {};
+            FUP.coords.forEach(c => {
+                const a = r.assign[c];
+                FUP.assign[c] = fupHasAssign(a) ? { units: a.units.slice(), depts: a.depts.slice(), emps: a.emps.slice() }
+                    : { units: [], depts: [], emps: r.covers.filter(x => x !== c) };
+            });
             document.getElementById('fupOn').checked = r.on;
             document.getElementById('fupPts').value = r.pts;
             document.getElementById('fupGraceH').value = r.graceHours;
             document.getElementById('fupMaxDay').value = r.maxDay == null ? '' : r.maxDay;
             fupChips(); fupExample();
         }
-        function fupChips() {
-            const chip = (list, code) => `<span class="inline-flex items-center gap-1.5 bg-white border border-violet-200 text-violet-900 text-xs font-extrabold px-2.5 py-1 rounded-lg">${esc(empName(code))} <span class="text-slate-400 font-mono">${esc(code)}</span><button type="button" onclick="fupDrop('${list}','${esc(code)}')" title="Remove" class="text-slate-400 hover:text-red-600">✕</button></span>`;
-            document.getElementById('fupCoords').innerHTML = FUP.coords.length ? FUP.coords.map(c => chip('coords', c)).join('') : '<span class="text-xs font-bold text-slate-400 self-center px-1">No coordinator yet</span>';
-            document.getElementById('fupCovers').innerHTML = FUP.covers.length ? FUP.covers.map(c => chip('covers', c)).join('') : '<span class="text-xs font-bold text-slate-400 self-center px-1">Every employee</span>';
+        // Who this coordinator follows up under what is on screen now (never themselves).
+        function fupCoveredNow(code) {
+            const rr = { assign: { [code]: fupA(code) }, covers: [] };
+            return appState.employees.filter(e => e.empCode !== code && fupCovers(rr, code, e));
         }
-        window.fupPick = function(list) {
-            openEmpPicker(list === 'coords' ? 'Coordinator (score is cut)' : 'Employee they follow up', x => {
-                if (!FUP[list].includes(x.code)) FUP[list].push(x.code);
-                fupChips(); fupExample();
+        function fupCoordCard(code, i) {
+            const a = fupA(code), cov = fupCoveredNow(code), all = !fupHasAssign(a);
+            const btn = 'text-[11px] font-extrabold px-2.5 py-1 rounded-lg border';
+            const chip = (label, sub, onX) => `<span class="inline-flex items-center gap-1.5 bg-white border border-violet-200 text-violet-900 text-xs font-extrabold px-2.5 py-1 rounded-lg">${label}${sub ? ' <span class="text-slate-400 font-mono">' + sub + '</span>' : ''}<button type="button" onclick="${onX}" title="Remove" class="text-slate-400 hover:text-red-600">✕</button></span>`;
+            const units = TM_UNITS.map(([u, l]) => {
+                const n = appState.employees.filter(e => e.empCode !== code && unitOf(e.empCode) === u).length, on = a.units.includes(u);
+                return `<button type="button" onclick="fupUnit(${i},'${u}')" class="${btn} ${on ? 'bg-violet-700 text-white border-violet-700' : 'bg-white text-slate-600 border-slate-300 hover:border-violet-400'}">${on ? '✓ ' : ''}${esc(l)} <span class="${on ? 'text-violet-200' : 'text-slate-400'}">${n}</span></button>`;
+            }).join('');
+            const used = new Set(a.depts);
+            const deptOpts = deptCounts().filter(([d]) => !used.has(d)).map(([d, n]) => `<option value="${esc(d)}">${esc(d)} (${n})</option>`).join('');
+            const names = cov.slice(0, 14).map(e => esc(e.empName)).join(', ') + (cov.length > 14 ? ` and ${cov.length - 14} more` : '');
+            return `<div class="rounded-2xl border border-violet-200 bg-white p-4">`
+                + `<div class="flex items-start justify-between gap-3 mb-3"><div class="min-w-0"><div class="font-extrabold text-slate-800">${esc(empName(code))} <span class="text-slate-400 font-mono text-xs">${esc(code)}</span></div>`
+                + `<div class="text-[11px] font-bold text-slate-500">${esc(unitLabel(unitOf(code)))}${(appState.employees.find(e => e.empCode === code) || {}).dept ? ' · ' + esc(deptKey((appState.employees.find(e => e.empCode === code) || {}).dept)) : ''}</div></div>`
+                + `<button type="button" onclick="fupDropCoord(${i})" class="text-xs font-extrabold text-red-700 bg-red-50 hover:bg-red-100 border border-red-200 px-2.5 py-1 rounded-lg shrink-0">Remove</button></div>`
+                + `<div class="grid grid-cols-1 lg:grid-cols-3 gap-3">`
+                + `<div><div class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Units</div><div class="flex flex-wrap gap-1.5">${units}</div></div>`
+                + `<div><div class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider mb-1.5">Departments</div><div class="flex flex-wrap gap-1.5 mb-1.5">`
+                + (a.depts.length ? a.depts.map((d, k) => chip(esc(d), '', `fupDeptDrop(${i},${k})`)).join('') : '<span class="text-[11px] font-bold text-slate-400">Any department</span>') + `</div>`
+                + (deptOpts ? `<select onchange="fupDeptAdd(${i},this)" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-300 rounded-lg text-xs font-bold text-slate-700"><option value="">+ Add department…</option>${deptOpts}</select>` : '') + `</div>`
+                + `<div><div class="flex items-center justify-between mb-1.5"><span class="text-[10px] font-extrabold text-slate-500 uppercase tracking-wider">Employees (by name)</span>`
+                + `<button type="button" onclick="fupEmpAdd(${i})" class="text-[11px] font-extrabold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-2 py-0.5 rounded-lg">+ Add</button></div><div class="flex flex-wrap gap-1.5">`
+                + (a.emps.length ? a.emps.map((c, k) => chip(esc(empName(c)), esc(c), `fupEmpDrop(${i},${k})`)).join('') : '<span class="text-[11px] font-bold text-slate-400">None by name</span>') + `</div></div>`
+                + `</div>`
+                + `<div class="mt-3 text-[11px] font-bold rounded-xl px-3 py-2 ${all ? 'bg-amber-50 border border-amber-200 text-amber-800' : cov.length ? 'bg-violet-50 border border-violet-100 text-slate-600' : 'bg-red-50 border border-red-200 text-red-700'}">`
+                + (all ? `Nothing set: follows up <b>every employee</b> (${cov.length}).`
+                    : cov.length ? `Follows up <b>${cov.length}</b> employee(s): ${names}.` : 'No employee matches this choice: this coordinator loses nothing.')
+                + `</div></div>`;
+        }
+        function fupChips() {
+            document.getElementById('fupCoords').innerHTML = FUP.coords.length ? FUP.coords.map(fupCoordCard).join('')
+                : '<div class="text-xs font-bold text-slate-400 p-4 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center">No coordinator yet. Add one, then choose the Units / Departments / employees they follow up.</div>';
+        }
+        const fupRedraw = () => { fupChips(); fupExample(); };
+        window.fupPick = function() {
+            openEmpPicker('Coordinator (score is cut)', x => {
+                if (!FUP.coords.includes(x.code)) { FUP.coords.push(x.code); fupA(x.code); }
+                fupRedraw();
             }, true);
         };
-        window.fupDrop = function(list, code) { FUP[list] = FUP[list].filter(c => c !== code); fupChips(); fupExample(); };
+        window.fupDropCoord = function(i) { const c = FUP.coords[i]; FUP.coords.splice(i, 1); delete FUP.assign[c]; fupRedraw(); };
+        window.fupUnit = function(i, u) { const a = fupA(FUP.coords[i]); a.units = a.units.includes(u) ? a.units.filter(x => x !== u) : a.units.concat(u); fupRedraw(); };
+        window.fupDeptAdd = function(i, sel) { const d = deptKey(sel.value); if (!d) return; const a = fupA(FUP.coords[i]); if (!a.depts.includes(d)) a.depts.push(d); fupRedraw(); };
+        window.fupDeptDrop = function(i, k) { fupA(FUP.coords[i]).depts.splice(k, 1); fupRedraw(); };
+        window.fupEmpAdd = function(i) {
+            const code = FUP.coords[i];
+            openEmpPicker('Employee ' + empName(code) + ' follows up', x => {
+                if (x.code === code) return showCustomModal('Not added', 'A coordinator\'s own tasks never count against them; pick another employee.', true);
+                const a = fupA(code); if (!a.emps.includes(x.code)) a.emps.push(x.code); fupRedraw();
+            }, true);
+        };
+        window.fupEmpDrop = function(i, k) { fupA(FUP.coords[i]).emps.splice(k, 1); fupRedraw(); };
         function fupCollect() {
             const mv = document.getElementById('fupMaxDay').value.trim();
-            return { on: document.getElementById('fupOn').checked, coords: FUP.coords.slice(), covers: FUP.covers.slice(),
+            const assign = {};
+            FUP.coords.forEach(c => { const a = fupA(c); assign[c] = { units: a.units.slice(), depts: a.depts.slice(), emps: a.emps.slice() }; });
+            return { on: document.getElementById('fupOn').checked, coords: FUP.coords.slice(), covers: [], assign,
                      pts: Math.min(1000, num(document.getElementById('fupPts').value, FUP_DEFAULT.pts)),
                      graceHours: Math.min(48, num(document.getElementById('fupGraceH').value, FUP_DEFAULT.graceHours)),
                      maxDay: mv === '' || !isFinite(Number(mv)) ? null : Math.max(0, Math.round(Number(mv))) };
@@ -2449,11 +2594,11 @@
         window.fupExample = function() {
             const r = fupCollect(), box = document.getElementById('fupExampleBox'); if (!box) return;
             if (!r.on) { box.innerHTML = 'Off: nobody loses points for tasks left without a follow-up.'; return; }
-            const who = r.coords.length ? r.coords.map(c => esc(empName(c))).join(', ') : '<span class="text-red-600">no coordinator chosen</span>';
+            const who = r.coords.length ? 'the coordinator who follows that employee up' : '<span class="text-red-600">no coordinator chosen</span>';
             const n = 6, tot = n * r.pts, capped = r.maxDay != null ? Math.min(r.maxDay, tot) : tot;
-            box.innerHTML = `Target 10:00 AM → if by ${esc(fmtClock(new Date(2000, 0, 1, 10, 0, 0, 0).getTime() + r.graceHours * 3600000))} the task is neither done nor followed up, <b>${who}</b> lose <b class="text-red-600">−${r.pts}</b> each for it.`
+            box.innerHTML = `Target 10:00 AM → if by ${esc(fmtClock(new Date(2000, 0, 1, 10, 0, 0, 0).getTime() + r.graceHours * 3600000))} the task is neither done nor followed up, <b>${who}</b> loses <b class="text-red-600">−${r.pts}</b> for it.`
                 + ` E.g. ${n} such tasks in a day = <b class="text-red-600">−${capped}</b>${r.maxDay != null && tot > r.maxDay ? ' (limit ' + r.maxDay + ' per day)' : ''}.`
-                + ` Covers: ${r.covers.length ? r.covers.map(c => esc(empName(c))).join(', ') : 'every employee'}.`;
+                + (r.coords.length ? ' ' + r.coords.map(c => `<b>${esc(empName(c))}</b>: ${fupCoveredNow(c).length}`).join(' · ') + ' employee(s).' : '');
         };
 
         /* ── Stack Emission alert automation ──────────────────────────────
@@ -4658,19 +4803,42 @@
             if (!confirm(`Send a phone notification to ${e.empName}?\n\n${m.title}\n${m.body}`)) return;
             pcSendNotify([m], 'pcNotifyBtn');
         };
+        /* The list's filters: search text + Unit + Department. Read in one place
+           so the list and Notify all can never differ. The two dropdowns are
+           (re)filled from the loaded employees, keeping the choice. */
+        function pcFillFilters() {
+            const u = document.getElementById('pcUnit'), d = document.getElementById('pcDept'); if (!u || !d) return;
+            const uv = u.value, dv = d.value, n = f => appState.employees.filter(f).length;
+            u.innerHTML = `<option value="">All units (${appState.employees.length})</option>`
+                + TM_UNITS.map(([k, l]) => `<option value="${k}">${esc(l)} (${n(e => unitOf(e.empCode) === k)})</option>`).join('')
+                + `<option value="-">No unit (${n(e => !unitOf(e.empCode))})</option>`;
+            d.innerHTML = `<option value="">All departments</option>` + deptCounts().map(([k, c]) => `<option value="${esc(k)}">${esc(k)} (${c})</option>`).join('')
+                + (n(e => !deptKey(e.dept)) ? `<option value="-">No department (${n(e => !deptKey(e.dept))})</option>` : '');
+            u.value = [...u.options].some(o => o.value === uv) ? uv : '';
+            d.value = [...d.options].some(o => o.value === dv) ? dv : '';
+        }
+        function pcMatch(e) {
+            const q = document.getElementById('pcSearch').value.trim().toUpperCase();
+            const uv = (document.getElementById('pcUnit') || {}).value || '', dv = (document.getElementById('pcDept') || {}).value || '';
+            if (q && ![e.empName, e.empCode, e.dept, e.desig].join(' ').toUpperCase().includes(q)) return false;
+            if (uv && (uv === '-' ? !!unitOf(e.empCode) : unitOf(e.empCode) !== uv)) return false;
+            if (dv && (dv === '-' ? !!deptKey(e.dept) : deptKey(e.dept) !== dv)) return false;
+            return true;
+        }
+        const pcFiltered = () => !!(document.getElementById('pcSearch').value.trim() || (document.getElementById('pcUnit') || {}).value || (document.getElementById('pcDept') || {}).value);
         window.pcNotifyAll = function() {
             const ds = pcDay(), now = new Date();
-            const q = document.getElementById('pcSearch').value.trim().toUpperCase();
             const items = appState.employees
-                .filter(e => !q || [e.empName, e.empCode, e.dept, e.desig].join(' ').toUpperCase().includes(q))   // same search as the list
+                .filter(pcMatch)   // same search + Unit + Department as the list
                 .map(pcNotifyMsg).filter(Boolean);
             if (!items.length) return showCustomModal('Nothing pending', 'No listed employee has a pending task.', true);
-            if (!confirm(`Send a phone notification to ${items.length} employee(s) with pending tasks${q ? ' (matching the search)' : ''}?`)) return;
+            if (!confirm(`Send a phone notification to ${items.length} employee(s) with pending tasks${pcFiltered() ? ' (matching the filters)' : ''}?`)) return;
             pcSendNotify(items, 'pcNotifyAllBtn');
         };
 
         async function initPcFollowup() {
             const d = document.getElementById('pcDate'); if (!d.value || d.value > todayStr()) d.value = todayStr();
+            pcFillFilters();
             renderPcEmpList(); renderPcTasks(); pcLoadNotifyLast();
             const ds = pcDay();
             if (appState.loadedFrom && appState.loadedFrom <= pcBackFrom(ds)) return;
@@ -4736,9 +4904,10 @@
             return { pending: p.length + er, overdue: p.filter(x => x.sc.state !== 'upcoming').length + er, earlier: er, done: d.done, total: d.total, followed: fu };
         }
         window.renderPcEmpList = function() {
-            const ds = pcDay(), now = new Date(), q = document.getElementById('pcSearch').value.trim().toUpperCase(), only = document.getElementById('pcOnlyPending').checked;
-            let rows = appState.employees.map(e => ({ e, s: pcStats(e, ds, now) }))
-                .filter(({ e }) => !q || [e.empName, e.empCode, e.dept, e.desig].join(' ').toUpperCase().includes(q));
+            const ds = pcDay(), now = new Date(), only = document.getElementById('pcOnlyPending').checked;
+            // The dropdowns are filled the first time (and when the employees change, e.g. after a reload).
+            { const u = document.getElementById('pcUnit'); if (u && u.options.length !== TM_UNITS.length + 2) pcFillFilters(); }
+            let rows = appState.employees.filter(pcMatch).map(e => ({ e, s: pcStats(e, ds, now) }));
             const all = rows.length;
             if (only) rows = rows.filter(r => r.s.pending > 0 || (pcSelected && r.e.empCode === pcSelected));
             rows.sort((a, b) => b.s.overdue - a.s.overdue || b.s.pending - a.s.pending || a.e.empName.localeCompare(b.e.empName));
@@ -4747,7 +4916,7 @@
             document.getElementById('pcEmpList').innerHTML = rows.length ? rows.map(({ e, s }) => {
                 const sel = e.empCode === pcSelected; const mx = masterByCode(e.empCode);
                 return `<button onclick="openPcEmp('${esc(e.empCode)}')" class="w-full text-left rounded-2xl border p-3.5 transition-colors ${sel ? 'border-violet-500 bg-violet-50 ring-2 ring-violet-200' : 'border-slate-200 bg-white hover:border-violet-300'}">`
-                    + `<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800 truncate">${esc(e.empName)}</div><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">${esc(e.empCode)}${e.dept ? ' · ' + esc(e.dept) : ''}${mx && mx.contact ? ' · ' + esc(mx.contact) : ''}</div></div>`
+                    + `<div class="flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-extrabold text-slate-800 truncate">${esc(e.empName)}</div><div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider truncate">${esc(e.empCode)}${unitOf(e.empCode) ? ' · ' + esc(unitLabel(unitOf(e.empCode))) : ''}${e.dept ? ' · ' + esc(e.dept) : ''}${mx && mx.contact ? ' · ' + esc(mx.contact) : ''}</div></div>`
                     + `<div class="text-right shrink-0"><div class="text-2xl font-extrabold leading-none ${s.pending ? 'text-violet-800' : 'text-green-600'}">${s.pending}</div><div class="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">pending</div></div></div>`
                     + `<div class="flex flex-wrap gap-1.5 mt-2 text-[9px] font-extrabold uppercase tracking-wider">`
                     + (s.overdue - s.earlier ? `<span class="px-2 py-0.5 rounded border text-red-700 bg-red-50 border-red-200">${s.overdue - s.earlier} overdue</span>` : '')
@@ -5737,7 +5906,15 @@
         window.clIssSaveAsFormat = async function() {
             const f = clIssLetter(); if (!f.title || f.body.trim().length < 10) return showCustomModal('Please check', 'Give the letter a title and write its text first.', true);
             const sel = document.getElementById('clIssFormat').value;
-            const upd = sel && confirm('Update the selected format with this text?\n\nOK = update it\nCancel = save as a new format');
+            // Both answers do something, so it is a real choice (an iOS box with three buttons), not a confirm()
+            let upd = false;
+            if (sel) {
+                const pick = window.IosDialog
+                    ? await IosDialog.choose('Update the selected format with this text, or keep it and save this as a new format?', [{ label: 'Update the format', value: 'upd', bold: true }, { label: 'Save as a new format', value: 'new' }, { label: 'Cancel', value: null, cancel: true }], { title: 'Save as format' })
+                    : (confirm('Update the selected format with this text?\n\nOK = update it\nCancel = save as a new format') ? 'upd' : 'new');
+                if (!pick) return;
+                upd = pick === 'upd';
+            }
             const res = await tmRpc('tm_cl_template_save', { p_id: upd ? +sel : null, p_title: f.title, p_subject: f.subject, p_header: f.header, p_body: f.body, p_ack: f.ackText, p_active: true });
             if (!res.ok) return tmErr(res);
             const tp = await tmRpc('tm_cl_template_list', {}); if (tp.ok) CL.templates = tp.data.rows || [];
