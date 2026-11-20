@@ -161,12 +161,8 @@
         <div class="stage-tab" data-tab="SENT" onclick="switchStageTab('SENT')">
             <span class="st-ico"></span><span class="st-lbl">PO Sent to Vendor</span><span class="st-count" id="cnt-SENT">0</span>
         </div>
-        <!-- GM and MD: Store entries (Inward / Inward NB / Outward) to be
-             checked against their items. GM checks first, then the same entry
-             surfaces for MD. See STORE_STAGES. -->
-        <div class="stage-tab" data-tab="STORE" onclick="switchStageTab('STORE')">
-            <span class="st-ico"></span><span class="st-lbl">Store Check</span><span class="st-count" id="cnt-STORE">0</span>
-        </div>
+        <!-- The Store Check tab (GM / MD checking Store entries) was removed: Store bills are
+             checked in the Bill Check app (bill-check.html). STORE is no longer in ALL_TABS. -->
         <!-- Purchaser: what has actually arrived against the POs raised from
              their own PRs, split Pending / Partially Received / Received. -->
         <div class="stage-tab" data-tab="RECV" onclick="switchStageTab('RECV')">
@@ -256,6 +252,11 @@
                     </tbody>
                 </table>
             </div>
+            <!-- Purchaser, Vendor Info: + Add Item, or why items cannot be changed (renderItemRows › viItemsLockReason_) -->
+            <div id="prItemEditBar" style="display:none; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin:6px 0 12px; padding:8px 10px; border:1px solid #bfdbfe; background:#eff6ff; border-radius:8px;">
+                <span id="prItemEditNote" style="flex:1; min-width:160px; font-size:0.72rem; font-weight:600; color:#1e3a8a;"></span>
+                <button type="button" id="prAddItemBtn" style="display:none; border:1px solid #2563eb; background:#2563eb; color:#fff; font-size:0.75rem; font-weight:800; border-radius:6px; padding:6px 12px; cursor:pointer; white-space:nowrap;">+ Add Item</button>
+            </div>
 
             <!-- FIELD BOY only: send the ticked items to the person who raised
                  the PR, or close the PR once they have approved every item. -->
@@ -292,9 +293,14 @@
                          the moment it is saved — see saveNewSupplierMobile. -->
                     <div style="display:flex; align-items:center; justify-content:space-between; gap:8px; margin:10px 0 4px;">
                         <label style="font-size:0.8rem; font-weight:600; margin:0;">Vendor &amp; Item Rates</label>
-                        <button type="button" id="viAddSupplierBtn"
-                                style="border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-size:0.72rem; font-weight:800; border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap;"
-                                title="Add a new supplier to the Supplier Master. It appears in every vendor dropdown below immediately.">Add Supplier</button>
+                        <span style="display:flex; gap:6px;">
+                            <!-- Purchaser, while the sheet is still editable: add an item to the PR (viOpenAddItem_); each row's ✕ removes one (viRemoveItem_) -->
+                            <button type="button" id="viAddItemBtn" style="display:none; border:1px solid #2563eb; background:#eff6ff; color:#1d4ed8; font-size:0.72rem; font-weight:800; border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap;"
+                                    title="Add an item to this PR (Item Master item, Qty and Machine)">+ Add Item</button>
+                            <button type="button" id="viAddSupplierBtn"
+                                    style="border:1px solid #16a34a; background:#f0fdf4; color:#15803d; font-size:0.72rem; font-weight:800; border-radius:6px; padding:5px 10px; cursor:pointer; white-space:nowrap;"
+                                    title="Add a new supplier to the Supplier Master. It appears in every vendor dropdown below immediately.">Add Supplier</button>
+                        </span>
                     </div>
                     <!-- PO Type for the whole PR in one go (each line below can still differ). Frozen with the sheet once quotes are saved. -->
                     <div style="display:flex; align-items:center; gap:8px; margin:0 0 8px;">
@@ -763,6 +769,56 @@
         </div>
     </div>
 
+    <!-- ── Add an item to the PR (Vendor Info tab, Purchaser) ──────────────
+         The same rules as a new PR's item card: an Item Master item, Qty > 0 and a
+         Machine Master machine. Saved at once as a PR line (viAddItemSave_);
+         opens ON TOP of the approval modal, so the z-index is raised. -->
+    <div class="modal-overlay" id="viAddItemModal" style="z-index:1100;">
+        <div class="modal-content">
+            <div class="modal-title">
+                <span id="viAiTitle">Add Item to PR</span>
+                <button class="close-btn" onclick="viCloseAddItem_()">×</button>
+            </div>
+            <div style="font-size:0.74rem; color:#6b7280; margin-bottom:10px;">
+                The item is added to this PR at once and gets its own row in the Vendor &amp; Item Rates grid. Fill its vendors / rates there, then Save.
+            </div>
+            <div class="form-group">
+                <label>Item Name <span style="color:#dc3545;">*</span></label>
+                <input type="text" id="viAiName" class="form-select" list="prm-dl-item-names" autocomplete="off" placeholder="Type to search the Item Master">
+                <div id="viAiInfo" style="font-size:0.7rem; color:#475569; margin-top:4px; min-height:14px;"></div>
+            </div>
+            <div class="pr-grid2">
+                <div class="form-group">
+                    <label>Qty <span style="color:#dc3545;">*</span></label>
+                    <input type="number" id="viAiQty" class="form-select" min="0" step="any" inputmode="decimal" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label>UOM</label>
+                    <input type="text" id="viAiUom" class="form-select" autocomplete="off" placeholder="PCS">
+                </div>
+            </div>
+            <div class="form-group">
+                <label>Machine Name &amp; No. <span style="color:#dc3545;">*</span></label>
+                <input type="text" id="viAiMachine" class="form-select" list="prm-dl-machines" autocomplete="off" placeholder="Type to search the Machine Master">
+            </div>
+            <div class="pr-grid2">
+                <div class="form-group">
+                    <label>Wt kg <small style="font-weight:500;color:#6b7280;">optional</small></label>
+                    <input type="number" id="viAiWt" class="form-select" min="0" step="any" inputmode="decimal" placeholder="0">
+                </div>
+                <div class="form-group">
+                    <label>Remarks / Spec <small style="font-weight:500;color:#6b7280;">optional</small></label>
+                    <input type="text" id="viAiSpec" class="form-select" autocomplete="off" placeholder="optional">
+                </div>
+            </div>
+            <div class="err-banner" id="viAiError" style="display:none;"></div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn" id="viAiSaveBtn" onclick="viAddItemSave_()" style="flex:1; width:auto; background:#2563eb;">Add to PR</button>
+                <button class="btn" onclick="viCloseAddItem_()" style="flex:1; width:auto; background:#6c757d;">&#10006; Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- ── OPEN PO: fill the rates, the PO is updated with the same PO No. ── -->
     <div class="modal-overlay" id="openPoModal" style="z-index:1050;">
         <div class="modal-content">
@@ -898,7 +954,7 @@
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261118d"></script>
+<script src="mobile-core.js?v=20261120c"></script>
 <!-- Sliding tabs, sheet animations, swipe to close, pull to refresh, lazy PDF libraries. Optional: the app works without it. -->
 <script src="mobile-ios.js?v=20261118b"></script>
 <!-- Every <select> / datalist list opens as an iOS-style popover (sheet on a phone). See ios-dropdown.js. -->

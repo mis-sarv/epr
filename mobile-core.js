@@ -16,7 +16,8 @@
     }
     const SUPABASE_URL = sbDecode_(['b2MuZXNhYmFwdXMuamlk','dmhramVqa2p4eGdqZ3ps','ZGovLzpzcHR0aA==']);
     const SUPABASE_ANON_KEY = sbDecode_(['a1dBeHBISk1DZ0RRUkYyZjdFUUU2WEY0Ti0yaEpKb0dkLWk4N2U2aTR3by4w','M053QVRNMllUTndFak02SUNjNFZtSXNjRE13VURPd0FUTzNFak9pUVhZcEpD','TGk0MmJ1Rm1JNklTWnM5bWNpd2lJcWxHWjJoMmFxVm1hcnBHZTRkbWFucEhi','a3BtSTZJaVpsSm5Jc0lTWnpGbVloQlhkekppT2lNM2NwSnllLjlKQ1ZYcGtJ','NklDYzVSbklzSWlOMUl6VUlKaU9pY0diaEp5ZQ==']);
-    const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // global.fetch: puts a signature image back in any request that still carries a light-row token (see LIGHT, PAGED PR / PO LISTS)
+    const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {global: {fetch: (i, n) => mobSbFetch_(i, n)}});
     const SARV_PDF_BUCKET = 'sarv-pdfs';
     const SARV_PDF_SCHEMA_VERSION = 'apps-script-compatible-v1';
 
@@ -532,7 +533,9 @@
         return doc;
     }
     async function buildRequirementNativePdfBlob(d){
+        if(window.mobLoadPdfLibs) await window.mobLoadPdfLibs();
         if(!jspdfNativeReady_())throw new Error('jsPDF not available');
+        d = await mobRehydrateObj_(d);   // a light row's signature tokens become the real images
         d = await withPrRequester_(d); // fill Designation / Department / Contact from Employee Master if missing
         const {jsPDF}=window.jspdf;
         const doc=mobPdfFill_(mobPdfText_(mobPdfScale_(new jsPDF({unit:'mm',format:'a4',orientation:'landscape'}), 'pr', 85, 125, d && d.store), 'pr', d && d.store), 'pr', d && d.store);
@@ -776,7 +779,9 @@
         }catch(e){ return 'STORE 2'; }
     }
     async function buildPoNativePdfBlob(d, images=[]){
+        if(window.mobLoadPdfLibs) await window.mobLoadPdfLibs();
         if(!jspdfNativeReady_())throw new Error('jsPDF not available');
+        d = await mobRehydrateObj_(d);   // a light row's signature tokens become the real images
         const poStore = await poStoreOf_(d);
         const poUnit = pdfUnit_(poStore, true);
         const PP = pdfPal_(poStore);   // Store 1 burgundy house style / Store 2 original colours
@@ -820,7 +825,7 @@
         doc.setFontSize(9);doc.setFont(undefined,'bold');
         doc.text('GSTIN: '+(SARV_COMPANY.gstin||''),M,y+4);
         doc.setFontSize(12);
-        doc.text('PURCHASE ORDER',pageW/2,y+4.5,{align:'center'});
+        doc.text('PURCHASE ORDER' + poTitleSuffix_(d),pageW/2,y+4.5,{align:'center'});
         y+=10;
         doc.setFontSize(18);doc.setFont(undefined,'bold');doc.setTextColor(...PP.brand);
         doc.text(SARV_COMPANY.fullName,pageW/2,y,{align:'center'});
@@ -1115,9 +1120,40 @@
          STORE Store Check   Inward / NB / Outward entry → GM checks, then MD
          RECV  PO Receipts   Purchaser's own POs         → what has arrived (read-only)
          FOLLOWUP PO Follow-up  Sent PO, material short  → PO Sender chases the vendor */
+    /* PO TYPE, chosen per item in Vendor Info (the PO Type column of the Vendor & Item Rates grid):
+         STANDARD  a normal PO, every rate must be more than 0 to save the quotes
+         FOC       free of cost: the rate may be 0
+         OPEN      the rate is not known yet: it may be 0, and the Purchaser fills it later in the
+                   OPEN PO tab, which updates the SAME PO (same PO No.) once the rates are in
+       One PO is made per vendor AND type, so a PO never mixes types. The type is saved on the item
+       (pdf_snapshot.items[i].poType) and on the PO (purchase_orders.approvals.poType, a jsonb key
+       nothing else iterates, so no migration), and printed in the PO's title and notes. */
+    const PO_TYPES = {STANDARD:'Standard PO', FOC:'FOC PO', OPEN:'OPEN PO'};
+    function normPoType_(v){ const u = String(v || '').toUpperCase().replace(/\s*PO$/, '').trim(); return (u === 'FOC' || u === 'OPEN') ? u : 'STANDARD'; }
+    const poTypeOf_ = p => normPoType_(((p && p.approvals) || {}).poType);
+    // The PO types chosen on a PR's lines in Vendor Info (empty until the quote sheet is saved): shown on the PR card
+    function prPoTypesSaved_(pr){
+        const its = (pr && pr.pdf_snapshot && Array.isArray(pr.pdf_snapshot.items)) ? pr.pdf_snapshot.items : [];
+        const set = new Set();
+        its.forEach(i => { if(i && i.poType != null && String(i.poType).trim() !== '') set.add(normPoType_(i.poType)); });
+        return Object.keys(PO_TYPES).filter(t => set.has(t));
+    }
+    /* PO Type (all items): one choice on top of the quote grid that sets every line's PO Type select; each line can still be changed on its own. */
+    function wireViPoTypeAll_(){
+        const all = document.getElementById('viPoTypeAll'); if(!all) return;
+        all.value = '';
+        all.onchange = () => {
+            if(!all.value) return;
+            const v = normPoType_(all.value);
+            document.querySelectorAll('#viRateBody .vi-potype').forEach(s => { s.value = v; });
+            viDirty = true;
+        };
+    }
+    function poTitleSuffix_(d){ const t = normPoType_((d && d.poType) || (d && d.signatures && d.signatures.poType)); return t === 'OPEN' ? ' - OPEN PO' : (t === 'FOC' ? ' - FOC PO' : ''); }
     const STAGE_TABS = {
         VI:    {module:'PR',    actor:'purchaser', title:'Vendor Info',       action:'Fill in vendors & rates'},
         POGEN: {module:'PR',    actor:'purchaser', title:'PO Generate',       action:'Delivery Date + sign → PO banega'},
+        OPENPO: {module:'OPENPO', actor:'purchaser', title:'OPEN PO',          action:'Fill the rate (more than 0): the PO is updated with the same PO No.'},
         MD:    {module:'PO',    actor:'md',        title:'MD Approval',       action:'MD to approve / reject'},
         SENT:  {module:'PO',    actor:'poSender',  title:'PO Sent to Vendor', action:'Send to the vendor on WhatsApp'},
         STORE: {module:'STORE', actor:'gmMd',      title:'Store Check',       action:'Open the entry, check the items, then mark Check Done'},
@@ -1160,6 +1196,7 @@
            in: the PR is signed (Done), its PO goes to MD, and only then can it
            come back. See REJPO_VIEW. */
         POGEN: [{v:'pending', l:'Pending'}, {v:'done', l:'Done'}, {v:REJPO_VIEW, l:'Rejected PO'}],
+        OPENPO: [{v:'pending', l:'Rate Pending'}, {v:'done', l:'Rate Filled'}],
         /* Not pending-vs-done in the usual sense — a follow-up is never
            "finished" while the material is outstanding. The split is "needs a
            call today" against "already chased, date still ahead", so the two
@@ -1193,11 +1230,14 @@
     /* Which tabs each role gets. Only the two new tabs are scoped — MD and PO
        Sender keep every tab they already had, read-only where it isn't theirs.
        GM is a new login with exactly one job, so it gets exactly one tab. */
-    const ALL_TABS = ['VI','POGEN','MD','SENT','STORE','RECV','FOLLOWUP'];
+    /* STORE (Store Check) is no longer offered: Store bills are checked in the Bill Check app
+       (bill-check.html). Its code stays but is unreachable: switchStageTab refuses a tab that is
+       not in visibleTabsForRole, which is built from this list. */
+    const ALL_TABS = ['VI','POGEN','OPENPO','MD','SENT','RECV','FOLLOWUP'];
     /* Admin Panel → Feature Access (STORE.html → Master Data → Settings). The
        seven mobile rows of that matrix are these seven tabs. A role / tab the
        Admin has not saved yet keeps the built-in list below (baseTabsForRole). */
-    const TAB_PERM_KEY = {VI:'VENDOR_INFO_MOBILE', POGEN:'PO_GENERATE', MD:'MD_APPROVAL', SENT:'PO_SENT', STORE:'STORE_CHECK', RECV:'PO_RECEIPTS', FOLLOWUP:'PO_FOLLOWUP'};
+    const TAB_PERM_KEY = {VI:'VENDOR_INFO_MOBILE', POGEN:'PO_GENERATE', OPENPO:'OPEN_PO', MD:'MD_APPROVAL', SENT:'PO_SENT', STORE:'STORE_CHECK', RECV:'PO_RECEIPTS', FOLLOWUP:'PO_FOLLOWUP'};
     let rolePerms = null;           // app_settings.role_permissions, or null
     let tabVis = null;              // app_settings.tab_visibility, or null
     function myPermRole(){
@@ -1267,12 +1307,13 @@
         if(!myStage) return ['VI','POGEN','MD','SENT'];
         if(isFieldBoy()) return ['VI'];
         switch(myRoleKey()){
-            case 'gm':        return ['STORE'];
-            case 'purchaser': return ['VI','POGEN','RECV'];
+            // GM's only tab was Store Check (removed): the GM now reads the PR / PO stages, view only.
+            case 'gm':        return ['VI','POGEN','MD','SENT'];
+            case 'purchaser': return ['VI','POGEN','OPENPO','RECV'];
             // MD gets PO Receipts too — scoped to every PO, not one
             // purchaser's. Read-only there, same as the Purchaser: nothing is
             // approved or signed in that tab by anyone.
-            case 'md':        return ['VI','POGEN','MD','SENT','STORE','RECV'];
+            case 'md':        return ['VI','POGEN','MD','SENT','RECV'];
             /* poSender. PO Follow-up is theirs alone by default: they are the
                one who put the PO in the vendor's hands, so they are the one the
                vendor answers to. Any other role can be given the tab from
@@ -1341,7 +1382,7 @@
         return actor === myRoleKey();
     }
     function defaultTabForRole(){
-        return {purchaser:'VI', gm:'STORE', md:'MD', poSender:'SENT'}[myRoleKey()] || 'VI';
+        return {purchaser:'VI', gm:'MD', md:'MD', poSender:'SENT'}[myRoleKey()] || 'VI';
     }
     // Search bar state. Declared up here with the rest of the module state so
     // paintList() can never reach it inside its temporal dead zone.
@@ -1749,7 +1790,8 @@
             n += newRej;
             const c = document.getElementById('cnt-' + t);
             if(c){
-                c.textContent = n > 99 ? '99+' : String(n);
+                // '+' = older records of this list are not loaded yet (they load as the list is scrolled / searched)
+                c.textContent = (n > 99 ? '99+' : String(n)) + ((n <= 99 && t !== 'MD' && t !== 'OPENPO' && !mobLim.all && mobSourcesFor_(t).some(k => mobMore[k])) ? '+' : '');
                 c.classList.toggle('zero', n === 0);
                 /* A number alone on a tab the Purchaser is not looking at is not
                    much of a notice, and this one is time-sensitive — the vendor
@@ -2075,6 +2117,10 @@
         document.getElementById(id)?.addEventListener('input', () => renderPoSummary_());
     });
     document.getElementById('viAddSupplierBtn')?.addEventListener('click', () => openAddSupplierModal());
+    document.getElementById('viAddItemBtn')?.addEventListener('click', () => viOpenAddItem_());
+    document.getElementById('prAddItemBtn')?.addEventListener('click', () => viOpenAddItem_());
+    document.getElementById('viAiName')?.addEventListener('change', () => viAiItemInfo_());
+    document.getElementById('viAiName')?.addEventListener('input', () => viAiItemInfo_());
     document.getElementById('asSaveBtn')?.addEventListener('click', () => saveNewSupplierMobile());
     document.getElementById('asCancelBtn')?.addEventListener('click', () => closeAddSupplierModal());
     document.getElementById('addSupplierModal')?.addEventListener('click', e => {
@@ -2301,9 +2347,13 @@
     loadRolePerms();
 
     // Filter as you type — paintList() works off the cache, so no extra queries.
+    /* Typing first filters what is loaded (instant), then reads EVERY record once so an older one is found too. */
+    let mobSearchTimer_ = null;
     document.getElementById('searchInput')?.addEventListener('input', e => {
         searchTerm = (e.target.value || '').trim().toLowerCase();
         paintList();
+        clearTimeout(mobSearchTimer_);
+        if(searchTerm && !mobLim.all) mobSearchTimer_ = setTimeout(() => { if(searchTerm) mobEnsureAll(); }, 300);
     });
 
     // ── Stage tab / view switching ───────────────────────────────
@@ -2692,6 +2742,12 @@
             // No GM/CEO step on POs: a purchaser-approved PO arrives as "GM/CEO
             // Approved", one that never carried a Purchaser signature stays
             // "Generated" — MD takes both.
+            /* OPEN PO: the POs of type OPEN (any status but dead). Rate Pending = at least one line still at
+               rate 0 (or the lines are not known yet); Rate Filled = every line has a rate. */
+            case 'OPENPO': {
+                const needs = p => Array.isArray(p._lines) ? p._lines.some(l => !(pNum(l.unit_price) > 0)) : true;
+                return (pos||[]).filter(p => !PO_DEAD(p) && poTypeOf_(p) === 'OPEN').filter(p => pending ? needs(p) : !needs(p));
+            }
             case 'MD':    return pending ? pos.filter(p => PRE_MD_PO_STATUSES.includes(p.status||'Generated'))
                                          : pos.filter(p => (p.approvals||{}).md && !PO_DEAD(p));
             // "Vendor Verified" is a legacy status (that login is gone) — such
@@ -2743,6 +2799,176 @@
     function byDocNoDesc_(col){
         return (a, b) => (docSeq_(b[col]) - docSeq_(a[col])) || String(b[col] || '').localeCompare(String(a[col] || ''));
     }
+    /* ══ LIGHT, PAGED PR / PO LISTS (sql/MOBILE_LIGHT_LIST_MIGRATION.sql) ═══════════
+       WHY: every load and every live refresh used to read the newest 200 PRs + 200 POs (+ the POs waiting
+       for MD, the OPEN POs and the POs of every PR) with select=*, and almost all of a row is saved
+       SIGNATURE IMAGES: about 24 MB each time. Now:
+         1. mob_pr_light / mob_po_light return the same rows with each image replaced by a TOKEN
+            ("@sig:<table>:<id>:<path>") and `_light: true`, newest first, a CHUNK at a time;
+         2. the first screen reads MOB_CHUNK rows of each list; scrolling to the bottom reads the next
+            chunk of the lists the open tab uses (mobLoadMore); SEARCH reads everything (mobEnsureAll)
+            because a record that is not loaded yet must still be found;
+         3. a light row gets its real images back (a) when it is opened (mobEnsureFull_ in openModal /
+            openOpenPoModal), (b) in every PDF build (mobRehydrateObj_) and (c) in ANY request body that
+            still carries a token (the custom fetch of SB below), so no signature is ever saved or
+            printed as a token.
+       A database without the migration keeps working: the old select=* is used, with the same chunking. */
+    const MOB_CHUNK = 40, MOB_ALL_MAX = 5000;
+    const mobLim  = { pr: MOB_CHUNK, po: MOB_CHUNK, store: MOB_CHUNK, all: false };
+    const mobMore = { pr: false, po: false, store: false };   // older rows may still be on the server
+    let mobLightOk = null;                                     // null = not tried yet, false = migration missing
+    const mobSigCache_ = new Map();
+    const MOB_SIG_RE = /@sig:(purchase_requirements|purchase_orders):([0-9a-fA-F-]{36}):([^"\\\s]+)/g;
+    // Which list each tab draws from (what scrolling to the bottom of that tab reads more of)
+    const MOB_TAB_SOURCES = { VI:['pr'], POGEN:['pr'], OPENPO:['po'], MD:['po'], SENT:['po'], STORE:['store'], RECV:['po'], FOLLOWUP:['po'] };
+    const mobSourcesFor_ = t => MOB_TAB_SOURCES[t] || ['pr', 'po'];
+
+    // The real image behind one token: the row is read once and kept
+    async function mobSigValue_(table, id, path){
+        const key = table + ':' + id;
+        let row = mobSigCache_.get(key);
+        if(!row){
+            const sel = table === 'purchase_requirements' ? 'approvals,pdf_snapshot' : 'approvals';
+            const r = await window.fetch(SUPABASE_URL + '/rest/v1/' + table + '?id=eq.' + id + '&select=' + sel,
+                {headers:{apikey:SUPABASE_ANON_KEY, Authorization:'Bearer ' + SUPABASE_ANON_KEY, Accept:'application/json'}});
+            if(!r.ok) throw new Error('A signature could not be restored (' + r.status + ')');
+            const rows = await r.json();
+            row = rows && rows[0];
+            if(!row) throw new Error('A signature could not be restored: the record is gone');
+            mobSigCache_.set(key, row);
+        }
+        const parts = path.split(':');
+        let o = parts[0] === 'snap' ? row.pdf_snapshot : row.approvals;
+        for(const p of parts.slice(1)){ o = o && o[p]; }
+        if(typeof o !== 'string' || o.indexOf('data:') !== 0) throw new Error('A signature could not be restored: it is not on the record');
+        return o;
+    }
+    // Text with tokens in it -> the same text with the images back
+    async function mobRehydrateText_(text){
+        const found = [], seen = new Set();
+        String(text).replace(MOB_SIG_RE, (m, t, id, p) => { if(!seen.has(m)){ seen.add(m); found.push([m, t, id, p]); } return m; });
+        if(!found.length) return text;
+        const vals = await Promise.all(found.map(f => mobSigValue_(f[1], f[2], f[3])));
+        let out = String(text);
+        found.forEach((f, i) => { out = out.split(f[0]).join(vals[i]); });
+        return out;
+    }
+    async function mobRehydrateObj_(obj){
+        let s; try{ s = JSON.stringify(obj); }catch(e){ return obj; }
+        if(!s || s.indexOf('@sig:') < 0) return obj;
+        return JSON.parse(await mobRehydrateText_(s));
+    }
+    // Every write that still carries a token gets its image back before it leaves the phone
+    const mobSbFetch_ = async function(input, init){
+        try{
+            const m = String((init && init.method) || (input && input.method) || 'GET').toUpperCase();
+            if(m !== 'GET' && m !== 'HEAD' && init && typeof init.body === 'string' && init.body.indexOf('@sig:') >= 0){
+                init = Object.assign({}, init, {body: await mobRehydrateText_(init.body)});
+            }
+        }catch(e){ return Promise.reject(e); }
+        return window.fetch(input, init);
+    };
+    // The full row behind a light one (a record about to be opened, signed or printed)
+    const mobTableOf_ = row => (row && row.po_no !== undefined && row.req_no === undefined) ? 'purchase_orders' : 'purchase_requirements';
+    async function mobEnsureFull_(row){
+        if(!row || !row._light) return row;
+        const r = await SB.from(mobTableOf_(row)).select('*').eq('id', row.id).single();
+        if(r.error) throw r.error;
+        Object.assign(row, r.data); delete row._light;
+        return row;
+    }
+    const mobMissingFn_ = e => !!e && (e.code === 'PGRST202' || e.code === '42883' || /could not find the function|does not exist/i.test(e.message || ''));
+    // One list from the server in 1000-row pages (a response is capped at 1000)
+    async function mobPagedLight_(fn, base, want){
+        const out = [], PAGE = 1000;
+        for(let off = 0; off < want; off += PAGE){
+            const take = Math.min(PAGE, want - off);
+            const r = await SB.rpc(fn, Object.assign({}, base, {p_limit: take, p_offset: off}));
+            if(r.error) return {data:null, error:r.error};
+            const rows = r.data || [];
+            out.push(...rows);
+            if(rows.length < take) break;
+        }
+        return {data: out, error: null};
+    }
+    async function mobFetchPrs_(){
+        const want = mobLim.all ? MOB_ALL_MAX : mobLim.pr;
+        if(mobLightOk !== false){
+            const r = await mobPagedLight_('mob_pr_light', {p_purchaser: myPurchaserName || null}, want);
+            if(!r.error){ mobLightOk = true; mobMore.pr = !mobLim.all && (r.data||[]).length >= want; return r; }
+            if(mobMissingFn_(r.error)){ mobLightOk = false; console.warn('[MOB] mob_pr_light missing: run MOBILE_LIGHT_LIST_MIGRATION.sql for the fast lists'); }
+            else return r;
+        }
+        const r = await loadNewestRows_('purchase_requirements', 'req_no', want,
+            myPurchaserName ? (q => q.eq('purchaser_name', myPurchaserName)) : null);
+        mobMore.pr = !mobLim.all && !r.error && (r.data||[]).length >= want;
+        return r;
+    }
+    // kind: 'new' = the newest chunk, 'open' = every PO waiting for MD (however old), 'typed' = every OPEN PO
+    async function mobFetchPo_(kind){
+        const want = kind === 'new' ? (mobLim.all ? MOB_ALL_MAX : mobLim.po) : (kind === 'open' ? 1000 : 500);
+        if(mobLightOk !== false){
+            const base = kind === 'open' ? {p_statuses: ['Generated', 'GM/CEO Approved']} : (kind === 'typed' ? {p_po_type: 'OPEN'} : {});
+            const r = await mobPagedLight_('mob_po_light', base, want);
+            if(!r.error){ mobLightOk = true; if(kind === 'new') mobMore.po = !mobLim.all && (r.data||[]).length >= want; return r; }
+            if(mobMissingFn_(r.error)){ mobLightOk = false; console.warn('[MOB] mob_po_light missing: run MOBILE_LIGHT_LIST_MIGRATION.sql for the fast lists'); }
+            else return r;
+        }
+        let r;
+        if(kind === 'new'){ r = await loadNewestRows_('purchase_orders', 'po_no', want, null); mobMore.po = !mobLim.all && !r.error && (r.data||[]).length >= want; }
+        else if(kind === 'open') r = await SB.from('purchase_orders').select('*').in('status', ['Generated', 'GM/CEO Approved']).limit(1000);
+        else r = await SB.from('purchase_orders').select('*').eq('approvals->>poType', 'OPEN').limit(500);
+        return r;
+    }
+    // The POs behind a set of ids (PR -> PO tags): light where possible
+    async function mobPoByIds_(poIds, cols){
+        if(mobLightOk !== false){
+            const r = await mobPagedLight_('mob_po_light', {p_ids: poIds}, Math.max(poIds.length, 1));
+            if(!r.error){ mobLightOk = true; return r; }
+            if(mobMissingFn_(r.error)) mobLightOk = false; else return r;
+        }
+        let pq = await SB.from('purchase_orders').select(cols + ',created_at').in('id', poIds);
+        if(pq.error && /created_at/i.test(pq.error.message||''))
+            pq = await SB.from('purchase_orders').select(cols).in('id', poIds);
+        return pq;
+    }
+
+    /* ── Chunked loading: more on scroll, everything on search ────────────── */
+    let mobLoadingMore_ = null, mobAllP_ = null;
+    const mobHasMore = () => !mobLim.all && mobSourcesFor_(currentStageTab).some(k => mobMore[k]);
+    const mobUiSync_ = () => { try{ window.dispatchEvent(new CustomEvent('mob:data', {detail:{more: mobHasMore(), loading: !!(mobLoadingMore_ || mobAllP_), all: mobLim.all}})); }catch(e){} };
+    async function mobLoadMore(){
+        if(mobLoadingMore_ || mobAllP_ || !mobHasMore() || !myStage) return false;
+        mobLoadingMore_ = (async () => {
+            mobSourcesFor_(currentStageTab).forEach(k => { if(mobMore[k]) mobLim[k] += MOB_CHUNK; });
+            mobUiSync_();
+            try{ await loadDashboard(); paintList(); }
+            catch(e){ console.warn('[MOB] Loading more failed:', e.message || e); mobSourcesFor_(currentStageTab).forEach(k => { mobLim[k] = Math.max(MOB_CHUNK, mobLim[k] - MOB_CHUNK); }); }
+            finally{ mobLoadingMore_ = null; mobUiSync_(); }
+        })();
+        await mobLoadingMore_;
+        return true;
+    }
+    async function mobEnsureAll(){
+        if(mobLim.all || !myStage) return;
+        if(mobAllP_) return mobAllP_;
+        mobAllP_ = (async () => {
+            mobLim.all = true; mobUiSync_();
+            const note = document.getElementById('searchCount'); if(note) note.textContent = 'Searching all records...';
+            try{ await loadDashboard(); paintList(); }
+            catch(e){ mobLim.all = false; console.warn('[MOB] Full load for search failed:', e.message || e); }
+            finally{ mobAllP_ = null; mobUiSync_(); }
+        })();
+        return mobAllP_;
+    }
+    // Back to the light chunk once the search is cleared (a live refresh reads only what is on screen)
+    function mobBackToChunk_(){
+        if(!mobLim.all) return;
+        mobLim.all = false; mobLim.pr = mobLim.po = mobLim.store = MOB_CHUNK;
+        liveRefresh_(true);
+    }
+    window.mobData = { loadMore: mobLoadMore, ensureAll: mobEnsureAll, hasMore: mobHasMore, isAll: () => mobLim.all, chunk: MOB_CHUNK };
+
     async function loadNewestRows_(table, noCol, limit, filter){
         for(const col of ['created_at', 'id']){
             let q = SB.from(table).select('*').order(col, {ascending:false, nullsFirst:false}).limit(limit);
@@ -2756,12 +2982,12 @@
         return await q;
     }
     async function loadDashboard(){
-        const prq = loadNewestRows_('purchase_requirements', 'req_no', 200,
-            myPurchaserName ? (q => q.eq('purchaser_name', myPurchaserName)) : null);
-        const poq = loadNewestRows_('purchase_orders', 'po_no', 200, null);
+        // Light rows, a chunk at a time (mobLim); see LIGHT, PAGED PR / PO LISTS
+        const prq = mobFetchPrs_();
+        const poq = mobFetchPo_('new');
         /* Every PO still waiting for MD, however old: the 200 newest above
            must never be the reason a PO cannot be approved. */
-        const poOpenQ = SB.from('purchase_orders').select('*').in('status', ['Generated', 'GM/CEO Approved']).limit(1000);
+        const poOpenQ = mobFetchPo_('open');
         /* Store entries depend on nothing above, so they load in the same
            round trip as the PRs and POs instead of after them. Every later
            lookup (PDF links, PR→PO tags, PO lines, inwards, inward approvals)
@@ -2769,13 +2995,15 @@
            phone each sequential round trip is what the wait is made of. */
         const storeP = loadStoreEntries_();
         storeP.catch(() => {});   // awaited below; this only stops an "unhandled" warning if the PR read fails first
-        const [pr, po, poOpen] = await Promise.all([prq, poq, poOpenQ]);
+        const poTypedQ = mobFetchPo_('typed');   // OPEN POs wait for their rates, however old
+        const [pr, po, poOpen, poTyped] = await Promise.all([prq, poq, poOpenQ, poTypedQ]);
+        if(poTyped.error) console.warn('[MOB] OPEN POs not read:', poTyped.error.message);
         if(pr.error) console.error(pr.error);
         if(po.error) console.error(po.error);
         if(poOpen.error) console.warn('[MOB] POs waiting for MD not read:', poOpen.error.message);
         let prs = (pr.data || []).slice().sort(byDocNoDesc_('req_no'));
         const poById = new Map();
-        (po.data || []).concat(poOpen.data || []).forEach(p => { if(!poById.has(String(p.id))) poById.set(String(p.id), p); });
+        (po.data || []).concat(poOpen.data || []).concat(poTyped.error ? [] : (poTyped.data || [])).forEach(p => { if(!poById.has(String(p.id))) poById.set(String(p.id), p); });
         let pos = Array.from(poById.values()).sort(byDocNoDesc_('po_no'));
         // MD-1 / MD-2: only the PRs / POs of this MD's categories (PR-PO Master).
         if(myRoleKey() === 'md'){
@@ -2784,6 +3012,12 @@
         }
         if(myPurchaserName){
             const own = new Set(prs.map(r => r.req_no));
+            // An OPEN PO can outlive the 200 newest PRs read above: its PR is looked up by number.
+            const typedNos = [...new Set((poTyped.error ? [] : (poTyped.data || [])).flatMap(p => String(p.linked_req_nos||'').split(',').map(s => s.trim()).filter(Boolean)).filter(n => !own.has(n)))];
+            if(typedNos.length){
+                try{ const tq = await SB.from('purchase_requirements').select('req_no').eq('purchaser_name', myPurchaserName).in('req_no', typedNos); (tq.data || []).forEach(r => own.add(r.req_no)); }
+                catch(e){ console.warn('[MOB] OPEN PO owners not read:', e.message || e); }
+            }
             pos = pos.filter(p => String(p.linked_req_nos||'').split(',').map(s => s.trim()).some(n => own.has(n)));
         }
         /* A PO Sender's work starts at MD approval, so a PO MD has not signed
@@ -2928,13 +3162,15 @@
        with _kind so the card and the modal can tell them apart. Only fetched for
        the two roles that have that tab — nobody else pays for these queries. */
     async function loadStoreEntries_(){
-        if(!storeStageFor()) return [];
+        // Only the Store Check tab used these rows; with that tab gone they are not read at all (saves a big read per refresh).
+        if(!storeStageFor() || !ALL_TABS.includes('STORE')) return [];
         const [iq, oq] = await Promise.all([
-            SB.from('inward_entries').select('*').order('id', {ascending:false}).limit(200),
-            SB.from('outward_entries').select('*').order('id', {ascending:false}).limit(200),
+            SB.from('inward_entries').select('*').order('id', {ascending:false}).limit(mobLim.all ? 1000 : mobLim.store),
+            SB.from('outward_entries').select('*').order('id', {ascending:false}).limit(mobLim.all ? 1000 : mobLim.store),
         ]);
         if(iq.error) console.warn('[MOBILE] Inward entries unavailable:', iq.error.message);
         if(oq.error) console.warn('[MOBILE] Outward entries unavailable:', oq.error.message);
+        { const lim = mobLim.all ? 1000 : mobLim.store; mobMore.store = !mobLim.all && ((iq.data||[]).length >= lim || (oq.data||[]).length >= lim); }
         const mark = (rows, kind) => (rows || [])
             .filter(e => STORE_ENTRY_TYPES.includes(String(e.entry_type || (kind === 'INWARD' ? 'INWARD' : 'OUTWARD'))))
             .map(e => ({...e, _kind: kind}));
@@ -3220,9 +3456,7 @@
                the retry a database without created_at would lose every PR's PO
                tag, not just this one figure. */
             const PO_COLS = 'id,po_no,status,approvals,pdf_url,vendor_name,grand_total,po_date';
-            let pq = await SB.from('purchase_orders').select(PO_COLS + ',created_at').in('id', poIds);
-            if(pq.error && /created_at/i.test(pq.error.message||''))
-                pq = await SB.from('purchase_orders').select(PO_COLS).in('id', poIds);
+            let pq = await mobPoByIds_(poIds, PO_COLS);
             if(pq.error) return;
             const livePo = {}, rejPo = {};
             (pq.data||[]).forEach(p => {
@@ -3548,6 +3782,7 @@
         const input = document.getElementById('searchInput');
         if(input) input.value = '';
         paintList();
+        mobBackToChunk_();
     }
 
     // Fetches everything once, then paints. Switching tabs / Pending-Done or
@@ -3641,6 +3876,7 @@
         // PO Follow-up: a PO card whose point is the chase history, not the
         // order — its own card, and its own modal.
         if(cfg.module === 'FOLLOWUP'){ paintFollowupList_(listDiv, rows); return; }
+        if(cfg.module === 'OPENPO'){ paintOpenPoList_(listDiv, rows); return; }
 
         // PO Generate ▸ Rejected PO. The cards are PRs, like the tab's other two
         // sections, but nothing on them is signed from here — the Purchaser
@@ -3688,12 +3924,15 @@
 
             const tags = [];
             if(vendorNames.length) tags.push(`<span class="vendor-filled-tag" style="margin-top:0;">Vendors: ${escText(vendorNames.join(', '))}</span>`);
+            // PO Type of this PR's lines (set in Vendor Info), visible without opening it
+            if(isPr){ const pts = prPoTypesSaved_(item); if(pts.length) tags.push(`<span class="tag po">PO Type: ${escText(pts.map(t => PO_TYPES[t]).join(', '))}</span>`); }
             // Which PO came back. Named on every tab, not just the Rejected PO
             // section: a PR sitting in Done with a rejected PO behind it would
             // otherwise look like a finished job.
             if(isPr && prHasRejectedPo(item))
                 tags.push(`<span class="tag rejected">Rejected / Cancelled PO: ${escText(prRejectedPos(item).map(p => p.po_no + ' (' + poDeadWord_(p) + ')').join(', '))}</span>`);
             if(isPr && (item._poNos||[]).length) tags.push(`<span class="tag po">${escText(item._poNos.join(', '))}</span>`);
+            if(!isPr && poTypeOf_(item) !== 'STANDARD') tags.push(`<span class="tag po">${escText(PO_TYPES[poTypeOf_(item)])}</span>`);
             if(!isPr && isPoSentMobile(item)) tags.push(`<span class="tag sent">✔ Sent${item.party_sent_at ? ' — ' + escText(pStamp(item.party_sent_at)) : ''}</span>`);
             // How far down the checklist this PR is, without opening it.
             if(isPr && isFieldBoy()){
@@ -4613,6 +4852,7 @@
         return (pub?.data?.publicUrl || '') + '?v=' + Date.now();
     }
     async function stampStorePdfSign(e, table, stage, dataUrl, check, layouts){
+        if(window.mobLoadPdfLibs) await window.mobLoadPdfLibs();
         if(!window.PDFLib) throw new Error('pdf-lib did not load (please check the internet connection)');
         if(!layouts || !Object.keys(layouts).length)
             return 'This is an older PDF (the signature position was not saved). The signature will appear once the entry is saved again in STORE.html.';
@@ -5219,6 +5459,9 @@
         viLines = lq.data || [];
         const snap = entry.pdf_snapshot || {};
         const vendors = (Array.isArray(snap.vendors) && snap.vendors.length) ? snap.vendors : [{},{},{},{}];
+        // Remove (✕ on a row) / Add Item: only while this sheet can still be edited (VI ITEM EDIT section)
+        const canEditItems = viItemsEditable_(entry);
+        { const ab = document.getElementById('viAddItemBtn'); if(ab) ab.style.display = canEditItems ? '' : 'none'; }
 
         // Each row's own vendors. item.vendors is the real store (three slots,
         // V1-V3 — this used to demand exactly four, so every row fell back to
@@ -5241,7 +5484,7 @@
         // this line, so they sit after the decision they depend on and before
         // the quotes they are applied to.
         document.getElementById('viRateCols').innerHTML =
-            '<col style="width:118px;"><col style="width:62px;"><col style="width:70px;"><col style="width:104px;">' +
+            '<col style="width:118px;"><col style="width:92px;"><col style="width:62px;"><col style="width:70px;"><col style="width:104px;">' +
             '<col style="width:78px;"><col style="width:58px;">' +
             VI_SLOTS.map(()=>'<col style="width:126px;"><col style="width:68px;"><col style="width:49px;">').join('');
 
@@ -5250,6 +5493,7 @@
         // line and V1 on the next are different companies now.
         document.getElementById('viVendorHead').innerHTML =
             '<th class="vi-c1 vi-corner">Quotes &rarr;</th>' +
+            '<th class="vi-poh">&nbsp;</th>' +
             '<th class="vi-qtyh" colspan="2" style="text-align:center;">Requirement</th>' +
             '<th class="vi-sel">&nbsp;</th>' +
             '<th class="vi-poh" colspan="2" style="text-align:center;">PO Terms</th>' +
@@ -5260,6 +5504,7 @@
         // Header row 2 — Vendor / Rate / % within each band.
         document.getElementById('viRateHead').innerHTML =
             '<th class="vi-c1">Item</th>' +
+            '<th class="vi-poh" style="text-align:center;" title="Standard PO: every rate must be more than 0. FOC PO / OPEN PO: the rate may be 0. One PO is made per vendor and type. An OPEN PO is updated with the same PO No. from the OPEN PO tab once its rate is filled.">PO Type</th>' +
             '<th class="vi-qtyh" style="text-align:center;" title="Requirement Qty. The Purchaser can correct it; saving updates the PR line itself.">Qty</th>' +
             '<th class="vi-qtyh" style="text-align:center;" title="Gross Weight (kg). On the WEIGHT bill basis the PO amount is calculated from this.">Wt kg</th>' +
             '<th class="vi-sel" style="text-align:center;" title="This item\'s PO is raised against this vendor. Choosing it on the first item applies it to all items.">Selected</th>' +
@@ -5310,7 +5555,13 @@
                that reached PO Generate before this sheet existed — such a PR's
                grid is locked, so a blank there could never be filled. */
             const savedGst = firstFilled((snapItems[i]||{}).gstPct, prItemGst[i]);
-            return `<tr data-row="${i}"><td class="vi-c1" style="font-size:0.7rem;line-height:1.25;" title="${escText(name)} — ${escText(qtyLine)}"><span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#222;">${escText(name)}</span><span style="color:#6b7280;">${escText(uom||'-')}</span></td>` +
+            // Always there while items can be changed; grey on the ONLY item (a tap explains what to do instead)
+            const lastOne = viLines.length <= 1;
+            const delBtn = canEditItems
+                ? `<button type="button" class="vi-del" data-row="${i}" title="${lastOne ? 'The only item: add the new item first, then remove this one' : 'Remove this item from the PR'}" aria-label="Remove ${escText(name)}" style="float:right;margin:0 0 2px 4px;width:20px;height:20px;padding:0;border:0;border-radius:6px;background:${lastOne ? '#f1f5f9' : '#fee2e2'};color:${lastOne ? '#94a3b8' : '#b91c1c'};font-size:11px;font-weight:800;line-height:20px;cursor:pointer;">&#10006;</button>`
+                : '';
+            return `<tr data-row="${i}"><td class="vi-c1" style="font-size:0.7rem;line-height:1.25;" title="${escText(name)} — ${escText(qtyLine)}">${delBtn}<span style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600;color:#222;">${escText(name)}</span><span style="color:#6b7280;">${escText(uom||'-')}</span></td>` +
+                `<td class="vi-poc"><select class="vi-potype" data-row="${i}" style="width:100%;font-size:0.68rem;padding:4px 2px;border:1px solid var(--border);border-radius:4px;">${Object.keys(PO_TYPES).map(k => `<option value="${k}"${normPoType_((snapItems[i]||{}).poType)===k?' selected':''}>${PO_TYPES[k]}</option>`).join('')}</select></td>` +
                 `<td class="vi-qtyc"><input type="number" class="vi-qty" data-row="${i}" min="0" step="any" inputmode="decimal" value="${pNumM(line.requested_qty)}"></td>` +
                 `<td class="vi-qtyc"><input type="number" class="vi-weight" data-row="${i}" min="0" step="any" inputmode="decimal" value="${wt}"></td>` +
                 `<td class="vi-sel"><select class="vi-item-vendor" data-row="${i}"></select></td>` +
@@ -5327,6 +5578,7 @@
         wireViItemVendorPickers();
         refreshViItemVendorPickers();
         wireViPoTermCascade();
+        wireViPoTypeAll_();
         // The grid is the source of truth for Bill On / GST% now, so the arrays
         // the PO maths reads are seeded from it rather than from a separate
         // pass in the PO Generate tab.
@@ -5365,6 +5617,13 @@
         document.getElementById('viError').style.display = 'none';
         setVendorInfoLocked(viLocked);
         viDirty = false;
+        // ✕ on a row = remove that item from the PR (one delegated handler; the rows are rebuilt on every render)
+        document.getElementById('viRateBody').onclick = e => {
+            const b = e.target && e.target.closest && e.target.closest('.vi-del');
+            if(!b) return;
+            e.preventDefault(); e.stopPropagation();
+            viRemoveItem_(+b.dataset.row);
+        };
         document.getElementById('viRateBody').oninput = document.getElementById('viRateBody').onchange = e => {
             viDirty = true;
             const t = e && e.target;
@@ -6581,6 +6840,7 @@
             if(firstBadQty){ firstBadQty.scrollIntoView({block:'nearest', inline:'center'}); firstBadQty.focus(); }
             return;
         }
+        const typeByRow = rowEls.map(tr => normPoType_(tr.querySelector('.vi-potype')?.value));
         const ratesByRow = rowEls.map(tr=>{
             const rates = {}, discounts = {};
             VI_SLOTS.forEach(v=>{
@@ -6600,7 +6860,7 @@
         rowEls.forEach((tr,i) => {
             VI_SLOTS.forEach((v,k) => {
                 const vName = String(((rowVendorsOut[i]||[])[k]||{}).name||'').trim();
-                if(!vName || pNumM((ratesByRow[i]||{rates:{}}).rates[v]) > 0) return;
+                if(!vName || typeByRow[i] !== 'STANDARD' || pNumM((ratesByRow[i]||{rates:{}}).rates[v]) > 0) return;   // FOC / OPEN: rate 0 is allowed
                 const inp = tr.querySelector(`.vi-rate[data-slot="${v}"]`);
                 if(inp){ inp.style.borderColor = '#dc2626'; inp.style.background = '#fef2f2'; firstBad = firstBad || inp; }
                 const itemName = viLines[i] ? (viLines[i].item_name || (viLines[i].items && viLines[i].items.name) || ('Item ' + (i+1))) : ('Item ' + (i+1));
@@ -6879,6 +7139,7 @@
                        them back, locked. */
                     billBasis: basisByRow[i],
                     gstPct: Number(gstByRow[i]),
+                    poType: typeByRow[i],
                     // THIS item's own four quoting vendors. V1 here and V1 on
                     // the next line are different companies, so the identities
                     // travel with the item, beside the rates they priced.
@@ -6986,6 +7247,290 @@
         }
     }
 
+    /* ── VI ITEM EDIT: remove / add an item of the PR (Vendor Info tab) ──────
+       The Purchaser can take an item off the PR (✕ on its row of the Vendor &
+       Item Rates grid, with a reason) or add one (+ Add Item: an Item Master
+       item, Qty > 0 and a Machine Master machine, the same rules as a new PR's
+       item card), while the sheet can still be edited: Vendor Info tab, own
+       stage (gmCeo), not a Field Boy, not on Hold, and no vendor info saved yet
+       (or the Purchaser re-opened it). Each change is written at once:
+         • the PR line is deleted / inserted (purchase_requirement_lines);
+         • pdf_snapshot.items is REBUILT in the new line order, each saved item
+           matched to its line by id. The lines are read order('id') and the ids
+           are random uuids, so a new line can sort anywhere; matching by position
+           after an insert / delete would hand one item's rates to another;
+         • the change is logged in pdf_snapshot.itemEdits (who, when, what, why).
+       If the second write fails the first is undone, so the PR and its snapshot
+       never disagree. An item that a live PO was raised for, or that the store
+       has received against this PR, is not removed; the last item cannot be
+       removed (Reject the PR instead). What was typed on the grid and not saved
+       yet (vendors, rates, discounts, Selected, Bill On, GST%, PO Type, Qty, Wt,
+       the PO Details) is kept for every remaining item (viCaptureGrid_ /
+       viRedraw_). The PR PDF is rebuilt in the background. */
+    let viItemBusy = false;
+    function viItemsEditable_(entry){
+        if(!entry || currentModule !== 'PR' || modalTab !== 'VI' || modalViewOnly || myStage !== 'gmCeo' || isFieldBoy()) return false;
+        if(PR_HELD(entry) || PR_DEAD(entry)) return false;
+        const snap = entry.pdf_snapshot || {};
+        const quoted = (Array.isArray(snap.vendors) ? snap.vendors : []).some(v => v && String(v.name||'').trim());
+        return !(quoted && !snap.vendorInfoReopened);
+    }
+    /* Why the Purchaser cannot remove / add items on this PR right now ('' = they can, null = not
+       their screen at all, so nothing is said). Shown under the Item Details table, so a missing ✕
+       always comes with its reason. */
+    function viItemsLockReason_(entry){
+        if(!entry || currentModule !== 'PR' || modalTab !== 'VI' || modalViewOnly || myStage !== 'gmCeo' || isFieldBoy()) return null;
+        if(PR_HELD(entry)) return 'This PR is on hold, so its items cannot be removed or added. Remove the hold first.';
+        if(PR_DEAD(entry)) return 'This PR is ' + entry.status + ', so its items cannot be changed.';
+        const snap = entry.pdf_snapshot || {};
+        const quoted = (Array.isArray(snap.vendors) ? snap.vendors : []).some(v => v && String(v.name||'').trim());
+        if(quoted && !snap.vendorInfoReopened) return 'Vendor info is already saved on this PR, so items can no longer be removed or added from the phone. Change them in STORE.html (desktop).';
+        return '';
+    }
+    const viLineName_ = l => (l && (l.item_name || (l.items && l.items.name))) || 'Item';
+    // What is typed on the grid right now, per PR line id (kept across a remove / add).
+    function viCaptureGrid_(){
+        const rows = {};
+        document.querySelectorAll('#viRateBody tr').forEach((tr, i) => {
+            const line = viLines[i]; if(!line || !line.id) return;
+            const v = s => { const el = tr.querySelector(s); return el ? el.value : null; };
+            const rates = {}, discs = {};
+            VI_SLOTS.forEach(s => { rates[s] = pNumM(v(`.vi-rate[data-slot="${s}"]`)); discs[s] = pNumM(v(`.vi-disc[data-slot="${s}"]`)); });
+            rows[line.id] = { potype: v('.vi-potype'), qty: v('.vi-qty'), wt: v('.vi-weight'), basis: v('.vi-basis'), gst: v('.vi-gst'),
+                rates, discs, vendors: (viRowVendors[i] || []).map(x => ({...(x || {})})), sel: itemVendorIndex[i] };
+        });
+        let plan = {}; try{ plan = JSON.parse(JSON.stringify(viPlan || {})); }catch(e){}
+        return { rows, plan, dirty: viDirty };
+    }
+    // The PR row and its lines as stored now, and whether this sheet may still change them.
+    async function viFreshPr_(id){
+        const [h, l] = await Promise.all([
+            SB.from('purchase_requirements').select('*').eq('id', id).single(),
+            SB.from('purchase_requirement_lines').select('*, items(name,description,make,category,uom)').eq('requirement_id', id).order('id')
+        ]);
+        if(h.error) throw h.error;
+        if(l.error) throw l.error;
+        const req = h.data, snap = req.pdf_snapshot || {};
+        if(PR_HELD(req)) throw new Error('This PR is on hold. Remove the hold first.');
+        if(PR_DEAD(req)) throw new Error('This PR is ' + req.status + '; its items cannot be changed.');
+        const quoted = (Array.isArray(snap.vendors) ? snap.vendors : []).some(v => v && String(v.name||'').trim());
+        if(quoted && !snap.vendorInfoReopened) throw new Error('Vendor info has already been saved on this PR (maybe from another phone or STORE.html), so its items can no longer be changed here.');
+        return { req, lines: l.data || [] };
+    }
+    // pdf_snapshot.items rebuilt for newLines: each existing item by its line id, a new line gets an empty item.
+    function viRealign_(snap, oldLines, newLines, addInfo){
+        const out = {...(snap || {})}, old = Array.isArray(out.items) ? out.items : [], byId = {};
+        (oldLines || []).forEach((l, i) => { if(l && l.id && old[i]) byId[l.id] = old[i]; });
+        out.items = (newLines || []).map(l => {
+            if(byId[l.id]) return byId[l.id];
+            const it = l.items || {}, a = addInfo || {};
+            return { name: a.name || it.name || '', desc: l.specification || a.desc || it.description || '', make: a.make || it.make || '',
+                category: a.category || it.category || '', machine: l.machine || '', qty: l.requested_qty, uom: l.uom || it.uom || '',
+                grossWeight: l.gross_weight || 0, rates: {}, discounts: {}, vendors: [], approvedVendorIndex: -1, billBasis: '' };
+        });
+        return out;
+    }
+    function viLogEdit_(snap, ev){
+        const log = Array.isArray(snap.itemEdits) ? snap.itemEdits.slice(-199) : [];
+        log.push(Object.assign({ at: new Date().toISOString(), by: myPurchaserName || '' }, ev));
+        snap.itemEdits = log;
+        return snap;
+    }
+    // Redraw the grid + item table from the just-saved PR, with this phone's unsaved typing laid back over each item.
+    async function viRedraw_(cap){
+        const entry = currentEntry; if(!entry) return;
+        const items = await fetchItems(entry);         // also sets viLines (fresh, same order the grid uses)
+        viDisplayItems = items;
+        const lines = viLines.slice(), snap = entry.pdf_snapshot || {}, sItems = snap.items || [];
+        const c = l => (cap && l && cap.rows[l.id]) || null;
+        const viewItems = lines.map((l, i) => {
+            const it = {...(sItems[i] || {})}, k = c(l);
+            return k ? {...it, rates: k.rates, discounts: k.discs, vendors: k.vendors, billBasis: k.basis || '', gstPct: k.gst, poType: k.potype} : it;
+        });
+        itemVendorIndex = lines.map((l, i) => { const k = c(l); if(k) return k.sel != null ? k.sel : -1; const a = (sItems[i] || {}).approvedVendorIndex; return a != null ? a : -1; });
+        prItemBasis = viewItems.map(it => { const b = String(it.billBasis || '').toUpperCase(); return (b === 'WEIGHT' || b === 'QTY') ? b : ''; });
+        prItemGst = viewItems.map(it => (it.gstPct != null && String(it.gstPct).trim() !== '') ? String(it.gstPct) : '');
+        currentItemRates = viewItems.map(it => it.rates || {});
+        currentItemDiscs = viewItems.map(it => it.discounts || {});
+        await renderVendorInfoForm({...entry, pdf_snapshot: {...snap, items: viewItems}});
+        // Qty / Wt kg as typed (the grid draws the line's saved figures)
+        document.querySelectorAll('#viRateBody tr').forEach((tr, i) => {
+            const k = c(lines[i]); if(!k) return;
+            const q = tr.querySelector('.vi-qty'), w = tr.querySelector('.vi-weight');
+            if(q && k.qty != null) q.value = k.qty;
+            if(w && k.wt != null) w.value = k.wt;
+        });
+        if(cap && cap.plan) Object.keys(cap.plan).forEach(k => { viPlan[k] = {...viPlanOf(k), ...cap.plan[k]}; });
+        syncPoMathsFromGrid_();
+        renderViPoBlocks();
+        renderItemRows(viDisplayItems, currentItemRates, itemVendorIndex, true, currentItemDiscs);
+        renderPoSummary_();
+        viDirty = !!(cap && cap.dirty);
+    }
+    function viRegenPdf_(req, snap){
+        (async () => {
+            try{
+                const blob = await buildRequirementNativePdfBlob({...snap, reqNo: req.req_no, status: req.status});
+                const artifact = await uploadPdfArtifact(blob, 'REQUIREMENT', req.req_no, 'REQUIREMENT');
+                await indexPdfArtifact('REQUIREMENT', req.id, req.req_no, 'REQUIREMENT', artifact);
+            }catch(e){ console.warn('[MOBILE] PR PDF not rebuilt after the item change (the change itself is saved):', e.message || e); }
+        })();
+    }
+    // A live PO raised for this item, or a receipt of it against this PR: the item has moved on and stays.
+    async function viItemInUse_(reqNo, itemId){
+        if(!reqNo || !itemId) return '';
+        const pl = await SB.from('purchase_order_lines').select('purchase_order_id,item_id').eq('req_no', reqNo).eq('item_id', itemId);
+        if(!pl.error && (pl.data || []).length){
+            const ids = [...new Set(pl.data.map(r => r.purchase_order_id).filter(Boolean))];
+            const po = ids.length ? await SB.from('purchase_orders').select('po_no,status').in('id', ids) : {data: []};
+            const live = (po.data || []).filter(p => !['Rejected', 'Cancelled'].includes(p.status || ''));
+            if(live.length) return 'PO ' + live.map(p => p.po_no).join(', ') + ' has been raised for this item';
+        }
+        const ie = await SB.from('inward_entries').select('id,document_no,notes').ilike('req_no', '%' + reqNo + '%');
+        const rec = (ie.data || []).filter(e => !/^CANCELLED/.test(String(e.notes || '')));
+        if(!ie.error && rec.length){
+            const il = await SB.from('inward_lines').select('inward_id').in('inward_id', rec.map(e => e.id)).eq('item_id', itemId).limit(1);
+            if(!il.error && (il.data || []).length) return 'it has already been received against this PR';
+        }
+        return '';
+    }
+
+    async function viRemoveItem_(row){
+        if(viItemBusy) return;
+        const entry = currentEntry;
+        if(!viItemsEditable_(entry)) return;
+        const line = viLines[row];
+        if(!line || !line.id) return;
+        const name = viLineName_(line), qtyTxt = pNumM(line.requested_qty) + ' ' + (line.uom || (line.items && line.items.uom) || '');
+        if(viLines.length <= 1){
+            const msg = name + ' is the only item of PR ' + entry.req_no + ', and a PR needs at least one item.\n\nTo replace it: tap + Add Item, add the right item, then remove this one.\nIf the PR is not needed at all, Reject it instead.';
+            if(window.IosDialog){
+                const go = await IosDialog.choose(msg, [{label: '+ Add Item now', value: 'add', bold: true}, {label: 'OK', value: null, cancel: true}], {title: 'Only item'});
+                if(go === 'add') viOpenAddItem_();
+            } else alert(msg);
+            return;
+        }
+        const ask = 'Remove ' + name + ' (' + qtyTxt.trim() + ') from PR ' + entry.req_no + '?\nWrite the reason:';
+        const why = window.IosDialog ? await IosDialog.prompt(ask, '', {title: 'Remove item', ok: 'Remove', placeholder: 'Reason'}) : prompt(ask, '');
+        if(why == null) return;
+        if(String(why).trim().length < 3) return alert('Write the reason for removing the item (at least 3 letters).');
+        const cap = viCaptureGrid_();
+        viItemBusy = true; setBusy(true, 'Removing the item...');
+        let deleted = null;
+        try{
+            const { req, lines } = await viFreshPr_(entry.id);
+            const victim = lines.find(l => l.id === line.id);
+            if(!victim) throw new Error('This item is no longer on the PR; someone else has changed it.');
+            if(lines.length <= 1) throw new Error('This is the only item of the PR, so it cannot be removed.');
+            const used = await viItemInUse_(req.req_no, victim.item_id);
+            if(used) throw new Error(name + ' cannot be removed: ' + used + '.');
+            const del = await SB.from('purchase_requirement_lines').delete().eq('id', victim.id).select('id');
+            if(del.error) throw del.error;
+            if(!(del.data || []).length) throw new Error('The item could not be removed.');
+            deleted = victim;
+            const rest = lines.filter(l => l.id !== victim.id);
+            const snap = viLogEdit_(viRealign_(req.pdf_snapshot, lines, rest), {
+                action: 'REMOVED', name, qty: pNumM(victim.requested_qty), uom: victim.uom || (victim.items && victim.items.uom) || '', reason: String(why).trim() });
+            const up = await SB.from('purchase_requirements').update({ pdf_snapshot: snap }).eq('id', req.id).select('id');
+            if(up.error) throw up.error;
+            if(!(up.data || []).length) throw new Error('The PR could not be updated.');
+            deleted = null;
+            currentEntry.pdf_snapshot = snap;
+            dashDirty = true;
+            await viRedraw_(cap);
+            viSay(name + ' removed from PR ' + req.req_no + '.');
+            viRegenPdf_(req, snap);
+        }catch(e){
+            // the line went but the PR did not follow: put the line back exactly as it was
+            if(deleted){
+                const { items, ...back } = deleted;
+                try{ const r = await SB.from('purchase_requirement_lines').insert(back); if(r.error) console.warn('[MOBILE] removed line could not be put back:', r.error.message); }
+                catch(x){ console.warn('[MOBILE] removed line could not be put back:', x); }
+            }
+            alert('Not removed: ' + (e.message || e));
+        }finally{ setBusy(false); viItemBusy = false; }
+    }
+
+    async function viOpenAddItem_(){
+        if(!viItemsEditable_(currentEntry)) return;
+        const m = document.getElementById('viAddItemModal'); if(!m) return;
+        ['viAiName', 'viAiQty', 'viAiUom', 'viAiMachine', 'viAiWt', 'viAiSpec'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+        document.getElementById('viAiInfo').textContent = '';
+        document.getElementById('viAiError').style.display = 'none';
+        document.getElementById('viAiTitle').textContent = 'Add Item to ' + (currentEntry.req_no || 'PR');
+        m.style.display = 'flex';
+        try{ await prmLoadMasters(); }catch(e){ console.warn('[MOBILE] masters not loaded:', e); }
+        setTimeout(() => { try{ document.getElementById('viAiName').focus(); }catch(e){} }, 60);
+    }
+    function viCloseAddItem_(){ const m = document.getElementById('viAddItemModal'); if(m) m.style.display = 'none'; }
+    // The chosen Item Master item: its Make / Category shown, its UOM filled in when still empty.
+    function viAiItemInfo_(){
+        const it = prmFindItem(document.getElementById('viAiName').value), info = document.getElementById('viAiInfo');
+        if(!info) return;
+        info.textContent = it ? [it.description, it.make && 'Make: ' + it.make, it.category && 'Category: ' + it.category].filter(Boolean).join(' · ') : '';
+        const u = document.getElementById('viAiUom');
+        if(it && u && !String(u.value || '').trim()) u.value = it.uom || 'PCS';
+    }
+    async function viAddItemSave_(){
+        if(viItemBusy) return;
+        const entry = currentEntry;
+        const err = document.getElementById('viAiError');
+        const say = m => { err.textContent = m; err.style.display = 'block'; };
+        err.style.display = 'none';
+        if(!viItemsEditable_(entry)) return say('This PR\'s items can no longer be changed here.');
+        const g = id => String(document.getElementById(id).value || '').trim();
+        const it = prmFindItem(g('viAiName'));
+        if(!it) return say('Choose an Item Name from the Item Master list.');
+        const qty = pNumM(g('viAiQty'));
+        if(!(qty > 0)) return say('Qty must be greater than 0.');
+        const machine = g('viAiMachine');
+        if(!machine) return say('Machine Name & No. is required.');
+        if(prmMachineList.length && !prmMachineList.some(m => prmMachineCombo_(m).toLowerCase() === machine.toLowerCase()
+            || String(m.machine_name || '').trim().toLowerCase() === machine.toLowerCase())) return say('Choose the Machine from the Machine Master list.');
+        const wt = pNumM(g('viAiWt'));
+        if(wt < 0) return say('Wt kg cannot be negative.');
+        const uom = g('viAiUom') || it.uom || 'PCS', spec = g('viAiSpec');
+        // the same item twice on one PR is allowed (two machines), but asked
+        if(viLines.some(l => l.item_id && l.item_id === it.id)){
+            const again = window.IosDialog ? await IosDialog.confirm(it.name + ' is already on this PR. Add it again as a separate item?', {title: 'Already on the PR', ok: 'Add again'})
+                : confirm(it.name + ' is already on this PR. Add it again as a separate item?');
+            if(!again) return;
+        }
+        const cap = viCaptureGrid_();
+        viItemBusy = true; setBusy(true, 'Adding the item...');
+        const btn = document.getElementById('viAiSaveBtn'); if(btn) btn.disabled = true;
+        let added = null;
+        try{
+            const { req, lines } = await viFreshPr_(entry.id);
+            const ins = await sbSaveDroppingMissingColumns_(
+                { requirement_id: req.id, item_id: it.id, item_name: it.name, specification: spec || null, requested_qty: qty, uom,
+                  gross_weight: wt > 0 ? wt : null, machine },
+                p => SB.from('purchase_requirement_lines').insert(p).select('id').single(),
+                ['requirement_id', 'item_id', 'requested_qty']);
+            if(ins.error) throw ins.error;
+            added = ins.data && ins.data.id;
+            if(!added) throw new Error('The item could not be added.');
+            const l2 = await SB.from('purchase_requirement_lines').select('*, items(name,description,make,category,uom)').eq('requirement_id', req.id).order('id');
+            if(l2.error) throw l2.error;
+            const snap = viLogEdit_(viRealign_(req.pdf_snapshot, lines, l2.data || [], { name: it.name, desc: spec || it.description || '', make: it.make || '', category: it.category || '' }), {
+                action: 'ADDED', name: it.name, qty, uom, machine });
+            const up = await SB.from('purchase_requirements').update({ pdf_snapshot: snap }).eq('id', req.id).select('id');
+            if(up.error) throw up.error;
+            if(!(up.data || []).length) throw new Error('The PR could not be updated.');
+            added = null;
+            currentEntry.pdf_snapshot = snap;
+            dashDirty = true;
+            viCloseAddItem_();
+            await viRedraw_(cap);
+            viSay(it.name + ' added to PR ' + req.req_no + '. Fill its vendors / rates in the grid, then Save.');
+            viRegenPdf_(req, snap);
+        }catch(e){
+            // the line went in but the PR did not follow: take the line out again
+            if(added){ try{ await SB.from('purchase_requirement_lines').delete().eq('id', added); }catch(x){ console.warn('[MOBILE] added line could not be taken out:', x); } }
+            say('Not added: ' + (e.message || e));
+        }finally{ setBusy(false); viItemBusy = false; if(btn) btn.disabled = false; }
+    }
+
     /* vendorIdxSource is an array (per-item vendor slot, -1 = none) for a PR
        whose items can each carry their own approved vendor, or a single
        number for the PO module's flat item list, which has no per-item
@@ -7037,6 +7582,29 @@
         // FIELD BOY only: a tick box and a photo cell per item, ahead of the Sr column.
         const fbOn = fbChecklistMode();
         fbLastRenderArgs = fbOn ? Array.prototype.slice.call(arguments) : null;
+        /* Purchaser, Vendor Info: ✕ in the Sr cell removes that item from the PR, + Add Item under the
+           table adds one (VI ITEM EDIT section). The rows here are fetchItems()' list, in the same order
+           as viLines, so row i is line viLines[i]. When items cannot be changed the bar says why. */
+        const lockWhy = currentModule === 'PR' ? viItemsLockReason_(currentEntry) : null;
+        // The ✕ is always there while items can be changed; on the ONLY item it is grey and a tap says what to do instead.
+        const canDel = lockWhy === '' && items.length > 0, lastOne = items.length <= 1;
+        tbody.onclick = e => {
+            const b = e.target && e.target.closest && e.target.closest('.pr-del');
+            if(!b) return;
+            e.preventDefault(); e.stopPropagation();
+            viRemoveItem_(+b.dataset.row);
+        };
+        {
+            const bar = document.getElementById('prItemEditBar');
+            if(bar){
+                bar.style.display = lockWhy === null ? 'none' : 'flex';
+                const ab = document.getElementById('prAddItemBtn'), note = document.getElementById('prItemEditNote');
+                if(ab) ab.style.display = lockWhy === '' ? '' : 'none';
+                if(note) note.textContent = lockWhy === null ? '' : (lockWhy || (items.length > 1
+                    ? 'Tap ✕ on a row to remove that item, or + Add Item to add one.'
+                    : 'Only one item: to replace it, + Add Item the new one first, then tap ✕ on this one. (Or Reject the PR if it is not needed.)'));
+            }
+        }
         tbody.innerHTML = items.map((item,i) => {
             const rowVendorIdx = perItem
                 ? (vendorIdxSource[i]!=null ? pNum(vendorIdxSource[i]) : -1)
@@ -7062,7 +7630,7 @@
             const fb = fbOn ? fbRowCells(item, i) : null;
             return `<tr${fb && fb.bg ? ' style="background:' + fb.bg + ';"' : ''}>
                 ${fb ? fb.tick + fb.photo : ''}
-                <td>${i+1}</td>
+                <td style="white-space:nowrap;">${i+1}${canDel ? `<button type="button" class="pr-del" data-row="${i}" title="${lastOne ? 'The only item: add the new item first, then remove this one' : 'Remove this item from the PR'}" aria-label="Remove ${escText(item.name)}" style="margin-left:6px;width:22px;height:22px;padding:0;border:0;border-radius:6px;background:${lastOne ? '#f1f5f9' : '#fee2e2'};color:${lastOne ? '#94a3b8' : '#b91c1c'};font-size:12px;font-weight:800;line-height:22px;cursor:pointer;vertical-align:middle;">&#10006;</button>` : ''}</td>
                 <td><b>${escText(item.name)}</b>${fb ? fb.status : ''}</td>
                 <td>${escText(item.desc||'-')}</td>
                 <td>${escText(item.category||'General')}</td>
@@ -7155,6 +7723,13 @@
        the PO Generate tab's job), in PO Generate they approve. */
     async function openModal(entry, opts = {}) {
         currentEntry = entry;
+        // A light row (list view) gets its signature images back before anything is shown, signed or printed
+        if(entry && entry._light){
+            setBusy(true, 'Opening...');
+            try{ await mobEnsureFull_(entry); }
+            catch(e){ setBusy(false); alert('The record could not be opened: ' + (e.message || e)); return; }
+            setBusy(false);
+        }
         modalViewOnly = !!opts.viewOnly;
         modalTab = opts.tab || currentStageTab;
         itemVendorIndex = [];
@@ -7177,6 +7752,8 @@
         if(viChev) viChev.innerHTML = '&#9662;';
         // Reject / Hold: hidden until the Vendor Info step turns it on below.
         renderViDecisionBar(null);
+        // Item add / remove bar: renderItemRows shows it again for this PR, once its items are loaded
+        { const ib = document.getElementById('prItemEditBar'); if(ib) ib.style.display = 'none'; }
         const docNo = currentModule === 'PR' ? entry.req_no : entry.po_no;
         document.getElementById('modal-header-title').innerText = `${docNo} Details`;
 
@@ -7479,6 +8056,7 @@
                 grossWeight: line.gross_weight || 0,
                 rates: (base.items && base.items[i] && base.items[i].rates) || {},
                 discounts: (base.items && base.items[i] && base.items[i].discounts) || {},
+                poType: normPoType_((base.items && base.items[i] && base.items[i].poType) || ''),
                 // Carried through untouched. This snapshot is rebuilt from
                 // scratch, so omitting the item's own four quoting vendors
                 // would wipe every vendor identity on the PR the moment it
@@ -7631,7 +8209,8 @@
             if(!(available > 0)) return;
             const rate = pNum((it.rates||{})['V'+(idx+1)]), disc = pNum((it.discounts||{})['V'+(idx+1)]);
             const net = rate * (1 - disc/100);
-            const key = vName.toUpperCase();
+            const ptype = normPoType_(it.poType);
+            const key = vName.toUpperCase() + '||' + ptype;   // a PO never mixes types
             if(!groups.has(key)){
                 const sup = viFindSupplier(vName) || {};
                 groups.set(key, {vendor:{
@@ -7639,7 +8218,7 @@
                     email: String(v.email || sup.email || '').trim(),
                     contact: String(v.contact || sup.phone || '').trim(),
                     address: String(sup.city || '').trim(),
-                }, items: []});
+                }, items: [], poType: ptype});
             }
             // Gross Weight on the PR covers the FULL requested qty, so a partial
             // order carries only its share — billing the whole weight on each of
@@ -7677,6 +8256,7 @@
         const gmSig = {...purchaserSig, signedBy: myPurchaserName, signedAs: 'Purchaser'};
         const made = [];
         let first = true;
+        const planUsed = new Set();   // a vendor's freight / charges go on ONE of its POs, not on each type's
         for(const g of groups.values()){
             const poNo = await nextPoNo_();
             /* This vendor's own PO plan, if the quote sheet wrote one per vendor.
@@ -7685,24 +8265,27 @@
                plan to every vendor would put the full freight on two POs, i.e.
                twice. */
             const vp = opts.planByVendor ? (opts.planByVendor[g.vendor.name.toUpperCase()] || null) : null;
+            const vpFirst = !planUsed.has(g.vendor.name.toUpperCase()); planUsed.add(g.vendor.name.toUpperCase());
+            const vpC = vp ? (vpFirst ? vp : {...vp, freight: 0, otherExp: 0}) : null;
             const d = {
                 poNo, poDate: localIsoDate_(),
                 // Delivery Date is per PO too; each vendor gives its own date.
                 deliveryDate: (vp && vp.deliveryDate) || deliveryDate,
                 vendorName: g.vendor.name, vendorMail: g.vendor.email, vendorContact: g.vendor.contact, vendorAddress: g.vendor.address,
                 paymentTerms: SARV_PO_PAYMENT_TERMS, locationContact: SARV_PO_LOCATION_CONTACT,
-                freight: vp ? pNum(vp.freight) : (first ? pNum(opts.freight) : 0),
-                otherExpense: vp ? pNum(vp.otherExp) : (first ? pNum(opts.other) : 0),
-                otherExpenseLabel: (vp ? pNum(vp.freight) + pNum(vp.otherExp) > 0 : first) ? 'Labour/Loading/Other Exp.' : '',
+                freight: vpC ? pNum(vpC.freight) : (first ? pNum(opts.freight) : 0),
+                otherExpense: vpC ? pNum(vpC.otherExp) : (first ? pNum(opts.other) : 0),
+                otherExpenseLabel: (vpC ? pNum(vpC.freight) + pNum(vpC.otherExp) > 0 : first) ? 'Labour/Loading/Other Exp.' : '',
                 gstPercent: vp
                     ? (vp.chargesGst != null && String(vp.chargesGst).trim() !== '' ? pNum(vp.chargesGst) : SARV_DEFAULT_GST)
                     : (first ? (opts.chargesGst != null && String(opts.chargesGst).trim() !== '' ? pNum(opts.chargesGst) : SARV_DEFAULT_GST) : 0),
                 // Notes are per PO now as well; they are instructions to this vendor.
-                importantNotes: String((vp && vp.notes) || opts.notes || ''),
+                importantNotes: [g.poType === 'OPEN' ? 'OPEN PO: rates are to be confirmed. This PO is issued again with the same PO No. once the rates are fixed.' : (g.poType === 'FOC' ? 'FOC PO: free of cost, no payment is due.' : ''), String((vp && vp.notes) || opts.notes || '')].filter(Boolean).join('\n'),
+                poType: g.poType,
                 items: g.items,
                 // The PR's Store Incharge signature carries over; the Purchaser
                 // signs in the gmCeo slot under their own name.
-                signatures: {...(storeSig ? {store: storeSig} : {}), gmCeo: gmSig},
+                signatures: {...(storeSig ? {store: storeSig} : {}), gmCeo: gmSig, ...(g.poType !== 'STANDARD' ? {poType: g.poType} : {})},
             };
             d.subtotal = g.items.reduce((s,x) => s + pNum(x.total), 0);
             // GST: each line at its own rate, plus the charges at theirs —
@@ -7735,11 +8318,125 @@
                 // The MD may have signed while this was uploading.
                 await poPdfRecheck_(row.id, d.signatures);
             }catch(e){ console.warn('[MOBILE] PO PDF build failed (PO still saved):', e); }
-            made.push({poNo: d.poNo, vendorName: d.vendorName});
+            made.push({poNo: d.poNo, vendorName: d.vendorName, poType: g.poType});
         }
         return made;
     }
 
+    /* ══ OPEN PO tab (Purchaser) ═══════════════════════════════════════
+       A PO of type OPEN was raised, approved and sent with its rate still 0. Here the Purchaser fills
+       the rate (and discount) of each line; the PO is then UPDATED in place: same PO No., same status
+       and approvals, new line amounts / subtotal / GST / grand total, a fresh PDF, and a line in
+       approvals.rateUpdates (who, when, what) for the record. A line still at 0 keeps the PO in Rate
+       Pending; when every line has a rate it moves to Rate Filled. */
+    function paintOpenPoList_(listDiv, rows){
+        listDiv.innerHTML = '';
+        rows.forEach(p => {
+            const lines = Array.isArray(p._lines) ? p._lines : [];
+            const need = lines.filter(l => !(pNum(l.unit_price) > 0)).length;
+            const card = document.createElement('div');
+            card.className = 'card ' + storeSkin_(p.store);
+            card.onclick = () => openOpenPoModal(p.id);
+            let html = `<div class="card-header"><span>${escText(p.po_no)}${storePill_(p.store)}</span><span>${escText(nMoney_(p.grand_total))}</span></div>`;
+            html += `<div class="card-detail">Vendor: <b>${escText(p.vendor_name||'-')}</b></div>`;
+            if(p.linked_req_nos) html += `<div class="card-detail">PR: <b>${escText(p.linked_req_nos)}</b></div>`;
+            html += `<div class="card-detail">PO Date: <b>${escText(p.po_date||'-')}</b>${p.delivery_date ? ' · Delivery: <b>' + escText(p.delivery_date) + '</b>' : ''}</div>`;
+            html += `<div class="card-detail">Status: ${statusBadge(p.status)}</div>`;
+            html += `<div class="card-tags"><span class="tag po">OPEN PO</span>${need ? '<span class="tag rejected">' + need + ' item(s) need a rate</span>' : '<span class="tag sent">Rate filled</span>'}</div>`;
+            if(p.pdf_url) html += `<a class="pdf-link" href="${escText(p.pdf_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">View PDF</a>`;
+            card.innerHTML = html;
+            listDiv.appendChild(card);
+        });
+    }
+    let openPoCur = null;   // {po, lines}
+    async function openOpenPoModal(poId){
+        const po = (dash.pos || []).find(p => String(p.id) === String(poId)); if(!po) return;
+        try{ await mobEnsureFull_(po); }catch(e){ alert('The PO could not be opened: ' + (e.message || e)); return; }
+        setBusy(true, 'Opening ' + po.po_no + '...');
+        try{
+            const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
+            if(lq.error) throw lq.error;
+            openPoCur = {po, lines: lq.data || []};
+        }catch(e){ setBusy(false); alert('The PO lines could not be read: ' + (e.message || e)); return; }
+        setBusy(false);
+        const canEdit = canActIn('OPENPO');
+        document.getElementById('opoTitle').textContent = po.po_no + ' · OPEN PO';
+        document.getElementById('opoMeta').innerHTML = 'Vendor: <b>' + escText(po.vendor_name||'-') + '</b><br>PR: <b>' + escText(po.linked_req_nos||'-') + '</b> · Status: <b>' + escText(po.status||'-') + '</b>';
+        document.getElementById('opoBody').innerHTML = openPoCur.lines.map((l,i) => {
+            const un = (l.bill_basis === 'WEIGHT') ? 'kg' : (l.uom || '');
+            return `<tr data-i="${i}"><td><b>${escText(l.item_name||'')}</b></td><td>${escText(nNum_(l.ordered_qty))} ${escText(l.uom||'')}</td>`
+                + `<td><input type="number" class="opo-rate" min="0" step="0.01" inputmode="decimal" value="${pNum(l.unit_price) > 0 ? pNum(l.unit_price) : ''}" placeholder="0" ${canEdit?'':'disabled'} style="width:78px;font-size:0.74rem;padding:4px;border:1px solid var(--border);border-radius:4px;"></td>`
+                + `<td><input type="number" class="opo-disc" min="0" max="100" step="0.01" inputmode="decimal" value="${pNum(l.discount_pct) || ''}" placeholder="0" ${canEdit?'':'disabled'} style="width:56px;font-size:0.74rem;padding:4px;border:1px solid var(--border);border-radius:4px;"></td>`
+                + `<td>${escText(nNum_(l.tax_pct))}%</td><td class="opo-amt" style="text-align:right;font-weight:700;">0.00</td></tr>`;
+        }).join('');
+        const body = document.getElementById('opoBody');
+        body.oninput = openPoRecalc_;
+        document.getElementById('opoError').style.display = 'none';
+        const sv = document.getElementById('opoSaveBtn');
+        sv.style.display = canEdit ? '' : 'none'; sv.disabled = false;
+        openPoRecalc_();
+        document.getElementById('openPoModal').style.display = 'flex';
+    }
+    function closeOpenPoModal(){ const m = document.getElementById('openPoModal'); if(m) m.style.display = 'none'; openPoCur = null; }
+    // The same maths autoGeneratePosFromPr used: net rate x billed units; each line at its own GST; charges at theirs.
+    function openPoFigures_(){
+        const {po, lines} = openPoCur;
+        const rows = [...document.querySelectorAll('#opoBody tr')];
+        let sub = 0, gst = 0;
+        const out = lines.map((l,i) => {
+            const rate = pNum(rows[i] && rows[i].querySelector('.opo-rate').value), disc = pNum(rows[i] && rows[i].querySelector('.opo-disc').value);
+            const units = (l.bill_basis === 'WEIGHT' && pNum(l.gross_weight) > 0) ? pNum(l.gross_weight) : pNum(l.ordered_qty);
+            const total = Math.round(units * rate * (1 - disc/100) * 100) / 100;
+            sub += total; gst += total * pNum(l.tax_pct) / 100;
+            return {rate, disc, total};
+        });
+        const ch = pNum(po.freight) + pNum(po.other_expense);
+        gst += ch * pNum(po.gst_percent) / 100;
+        return {lines: out, subtotal: sub, gstAmount: gst, grandTotal: sub + ch + gst};
+    }
+    function openPoRecalc_(){
+        if(!openPoCur) return;
+        const f = openPoFigures_();
+        [...document.querySelectorAll('#opoBody tr')].forEach((tr,i) => { tr.querySelector('.opo-amt').textContent = nMoney_(f.lines[i].total).replace(/^[^0-9-]*/, ''); });
+        document.getElementById('opoTotals').innerHTML = 'Sub Total: <b>' + escText(nMoney_(f.subtotal)) + '</b> · GST: <b>' + escText(nMoney_(f.gstAmount)) + '</b> · Grand Total: <b>' + escText(nMoney_(f.grandTotal)) + '</b>';
+    }
+    async function saveOpenPoRates_(){
+        if(!openPoCur || !canActIn('OPENPO')) return;
+        const err = document.getElementById('opoError'), btn = document.getElementById('opoSaveBtn');
+        const show = m => { err.textContent = m; err.style.display = 'block'; };
+        err.style.display = 'none';
+        const f = openPoFigures_(), {po, lines} = openPoCur;
+        const changed = lines.map((l,i) => ({l, i, n: f.lines[i]})).filter(x => x.n.rate > 0 && (pNum(x.l.unit_price) !== x.n.rate || pNum(x.l.discount_pct) !== x.n.disc));
+        if(!changed.length){ show('Enter a Rate greater than 0 for at least one item.'); return; }
+        const bad = [...document.querySelectorAll('#opoBody tr')].map((tr,i) => ({tr, i})).filter(x => { const d = pNum(x.tr.querySelector('.opo-disc').value); return d < 0 || d > 100; });
+        if(bad.length){ show('Discount must be between 0 and 100.'); return; }
+        const left = lines.filter((_,i) => !(f.lines[i].rate > 0)).length;
+        if(!confirm('Update ' + po.po_no + ' with these rates?' + (left ? '\n\n' + left + ' item(s) still have no rate; the PO stays in Rate Pending.' : '\n\nEvery item has a rate: the PO moves to Rate Filled.') + '\n\nThe PO No. stays the same and its PDF is rebuilt.')) return;
+        btn.disabled = true; setBusy(true, 'Updating the PO...');
+        try{
+            for(const x of changed){
+                const u = await SB.from('purchase_order_lines').update({unit_price: x.n.rate, discount_pct: x.n.disc, line_total: x.n.total}).eq('id', x.l.id);
+                if(u.error) throw u.error;
+            }
+            // Lines the Purchaser left alone keep their saved total; the header is re-added from every line.
+            const all = lines.map((l,i) => ({...l, line_total: f.lines[i].rate > 0 ? f.lines[i].total : pNum(l.line_total)}));
+            const sub = all.reduce((s,l) => s + pNum(l.line_total), 0);
+            const ch = pNum(po.freight) + pNum(po.other_expense);
+            const gst = all.reduce((s,l) => s + pNum(l.line_total) * pNum(l.tax_pct) / 100, 0) + ch * pNum(po.gst_percent) / 100;
+            const fresh = await SB.from('purchase_orders').select('approvals').eq('id', po.id).single();
+            if(fresh.error) throw fresh.error;
+            const ap = {...(fresh.data.approvals || {})};
+            ap.rateUpdates = [...(Array.isArray(ap.rateUpdates) ? ap.rateUpdates : []), {at: pStamp(), by: myPurchaserName || '', items: changed.map(x => ({item: x.l.item_name, rate: x.n.rate, disc: x.n.disc}))}].slice(-50);
+            const hu = await SB.from('purchase_orders').update({subtotal: sub, gst_amount: gst, grand_total: sub + ch + gst, approvals: ap}).eq('id', po.id);
+            if(hu.error) throw hu.error;
+            let pdfNote = '';
+            try{ await regenPoPdf_(po.id); }catch(e){ console.warn('[MOBILE] OPEN PO PDF regen failed (rates saved):', e); pdfNote = '\n\nThe rates are saved, but the PDF could not be rebuilt yet: ' + (e.message || e); }
+            closeOpenPoModal();
+            await loadDashboard(); paintList();
+            alert(po.po_no + ' updated with the new rates (same PO No.).' + (left ? ' ' + left + ' item(s) still need a rate.' : '') + pdfNote);
+        }catch(e){ show('Error: ' + (e.message || e)); }
+        finally{ setBusy(false); btn.disabled = false; }
+    }
     async function approvePO(po, stage, sig, deliveryDate){
         const newApprovals = {...(po.approvals||{}), [stage]: sig};
         // An earlier rejection note (approvals.rejection, written by rejectPO)
@@ -7842,6 +8539,7 @@
                 grossWeight: line.gross_weight || 0,
                 rates: (base.items && base.items[i] && base.items[i].rates) || {},
                 discounts: (base.items && base.items[i] && base.items[i].discounts) || {},
+                poType: normPoType_((base.items && base.items[i] && base.items[i].poType) || ''),
                 // Carried through untouched. This snapshot is rebuilt from
                 // scratch, so omitting the item's own four quoting vendors
                 // would wipe every vendor identity on the PR the moment it
@@ -8207,6 +8905,7 @@
                 grossWeight: line.gross_weight || 0,
                 rates: (base.items && base.items[i] && base.items[i].rates) || {},
                 discounts: (base.items && base.items[i] && base.items[i].discounts) || {},
+                poType: normPoType_((base.items && base.items[i] && base.items[i].poType) || ''),
                 // Carried through untouched. This snapshot is rebuilt from
                 // scratch, so omitting the item's own four quoting vendors
                 // would wipe every vendor identity on the PR the moment it
