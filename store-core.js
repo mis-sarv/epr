@@ -9773,8 +9773,13 @@ function sarvOpenUserModal(id,presetRole){
     const roleV=f('role').value,name=f('name').value.trim().toUpperCase(),pin=f('pin').value,pin2=f('pin2').value;
     if(!roleV)return err('Please select a role');
     if(!name)return err('User Name is required');
-    const dup=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name&&x.id!==(u&&u.id));
-    if(dup)return err('"'+name+'" already exists in this role');
+    /* The same PERSON twice: same role + same name, and (a PURCHASER, who is found by name) or the same Emp Code.
+       Two different employees of one name (RAHUL KUMAR 1215 / 1219) may share a role (sql/FIX_USER_SAME_NAME.sql,
+       same rule in admin_save_user and the unique index). */
+    const empV=String(f('emp').value||'').trim().toUpperCase();
+    const dup=sarvAppUsers.find(x=>x.role===roleV&&String(x.user_name).toUpperCase()===name&&String(x.id)!==String(u&&u.id)
+      &&(roleV==='PURCHASER'||String(x.emp_code||'').trim().toUpperCase()===empV));
+    if(dup)return err('"'+name+'" already exists in this role'+(roleV==='PURCHASER'?' (a Purchaser name must be unique)':(empV?' with Emp Code '+empV:' (give each one their own Emp Code)')));
     if(!u&&!pin&&roleV!=='PURCHASER')return err('PIN is required');
     if(pin&&pin.length<4)return err('PIN must be at least 4 digits');
     if(pin!==pin2)return err('PIN and Confirm PIN do not match');
@@ -10019,7 +10024,7 @@ function sarvOpenUserModal(id,presetRole){
     }catch(e){
       const m=String(e.message||e);
       const map={ADMIN_PIN_INVALID:'Incorrect Admin PIN',PIN_REQUIRED:'This user has no PIN yet. Please enter one.',PIN_TOO_SHORT:'The PIN must be at least 4 digits',
-        USER_EXISTS:'This name already exists in this role',ROLE_INVALID:'Invalid role',NAME_ROLE_REQUIRED:'Role and name are required',USER_NOT_FOUND:'User not found. Please refresh.'};
+        USER_EXISTS:'This name already exists in this role. If it is a different employee with the same name, give each their own Emp Code (Admin: run sql/FIX_USER_SAME_NAME.sql once, so two employees of one name can share a role)',ROLE_INVALID:'Invalid role',NAME_ROLE_REQUIRED:'Role and name are required',USER_NOT_FOUND:'User not found. Please refresh.'};
       const k=Object.keys(map).find(x=>m.includes(x));
       err(k?map[k]:(/admin_save_user|does not exist/i.test(m)?'Run ADMIN_PANEL_MIGRATION.sql first':m));
     }finally{btn.disabled=false;btn.innerHTML='Save User';}
@@ -20105,32 +20110,32 @@ window.addEventListener('DOMContentLoaded',()=>{
    tag(titleTx);
    doc.setFont(undefined,'bold');
    const tagW=tagLastW;
-   /* Gate-2 QR (sarv-qr.js), 40 mm x 40 mm in the top-left corner of the Supplier Copy (Inward / NB) and the
-      Receiver Copy (Outward): d.__gateQr is set by buildStoreNativePdfBlob only for those. The heading and the
-      detail rows move to its right (qrW), so nothing is drawn over it; the table starts under it. */
-   let qrW=0;
-   if(d.__gateQr&&window.SarvQR&&SarvQR.drawPdf(doc,d.__gateQr,x,y,40)){
-     qrW=43;
-     doc.setFont(undefined,'bold');doc.setFontSize(6);doc.setTextColor(51,65,85);
-     doc.text('Scan at Gate-2',x+20,y+42.2,{align:'center'});
-     doc.setTextColor(0,0,0);
+   /* Gate-2 QR (sarv-qr.js): a SMALL square (QR_MM) in the top-left corner of the heading band of the Supplier
+      Copy (Inward / NB) and the Receiver Copy (Outward); d.__gateQr is set by buildStoreNativePdfBlob only for
+      those. The band is as tall as the QR when that is taller, the heading stays centred in it, and the bill
+      no. and the whole details grid start UNDER the band at full width, so nothing is drawn over the QR. */
+   const QR_MM=20;
+   let qrW=0, bandH=13.2*K;
+   if(d.__gateQr&&window.SarvQR&&SarvQR.drawPdf(doc,d.__gateQr,x,y,QR_MM)){
+     qrW=QR_MM+2; bandH=Math.max(bandH,QR_MM+1.2);
    }
+   const hy=y+(bandH-13.2*K)/2;   // the heading's own top, centred in the band
    // Header, centred; shrunk if it would reach the tag box on the right (or the QR on the left).
    const headRoom=w-2*Math.max(tagW,qrW)-6;
    const code=TX('head.code',sarvStoreCode_(d&&d.store));
    doc.setFont(undefined,'bold');
    R('head.code');fitFs(code,FS('head.code',15*K),headRoom);
-   doc.text(code,x+w/2,y+6*K,{align:'center'});
+   doc.text(code,x+w/2,hy+6*K,{align:'center'});
    const et=d.entryType||(isOut?'OUTWARD':'INWARD');
    const etColor=isOut?[124,58,237]:isRet?[2,132,199]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
    R('head.type');fitFs(String(et),FS('head.type',9.5*K),headRoom); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
-   doc.text(String(et),x+w/2,y+10.8*K,{align:'center'});
+   doc.text(String(et),x+w/2,hy+10.8*K,{align:'center'});
    doc.setTextColor(0,0,0);
-   doc.setLineWidth(0.5); doc.line(x+qrW,y+13.2*K,x+w,y+13.2*K);
-   let yy=y+13.2*K+4.6*K;
-   // Meta info — two columns of label/value pairs (right of the QR when there is one)
+   doc.setLineWidth(0.5); doc.line(x,y+bandH,x+w,y+bandH);
+   let yy=y+bandH+4.6*K;
+   // Meta info — two columns of label/value pairs, full width under the heading band (and the QR)
    const halfW=(w-4)/2;
-   const metaX=x+qrW, mHalfW=(w-qrW-4)/2;
+   const metaX=x, mHalfW=halfW;
    const leftPairs=[], rightPairs=[];
    if(isRet){
      leftPairs.push(['Return No:',d.inwardNo||'-']);
@@ -20219,7 +20224,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    const lw1=lblW(leftPairs),lw2=lblW(rightPairs);
    leftPairs.forEach(([lbl,val])=>{ly=pair(lbl,val,metaX,mHalfW,lw1,ly);});
    rightPairs.forEach(([lbl,val])=>{ry=pair(lbl,val,metaX+mHalfW+4,mHalfW,lw2,ry);});
-   yy=Math.max(ly,ry,qrW?y+45:0)+1.5;
+   yy=Math.max(ly,ry)+1.5;
    // Items table
    let head,body,foot;
    /* body row index → that strip's coloured lines. didDrawCell reads from this.

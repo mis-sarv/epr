@@ -3579,10 +3579,11 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
         preparedBySign = '__________________';
     }
 
-    /* ── Gate-2 QR (sarv-qr.js), 40 mm x 40 mm under Prepared By on the Original and Duplicate Copy ──
+    /* ── Gate-2 QR (sarv-qr.js), 25 mm x 25 mm on the Original and Duplicate Copy, RIGHT-aligned inside the box
+       under the Grand Total bar (Packs / Pcs / Wt per type on the left, typeBarFor) ──
        Gate-2 › Scan QR reads it and opens Out From Dispatch for this slip: the tempo's pending Dharam Kanta
        slip is picked by itself, the guard only weighs Gross and takes the photo. The body is 740 px wide for
-       204 mm of the A4 page, so 40 mm = 145 px. No QR when the encoder cannot be loaded (slip still made). */
+       204 mm of the A4 page, so 25 mm = 91 px. No QR when the encoder cannot be loaded (slip still made). */
     var gateQrHtml = '';
     try {
         if (window.SarvQR && await SarvQR.ready()) {
@@ -3590,10 +3591,19 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
                 t: 'PKS', no: slipNo, p: header.partyName, veh: dispatch && dispatch.tempoNo, drv: dispatch && dispatch.driverName,
                 d: header.date, to: header.dispatchTo, pk: tot.packs + pvc.packs, q: tot.qty + pvc.qty, wt: Number((tot.wt + pvc.wt).toFixed(2))
             }), 580);
-            if (qrUrl) gateQrHtml = '<img src="' + qrUrl + '" alt="Gate QR" style="width:145px;height:145px;display:block;margin:6px auto 0;image-rendering:pixelated;">' +
-                '<span style="display:block;font-size:8px;font-weight:700;color:#334155;margin-top:1px;">Scan at Gate-2</span>';
+            if (qrUrl) gateQrHtml = '<img src="' + qrUrl + '" alt="Gate QR" style="width:91px;height:91px;display:block;margin:0 0 0 auto;image-rendering:pixelated;">' +
+                '<span style="display:block;font-size:7.5px;font-weight:700;color:#334155;margin-top:1px;text-align:center;">Scan at Gate-2</span>';
         }
     } catch (e) { console.warn('[packing] gate QR skipped', e); }
+    // The box under the Grand Total bar: the type lines left, the QR right (Original / Duplicate Copy only)
+    function typeBarFor(copyLabel) {
+        var withQr = gateQrHtml && (copyLabel === 'Original Copy' || copyLabel === 'Duplicate Copy');
+        if (!withQr) return typeBarHtml;
+        return '<div style="margin-top:3px;border:1.5px solid #000;padding:4px 8px;font-size:10px;font-weight:600;line-height:1.6;' +
+                'display:flex;justify-content:space-between;align-items:center;gap:14px;page-break-inside:avoid;">' +
+            '<div style="flex:1;min-width:0;">' + (typeLinesHtml || '&nbsp;') + '</div>' +
+            '<div style="flex:none;width:91px;">' + gateQrHtml + '</div></div>';
+    }
 
     // ── Exact colors extracted from the original 1px PNGs (real browser: plain CSS, no image hack needed) ──
     var copyColors = { 'Original Copy': '#05f209', 'Duplicate Copy': '#eaf205', 'Triplicate Copy': '#f27b05' };
@@ -3604,17 +3614,16 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
         fullBody += '<div class="pdf-page">' +
             '<div class="copy-bar" style="background:' + (copyColors[copyLabel] || '#e2e8f0') + ';">— ' + copyLabel.toUpperCase() + ' —</div>' +
             companyHeaderHtml + itemTablesHtml + grandBar +
-            (copyLabel === 'Triplicate Copy' && billingHtml ? billingHtml : typeBarHtml + remarksHtml);
+            (copyLabel === 'Triplicate Copy' && billingHtml ? billingHtml : typeBarFor(copyLabel) + remarksHtml);
 
-        var qrHere = (copyLabel === 'Original Copy' || copyLabel === 'Duplicate Copy') ? gateQrHtml : '';
         if (copyLabel === 'Duplicate Copy') {
             fullBody += '<div class="slip-footer">' +
-                '<div class="sign-box">' + preparedBySign + '<br>Signature &amp; Stamps<br>(Prepared By)' + qrHere + '</div>' +
+                '<div class="sign-box">' + preparedBySign + '<br>Signature &amp; Stamps<br>(Prepared By)</div>' +
                 '<div class="sign-box">__________________<br>Signature &amp; Stamps<br>(Received By)</div>' +
                 '<div class="sign-box">__________________<br>Signature &amp; Stamps<br>(Checked By)</div></div>';
         } else {
             fullBody += '<div class="slip-footer">' +
-                '<div class="sign-box">' + preparedBySign + '<br>Signature &amp; Stamps<br>(Prepared By)' + qrHere + '</div>' +
+                '<div class="sign-box">' + preparedBySign + '<br>Signature &amp; Stamps<br>(Prepared By)</div>' +
                 '<div class="sign-box">__________________<br>Signature &amp; Stamps<br>(Checked By)</div></div>';
         }
         fullBody += '</div>'; // .pdf-page
