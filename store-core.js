@@ -6738,7 +6738,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -7779,7 +7779,8 @@ const SARV_TABS=[
   /* SARV INDIA GATE-2 (gate_2.html, opens from the launcher): gate register for Inward, Outward, Visitor,
      Dharam Kanta and Hydra / JCB. Party, vehicle, PO / PR and "whom to meet" lists come from the ERP
      (GATE2_MASTERS_MIGRATION.sql, gate_masters checks this same key). Admin only until switched on. */
-  {key:'HOME_GATE2',label:'Gate-2 (Security Gate)',hint:'Gate register: Inward, Outward, Visitor, Dharam Kanta, Hydra / JCB (gate_2.html, opens from the launcher). Party / vehicle / PO lists come from the ERP',def:['ADMIN_PIN']},
+  {key:'HOME_GATE1',label:'Gate-1 (Security Gate, Unit-1)',hint:'Gate register of Unit-1 / Store 1 (gate_1.html, opens from the launcher): same as Gate-2, own G1- numbers and Store 1 lists; unit transfers and visitors moving between the two gates (GATE1_UNIT1_MIGRATION.sql)',def:['ADMIN_PIN']},
+  {key:'HOME_GATE2',label:'Gate-2 (Security Gate, Unit-2)',hint:'Gate register: Inward, Outward, Visitor, Dharam Kanta, Hydra / JCB (gate_2.html, opens from the launcher). Party / vehicle / PO lists come from the ERP',def:['ADMIN_PIN']},
   {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
   /* emission-live.html: the boiler stack's online monitoring readings (PM,
      NOx, SO2) from the Access Surveykshan portal, live, with today's trend and
@@ -8570,9 +8571,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)',HOME_GATE1:'Gate-1 (Security Gate)'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1,HOME_GATE1:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8788,7 +8789,7 @@ function sarvUserAppsHtml_(u){
 const SARV_ACCESS_AREAS=[
   {t:'ERP & Store',keys:['HOME_ERP_APP','HOME_IN','HOME_IN_NB','HOME_OUT','HOME_ISSUE','HOME_ISSUE_RETURN','HOME_REPORTS','HOME_TRACKER','HOME_REPAIR','HOME_MASTER']},
   {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
-  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE2']},
+  {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE1','HOME_GATE2']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
@@ -14964,6 +14965,21 @@ const SARV_DROPDOWNS=[
   {key:'erp_pkShiftingBy',label:'Shifting › Shifting By',hint:'Shifting Entry › Shifting By',where:'packing.html Shifting tab',
    def:['OWN LABOUR','CONTRACTOR LABOUR']},
 
+  /* The security gates read these keys straight from sales_dropdowns (one list per gate: erp_gate1InwApprover for
+     Gate-1 / Unit-1, erp_gate2InwApprover for Gate-2 / Unit-2) (anon read; gate_1.html / gate_2.html,
+     INWARD APPROVER LIST in section 8D). Values are "NAME (EMP CODE)" picked from the Employee Master here
+     (empPick: the add box is an Employee Master search, sarvDdEmpPickHtml_); the Emp Code finds the person's
+     ERP login for the launcher approval (gate_vis_host_). Empty = the gate offers every ERP user. */
+  {group:'Security Gate (gate_1.html / gate_2.html)'},
+  {key:'erp_gate1InwApprover',label:'Gate-1 (Unit-1) › Inward › Whom to Approve',empPick:true,
+   hint:'Gate-1 › Inward › New Inward Entry › Whom to Approve (Unit-1 only; Gate-2 has its own list): only the people in this list can be chosen. Add them from the Employee Master below; the person approves on the launcher (Gate Approvals) with their own PIN, so they need an ERP login with the same Emp Code (without one, the Admin approves). While this list is empty the gate offers every ERP user.',
+   where:'gate_1.html › Inward › New Inward Entry',
+   def:[]},
+  {key:'erp_gate2InwApprover',label:'Gate-2 (Unit-2) › Inward › Whom to Approve',empPick:true,
+   hint:'Gate-2 › Inward › New Inward Entry › Whom to Approve (Unit-2 only; Gate-1 has its own list): only the people in this list can be chosen. Add them from the Employee Master below; the person approves on the launcher (Gate Approvals) with their own PIN, so they need an ERP login with the same Emp Code (without one, the Admin approves). While this list is empty the gate offers every ERP user.',
+   where:'gate_2.html › Inward › New Inward Entry',
+   def:[]},
+
   {group:'Sales › Order Form (order-form.html)'},
   /* DB / SB, Fabric Code, Category, Size, Sattan Type / Size, the old joint
      Sattan and MOQ are no longer listed here: the Order Form fills them from
@@ -15186,7 +15202,56 @@ window.sarvDdMoveValue=async function(id,dir){
 };
 
 /* ── UI ───────────────────────────────────────────────────────────── */
-window.sarvDdSelect=function(key){sarvDdPick=key;sarvDdEditId=null;sarvDdRender_();};
+window.sarvDdSelect=function(key){sarvDdPick=key;sarvDdEditId=null;sarvDdEmpQ='';sarvDdRender_();};
+
+/* ── Employee Master picker (a dropdown with empPick, e.g. Gate › Inward › Whom to Approve) ──
+   The add box searches the Employee Master (sarvEmployeeCatalog, read once here when not loaded yet) with
+   sarvSearchMatch over name / Emp Code / designation / department; "Add" saves "NAME (EMP CODE)" through the
+   normal sarvDdAddValue, so remove / reorder below work as for any list. People already in the list are marked. */
+let sarvDdEmpQ='', sarvDdEmpBusy=false;
+const sarvDdEmpVal_=e=>String(e.person_name||'').trim().toUpperCase()+(e.emp_code?' ('+String(e.emp_code).trim().toUpperCase()+')':'');
+function sarvDdEmpPickHtml_(key,admin){
+  if(!admin)return '';
+  const all=(typeof sarvEmployeeCatalog!=='undefined'&&Array.isArray(sarvEmployeeCatalog))?sarvEmployeeCatalog:[];
+  if(!all.length&&!sarvDdEmpBusy&&SB_READY){
+    sarvDdEmpBusy=true;
+    fetchAllRows('employees','*','emp_code').then(rows=>{sarvDdEmpBusy=false;if(rows&&rows.length){refreshEmployeeDatalist(rows);if(sarvDdPick===key)sarvDdRender_();}})
+      .catch(()=>{sarvDdEmpBusy=false;});
+  }
+  return '<div class="dd-add" style="flex-direction:column;align-items:stretch;gap:6px;">'
+    +'<div style="font-size:12px;font-weight:700;color:#334155;">Add from the Employee Master</div>'
+    +'<input type="text" id="dd_empQ" class="form-control" placeholder="Search name / Emp Code / designation / department…" autocomplete="off" value="'+escText(sarvDdEmpQ)+'" oninput="sarvDdEmpSearch(this.value)">'
+    +'<div id="dd_empList" style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;background:#fff;">'+sarvDdEmpListHtml_(key)+'</div></div>';
+}
+function sarvDdEmpListHtml_(key){
+  const all=(typeof sarvEmployeeCatalog!=='undefined'&&Array.isArray(sarvEmployeeCatalog))?sarvEmployeeCatalog:[];
+  if(!all.length)return '<div style="padding:10px;color:#94a3b8;font-size:12px;">'+(sarvDdEmpBusy?'Loading the Employee Master…':'The Employee Master is empty (Master Data › Employee Master).')+'</div>';
+  const have=new Set(sarvDdRowsOf(key).map(r=>String(r.value).trim().toUpperCase()));
+  const q=sarvDdEmpQ.trim();
+  const act=all.filter(e=>e&&e.person_name&&e.is_active!==false);   // a left / inactive employee is never offered
+  const hits=act.filter(e=>!q||sarvSearchMatch([e.person_name,e.emp_code,e.designation,e.department],q));
+  const n=hits.length;
+  return '<div style="padding:5px 10px;font-size:11px;font-weight:700;color:#0369a1;background:#f0f9ff;border-bottom:1px solid #e0f2fe;position:sticky;top:0;">'
+      +(q?n+' of '+act.length+' employees':act.length+' employees · type to narrow')+' · '+have.size+' in this list</div>'
+    +(n?hits.slice(0,300).map(e=>{
+      const v=sarvDdEmpVal_(e), inList=have.has(v);
+      return '<div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-bottom:1px solid #f1f5f9;">'
+        +'<div style="flex:1;min-width:0;"><b style="font-size:12.5px;">'+escText(e.person_name)+'</b> <span style="color:#94a3b8;font-size:11px;">'+escText(e.emp_code||'')+'</span>'
+        +'<div style="font-size:11px;color:#64748b;">'+escText([e.designation,e.department].filter(Boolean).join(' · ')||'-')+'</div></div>'
+        +(inList?'<span style="font-size:11px;font-weight:700;color:#15803d;">✓ In the list</span>'
+          :'<button class="btn btn-primary" style="padding:4px 12px;font-size:12px;" onclick="sarvDdEmpAdd(\''+escText(key)+'\',\''+escText(String(e.emp_code||''))+'\',\''+escText(String(e.person_name||'').replace(/'/g,''))+'\')">Add</button>')
+        +'</div>';
+    }).join('')+(n>300?'<div style="padding:8px 10px;color:#94a3b8;font-size:11px;">Showing 300 of '+n+': type more to narrow.</div>':'')
+    :'<div style="padding:10px;color:#94a3b8;font-size:12px;">No employee matches "'+escText(q)+'".</div>');
+}
+window.sarvDdEmpSearch=function(v){sarvDdEmpQ=String(v||'');const l=byId('dd_empList');if(l)l.innerHTML=sarvDdEmpListHtml_(sarvDdPick);};
+window.sarvDdEmpAdd=async function(key,code,name){
+  const all=(typeof sarvEmployeeCatalog!=='undefined'&&Array.isArray(sarvEmployeeCatalog))?sarvEmployeeCatalog:[];
+  const e=all.find(x=>String(x.emp_code||'')===code&&String(x.person_name||'').replace(/'/g,'')===name)||all.find(x=>String(x.emp_code||'')===code);
+  if(!e)return showToast('That employee is no longer in the Employee Master','warn');
+  const ok=await sarvDdAddValue(key,sarvDdEmpVal_(e));
+  if(ok){const q=byId('dd_empQ');if(q){q.focus();try{q.setSelectionRange(q.value.length,q.value.length);}catch(x){}}}
+};
 
 /* ── Sections of the left list: own colour, Expand / Collapse ─────────
    Each {group} of SARV_DROPDOWNS is a section with its own colour (cycled
@@ -15301,6 +15366,12 @@ function sarvDdMainHtml_(){
   // Store checklists: their own builder and table (a row is JSON, not a word).
   if(d.storeChecklist){h+=sarvChkMainHtml_(admin);return h;}
 
+  // Employee-based lists (empPick): picked from the Employee Master, never typed (a typo would match nobody)
+  if(d.empPick){
+    h+=sarvDdEmpPickHtml_(d.key,admin);
+    if(!admin)h+='<div class="dd-warn">Only an <b>Admin</b> login can add or remove people. The list below is read-only.</div>';
+  }
+
   const combo=d.key===IM_SLICER_COMBO_DD_KEY;
   // Combined: the Column → Value builder is the main way in; the typed "~"
   // box stays below it, folded away, for whoever prefers typing.
@@ -15312,7 +15383,7 @@ function sarvDdMainHtml_(){
         :'The Item Master hasn\'t loaded yet; open the Item Master once to get suggestions.')+'</div>';
   }
 
-  if(admin){
+  if(admin&&!d.empPick){
     h+='<div class="dd-add">'
       +'<input type="text" id="dd_newValue" class="form-control" placeholder="'+(combo?'e.g. 4 INCH SATTAN ~ TRIMS (type ~ for the next column, Enter to add)':d.imSlicerCol?'Slicer value… (press Enter)':'New value… (press Enter)')+'" autocomplete="off" '
       +(d.imSlicerCol?'list="dd_slicerSuggest" ':'')
@@ -15327,7 +15398,7 @@ function sarvDdMainHtml_(){
     if(combo)h+='</details>';
     if(!rows.length&&defs.length)
       h+='<div class="dd-warn">This list currently runs on the <b>code defaults</b>. As soon as you add the first value, the other defaults are added to the table automatically, so the list never shrinks to a single value.</div>';
-  }else{
+  }else if(!d.empPick){
     h+='<div class="dd-warn">Only an <b>Admin</b> login can add, edit or remove values. The list below is read-only.</div>';
   }
 
@@ -18051,6 +18122,8 @@ window.cancelStoreRecord=async function(kind,id,no){
   if(u.error)throw u.error;
   // A cancelled Inward frees its Yarn Unloading No. for the right receipt (no column yet = nothing to free)
   if(hTable==='inward_entries'){try{await SB.from('inward_entries').update({yarn_ul_no:null}).eq('id',id);}catch(e){}}
+  // ... and its Gate Entry No. (GATE ENTRY LINK; a separate call: no column yet = nothing to free)
+  if(hTable==='inward_entries'){try{await SB.from('inward_entries').update({gate_entry_no:null}).eq('id',id);}catch(e){}}
   const del=await SB.from(lTable).delete().eq(fk,id);
   if(del.error){
     // Put the notes back so the record doesn't read cancelled with its stock still counted.
@@ -18215,6 +18288,9 @@ async function loadInwardForEdit(id,no){
   // YARN UNLOADING LINK: the number it carries, in the record's own store's list
   sarvInwYarnUl.want=e.yarn_ul_no||'';sarvInwYarnUl.editHad=!!e.yarn_ul_no;sarvInwYarnUl.editStore=e.store||'';sarvInwYarnUl.sig='';
   setTimeout(()=>inwYarnUlRefresh_(true),600);
+  // GATE ENTRY LINK: the gate Inward entry it was booked against, in the record's own store's gate
+  sarvInwGate.want=e.gate_entry_no||'';sarvInwGate.editHad=!!e.gate_entry_no;sarvInwGate.editStore=e.store||'';
+  setTimeout(()=>inwGateRefresh_(true),650);
   // Kept through the edit so the regenerated PDF still names the supervisor.
   sarvInwUnloadActive=unloadInfoFrom_(e.unload_info);
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
@@ -19846,6 +19922,7 @@ window.addEventListener('DOMContentLoaded',()=>{
        '<tr><td class="lbl">Invoice Date:</td><td>'+fmtDate_(d.invoiceDate||d.invoice_date)+'</td></tr>'+
        inwRefRows_(d).map(function(p){return '<tr><td class="lbl">'+pEsc(p[0])+'</td><td style="word-break:break-word;"><strong>'+pEsc(p[1])+'</strong></td></tr>'}).join('')+
        (d.gatePass||d.gate_pass_no?'<tr><td class="lbl">Gate Pass:</td><td>'+pEsc(d.gatePass||d.gate_pass_no)+'</td></tr>':'')+
+       (d.gateEntryNo||d.gate_entry_no?'<tr><td class="lbl">Gate Entry No:</td><td><strong>'+pEsc(d.gateEntryNo||d.gate_entry_no)+'</strong></td></tr>':'')+
        (d.lotNo?'<tr><td class="lbl">Lot No.:</td><td>'+pEsc(d.lotNo)+'</td></tr>':'')+
        (d.natureOfInward?'<tr><td class="lbl">Nature of Inward:</td><td><strong>'+pEsc(d.natureOfInward)+'</strong></td></tr>':'')+
        // Last row of the second column (see inwUnloadRows_).
@@ -20120,8 +20197,18 @@ window.addEventListener('DOMContentLoaded',()=>{
      qrW=QR_MM+2; bandH=Math.max(bandH,QR_MM+1.2);
    }
    const hy=y+(bandH-13.2*K)/2;   // the heading's own top, centred in the band
-   // Header, centred; shrunk if it would reach the tag box on the right (or the QR on the left).
-   const headRoom=w-2*Math.max(tagW,qrW)-6;
+   /* GATE ENTRY LINK: the gate's Inward entry this bill was booked against, one small line right under the
+      tag box (Supplier / Account Copy alike), right-aligned with it; never wider than a third of the copy. */
+   let geW=0;
+   if(!isOut&&!isRet&&d.gateEntryNo){
+     const gt='Gate Entry No: '+d.gateEntryNo;
+     R('tag.gate');doc.setFont(undefined,'bold');doc.setTextColor(0,0,0);
+     fitFs(gt,FS('tag.gate',7*K),w*0.32);
+     geW=doc.getTextWidth(gt);
+     doc.text(gt,x+w,y+Math.max(5.5*K,FS(tagRole,8*K)*0.55)+3.4*K,{align:'right'});
+   }
+   // Header, centred; shrunk if it would reach the tag box / gate entry line on the right (or the QR on the left).
+   const headRoom=w-2*Math.max(tagW,qrW,geW)-6;
    const code=TX('head.code',sarvStoreCode_(d&&d.store));
    doc.setFont(undefined,'bold');
    R('head.code');fitFs(code,FS('head.code',15*K),headRoom);
@@ -20647,7 +20734,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(kind==='OUTWARD')return SarvQR.encode({t:'OUT',no:d.outwardNo,st:d.store,et:d.entryType,p:d.partyName,d:d.date,
      nat:d.natureOfDispatch,rcv:d.receiverName,gp:d.gatePass,it,q});
    return SarvQR.encode({t:'IN',no:d.inwardNo,st:d.store,et:d.entryType,p:d.supplier,d:d.receivingDate,
-     inv:d.invoiceNum,po:d.poNum,pr:d.prNum,gp:d.gatePass,yul:d.yarnUlNo,it,q});
+     inv:d.invoiceNum,po:d.poNum,pr:d.prNum,gp:d.gatePass,yul:d.yarnUlNo,ge:d.gateEntryNo,it,q});
  }
  async function buildStoreNativePdfBlob(kind,d,items,variant,images=[]){
    SARV_PDF_STORE=(d&&d.store)||'STORE 2';   // this entry's store decides which PDF Settings apply
@@ -23301,7 +23388,9 @@ let PR_TEAL=[13,92,83];
      // PO / PR sub-rows on the Supplier Copy too (storeStripOnCopy_); chosen on Submit.
      supplierRef:sarvInwSupplierRef,
      // YARN UNLOADING LINK: the report of a WEAVING YARN receipt, printed in the details
-     yarnUlNo:sarvInwYarnUlChosen||(inwYarnUlNeeded_()?pVal('inwYarnUlNo'):'')};
+     yarnUlNo:sarvInwYarnUlChosen||(inwYarnUlNeeded_()?pVal('inwYarnUlNo'):''),
+     // GATE ENTRY LINK: printed under the copy tag ("Gate Entry No.")
+     gateEntryNo:sarvInwGateChosen||pVal('inwGateEntryNo')};
  }
  // The Submit preview's "PR/PO details on Supplier Copy" choice; true = as before.
  let sarvInwSupplierRef=true;
@@ -23594,6 +23683,8 @@ let PR_TEAL=[13,92,83];
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
    // WEAVING YARN: the Yarn Unloading No. of this unit is compulsory and used once (YARN UNLOADING LINK)
    if(!await inwYarnUlGate_(rows))return;
+   // The gate's Inward entry of this delivery: compulsory when the Admin switched it on for this store (GATE ENTRY LINK)
+   if(!await inwGateGate_())return;
    // FIELD BOY PR: approved items only (fbInwardBlock_), before any approval request goes out.
    {const why=await fbInwardBlock_();if(why)return showToast(why,'warn');}
    /* Before anything is written, and before the user is asked for a PIN: is this
@@ -23730,6 +23821,8 @@ let PR_TEAL=[13,92,83];
      }catch(e){console.warn('[SARV] Freight / Round off header save skipped:',e.message||e);}
      // The Yarn Unloading No. of a WEAVING YARN receipt (own update: a database without the column saves as before)
      await inwYarnUlStore_(h.data.id);
+     // The Gate Entry No. (own update too)
+     await inwGateSave_(h.data.id);
      /* req_no on the LINE, not just the header. A receipt covering two
         requirements has no other way to say which of them a given item belongs
         to, and without that the PR sub-row's "already received" has to count
@@ -24337,6 +24430,7 @@ let PR_TEAL=[13,92,83];
  function clearInwardForm(forEdit){
    inwCostYarnToggle_(false);   // the Cost on Yarn row belongs to the entry just left
    inwYarnUlReset_();           // so does its Yarn Unloading No.
+   inwGateReset_();             // and its Gate Entry No.
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
    sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];
@@ -31340,6 +31434,7 @@ const SARV_PDF_EL={store:[
   {id:'tag.account',l:'Copy title — ACCOUNT COPY',text:true,max:150},
   {id:'tag.supplier',l:'Copy title — SUPPLIER COPY',text:true,max:150},
   {id:'tag.receiver',l:'Copy title — RECEIVER COPY',text:true,max:150},
+  {id:'tag.gate',l:'Gate Entry No. (under the copy title, Inward)',max:150},
   {id:'contd',l:'Document no. on continued pages',max:150},
   {id:'head.code',l:'Store code (heading)',text:true,max:130},
   {id:'head.type',l:'Entry type (INWARD / OUTWARD)',max:125},
@@ -33551,6 +33646,217 @@ async function inwYarnUlStore_(id){
     }
   }catch(e){console.warn('[SARV] Yarn Unloading No. not stored:',e.message||e);}
   sarvInwYarnUl.at=0;   // the list changes now
+}
+/* ═══════════════════════════════════════════════════════════════════════
+   GATE ENTRY LINK   (sql/GATE_INWARD_LINK_MIGRATION.sql, gate_1.html / gate_2.html)
+   The security gate saves an INWARD entry when the material comes in (party,
+   PO / PR, vehicle, bill + item photo; IN-0007 at Gate-2, G1-IN-0007 at Gate-1).
+   The Store books the bill here AGAINST it: box #inwGateEntryNo (group
+   #inwGateGroup in index.html) lists the gate Inward entries of THIS store's
+   gate (STORE 1 = Gate-1, STORE 2 = Gate-2; an edit uses the record's store)
+   of the last 30 days that no live Inward uses yet (gate_inward_list; each
+   used ONCE, inward_entries.gate_entry_no unique; a cancelled Inward frees it).
+   Picking one fills Supplier Name when it is still empty, and ticks the gate's
+   PO (or Field Boy PR) when no PO / PR is ticked and no item row is filled; it
+   shows the gate's details and warns when the party / PO differs. Compulsory
+   per store when the Admin ticks "Compulsory" in the box (app_settings
+   'gate_inward_required', admin_save_setting with the Admin PIN); otherwise a
+   new Inward without it is asked about, but only while unused gate entries
+   exist. Stored by its own update after the header (inwGateSave_), printed
+   under the copy tag ("Gate Entry No:", drawStoreCopyNative_) and in the QR (ge).
+   No migration = the box says so and the Inward saves as before.
+   ═══════════════════════════════════════════════════════════════════════ */
+var sarvInwGate={list:null,store:'',at:0,busy:null,noMig:false,err:'',required:false,want:'',editHad:false,editStore:'',sig:''};
+var sarvInwGateChosen='';
+function inwGateStoreOf_(){return ((sarvInwGate&&sarvInwGate.editStore)||sarvStore||'STORE 2')==='STORE 1'?'STORE 1':'STORE 2';}
+function inwGateLabel_(){return inwGateStoreOf_()==='STORE 1'?'Gate-1 (Unit-1)':'Gate-2 (Unit-2)';}
+function inwGateDmyT_(v){
+  const t=new Date(v);if(isNaN(t))return '-';
+  const p=n=>String(n).padStart(2,'0');
+  return p(t.getDate())+'-'+p(t.getMonth()+1)+'-'+t.getFullYear()+' '+p(t.getHours())+':'+p(t.getMinutes());
+}
+async function inwGateLoad_(force){
+  const S=sarvInwGate, store=inwGateStoreOf_();
+  if(!force&&S.list&&S.store===store&&Date.now()-S.at<60000)return S.list;
+  if(S.busy)return S.busy;
+  S.busy=(async()=>{
+    try{
+      let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+      const r=await SB.rpc('gate_inward_list',{p_token:tok,p_store:store,p_days:30});
+      if(r.error){
+        S.noMig=r.error.code==='PGRST202'||r.error.code==='42883'||/gate_inward_list|schema cache/i.test(r.error.message||'');
+        S.err=S.noMig?'':(r.error.message||'read failed');S.list=[];
+      }else if(r.data&&r.data.success===false){S.noMig=false;S.err=String(r.data.error||'NOT_ALLOWED');S.list=[];}
+      else{S.noMig=false;S.err='';S.list=(r.data&&r.data.rows)||[];S.required=!!(r.data&&r.data.required);}
+      S.store=store;S.at=Date.now();
+      return S.list;
+    }catch(e){console.warn('[SARV] Gate entries not read:',e.message||e);S.err=e.message||String(e);S.list=S.list||[];return S.list;}
+    finally{S.busy=null;}
+  })();
+  return S.busy;
+}
+function inwGateRender_(){
+  const S=sarvInwGate, sel=byId('inwGateEntryNo');if(!sel)return;
+  const cur=sel.value||S.want, mine=sarvEditingInwardId?String(sarvEditingInwardId):'';
+  const opts=(S.list||[]).filter(r=>!r.usedBy||r.usedBy.id===mine);
+  sel.innerHTML='<option value="">-- Select the gate\'s Inward entry --</option>'+opts.map(r=>
+    '<option value="'+escText(r.no)+'">'+escText(r.no)+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
+      +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+'</option>').join('');
+  if(cur&&opts.some(r=>r.no===cur))sel.value=cur;
+  else if(cur&&S.want===cur&&mine){sel.insertAdjacentHTML('beforeend','<option value="'+escText(cur)+'">'+escText(cur)+' (this record)</option>');sel.value=cur;}
+  inwGateInfo_();
+}
+// The picked gate entry against this Inward: {row, warns}
+function inwGateCheck_(){
+  const v=pVal('inwGateEntryNo'), r=(sarvInwGate.list||[]).find(x=>x.no===v);
+  if(!r)return {row:null,warns:[]};
+  const warns=[], sup=pVal('supplierName');
+  if(r.party&&sup&&yulKey_(r.party)!==yulKey_(sup))warns.push('Party: gate "'+r.party+'", this Inward "'+sup+'"');
+  const refs=String(r.refNo||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
+  if(/^PO$/i.test(r.refType||'')&&refs.length){
+    const mine=getSelectedPoNos();
+    if(mine.length&&!refs.some(x=>mine.some(m=>yulKey_(m)===yulKey_(x))))warns.push('PO: gate '+refs.join(', ')+', this Inward '+mine.join(', '));
+  }
+  if(/^PR$/i.test(r.refType||'')&&refs.length){
+    const mine=getSelectedPrNos();
+    if(mine.length&&!refs.some(x=>mine.some(m=>yulKey_(m)===yulKey_(x))))warns.push('PR: gate '+refs.join(', ')+', this Inward '+mine.join(', '));
+  }
+  return {row:r,warns};
+}
+function inwGateInfo_(){
+  const box=byId('inwGateInfo');if(!box)return;
+  const S=sarvInwGate, store=inwGateStoreOf_();
+  const tag=byId('inwGateReqTag');if(tag)tag.textContent=S.required?'★ COMPULSORY ('+store+')':'(from '+inwGateLabel_()+')';
+  const wrap=byId('inwGateReqWrap');
+  if(wrap){wrap.style.display=(typeof isAdmin==='function'&&isAdmin()&&!S.noMig)?'inline-flex':'none';
+    const ck=byId('inwGateReqChk');if(ck)ck.checked=!!S.required;const lb=byId('inwGateReqLbl');if(lb)lb.textContent='Compulsory for '+store;}
+  if(S.noMig){box.innerHTML='<span style="color:#92400e;font-weight:700;">The gate link needs sql/GATE_INWARD_LINK_MIGRATION.sql (Admin). Until then this Inward saves without a Gate Entry No.</span>';return;}
+  if(S.err){box.innerHTML='<span style="color:#b91c1c;font-weight:700;">Could not read the gate entries ('+escText(S.err)+'). Press Refresh.</span>';return;}
+  const {row,warns}=inwGateCheck_();
+  if(!row){
+    const n=(S.list||[]).filter(r=>!r.usedBy).length;
+    box.innerHTML='<span style="color:#475569;">'+(S.list?(n?n+' approved Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery.'
+      :'No approved, unbooked Inward entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate saves it when the vehicle comes in and its approver approves it (launcher › Gate Approvals); then press Refresh.'):'Loading the gate entries…')+'</span>';
+    return;
+  }
+  box.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px 18px;color:#1e293b;">'
+    +'<span><b>'+escText(row.no)+'</b> · '+escText(row.gate==='G1'?'Gate-1':'Gate-2')+'</span>'
+    +'<span>Party: <b>'+escText(row.party||'-')+'</b></span>'
+    +(row.refNo?'<span>'+escText(row.refType||'Ref')+': <b>'+escText(row.refNo)+'</b></span>':'')
+    +(row.vehicle&&row.vehicle!=='N/A'?'<span>Vehicle: <b>'+escText(row.vehicle)+'</b></span>':'')
+    +'<span>In: '+escText(inwGateDmyT_(row.inTime))+'</span>'
+    +(row.status?'<span>Gate status: '+escText(row.status)+'</span>':'')
+    +(row.guard?'<span>Guard: '+escText(row.guard)+'</span>':'')
+    +(row.hasBill?'<span style="color:#15803d;">Bill photo at the gate ✓</span>':'')+'</div>'
+    +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">Check: '+warns.map(escText).join(' · ')+'</div>'
+      :'<div style="margin-top:6px;color:#15803d;font-weight:700;">Matches this Inward.</div>');
+}
+/* Picked: fill what is still empty. Supplier Name when blank; the gate's PO (or Field Boy PR) when nothing is
+   ticked, no item row is filled and no MD-approved draft is loaded, through the pickers' own state + loaders. */
+async function inwGatePicked_(){
+  sarvInwGate.want=pVal('inwGateEntryNo');
+  const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGate.want);
+  if(r&&!sarvEditingInwardId){
+    const sup=byId('supplierName');
+    if(sup&&!sup.value.trim()&&r.party&&!sup.readOnly&&!sup.disabled){
+      sup.value=String(r.party).toUpperCase();
+      sup.dispatchEvent(new Event('input',{bubbles:true}));sup.dispatchEvent(new Event('change',{bubbles:true}));
+    }
+    const filled=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].some(tr=>(tr.querySelector('.item-name')?.value||'').trim());
+    const refs=String(r.refNo||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
+    if(refs.length&&!filled&&!sarvInwDraftActive&&!getSelectedPoNos().length&&!getSelectedPrNos().length){
+      try{
+        if(/^PO$/i.test(r.refType||'')){
+          const hit=refs.map(x=>sarvPoCatalog.find(p=>yulKey_(p.po_no)===yulKey_(x))).filter(Boolean);
+          if(hit.length){sarvSelectedPoNos=hit.map(p=>p.po_no);updatePoNumberBtnText();await loadPoIntoInward();showToast('Gate '+r.no+': PO '+sarvSelectedPoNos.join(', ')+' loaded');}
+        }else if(/^PR$/i.test(r.refType||'')){
+          const hit=refs.map(x=>sarvPrCatalog.find(p=>yulKey_(p.req_no)===yulKey_(x))).filter(Boolean);
+          if(hit.length){setSelectedPrNos(hit.map(p=>p.req_no));updatePrNumberBtnText();await loadPrsIntoInward();showToast('Gate '+r.no+': PR '+hit.map(p=>p.req_no).join(', ')+' loaded');}
+        }
+      }catch(e){console.warn('[SARV] gate PO / PR not loaded:',e.message||e);}
+    }
+  }
+  inwGateInfo_();
+}
+async function inwGateRefresh_(force){
+  if(!byId('inwGateGroup'))return;
+  const before=sarvInwGate.list;
+  await inwGateLoad_(force);
+  if(force||before!==sarvInwGate.list||!byId('inwGateEntryNo').options.length)inwGateRender_();
+  else inwGateInfo_();
+}
+setInterval(()=>{
+  const p=byId('inwardPanel');if(!p||p.offsetParent===null)return;
+  const sig=[pVal('supplierName'),inwGateStoreOf_(),getSelectedPoNos().join(','),getSelectedPrNos().join(',')].join('|');
+  if(sig===sarvInwGate.sig&&Date.now()-sarvInwGate.at<60000)return;
+  sarvInwGate.sig=sig;inwGateRefresh_(false);
+},1500);
+// Admin: compulsory on / off for the store on screen (app_settings 'gate_inward_required', Admin PIN)
+async function inwGateSetRequired_(on){
+  const ck=byId('inwGateReqChk'), store=inwGateStoreOf_();
+  if(!isAdmin()){if(ck)ck.checked=!!sarvInwGate.required;return showToast('Admin login only','warn');}
+  const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:(on?'Make':'Stop making')+' the Gate Entry No. compulsory',
+    recordInfo:'Every new Inward / Inward NB of '+store+' ('+inwGateLabel_()+')',label:'Admin PIN',confirmText:'Save'});
+  if(pin==null||!pin.trim()){if(ck)ck.checked=!!sarvInwGate.required;return;}
+  try{
+    const cur=await SB.from('app_settings').select('value').eq('key','gate_inward_required').maybeSingle();
+    const val=Object.assign({},(cur.data&&cur.data.value)||{});val[store]=!!on;
+    const r=await SB.rpc('admin_save_setting',{p_key:'gate_inward_required',p_value:val,p_admin_pin:pin.trim()});
+    if(r.error)throw r.error;
+    if(r.data===false){if(ck)ck.checked=!!sarvInwGate.required;return showToast('Wrong Admin PIN','error');}
+    sarvInwGate.required=!!on;inwGateInfo_();
+    showToast('Gate Entry No. is now '+(on?'COMPULSORY':'optional')+' for '+store);
+  }catch(e){if(ck)ck.checked=!!sarvInwGate.required;showToast('Not saved: '+escText(e.message||e),'error');}
+}
+// Submit: the gate before anything is written. false = stop (the reason was shown).
+async function inwGateGate_(){
+  sarvInwGateChosen='';
+  const v0=pVal('inwGateEntryNo'), mine=String(sarvEditingInwardId||'');
+  const list=await inwGateLoad_(true);
+  const S=sarvInwGate;
+  // booked by another Inward since it was picked: say so (the fresh list no longer offers it)
+  const r0=v0&&(list||[]).find(x=>x.no===v0);
+  if(r0&&r0.usedBy&&r0.usedBy.id!==mine){S.want='';inwGateRender_();showToast('Gate entry '+v0+' is already booked by Inward '+(r0.usedBy.no||'')+'. Choose another one.','error');return false;}
+  inwGateRender_();
+  if(S.noMig)return true;
+  const v=pVal('inwGateEntryNo');
+  if(!v){
+    if(mine)return true;                       // an older record without one stays as it is
+    if(S.required){
+      highlightRequiredField('inwGateEntryNo');byId('inwGateEntryNo')?.scrollIntoView({behavior:'smooth',block:'center'});
+      showToast('Choose the Gate Entry No. of this delivery ('+inwGateLabel_()+'): it is compulsory for '+inwGateStoreOf_(),'warn');return false;
+    }
+    const n=(list||[]).filter(r=>!r.usedBy).length;
+    if(n&&!confirm('No Gate Entry No. is chosen, while '+n+' Inward entr'+(n===1?'y':'ies')+' of '+inwGateLabel_()+' are not booked yet.\n\nSave this Inward WITHOUT a Gate Entry No.?')){
+      byId('inwGateEntryNo')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+    return true;
+  }
+  const r=(list||[]).find(x=>x.no===v);
+  if(!r&&!(mine&&v===S.want)){showToast('Gate entry '+v+' is not an Inward entry of '+inwGateLabel_()+' (30 days). Press Refresh.','warn');return false;}
+  if(r&&r.usedBy&&r.usedBy.id!==mine){showToast('Gate entry '+v+' is already booked by Inward '+(r.usedBy.no||'')+'. Choose another one.','error');return false;}
+  const {warns}=inwGateCheck_();
+  if(warns.length&&!confirm('Gate entry '+v+' does not match this Inward:\n• '+warns.join('\n• ')+'\n\nSave against this Gate Entry No. anyway?'))return false;
+  sarvInwGateChosen=v;
+  return true;
+}
+// After the header is written: the number on the record (or taken off on an edit where it was cleared)
+async function inwGateSave_(id){
+  const v=sarvInwGateChosen||null;
+  if(!v&&!sarvInwGate.editHad)return;
+  try{
+    const r=await SB.from('inward_entries').update({gate_entry_no:v}).eq('id',id);
+    if(r.error){
+      if(r.error.code==='23505')showToast('Gate entry '+v+' was just booked by another Inward, so this Inward is saved WITHOUT it. Open it, choose the right one and Update.','error');
+      else console.warn('[SARV] Gate Entry No. not stored (run GATE_INWARD_LINK_MIGRATION.sql):',r.error.message);
+    }
+  }catch(e){console.warn('[SARV] Gate Entry No. not stored:',e.message||e);}
+  sarvInwGate.at=0;   // the list changes now
+}
+function inwGateReset_(){
+  if(!sarvInwGate)return;
+  const S=sarvInwGate;S.want='';S.editHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';
+  const sel=byId('inwGateEntryNo');if(sel)sel.value='';
+  inwGateInfo_();
 }
 function inwYarnUlReset_(){
   if(!sarvInwYarnUl)return;

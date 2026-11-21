@@ -26,8 +26,10 @@
              TRANSFER IN (linkUid = the sent one), status IN (the vehicle is
              inside; Mark Out later from its pass as usual).
       Sent   this gate's transfers with Received / Not received yet.
-   2. VISITOR MOVING UNITS
-      Existing Visitor › "To Unit-x": the visitor goes out here (moveTo) without
+   2. PEOPLE MOVING UNITS (visitors and employees, Visitor menu › Go to / Arriving From)
+      Visitor menu › "Go to Unit-x" (openGoTo: every visitor inside here, Send, and
+      the ones sent in 7 days with Received / On the way) or Existing Visitor ›
+      "To Unit-x": the visitor goes out here (moveTo) without
       the out photo; the other gate's Visitor menu shows "Arriving From" -> Take
       in: a visitor entry there, already inside, NO new approval (the approval of
       this unit stays on the original entry), linkUid = the original.
@@ -65,10 +67,12 @@
     return INC;
   }
   function paintBadges() {
-    var t = INC.rows.filter(function (x) { return x.kind === 'TRANSFER'; }).length, v = INC.rows.filter(function (x) { return x.kind === 'VISITOR'; }).length;
+    var t = INC.rows.filter(function (x) { return x.kind === 'TRANSFER'; }).length, v = INC.rows.filter(function (x) { return x.kind === 'VISITOR' || x.kind === 'EMPLOYEE'; }).length;
     var tb = $('glTransferBadge'), vb = $('glVisitorBadge');
     if (tb) { tb.textContent = t ? t + ' ARRIVING' : ''; tb.classList.toggle('hidden', !t); }
     if (vb) { vb.textContent = v; vb.classList.toggle('hidden', !v); }
+    var gb = $('glGoBadge'), gi = gateEntries.filter(function (e) { return isVisInside(e) || (e.category === 'EMPLOYEE' && e.status === 'IN'); }).length;
+    if (gb) { gb.textContent = gi; gb.classList.toggle('hidden', !gi); }
     document.querySelectorAll('[data-gl-other-unit]').forEach(function (el) { el.textContent = GATE_OTHER_UNIT; });
     if (SHEET && SHEET.repaint) SHEET.repaint();
   }
@@ -175,13 +179,15 @@
     });
   }
   function rowCard(x, act, label) {
-    var d = x.data || {}, isV = x.kind === 'VISITOR';
+    var d = x.data || {}, isE = x.kind === 'EMPLOYEE', isV = x.kind === 'VISITOR' || isE;
+    var line2 = isE ? [d.empCode, d.dept, d.vehicle && d.vehicle !== 'N/A' ? d.vehicle : ''] : isV ? [d.mobile, d.vehicle && d.vehicle !== 'N/A' ? d.vehicle : ''] : [d.vehicle, d.qty ? 'Qty ' + d.qty : '', d.driver];
+    var line3 = isE ? 'Work: ' + String(d.purpose || '-').split('•')[0].trim() : isV ? 'Met: ' + (d.host || '-') + ' · ' + String(d.purpose || '').split('•')[0].trim() : (d.transferRef ? 'Ref ' + d.transferRef + ' · ' : '') + (d.remarks || '');
     return '<div class="rounded-2xl border border-gray-200 bg-white p-3 space-y-2.5">'
       + '<div class="flex items-start gap-3"><div class="w-14 h-14 rounded-xl bg-gray-100 shrink-0 overflow-hidden" data-gl-thumb="' + esc(x.uid) + '" data-gl-field="' + (isV ? 'visitorPhoto' : 'itemPhoto') + '"></div>'
       + '<div class="min-w-0 flex-1"><div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">' + esc(isV ? d.name : d.items || d.purpose) + '</span>'
-      + '<span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase bg-purple-100 text-purple-800">' + esc(d.id || '') + '</span></div>'
-      + '<p class="text-[11px] font-semibold text-gray-500 truncate">' + esc(isV ? [d.mobile, d.vehicle && d.vehicle !== 'N/A' ? d.vehicle : ''].filter(Boolean).join(' · ') : [d.vehicle, d.qty ? 'Qty ' + d.qty : '', d.driver].filter(Boolean).join(' · ')) + '</p>'
-      + '<p class="text-[11px] font-semibold text-gray-600 truncate">' + esc(isV ? 'Met: ' + (d.host || '-') + ' · ' + String(d.purpose || '').split('•')[0].trim() : (d.transferRef ? 'Ref ' + d.transferRef + ' · ' : '') + (d.remarks || '')) + '</p>'
+      + '<span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase ' + (isE ? 'bg-sky-100 text-sky-800' : 'bg-purple-100 text-purple-800') + '">' + esc(d.id || '') + '</span></div>'
+      + '<p class="text-[11px] font-semibold text-gray-500 truncate">' + esc(line2.filter(Boolean).join(' · ')) + '</p>'
+      + '<p class="text-[11px] font-semibold text-gray-600 truncate">' + esc(line3) + '</p>'
       + '<p class="text-[11px] font-semibold text-gray-500">Sent ' + esc(fmt(d.outTime || x.updatedAt)) + ' by ' + esc(d.outGuard || d.guard || '-') + '</p></div></div>'
       + (act ? btn('data-gl-act="' + esc(x.uid) + '"', label, 'bg-emerald-600 text-white') : '') + '</div>';
   }
@@ -193,17 +199,22 @@
     });
   }
   function arrivingList(kind) {
+    var people = kind === 'VISITOR' || kind === 'EMPLOYEE';
     SHEET.view = 'arriving-' + kind;
-    setTitle(kind === 'VISITOR' ? 'Visitors from ' + GATE_OTHER_UNIT : 'Arriving from ' + GATE_OTHER_UNIT, kind === 'VISITOR' ? null : transferMenu);
+    setTitle(people ? 'Arriving from ' + GATE_OTHER_UNIT : 'Arriving from ' + GATE_OTHER_UNIT, people ? null : transferMenu);
     SHEET.repaint = function () { if (SHEET && SHEET.view === 'arriving-' + kind) arrivingList(kind); };
     var rows = INC.rows.filter(function (x) { return x.kind === kind; });
-    SHEET.body.innerHTML = stateNote()
-      + (rows.length ? rows.map(function (x) { return rowCard(x, true, kind === 'VISITOR' ? '<i class="fa-solid fa-user-check"></i> Take In (already approved)' : '<i class="fa-solid fa-truck-ramp-box"></i> Receive'); }).join('')
-        : '<p class="text-center text-xs font-semibold text-gray-400 py-10">' + (kind === 'VISITOR' ? 'No visitor is on the way from ' : 'Nothing is on the way from ') + esc(GATE_OTHER_UNIT) + '.</p>')
+    var cnt = function (k) { return INC.rows.filter(function (x) { return x.kind === k; }).length; };
+    var label = kind === 'VISITOR' ? '<i class="fa-solid fa-user-check"></i> Take In (already approved)'
+      : kind === 'EMPLOYEE' ? '<i class="fa-solid fa-id-badge"></i> Take In' : '<i class="fa-solid fa-truck-ramp-box"></i> Receive';
+    SHEET.body.innerHTML = (people ? whoTabs(kind, { VISITOR: cnt('VISITOR'), EMPLOYEE: cnt('EMPLOYEE') }) : '') + stateNote()
+      + (rows.length ? rows.map(function (x) { return rowCard(x, true, label); }).join('')
+        : '<p class="text-center text-xs font-semibold text-gray-400 py-10">' + (kind === 'VISITOR' ? 'No visitor is on the way from ' : kind === 'EMPLOYEE' ? 'No employee is on the way from ' : 'Nothing is on the way from ') + esc(GATE_OTHER_UNIT) + '.</p>')
       + btn('data-gl-refresh="1"', '<i class="fa-solid fa-rotate"></i> Check again', 'bg-gray-100 text-gray-700');
+    if (people) wireTabs(function (k) { arrivingList(k); });
     SHEET.body.querySelector('[data-gl-refresh]').addEventListener('click', function () { loadIncoming(true); });
     SHEET.body.querySelectorAll('[data-gl-act]').forEach(function (b) {
-      b.addEventListener('click', function () { var x = INC.rows.find(function (r) { return r.uid === b.getAttribute('data-gl-act'); }); if (x) (kind === 'VISITOR' ? takeVisitor(x) : receiveForm(x)); });
+      b.addEventListener('click', function () { var x = INC.rows.find(function (r) { return r.uid === b.getAttribute('data-gl-act'); }); if (x) (kind === 'VISITOR' ? takeVisitor(x) : kind === 'EMPLOYEE' ? takeEmployee(x) : receiveForm(x)); });
     });
     fillThumbs();
   }
@@ -255,25 +266,255 @@
     }).join('') : '<p class="text-center text-xs font-semibold text-gray-400 py-10">Nothing sent in the last 7 days.</p>');
   }
 
-  /* ── 2. VISITOR MOVING UNITS ──────────────────────────────────────── */
-  async function moveVisitor(id) {
-    var e = gateEntries.find(function (x) { return x.id === id; });
-    if (!e || e.status !== 'IN') return;
-    var ok = window.IosDialog && IosDialog.choose
-      ? (await IosDialog.choose('Send ' + (e.name || 'the visitor') + ' to ' + GATE_OTHER_UNIT + '? The visitor goes out here and ' + GATE_OTHER_NAME + ' takes them in without a new approval.', [{ label: 'Send to ' + GATE_OTHER_UNIT, value: 1, bold: true }, { label: 'Cancel', cancel: true }])) === 1
-      : window.confirm('Send ' + (e.name || 'the visitor') + ' to ' + GATE_OTHER_UNIT + '?');
-    if (!ok) return;
+  /* ── 2. PEOPLE MOVING UNITS (visitors and employees) ───────────────
+     Visitor menu › Go to <other unit> and › Arriving From <other unit>, each with a Visitors / Employees switch.
+     VISITOR   a visitor inside here (isVisInside) is sent; the other gate takes them in without a new approval.
+     EMPLOYEE  an employee (Employee Master, gate_masters.hosts) goes to the other unit: photo, work, vehicle ->
+               entry EMPLOYEE, status OUT, moveTo = the other gate; there "Take In" makes an EMPLOYEE entry, IN,
+               linkUid = the sent one. An employee taken in here is listed under Go to › Employees with
+               "Back to <other unit>" (the same move again) and "Out" (left the premises). gate_incoming kind EMPLOYEE. */
+  var isEmpIn = function (e) { return !!e && e.category === 'EMPLOYEE' && e.status === 'IN'; };
+  function whoTabs(cur, counts) {
+    return '<div class="grid grid-cols-2 gap-1 p-1 bg-gray-100 rounded-xl">' + ['VISITOR', 'EMPLOYEE'].map(function (k) {
+      return '<button type="button" data-gl-who="' + k + '" class="ios-btn py-1.5 rounded-lg text-xs font-bold ' + (k === cur ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500') + '">'
+        + (k === 'VISITOR' ? 'Visitors' : 'Employees') + (counts[k] ? ' (' + counts[k] + ')' : '') + '</button>';
+    }).join('') + '</div>';
+  }
+  function wireTabs(fn) {
+    SHEET.body.querySelectorAll('[data-gl-who]').forEach(function (b) {
+      b.addEventListener('click', function () { SHEET.who = b.getAttribute('data-gl-who'); fn(SHEET.who); });
+    });
+  }
+  async function ask(msg, yes) {
+    return window.IosDialog && IosDialog.choose
+      ? (await IosDialog.choose(msg, [{ label: yes, value: 1, bold: true }, { label: 'Cancel', cancel: true }])) === 1
+      : window.confirm(msg);
+  }
+  function afterMove() {
+    try { visRefreshUi(); } catch (x) {}
+    paintBadges();
+    if (SHEET && SHEET.view === 'goto') goToList();
+    loadIncoming(true);
+  }
+  // out here, on the way to the other unit (a visitor, or an employee already inside here)
+  function moveOut(e) {
     e.moveTo = GATE_OTHER;
     e.status = 'OUT';
     e.outTime = new Date().toISOString();
     e.outRemarks = 'Moved to ' + GATE_OTHER_UNIT;
     e.outGuard = guard();
     touchEntry(e);
-    try { visRefreshUi(); } catch (x) {}
+  }
+  async function moveVisitor(id) {
+    var e = gateEntries.find(function (x) { return x.id === id; });
+    if (!e || e.status !== 'IN') return;
+    if (!(await ask('Send ' + (e.name || 'the visitor') + ' to ' + GATE_OTHER_UNIT + '? The visitor goes out here and ' + GATE_OTHER_NAME + ' takes them in without a new approval.', 'Send to ' + GATE_OTHER_UNIT))) return;
+    moveOut(e);
     showIosBanner((e.name || 'Visitor') + ' sent to ' + GATE_OTHER_UNIT + ': ' + GATE_OTHER_NAME + ' sees them under Arriving From', 'success');
+    afterMove();
+  }
+  async function moveEmployee(id) {
+    var e = gateEntries.find(function (x) { return x.id === id; });
+    if (!isEmpIn(e)) return;
+    if (!(await ask('Send ' + (e.name || 'the employee') + ' back to ' + GATE_OTHER_UNIT + '?', 'Send to ' + GATE_OTHER_UNIT))) return;
+    moveOut(e);
+    showIosBanner((e.name || 'Employee') + ' sent to ' + GATE_OTHER_UNIT + ': ' + GATE_OTHER_NAME + ' sees them under Arriving From › Employees', 'success');
+    afterMove();
+  }
+  async function employeeOut(id) {
+    var e = gateEntries.find(function (x) { return x.id === id; });
+    if (!isEmpIn(e)) return;
+    if (!(await ask('Mark ' + (e.name || 'the employee') + ' OUT of ' + GATE_UNIT + ' (left the premises, not going to ' + GATE_OTHER_UNIT + ')?', 'Mark Out'))) return;
+    e.status = 'OUT';
+    e.outTime = new Date().toISOString();
+    e.outRemarks = 'Out from ' + GATE_NAME;
+    e.outGuard = guard();
+    touchEntry(e);
+    showIosBanner((e.name || 'Employee') + ' marked out of ' + GATE_UNIT, 'success');
+    afterMove();
+  }
+  function openGoTo(who) {
+    openSheet('Go to ' + GATE_OTHER_UNIT, function () { if (SHEET && SHEET.view === 'goto') goToList(true); });
+    SHEET.who = who || 'VISITOR';
+    goToList();
+    loadIncoming(true);
+  }
+  function sentRows(kind, none) {
+    var sent = INC.sent.filter(function (x) { return x.kind === kind; });
+    return '<p class="text-[11px] font-bold text-gray-400 uppercase pt-2">Sent to ' + esc(GATE_OTHER_UNIT) + ' · 7 days</p>'
+      + (online() ? '' : note('No internet: whether ' + GATE_OTHER_NAME + ' took them in shows when the net is back.'))
+      + (sent.length ? sent.map(function (s) {
+          var ok = !!s.receivedId;
+          return '<div class="flex items-center gap-3 rounded-2xl border ' + (ok ? 'border-emerald-200 bg-emerald-50/50' : 'border-amber-200 bg-amber-50/50') + ' px-3 py-2.5">'
+            + '<div class="min-w-0 flex-1"><p class="text-[13px] font-extrabold text-gray-900 truncate">' + esc(s.name || '-') + ' <span class="text-[10px] font-bold text-gray-400">' + esc(s.id) + '</span></p>'
+            + '<p class="text-[11px] font-semibold text-gray-500">Sent ' + esc(fmt(s.at)) + (ok ? ' · in at ' + esc(GATE_OTHER_UNIT) + ' as ' + esc(s.receivedId) + ' ' + esc(fmt(s.receivedAt)) : '') + '</p></div>'
+            + '<span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase whitespace-nowrap ' + (ok ? 'bg-emerald-100 text-emerald-800">Reached' : 'bg-amber-100 text-amber-800">On the way') + '</span></div>';
+        }).join('') : '<p class="text-center text-xs font-semibold text-gray-400 py-4">' + none + '</p>');
+  }
+  // soft = a repaint (poll / badge): the Employees form keeps what was typed, only its lists are drawn again
+  function goToList(soft) {
+    if (!SHEET) return;
+    SHEET.view = 'goto'; setTitle('Go to ' + GATE_OTHER_UNIT);
+    if (SHEET.who === 'EMPLOYEE') return goToEmployees(soft);
+    var q = (SHEET.q || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+    var hit = function (e) { var t = [e.id, e.name, e.mobile, e.vehicle, e.host].join(' ').toUpperCase(); return q.every(function (w) { return t.indexOf(w) >= 0; }); };
+    var all = gateEntries.filter(isVisInside), inside = all.filter(hit).sort(function (a, b) { return new Date(b.inTime) - new Date(a.inTime); });
+    var row = function (e) {
+      var ph = photoOf(e, 'visitorPhoto');
+      return '<div class="rounded-2xl border border-gray-200 bg-white p-3 flex items-center gap-3">'
+        + '<div class="w-12 h-12 rounded-xl bg-gray-100 shrink-0 overflow-hidden">' + (ph ? '<img src="' + ph + '" class="w-full h-full object-cover" alt="">' : '') + '</div>'
+        + '<div class="min-w-0 flex-1"><p class="text-[13px] font-extrabold text-gray-900 truncate">' + esc(e.name || '-') + ' <span class="text-[10px] font-bold text-gray-400">' + esc(e.id) + '</span></p>'
+        + '<p class="text-[11px] font-semibold text-gray-500 truncate">' + esc([e.mobile, e.vehicle && e.vehicle !== 'N/A' ? e.vehicle : ''].filter(Boolean).join(' · ')) + '</p>'
+        + '<p class="text-[11px] font-semibold text-gray-600 truncate">Met: ' + esc(e.host || '-') + ' · in ' + esc(fmt(e.inTime)) + '</p></div>'
+        + '<button type="button" data-gl-move="' + esc(e.id) + '" class="ios-btn shrink-0 px-3 py-2 rounded-xl bg-purple-600 text-white text-[11px] font-extrabold flex items-center gap-1"><i class="fa-solid fa-person-walking-arrow-right"></i> Send</button></div>';
+    };
+    SHEET.body.innerHTML = whoTabs('VISITOR', { VISITOR: all.length, EMPLOYEE: gateEntries.filter(isEmpIn).length })
+      + '<input type="text" data-gl-q="1" placeholder="Search name / mobile / pass no..." autocomplete="off" class="w-full px-3.5 py-2.5 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white">'
+      + '<p class="text-[11px] font-bold text-gray-400 uppercase">Inside ' + esc(GATE_UNIT) + ' · ' + inside.length + '</p>'
+      + (inside.length ? inside.map(row).join('') : '<p class="text-center text-xs font-semibold text-gray-400 py-6">' + (q.length ? 'No visitor inside matches.' : 'No visitor is inside ' + esc(GATE_UNIT) + ' now.') + '</p>')
+      + sentRows('VISITOR', 'No visitor sent in the last 7 days.');
+    wireTabs(function () { goToList(); });
+    var qi = SHEET.body.querySelector('[data-gl-q]');
+    qi.value = SHEET.q || '';
+    qi.addEventListener('input', function () { SHEET.q = qi.value; var at = qi.selectionStart; goToList(); var n = SHEET && SHEET.body.querySelector('[data-gl-q]'); if (n) { n.focus(); try { n.setSelectionRange(at, at); } catch (x) {} } });
+    SHEET.body.querySelectorAll('[data-gl-move]').forEach(function (b) {
+      b.addEventListener('click', function () { moveVisitor(b.getAttribute('data-gl-move')); });
+    });
+  }
+  // The Employee Master (gate_masters.hosts), else the ERP users of Whom to Meet
+  function empOptions() {
+    var list = ((typeof GATE_MASTERS === 'object' && GATE_MASTERS && GATE_MASTERS.hosts) || []).map(function (h) { return { name: h.name, emp: h.empCode || '', dept: h.dept || '', desig: h.desig || '' }; });
+    if (!list.length) { try { list = visHostOptions().map(function (o) { return { name: o.value, emp: o.emp || '', dept: o.dept || '', desig: '' }; }); } catch (e) {} }
+    return list.filter(function (h) { return h.name; });
+  }
+  function goToEmployees(soft) {
+    var body = SHEET.body;
+    if (!(soft && body.querySelector('[data-gl-empform]'))) {
+      var ph = SHEET.empPh = {};
+      SHEET.emp = null;
+      body.innerHTML = whoTabs('EMPLOYEE', { VISITOR: gateEntries.filter(isVisInside).length, EMPLOYEE: gateEntries.filter(isEmpIn).length })
+        + '<div data-gl-empform="1" class="rounded-2xl border border-sky-200 bg-sky-50/40 p-3 space-y-3">'
+        + '<p class="text-[11px] font-bold text-sky-700 uppercase">Send an employee to ' + esc(GATE_OTHER_UNIT) + '</p>'
+        + '<div><label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Employee *</label>'
+        + '<div data-gl-empchip="1" class="hidden items-center justify-between gap-2 px-3.5 py-2.5 bg-white border border-sky-300 rounded-xl"></div>'
+        + '<div data-gl-empbox="1"><div class="relative">'
+        + '<input type="text" data-gl-empq="1" placeholder="Tap to choose from the Employee Master..." autocomplete="off" class="w-full pl-3.5 pr-11 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-sky-500 focus:bg-white">'
+        + '<button type="button" data-gl-emptgl="1" aria-label="Show the employee list" class="ios-btn absolute right-1.5 top-1/2 -translate-y-1/2 w-8 h-8 rounded-lg text-sky-700 flex items-center justify-center"><i class="fa-solid fa-chevron-down text-xs"></i></button></div>'
+        + '<div data-gl-emplist="1" class="mt-1 max-h-64 overflow-y-auto rounded-xl border border-sky-200 bg-white shadow-sm hidden"></div></div></div>'
+        + field('glEmpWork', 'Work / Purpose', 'e.g. Machine repair, meeting, stock check')
+        + field('glEmpVehicle', 'Vehicle No', 'Blank = on foot', 'list="gateVehicleList" style="text-transform:uppercase"')
+        + photoInput('emp', 'Employee Photo')
+        + btn('data-gl-empsend="1"', '<i class="fa-solid fa-person-walking-arrow-right"></i> Send to ' + esc(GATE_OTHER_UNIT), 'bg-sky-600 text-white')
+        + '</div><div data-gl-emplists="1" class="space-y-3"></div>';
+      wireTabs(function () { goToList(); });
+      wirePhotos(ph);
+      watchVehicle('glEmpVehicle');
+      var qi = body.querySelector('[data-gl-empq]'), lst = body.querySelector('[data-gl-emplist]'), chip = body.querySelector('[data-gl-empchip]');
+      /* Employee dropdown: tapping the box (or ▾) opens the WHOLE Employee Master, A-Z, with the count; typing narrows
+         it (every word over name / Emp Code / designation / department); a tap on a row chooses it; a tap outside, Esc
+         or ▾ again closes it. The list is read when it opens, so lists that arrive later (masters refresh) are used. */
+      var opts = [];
+      var loadOpts = function () {
+        if (!opts.length) opts = empOptions().sort(function (a, b) { return String(a.name).localeCompare(String(b.name)); });
+        return opts;
+      };
+      var open = false;
+      var hide = function () { open = false; lst.classList.add('hidden'); };
+      var pick = function (o) {
+        SHEET.emp = o; hide();
+        chip.innerHTML = '<span class="min-w-0"><span class="block text-[13px] font-extrabold text-gray-900 truncate">' + esc(o.name) + '</span><span class="block text-[11px] font-semibold text-gray-500 truncate">' + esc([o.emp, o.desig, o.dept].filter(Boolean).join(' · ')) + '</span></span>'
+          + '<button type="button" data-gl-empclear="1" class="ios-btn text-[11px] font-bold text-sky-700 shrink-0">Change</button>';
+        chip.classList.remove('hidden'); chip.classList.add('flex'); empBox.classList.add('hidden');
+        chip.querySelector('[data-gl-empclear]').addEventListener('click', function () {
+          SHEET.emp = null; chip.classList.add('hidden'); chip.classList.remove('flex'); empBox.classList.remove('hidden'); qi.value = ''; qi.focus(); draw();
+        });
+      };
+      var draw = function () {
+        var all = loadOpts(), w = qi.value.trim().toUpperCase().split(/\s+/).filter(Boolean);
+        var hits = w.length ? all.filter(function (o) { var t = [o.name, o.emp, o.dept, o.desig].join(' ').toUpperCase(); return w.every(function (x) { return t.indexOf(x) >= 0; }); }) : all;
+        var head = '<div class="sticky top-0 z-10 px-3 py-1.5 bg-sky-50 border-b border-sky-100 text-[10.5px] font-bold text-sky-800">'
+          + (w.length ? hits.length + ' of ' + all.length + ' employees' : all.length + ' employees · type to narrow') + '</div>';
+        lst.innerHTML = all.length ? head + (hits.length ? hits.slice(0, 400).map(function (o) {
+          return '<button type="button" data-gl-emppick="' + all.indexOf(o) + '" class="w-full text-left px-3 py-2 border-b border-gray-100 last:border-0 hover:bg-sky-50 active:bg-sky-100">'
+            + '<span class="block text-[13px] font-bold text-gray-900">' + esc(o.name) + (o.emp ? ' <span class="text-[10px] font-bold text-gray-400">' + esc(o.emp) + '</span>' : '') + '</span>'
+            + '<span class="block text-[11px] font-semibold text-gray-500">' + esc([o.desig, o.dept].filter(Boolean).join(' · ') || '-') + '</span></button>';
+        }).join('') : '<p class="px-3 py-3 text-xs font-semibold text-gray-400">No employee matches "' + esc(qi.value.trim()) + '".</p>')
+          : '<p class="px-3 py-3 text-xs font-semibold text-gray-400">The Employee Master list is not on this phone yet. Refresh the lists with the button at the top while online, then open this again.</p>';
+        open = true; lst.classList.remove('hidden');
+        lst.querySelectorAll('[data-gl-emppick]').forEach(function (b) {
+          b.addEventListener('click', function () { pick(all[+b.getAttribute('data-gl-emppick')]); });
+        });
+      };
+      var empBox = body.querySelector('[data-gl-empbox]');
+      qi.addEventListener('focus', draw);
+      qi.addEventListener('click', function () { if (!open) draw(); });
+      qi.addEventListener('input', draw);
+      qi.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Escape') hide();
+        else if (ev.key === 'Enter') { ev.preventDefault(); var first = lst.querySelector('[data-gl-emppick]'); if (open && first) first.click(); }
+      });
+      body.querySelector('[data-gl-emptgl]').addEventListener('click', function () { if (open) hide(); else { draw(); qi.focus(); } });
+      // a tap outside the box closes the list (the listener goes away with the sheet)
+      var outside = function (ev) {
+        if (!empBox.isConnected) return document.removeEventListener('pointerdown', outside, true);
+        if (open && !empBox.contains(ev.target)) hide();
+      };
+      document.addEventListener('pointerdown', outside, true);
+      var saving = false;
+      body.querySelector('[data-gl-empsend]').addEventListener('click', async function () {
+        if (saving) return;
+        var o = SHEET.emp;
+        if (!o) return showIosBanner('Choose the employee', 'error');
+        if (!ph.emp) return showIosBanner('Take the employee photo', 'error');
+        // already inside here (came from the other unit): that entry goes back instead of a new one
+        var inHere = gateEntries.find(function (e) { return isEmpIn(e) && (o.emp ? e.empCode === o.emp : normKey(e.name) === normKey(o.name)); });
+        var work = $('glEmpWork').value.trim(), veh = $('glEmpVehicle').value.trim().toUpperCase();
+        if (inHere) {
+          if (work) inHere.purpose = work;
+          if (veh) inHere.vehicle = veh;
+          inHere.visitorPhoto = ph.emp;
+          moveOut(inHere);
+          showIosBanner(o.name + ' (inside here as ' + inHere.id + ') sent to ' + GATE_OTHER_UNIT, 'success');
+          return afterMove();
+        }
+        saving = true;
+        var now = new Date().toISOString();
+        var e = {
+          id: genGateId('EMP-'), category: 'EMPLOYEE', name: o.name, empCode: o.emp || '', dept: o.dept || '', desig: o.desig || '',
+          mobile: o.emp || '-', vehicle: veh || 'N/A',
+          host: 'Going to ' + GATE_OTHER_UNIT + (o.dept ? ' | ' + o.dept : ''),
+          purpose: work || 'Official work',
+          visitorPhoto: ph.emp, guard: guard(), inTime: now, outTime: now, status: 'OUT',
+          moveTo: GATE_OTHER, outRemarks: 'Moved to ' + GATE_OTHER_UNIT, outGuard: guard()
+        };
+        commitEntry(e);
+        saving = false;
+        showIosBanner(o.name + ' sent to ' + GATE_OTHER_UNIT + ' (' + e.id + '): ' + GATE_OTHER_NAME + ' sees them under Arriving From › Employees', 'success');
+        goToEmployees(false);
+        afterMove();
+      });
+    }
+    // lists: employees inside here (came from the other unit) + sent in 7 days
+    var ins = gateEntries.filter(isEmpIn).sort(function (a, b) { return new Date(b.inTime) - new Date(a.inTime); });
+    var box = body.querySelector('[data-gl-emplists]');
+    box.innerHTML = '<p class="text-[11px] font-bold text-gray-400 uppercase pt-1">Employees inside ' + esc(GATE_UNIT) + ' (from ' + esc(GATE_OTHER_UNIT) + ') · ' + ins.length + '</p>'
+      + (ins.length ? ins.map(function (e) {
+          var p = photoOf(e, 'visitorPhoto');
+          return '<div class="rounded-2xl border border-gray-200 bg-white p-3 space-y-2"><div class="flex items-center gap-3">'
+            + '<div class="w-12 h-12 rounded-xl bg-gray-100 shrink-0 overflow-hidden">' + (p ? '<img src="' + p + '" class="w-full h-full object-cover" alt="">' : '') + '</div>'
+            + '<div class="min-w-0 flex-1"><p class="text-[13px] font-extrabold text-gray-900 truncate">' + esc(e.name || '-') + ' <span class="text-[10px] font-bold text-gray-400">' + esc(e.id) + '</span></p>'
+            + '<p class="text-[11px] font-semibold text-gray-500 truncate">' + esc([e.empCode, e.dept, e.vehicle && e.vehicle !== 'N/A' ? e.vehicle : ''].filter(Boolean).join(' · ')) + '</p>'
+            + '<p class="text-[11px] font-semibold text-gray-600 truncate">' + esc(String(e.purpose || '').split('•')[0].trim()) + ' · in ' + esc(fmt(e.inTime)) + '</p></div></div>'
+            + '<div class="flex gap-2"><button type="button" data-gl-empback="' + esc(e.id) + '" class="ios-btn flex-1 py-2 rounded-xl bg-sky-600 text-white text-[11px] font-extrabold"><i class="fa-solid fa-person-walking-arrow-right"></i> Back to ' + esc(GATE_OTHER_UNIT) + '</button>'
+            + '<button type="button" data-gl-empout="' + esc(e.id) + '" class="ios-btn flex-1 py-2 rounded-xl bg-gray-100 text-gray-700 text-[11px] font-extrabold"><i class="fa-solid fa-right-from-bracket"></i> Out</button></div></div>';
+        }).join('') : '<p class="text-center text-xs font-semibold text-gray-400 py-4">No employee from ' + esc(GATE_OTHER_UNIT) + ' is inside now.</p>')
+      + sentRows('EMPLOYEE', 'No employee sent in the last 7 days.');
+    box.querySelectorAll('[data-gl-empback]').forEach(function (b) { b.addEventListener('click', function () { moveEmployee(b.getAttribute('data-gl-empback')); }); });
+    box.querySelectorAll('[data-gl-empout]').forEach(function (b) { b.addEventListener('click', function () { employeeOut(b.getAttribute('data-gl-empout')); }); });
   }
   function openIncoming(kind) {
-    openSheet(kind === 'VISITOR' ? 'Visitors from ' + GATE_OTHER_UNIT : 'Arriving');
+    openSheet('Arriving from ' + GATE_OTHER_UNIT);
+    if (kind === 'VISITOR' && !INC.rows.some(function (x) { return x.kind === 'VISITOR'; }) && INC.rows.some(function (x) { return x.kind === 'EMPLOYEE'; })) kind = 'EMPLOYEE';
     arrivingList(kind);
     loadIncoming(true);
   }
@@ -294,6 +535,24 @@
     paintBadges(); closeSheet();
     try { visRefreshUi(); } catch (er) {}
     showIosBanner((d.name || 'Visitor') + ' taken in as ' + e.id + ' (Existing Visitor)', 'success');
+  }
+  async function takeEmployee(x) {
+    var d = x.data || {};
+    var photo = await otherPhoto(x.uid, 'visitorPhoto');
+    var now = new Date().toISOString();
+    var e = {
+      id: genGateId('EMP-'), category: 'EMPLOYEE', name: d.name, empCode: d.empCode || '', dept: d.dept || '', desig: d.desig || '',
+      mobile: d.mobile || d.empCode || '-', vehicle: d.vehicle || 'N/A',
+      host: 'From ' + GATE_OTHER_UNIT + ' | Out ' + (d.id || '-') + (d.dept ? ' | ' + d.dept : ''),
+      purpose: String(d.purpose || 'Official work').split('•')[0].trim() + ' • Came from ' + GATE_OTHER_UNIT + ' (' + (d.id || '') + ')',
+      visitorPhoto: photo || null, guard: guard(), inTime: now, outTime: null, status: 'IN',
+      movedFrom: x.gate, linkUid: x.uid, linkId: d.id
+    };
+    commitEntry(e);
+    INC.rows = INC.rows.filter(function (r) { return r.uid !== x.uid; });
+    paintBadges(); closeSheet();
+    try { visRefreshUi(); } catch (er) {}
+    showIosBanner((d.name || 'Employee') + ' taken in as ' + e.id + ': Go to › Employees has Back / Out for them', 'success');
   }
 
   /* ── 3. VEHICLE CROSS-CHECK ───────────────────────────────────────── */
@@ -324,7 +583,7 @@
     var soon = function () { clearTimeout(t); t = setTimeout(run, 700); };
     inp.addEventListener('input', soon); inp.addEventListener('change', soon); inp.addEventListener('blur', soon);
   }
-  ['inVehicle', 'vehicleNo', 'dkVehicleNo', 'hydraVehicleNo', 'outTrVehicle'].forEach(watchVehicle);
+  ['inVehicle', 'vehicleNo', 'dkVehicleNo', 'hydraVehicleNo', 'outTrVehicle'].forEach(watchVehicle);   // + glEmpVehicle when its form opens
 
   /* ── start ────────────────────────────────────────────────────────── */
   paintBadges();
@@ -332,5 +591,5 @@
   setInterval(function () { if (document.visibilityState !== 'hidden') loadIncoming(true); }, POLL_MS);
   window.addEventListener('online', function () { setTimeout(function () { loadIncoming(true); }, 1500); });
 
-  window.GateLink = { openTransfer: openTransfer, openIncoming: openIncoming, moveVisitor: moveVisitor, watchVehicle: watchVehicle, refresh: function () { return loadIncoming(true); } };
+  window.GateLink = { openTransfer: openTransfer, openIncoming: openIncoming, openGoTo: openGoTo, moveVisitor: moveVisitor, watchVehicle: watchVehicle, refresh: function () { return loadIncoming(true); } };
 })();

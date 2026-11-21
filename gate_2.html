@@ -216,6 +216,21 @@
                     <span class="text-[11px] font-medium text-gray-400">Select Action</span>
                 </div>
 
+                <!-- UNIVERSAL SEARCH (section 1E): type what you want to do, in Hinglish / Hindi / English ("employee out karna hai",
+                     "maal aaya", "गाड़ी बाहर") -> the matching gate tasks, tap one to open it -->
+                <div id="gsBox" class="mb-3.5" data-no-caps>
+                    <div class="relative">
+                        <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm"></i>
+                        <input type="search" id="gsInput" autocomplete="off" enterkeyhint="go" placeholder="Kya karna hai? jaise: maal aaya, visitor bahar…"
+                            class="w-full pl-10 pr-20 py-3 bg-gray-100/90 border border-gray-200/80 rounded-2xl text-[14px] font-semibold text-gray-900 placeholder:text-gray-400 placeholder:font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                        <button type="button" id="gsClear" class="hidden absolute right-11 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full text-gray-400 flex items-center justify-center" aria-label="Clear"><i class="fa-solid fa-circle-xmark"></i></button>
+                        <button type="button" id="gsMic" class="hidden absolute right-2 top-1/2 -translate-y-1/2 w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-sm" aria-label="Bol kar khojein (voice)"><i class="fa-solid fa-microphone"></i></button>
+                    </div>
+                    <p class="mt-1.5 px-1 text-[10.5px] font-semibold text-gray-400">क्या करना है? लिखें या बोलें, जैसे “employee out karna hai”, “गाड़ी आई”</p>
+                    <div id="gsChips" class="flex gap-1.5 overflow-x-auto mt-2 pb-0.5" style="scrollbar-width:none"></div>
+                    <div id="gsResults" class="hidden mt-2.5 space-y-2"></div>
+                </div>
+
                 <div class="grid grid-cols-2 gap-3">
                     <!-- INWARD BUTTON -->
                     <button onclick="showView('inwardMenu')" class="ios-btn relative bg-blue-500/10 border border-blue-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-blue-600">
@@ -2496,6 +2511,193 @@
         };
 
         // ==========================================
+        // 1E. UNIVERSAL SEARCH: "kya karna hai?" -> the gate task, in Hinglish / Hindi / English
+        // ==========================================
+        /* One search bar on the Gate Operations card for EVERY task of the gate (forms, approvals, lists, between-unit
+           moves, scan, verify, masters, sync). The guard types (or says, mic) what he wants in his own words: a whole
+           sentence works ("employee out karna hai", "maal aa gaya", "visitor ko bahar karna", "गाड़ी बाहर जा रही है").
+           How it understands:
+             1. normal form: lower case, Hinglish spellings evened out (gsNorm: double letters once, w = v, z = j, ...),
+                "aa gaya / aa gayi" read as one word "aaya" (so the "gaya" inside never means OUT);
+             2. filler words dropped (GS_FILL: karna, hai, mujhe, chahiye, ka, ki, ko, se, ...);
+             3. every other word -> a MEANING (GS_C: IN, OUT, MATERIAL, VEHICLE, VISITOR, EMPLOYEE, UNIT, ...), from
+                English, Hinglish and Hindi (Devanagari) words; a word of 4+ letters also matches a longer one
+                (visitor -> visitors);
+             4. every task (GS_TASKS: Hinglish title, Hindi line, where it is, its meanings + extra words) is scored:
+                +10 per meaning it has, -4 per asked meaning it lacks, +3 per typed word in its own words; the best first.
+           Empty box = quick chips + the most used tasks. Enter = the first result. A new task = one GS_TASKS entry. */
+        const GS_FILL = new Set(('karna krna karni karne karo kar krdo kardo kr do hai h hain he ho hoga hogi tha thi ka ki ke ko se me mein mai main par pe'
+            + ' mujhe muje mjhe hame hamko humko chahiye chaiye chahie kaise kese kahan kaha kya kyaa ek abhi jaldi please plz pls to the a an is are'
+            + ' raha rahi rahe rha rhi wala wali wale vala vali vale ye yeh vo woh is us iska uska apna aur or and of for wo bhi hi na nahi'
+            + ' करना करनी करने कर है हैं था थी का की के को से में मैं पर मुझे चाहिए कैसे कहाँ क्या एक अभी रहा रही रहे वाला वाली और भी').split(/\s+/).map(w => /[\u0900-\u097f]/.test(w) ? w : gsNorm(w)));
+        // meaning -> words (Hinglish / English in Latin letters, Hindi in Devanagari)
+        const GS_C = {
+            IN: 'in inward andar aya ayi aye aana ana aagaya agaya receive recieve received receiving aavak avak entry enter arrive arrived arriving aaya aayi आया आई आए आये अंदर आना आवक इनवर्ड एंट्री आ गया आ गई',
+            OUT: 'out outward bahar baahar bhar jana jaana ja jaa gaya gayi gaye nikal nikalna nikla nikli exit leave leaving chala chali chhodna chodna बाहर जाना गया गई निकलना निकल आउट छोड़',
+            MATERIAL: 'mal maal material saman samaan goods item items cheez chiz bill माल सामान आइटम चीज बिल',
+            VEHICLE: 'gadi gaadi gari gaari truck tempo vehicle tractor trolley dala pickup car गाड़ी गाडी ट्रक टेम्पो वाहन',
+            VISITOR: 'visitor visiter guest mehman mehmaan milne milna mulakat mulaqat outsider meeting विज़िटर विजिटर मेहमान मिलने मुलाकात',
+            EMPLOYEE: 'employee employe emp karmchari karamchari staff worker kaamgar kamgar mazdoor majdoor labour labor banda कर्मचारी स्टाफ मजदूर कामगार एम्प्लॉई',
+            UNIT: 'unit unit1 unit2 dusre dusra dusri doosre other next yunit factory plant यूनिट दूसरे दूसरी फैक्ट्री',
+            TRANSFER: 'transfer bhejna bhejo bheja send sending shift shifting ट्रांसफर भेजना भेजो शिफ्ट',
+            STORE: 'store godown stor स्टोर गोदाम',
+            DISPATCH: 'dispatch despatch packing paking slip parchi challan maal-bhejna डिस्पैच पैकिंग पर्ची चालान',
+            KANTA: 'kanta kaanta dharamkanta dharam weigh weight weighing tol taul tolna vajan wajan tare gross kata kata धर्म कांटा काँटा वजन तौल',
+            HYDRA: 'hydra hidra jcb crane kren machine हाइड्रा जेसीबी क्रेन',
+            SAMPLE: 'sample sampal namuna returnable nonreturnable other सैंपल नमूना',
+            RETURN: 'return vapas vapis vapsi lotana lautana wapas wapis लौटाना वापस वापसी रिटर्न',
+            PENDING: 'pending approval approve manjuri manzoori ruka ruki vait wait intezar baki baaki status बाकी मंजूरी अप्रूवल रुका इंतजार',
+            NEW: 'new naya nayi naye banana bharna fill form नया नई नए बनाना भरना फॉर्म',
+            EXISTING: 'existing inside list kon kaun konse sab dekhna dikhao check चालू अंदर वाले लिस्ट कौन देखना',
+            SCAN: 'scan scaner scanner qr kyuar code barcode स्कैन क्यूआर कोड',
+            VERIFY: 'verify verification jach janch jaanch pass pas check चेक जांच जाँच पास',
+            PARTY: 'party parti supplier vendor company पार्टी सप्लायर कंपनी',
+            SYNC: 'sync sink refresh update reload naya-data latest सिंक रिफ्रेश अपडेट',
+            SETTINGS: 'setting settings guard shift naam pin सेटिंग गार्ड शिफ्ट',
+            BACKUP: 'backup csv export download excel report बैकअप रिपोर्ट डाउनलोड'
+        };
+        // a function declaration (hoisted): GS_FILL above already normalises its words with it
+        function gsNorm(t) {
+            return String(t || '').toLowerCase()
+                .replace(/\baa+\s*ga(y|i)+(a|i|e)\b/g, ' aaya ').replace(/\baa\s*gai\b/g, ' aaya ')          // "aa gaya" = arrived
+                .replace(/आ\s*(गया|गई|गए)/g, ' आया ')
+                .replace(/[^a-z0-9\u0900-\u097f]+/g, ' ')
+                .replace(/[a-z]+/g, w => w.replace(/w/g, 'v').replace(/z/g, 'j').replace(/ph/g, 'f').replace(/q/g, 'k').replace(/([a-z])\1+/g, '$1'))
+                .trim();
+        }
+        const GS_WORDS = (() => {   // meaning -> normalised Latin words / Devanagari words
+            const o = {};
+            Object.keys(GS_C).forEach(k => {
+                const lat = [], dev = [];
+                GS_C[k].split(/\s+/).forEach(w => { if (/[\u0900-\u097f]/.test(w)) dev.push(w); else lat.push(gsNorm(w)); });
+                o[k] = { lat: new Set(lat), dev };
+            });
+            return o;
+        })();
+        function gsMeanings(q) {
+            const n = gsNorm(q), raw = String(q || ''), toks = n.split(' ').filter(t => t && !GS_FILL.has(t)), found = new Set();
+            Object.keys(GS_WORDS).forEach(k => {
+                const W = GS_WORDS[k];
+                if (toks.some(t => W.lat.has(t) || (t.length >= 4 && [...W.lat].some(w => w.length >= 4 && (t.startsWith(w) || (t.length >= 5 && w.startsWith(t))))))) found.add(k);
+                if (W.dev.some(w => raw.indexOf(w) >= 0 || n.indexOf(w) >= 0)) found.add(k);
+            });
+            // "aaya" also reads as IN on its own; OUT words inside an arrival sentence were already turned into "aaya"
+            return { found, toks };
+        }
+        const GSO = () => (typeof GATE_OTHER_UNIT !== 'undefined' ? GATE_OTHER_UNIT : 'other unit');
+        const gsGo = v => () => showView(v);
+        const gsLink = (fn, a) => () => { if (window.GateLink && GateLink[fn]) GateLink[fn](a); else showIosBanner('Internet / page still loading: try again in a moment', 'info'); };
+        // [id, icon, colour, Hinglish title, Hindi line, where, meanings, extra words, run]
+        const GS_TASKS = [
+            ['inw_new', 'fa-box-open', 'blue', () => 'Naya maal aaya · Inward entry', 'नया माल आया – इनवर्ड एंट्री भरें', 'Inward › New Inward Entry', 'IN MATERIAL NEW VEHICLE', 'inward bill po pr party', gsGo('inwardForm')],
+            ['inw_pend', 'fa-user-clock', 'orange', () => 'Inward approval pending', 'इनवर्ड मंजूरी बाकी – देखें / अनलोडिंग दें', 'Inward › Approval Pending', 'IN MATERIAL PENDING', 'unloading allow', gsGo('inwardPending')],
+            ['inw_out', 'fa-truck-ramp-box', 'emerald', () => 'Inward gaadi bahar karna (khali gaadi)', 'माल उतारने के बाद गाड़ी बाहर करें', 'Inward › Existing Inward', 'IN MATERIAL VEHICLE OUT EXISTING', 'unload khali empty', gsGo('inwardExisting')],
+            ['out_store', 'fa-warehouse', 'orange', () => 'Store se maal bahar · Out From Store', 'स्टोर से माल बाहर – गेट पास से', 'Outward › Out From Store', 'OUT MATERIAL STORE', 'gate pass outward bill', gsGo('outwardStoreForm')],
+            ['out_disp', 'fa-truck-fast', 'orange', () => 'Dispatch gaadi bahar · Packing slip', 'डिस्पैच / पैकिंग स्लिप वाली गाड़ी बाहर', 'Outward › Out From Dispatch', 'OUT DISPATCH VEHICLE MATERIAL', 'packing slip tempo', gsGo('outwardDispatchForm')],
+            ['vis_new', 'fa-user-plus', 'emerald', () => 'Naya visitor andar · Visitor entry', 'नया विज़िटर – पास बनाएं, मंजूरी भेजें', 'Visitor › New Visitor Entry', 'VISITOR NEW IN', 'pass photo mobile milne', gsGo('visitorForm')],
+            ['vis_pend', 'fa-user-clock', 'orange', () => 'Visitor approval pending', 'विज़िटर की मंजूरी बाकी – देखें', 'Visitor › Approval Pending', 'VISITOR PENDING', 'approve done pass', gsGo('visitorPending')],
+            ['vis_out', 'fa-person-walking-arrow-right', 'blue', () => 'Visitor bahar karna (Out)', 'विज़िटर को बाहर करें – फोटो के साथ', 'Visitor › Existing Visitor', 'VISITOR OUT EXISTING', 'andar wale photo', gsGo('visitorExisting')],
+            ['emp_out', 'fa-id-badge', 'sky', () => 'Employee out / wapas ' + GSO() + ' bhejna', 'कर्मचारी बाहर करें या वापस भेजें', 'Visitor › Go to › Employees', 'EMPLOYEE OUT EXISTING', 'back premises', gsLink('openGoTo', 'EMPLOYEE')],
+            ['emp_go', 'fa-person-walking-arrow-right', 'sky', () => 'Employee ko ' + GSO() + ' bhejna', 'कर्मचारी को दूसरी यूनिट भेजें', 'Visitor › Go to ' + '› Employees', 'EMPLOYEE UNIT TRANSFER OUT', 'photo kaam', gsLink('openGoTo', 'EMPLOYEE')],
+            ['emp_arr', 'fa-people-arrows', 'violet', () => GSO() + ' se employee aaya', 'दूसरी यूनिट से कर्मचारी आया – अंदर लें', 'Visitor › Arriving From › Employees', 'EMPLOYEE UNIT IN', 'take in', gsLink('openIncoming', 'EMPLOYEE')],
+            ['vis_go', 'fa-person-walking-arrow-right', 'purple', () => 'Visitor ko ' + GSO() + ' bhejna', 'विज़िटर को दूसरी यूनिट भेजें', 'Visitor › Go to', 'VISITOR UNIT TRANSFER OUT', 'send', gsLink('openGoTo', 'VISITOR')],
+            ['vis_arr', 'fa-people-arrows', 'violet', () => GSO() + ' se visitor aaya', 'दूसरी यूनिट से विज़िटर आया – अंदर लें', 'Visitor › Arriving From', 'VISITOR UNIT IN', 'take in', gsLink('openIncoming', 'VISITOR')],
+            ['tr_send', 'fa-truck-arrow-right', 'purple', () => 'Maal ' + GSO() + ' bhejna · Transfer', 'माल दूसरी यूनिट भेजें – ट्रांसफर', 'Transfer › Send', 'TRANSFER MATERIAL UNIT OUT', 'gate pass store transfer', () => { if (typeof gateOpenTransferOut === 'function') gateOpenTransferOut(); }],
+            ['tr_arr', 'fa-truck-ramp-box', 'emerald', () => GSO() + ' se transfer maal aaya', 'दूसरी यूनिट से ट्रांसफर माल आया – रिसीव करें', 'Transfer › Arriving', 'TRANSFER MATERIAL UNIT IN', 'receive', gsLink('openIncoming', 'TRANSFER')],
+            ['dk', 'fa-weight-scale', 'cyan', () => 'Dharam kanta parchi · Gaadi tolna', 'धर्म कांटा पर्ची – गाड़ी का वजन', 'Dharam Kanta', 'KANTA VEHICLE NEW', 'tare gross weight slip', gsGo('dharamKantaForm')],
+            ['hyd_new', 'fa-truck-monster', 'amber', () => 'Hydra / JCB andar · Nayi entry', 'हाइड्रा / जेसीबी की नई एंट्री', 'Hydra / JCB › New Entry', 'HYDRA NEW IN', 'crane approver', gsGo('hydraForm')],
+            ['hyd_pend', 'fa-user-clock', 'orange', () => 'Hydra / JCB approval pending', 'हाइड्रा मंजूरी बाकी – काम शुरू करें', 'Hydra / JCB › Approval Pending', 'HYDRA PENDING', 'start work timer', gsGo('hydraPending')],
+            ['hyd_out', 'fa-stopwatch', 'blue', () => 'Hydra timer / kaam khatam / bahar', 'हाइड्रा टाइमर, काम पूरा, बाहर करें', 'Hydra / JCB › Existing', 'HYDRA OUT EXISTING', 'timer stop store entry', gsGo('hydraExisting')],
+            ['smp_new', 'fa-boxes-packing', 'rose', () => 'Sample / other item aaya · Nayi entry', 'सैंपल / अन्य सामान की नई एंट्री', 'Sample & Other › New Entry', 'SAMPLE NEW IN MATERIAL', 'returnable non returnable', gsGo('sampleForm')],
+            ['smp_pend', 'fa-user-clock', 'orange', () => 'Sample approval pending', 'सैंपल मंजूरी बाकी', 'Sample & Other › Approval Pending', 'SAMPLE PENDING', 'done inward', gsGo('samplePending')],
+            ['smp_ret', 'fa-rotate-left', 'blue', () => 'Sample wapas karna · Return outward', 'सैंपल वापस करें – रिटर्न', 'Sample & Other › Return Pending', 'SAMPLE RETURN OUT', 'returnable', gsGo('sampleReturn')],
+            ['scan', 'fa-qrcode', 'gray', () => 'QR scan karna (slip / bill / pass)', 'क्यूआर स्कैन करें – पर्ची, बिल, पास', 'Scan QR', 'SCAN', 'camera', () => { if (typeof openScanner === 'function') openScanner(); }],
+            ['verify', 'fa-shield-halved', 'indigo', () => 'Gate pass check / verify karna', 'गेट पास जांचें', 'Verify Pass', 'VERIFY', 'mark out', () => { if (typeof openQrVerifyModal === 'function') openQrVerifyModal(); }],
+            ['pass_new', 'fa-receipt', 'orange', () => 'Naya store gate pass banana', 'नया स्टोर गेट पास बनाएं', 'Masters › Store Gate Pass', 'STORE NEW VERIFY', 'gate pass', () => { if (typeof openMasterModal === 'function') openMasterModal('passes'); }],
+            ['party', 'fa-address-book', 'slate', () => 'Party / supplier add karna', 'पार्टी / सप्लायर जोड़ें', 'Masters › Parties', 'PARTY NEW', 'add', () => { if (typeof openMasterModal === 'function') openMasterModal('parties'); }],
+            ['sync', 'fa-rotate', 'blue', () => 'Data sync / list refresh', 'डेटा सिंक करें, लिस्ट ताज़ा करें', 'Top bar › Refresh', 'SYNC', 'net internet', () => { if (typeof gateLoadMasters === 'function') gateLoadMasters(true); if (typeof gateSync === 'function') gateSync(true); showIosBanner('Refreshing the lists and syncing…', 'info'); }],
+            ['settings', 'fa-gear', 'slate', () => 'Guard naam / shift / backup', 'गार्ड का नाम, शिफ्ट, बैकअप', 'Settings', 'SETTINGS BACKUP', 'pin storage', () => { if (typeof openSettingsModal === 'function') openSettingsModal(); }]
+        ].map(a => ({ id: a[0], ic: a[1], col: a[2], title: a[3], hi: a[4], where: a[5], c: a[6].split(' '), kw: gsNorm(a[7] + ' ' + a[3]() + ' ' + a[5]), run: a[8] }));
+        const GS_TOP = ['inw_new', 'out_store', 'vis_new', 'vis_out', 'emp_out', 'dk', 'scan'];
+        const GS_CHIPS = [['Maal aaya', 'maal aaya'], ['Gaadi bahar', 'gaadi bahar'], ['Visitor', 'visitor'], ['Employee out', 'employee out'], ['Kanta', 'kanta'], ['Transfer', 'transfer'], ['Hydra', 'hydra'], ['Sample', 'sample'], ['Pending', 'pending'], ['Scan', 'scan']];
+        function gsRank(q) {
+            const { found, toks } = gsMeanings(q);
+            if (!found.size && !toks.length) return [];
+            return GS_TASKS.map((t, i) => {
+                let sc = 0;
+                found.forEach(k => { sc += t.c.indexOf(k) >= 0 ? 10 : -4; });
+                const kws = t.kw.split(' ');
+                toks.forEach(w => { if (w.length >= 2 && kws.some(k => k === w || (w.length >= 3 && k.startsWith(w)))) sc += 3; });
+                return { t, sc, i };
+            }).filter(x => x.sc > 0).sort((a, b) => b.sc - a.sc || a.i - b.i).slice(0, 6).map(x => x.t);
+        }
+        const GS_COL = { blue: 'bg-blue-600', orange: 'bg-orange-500', emerald: 'bg-emerald-600', sky: 'bg-sky-600', violet: 'bg-violet-600', purple: 'bg-purple-600', cyan: 'bg-cyan-600', amber: 'bg-amber-500', rose: 'bg-rose-500', gray: 'bg-gray-800', indigo: 'bg-indigo-600', slate: 'bg-slate-600' };
+        let GS_LAST = [];
+        function gsRender() {
+            const inp = document.getElementById('gsInput'), box = document.getElementById('gsResults');
+            if (!inp || !box) return;
+            const q = inp.value.trim();
+            document.getElementById('gsClear').classList.toggle('hidden', !q);
+            if (!q && document.activeElement !== inp) { box.classList.add('hidden'); GS_LAST = []; return; }
+            const list = q ? gsRank(q) : GS_TOP.map(id => GS_TASKS.find(t => t.id === id));
+            GS_LAST = list;
+            box.classList.remove('hidden');
+            box.innerHTML = (q ? '' : '<p class="px-1 text-[10.5px] font-bold text-gray-400 uppercase">Zyada use hone wale · ज़्यादा इस्तेमाल</p>')
+                + (list.length ? list.map((t, i) => `<button type="button" data-gs="${t.id}" class="ios-btn w-full flex items-center gap-3 p-3 rounded-2xl border ${i === 0 && q ? 'border-blue-300 bg-blue-50/70' : 'border-gray-200 bg-white'} text-left">
+                        <div class="w-10 h-10 rounded-xl ${GS_COL[t.col] || 'bg-blue-600'} text-white flex items-center justify-center shrink-0"><i class="fa-solid ${t.ic}"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-gray-900 leading-snug">${esc(t.title())}</span>
+                            <span class="block text-[12px] font-semibold text-gray-600 leading-snug">${esc(t.hi)}</span>
+                            <span class="block text-[10px] font-bold text-gray-400 mt-0.5 truncate">${esc(t.where)}</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-gray-300 text-xs"></i>
+                    </button>`).join('')
+                    : `<div class="text-center py-5 px-3 rounded-2xl bg-gray-50 border border-dashed border-gray-200">
+                        <p class="text-[13px] font-bold text-gray-600">Kuch nahi mila · कुछ नहीं मिला</p>
+                        <p class="text-[11px] font-semibold text-gray-400 mt-1">Aise likhein: “maal aaya”, “visitor bahar”, “kanta parchi”, “employee out”</p></div>`);
+        }
+        function gsRun(id) {
+            const t = GS_TASKS.find(x => x.id === id); if (!t) return;
+            const inp = document.getElementById('gsInput'); inp.value = ''; inp.blur();
+            document.getElementById('gsResults').classList.add('hidden');
+            try { t.run(); } catch (e) { console.warn('[gate] search task failed', e); }
+        }
+        function gsInit() {
+            const inp = document.getElementById('gsInput'); if (!inp || inp.dataset.gsOn) return;
+            inp.dataset.gsOn = '1';
+            document.getElementById('gsChips').innerHTML = GS_CHIPS.map(c => `<button type="button" data-gsq="${esc(c[1])}" class="ios-btn shrink-0 px-3 py-1.5 rounded-full bg-blue-50 border border-blue-100 text-[11.5px] font-bold text-blue-700 whitespace-nowrap">${esc(c[0])}</button>`).join('');
+            inp.addEventListener('input', gsRender);
+            inp.addEventListener('focus', gsRender);
+            inp.addEventListener('blur', () => setTimeout(gsRender, 180));
+            inp.addEventListener('keydown', e => {
+                if (e.key === 'Enter') { e.preventDefault(); if (GS_LAST[0]) gsRun(GS_LAST[0].id); }
+                else if (e.key === 'Escape') { inp.value = ''; inp.blur(); gsRender(); }
+            });
+            const box = document.getElementById('gsBox');
+            box.addEventListener('pointerdown', e => { if (e.target.closest('[data-gs],[data-gsq],#gsClear,#gsMic')) e.preventDefault(); });   // keep the box open while tapping a row
+            box.addEventListener('click', e => {
+                const r = e.target.closest('[data-gs]'); if (r) return gsRun(r.getAttribute('data-gs'));
+                const c = e.target.closest('[data-gsq]'); if (c) { inp.value = c.getAttribute('data-gsq'); inp.focus(); return gsRender(); }
+                if (e.target.closest('#gsClear')) { inp.value = ''; inp.focus(); gsRender(); }
+            });
+            // Voice: the phone's own speech typing, Hindi (it also takes Hinglish / English); only where the browser has it
+            const SR = window.SpeechRecognition || window.webkitSpeechRecognition, mic = document.getElementById('gsMic');
+            if (SR && mic) {
+                mic.classList.remove('hidden');
+                mic.addEventListener('click', () => {
+                    let rec; try { rec = new SR(); } catch (e) { return; }
+                    rec.lang = 'hi-IN'; rec.interimResults = true; rec.maxAlternatives = 1;
+                    mic.classList.add('animate-pulse', 'bg-red-600'); mic.classList.remove('bg-blue-600');
+                    const stop = () => { mic.classList.remove('animate-pulse', 'bg-red-600'); mic.classList.add('bg-blue-600'); };
+                    rec.onresult = ev => { inp.value = Array.from(ev.results).map(r => r[0].transcript).join(' '); gsRender(); };
+                    rec.onerror = () => { stop(); showIosBanner('Awaaz samajh nahi aayi, dobara bolein ya likhein', 'info'); };
+                    rec.onend = () => { stop(); inp.focus(); gsRender(); };
+                    try { rec.start(); } catch (e) { stop(); }
+                });
+            }
+        }
+
+        // ==========================================
         // 1D. INWARD FORM: searchable Party box, PO / PR popup, vehicle from the list only
         // ==========================================
         /* gateCombo: a text box that is only a SEARCH box over a list. What is typed filters the list; the value
@@ -2568,6 +2770,7 @@
             gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
             gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
             gateCombo({ inputId: 'hydraSupplierName', listId: 'hydraSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
+            gsInit();   // 1E UNIVERSAL SEARCH
             gateCombo({ inputId: 'hydraApprover', listId: 'hydraApproverList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a Hydra / JCB.' });
             gateCombo({ inputId: 'inApprover', listId: 'inApproverList', options: inwApOptions, emptyText: 'Not in the Whom to Approve list. The Admin adds people in ERP › Dropdown Master › Inward › Whom to Approve.' });
             gateCombo({ inputId: 'smpSupplier', listId: 'smpSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
