@@ -18044,6 +18044,8 @@ window.cancelStoreRecord=async function(kind,id,no){
   const stamp=SARV_CANCEL_MARK+' on '+pStamp()+' by Admin — Reason: '+reason.trim()+' | Items: '+(itemsTxt||'—')+(h.data.notes?' | Earlier notes: '+h.data.notes:'');
   const u=await SB.from(hTable).update({notes:stamp}).eq('id',id);
   if(u.error)throw u.error;
+  // A cancelled Inward frees its Yarn Unloading No. for the right receipt (no column yet = nothing to free)
+  if(hTable==='inward_entries'){try{await SB.from('inward_entries').update({yarn_ul_no:null}).eq('id',id);}catch(e){}}
   const del=await SB.from(lTable).delete().eq(fk,id);
   if(del.error){
     // Put the notes back so the record doesn't read cancelled with its stock still counted.
@@ -18205,6 +18207,9 @@ async function loadInwardForEdit(id,no){
   clearInwardForm(true);                   // also clears any previous edit state
   sarvEditingInwardId=e.id;
   sarvEditingInwardNo=e.document_no||no||'';
+  // YARN UNLOADING LINK: the number it carries, in the record's own store's list
+  sarvInwYarnUl.want=e.yarn_ul_no||'';sarvInwYarnUl.editHad=!!e.yarn_ul_no;sarvInwYarnUl.editStore=e.store||'';sarvInwYarnUl.sig='';
+  setTimeout(()=>inwYarnUlRefresh_(true),600);
   // Kept through the edit so the regenerated PDF still names the supervisor.
   sarvInwUnloadActive=unloadInfoFrom_(e.unload_info);
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
@@ -20100,20 +20105,32 @@ window.addEventListener('DOMContentLoaded',()=>{
    tag(titleTx);
    doc.setFont(undefined,'bold');
    const tagW=tagLastW;
-   // Header, centred; shrunk if it would reach the tag box on the right.
+   /* Gate-2 QR (sarv-qr.js), 40 mm x 40 mm in the top-left corner of the Supplier Copy (Inward / NB) and the
+      Receiver Copy (Outward): d.__gateQr is set by buildStoreNativePdfBlob only for those. The heading and the
+      detail rows move to its right (qrW), so nothing is drawn over it; the table starts under it. */
+   let qrW=0;
+   if(d.__gateQr&&window.SarvQR&&SarvQR.drawPdf(doc,d.__gateQr,x,y,40)){
+     qrW=43;
+     doc.setFont(undefined,'bold');doc.setFontSize(6);doc.setTextColor(51,65,85);
+     doc.text('Scan at Gate-2',x+20,y+42.2,{align:'center'});
+     doc.setTextColor(0,0,0);
+   }
+   // Header, centred; shrunk if it would reach the tag box on the right (or the QR on the left).
+   const headRoom=w-2*Math.max(tagW,qrW)-6;
    const code=TX('head.code',sarvStoreCode_(d&&d.store));
    doc.setFont(undefined,'bold');
-   R('head.code');fitFs(code,FS('head.code',15*K),w-2*tagW-6);
+   R('head.code');fitFs(code,FS('head.code',15*K),headRoom);
    doc.text(code,x+w/2,y+6*K,{align:'center'});
    const et=d.entryType||(isOut?'OUTWARD':'INWARD');
    const etColor=isOut?[124,58,237]:isRet?[2,132,199]:(/NB/i.test(et)?[220,38,38]:[21,128,61]);
-   R('head.type');fitFs(String(et),FS('head.type',9.5*K),w-2*tagW-6); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
+   R('head.type');fitFs(String(et),FS('head.type',9.5*K),headRoom); doc.setTextColor(etColor[0],etColor[1],etColor[2]);
    doc.text(String(et),x+w/2,y+10.8*K,{align:'center'});
    doc.setTextColor(0,0,0);
-   doc.setLineWidth(0.5); doc.line(x,y+13.2*K,x+w,y+13.2*K);
+   doc.setLineWidth(0.5); doc.line(x+qrW,y+13.2*K,x+w,y+13.2*K);
    let yy=y+13.2*K+4.6*K;
-   // Meta info — two columns of label/value pairs
+   // Meta info — two columns of label/value pairs (right of the QR when there is one)
    const halfW=(w-4)/2;
+   const metaX=x+qrW, mHalfW=(w-qrW-4)/2;
    const leftPairs=[], rightPairs=[];
    if(isRet){
      leftPairs.push(['Return No:',d.inwardNo||'-']);
@@ -20138,6 +20155,7 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.gatePass)rightPairs.push(['Gate Pass:',d.gatePass]);
      if(d.lotNo)rightPairs.push(['Lot No.:',d.lotNo]);
      if(d.natureOfInward)rightPairs.push(['Nature of Inward:',d.natureOfInward]);
+     if(d.yarnUlNo)rightPairs.push(['Yarn Unloading No:',d.yarnUlNo]);
      // Last row of the second column (see inwUnloadRows_).
      inwUnloadRows_(d,'right').forEach(p=>rightPairs.push(p));
    } else {
@@ -20189,7 +20207,7 @@ window.addEventListener('DOMContentLoaded',()=>{
       (at most 46% of the column; a longer label wraps), so a bigger font can
       never make a label run into its value. */
    const lblW=pairs=>{doc.setFont(undefined,'bold');doc.setFontSize(mfsL);
-     return Math.min(halfW*0.46,Math.max(10,...pairs.map(p=>doc.getTextWidth(LB(p[0])))))+1.6;};
+     return Math.min(mHalfW*0.46,Math.max(10,...pairs.map(p=>doc.getTextWidth(LB(p[0])))))+1.6;};
    const pair=(lbl,val,lx,avail,lw,ty)=>{
      R('meta.label');doc.__orig=lbl;doc.setFontSize(mfsL);
      doc.setFont(undefined,'bold');const la=doc.splitTextToSize(LB(lbl),lw-1);doc.text(la,lx,ty);
@@ -20199,9 +20217,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      return ty+mlh*Math.max(1,ls.length,la.length)+0.5;
    };
    const lw1=lblW(leftPairs),lw2=lblW(rightPairs);
-   leftPairs.forEach(([lbl,val])=>{ly=pair(lbl,val,x,halfW,lw1,ly);});
-   rightPairs.forEach(([lbl,val])=>{ry=pair(lbl,val,x+halfW+4,halfW,lw2,ry);});
-   yy=Math.max(ly,ry)+1.5;
+   leftPairs.forEach(([lbl,val])=>{ly=pair(lbl,val,metaX,mHalfW,lw1,ly);});
+   rightPairs.forEach(([lbl,val])=>{ry=pair(lbl,val,metaX+mHalfW+4,mHalfW,lw2,ry);});
+   yy=Math.max(ly,ry,qrW?y+45:0)+1.5;
    // Items table
    let head,body,foot;
    /* body row index → that strip's coloured lines. didDrawCell reads from this.
@@ -20613,6 +20631,19 @@ window.addEventListener('DOMContentLoaded',()=>{
    });
    return doc.output('blob');
  }
+ /* What the Gate-2 QR of a Store entry holds (sarv-qr.js encode / gate_2.html gateScan*): the document no.,
+    store, type, party, date and the references the gate form fills in; first item + total qty for the
+    gate's card. Kept short (every key is printed into the code). */
+ function sarvStoreGateQr_(kind,d,items){
+   const real=(items||[]).filter(it=>it&&!it.isCostYarn&&(it.name||it.itemName));
+   const first=real[0]?String(real[0].name||real[0].itemName):'';
+   const q=real.reduce((s,it)=>s+(Number(it.qty)||0),0);
+   const it=first?(first+(real.length>1?' +'+(real.length-1)+' more':'')):'';
+   if(kind==='OUTWARD')return SarvQR.encode({t:'OUT',no:d.outwardNo,st:d.store,et:d.entryType,p:d.partyName,d:d.date,
+     nat:d.natureOfDispatch,rcv:d.receiverName,gp:d.gatePass,it,q});
+   return SarvQR.encode({t:'IN',no:d.inwardNo,st:d.store,et:d.entryType,p:d.supplier,d:d.receivingDate,
+     inv:d.invoiceNum,po:d.poNum,pr:d.prNum,gp:d.gatePass,yul:d.yarnUlNo,it,q});
+ }
  async function buildStoreNativePdfBlob(kind,d,items,variant,images=[]){
    SARV_PDF_STORE=(d&&d.store)||'STORE 2';   // this entry's store decides which PDF Settings apply
    if(!jspdfNativeReady_())throw new Error('jsPDF not available (check jspdf/jspdf-autotable script tags)');
@@ -20629,8 +20660,12 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(oneCopy){
      const margin=sarvPdfOpt_('store','marginTwo');
      if(variant==='ACCOUNT_BASE')d.__remarksBox=true;
+     // The Gate-2 QR goes on the Supplier Copy of an Inward / NB and the Receiver Copy of an Outward only (no Issue, Issue Return or Account Copy)
+     if(variant==='SUPPLIER_ONE'&&(kind==='INWARD'||kind==='OUTWARD')&&!sarvIsIssueReturn_(d)){
+       try{if(window.SarvQR&&await SarvQR.ready())d.__gateQr=sarvStoreGateQr_(kind,d,items);}catch(e){console.warn('[store pdf] gate QR skipped',e);}
+     }
      try{drawStoreCopyNative_(doc,kind,d,items,variant==='ACCOUNT_BASE'?copyATitle:copyBTitle,margin,margin,pageW-margin*2,pageH-margin*2);}
-     finally{delete d.__remarksBox;}
+     finally{delete d.__remarksBox;delete d.__gateQr;}
    } else if(isTwoPage){
      const margin=sarvPdfOpt_('store','marginTwo');
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,pageW-margin*2,pageH-margin*2);
@@ -23259,7 +23294,9 @@ let PR_TEAL=[13,92,83];
      // The Unloader Supervisor who verified this receipt (inwUnloadRows_).
      unloader:sarvInwUnloadActive,
      // PO / PR sub-rows on the Supplier Copy too (storeStripOnCopy_); chosen on Submit.
-     supplierRef:sarvInwSupplierRef};
+     supplierRef:sarvInwSupplierRef,
+     // YARN UNLOADING LINK: the report of a WEAVING YARN receipt, printed in the details
+     yarnUlNo:sarvInwYarnUlChosen||(inwYarnUlNeeded_()?pVal('inwYarnUlNo'):'')};
  }
  // The Submit preview's "PR/PO details on Supplier Copy" choice; true = as before.
  let sarvInwSupplierRef=true;
@@ -23550,6 +23587,8 @@ let PR_TEAL=[13,92,83];
      return showToast('To receive without a PO, tick at least one PR Number (a Field Boy\'s PR)','warn');
    }
    const rows=rowDataInward();if(!rows.length)return showToast('At least one inward item required','warn');
+   // WEAVING YARN: the Yarn Unloading No. of this unit is compulsory and used once (YARN UNLOADING LINK)
+   if(!await inwYarnUlGate_(rows))return;
    // FIELD BOY PR: approved items only (fbInwardBlock_), before any approval request goes out.
    {const why=await fbInwardBlock_();if(why)return showToast(why,'warn');}
    /* Before anything is written, and before the user is asked for a PIN: is this
@@ -23684,6 +23723,8 @@ let PR_TEAL=[13,92,83];
        const fc=await SB.from('inward_entries').update({gross_weight:pNum(pVal('calcGrossWeight')),freight_rate:pNum(pVal('calcFreightRate'))}).eq('id',h.data.id);
        if(fc.error)console.warn('[SARV] Freight Calculator not stored on the header (add gross_weight, freight_rate columns):',fc.error.message);
      }catch(e){console.warn('[SARV] Freight / Round off header save skipped:',e.message||e);}
+     // The Yarn Unloading No. of a WEAVING YARN receipt (own update: a database without the column saves as before)
+     await inwYarnUlStore_(h.data.id);
      /* req_no on the LINE, not just the header. A receipt covering two
         requirements has no other way to say which of them a given item belongs
         to, and without that the PR sub-row's "already received" has to count
@@ -24290,6 +24331,7 @@ let PR_TEAL=[13,92,83];
  }
  function clearInwardForm(forEdit){
    inwCostYarnToggle_(false);   // the Cost on Yarn row belongs to the entry just left
+   inwYarnUlReset_();           // so does its Yarn Unloading No.
    // A cleared form is by definition no longer editing anything — this is also
    // what ends the edit session after a successful update.
    sarvEditingInwardId=null;sarvEditingInwardNo='';sarvEditingInwardPoLineIds=[];sarvEditingInwardReqNos=[];
@@ -33351,4 +33393,163 @@ async function sarvUpSave_(){
     if(window.SARV_UPLOAD&&window.SARV_UPLOAD.reload)window.SARV_UPLOAD.reload();
     sarvUpLoad_();
   }catch(e){showToast('Not saved: '+escText(e.message||e),'error');}
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   YARN UNLOADING LINK   (sql/YARN_UNLOADING_SERIAL_MIGRATION.sql, Yarn-Unloading.html)
+   An Inward / Inward NB with an item of category WEAVING YARN must name the
+   Yarn Unloading report of that delivery: the box #inwYarnUlNo (group
+   #inwYarnUlGroup in index.html) shows only while such an item is on the form
+   and is then compulsory. Its list = the SAVED Yarn Unloading reports with a
+   Serial No. (Y-UL-001 ...) of this store's unit (STORE 1 = UNIT-1, STORE 2 =
+   UNIT-2; on an edit the record's own store) that no live Inward uses yet:
+   each number is used ONCE (inward_entries.yarn_ul_no, unique index; a
+   cancelled Inward frees it, cancelStoreRecord). The picked one shows its
+   details under the box with a warning when its party, invoice no. or total
+   weight (vs the WEAVING YARN rows) differs; Submit asks before saving with a
+   mismatch. Stored by a separate update after the header (inwYarnUlStore_), so
+   a database without the column saves as before; printed on the Inward PDF
+   ("Yarn Unloading No:", collectInwardData → drawStoreCopyNative_) and put
+   into its Gate-2 QR (yul). The form is watched every 1.5 s while the Inward
+   panel is open (rows get their category from code, not only from typing).
+   ═══════════════════════════════════════════════════════════════════════ */
+// var / function declarations on purpose: clearInwardForm (earlier in this file) may run before this point is reached
+var SARV_YUL_CAT='WEAVING YARN';
+var sarvInwYarnUl={list:null,unit:'',at:0,busy:null,noMig:false,want:'',editHad:false,editStore:'',sig:''};
+var sarvInwYarnUlChosen='';
+function yulNorm_(t){return String(t||'').trim().toUpperCase().replace(/\s+/g,' ');}
+function yulKey_(t){return String(t||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
+function inwYarnUlUnit_(){return (((sarvInwYarnUl&&sarvInwYarnUl.editStore)||sarvStore||'STORE 2')==='STORE 1')?'UNIT-1':'UNIT-2';}
+function inwYarnUlUnitLabel_(){return inwYarnUlUnit_()==='UNIT-1'?'Unit-1 (Store 1)':'Unit-2 (Store 2)';}
+function inwYarnRows_(){
+  return [...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].filter(tr=>yulNorm_(tr.querySelector('.item-cat')?.value)===SARV_YUL_CAT);
+}
+function inwYarnUlNeeded_(){return inwYarnRows_().length>0;}
+function inwYarnWeight_(){return inwYarnRows_().reduce((s,tr)=>s+pNum(tr.querySelector('.weight-field')?.value),0);}
+
+async function inwYarnUlLoad_(force){
+  const S=sarvInwYarnUl, unit=inwYarnUlUnit_();
+  if(!force&&S.list&&S.unit===unit&&Date.now()-S.at<60000)return S.list;
+  if(S.busy)return S.busy;
+  S.busy=(async()=>{
+    try{
+      const q=await SB.from('yarn_unloading_drafts')
+        .select('id,serial_no,company_unit,party_name,invoice_no,po_number,box_count,total_weight,recv_date,saved_at')
+        .eq('status','saved').eq('company_unit',unit).not('serial_no','is',null)
+        .order('saved_at',{ascending:false}).limit(500);
+      if(q.error){S.noMig=/serial_no|company_unit|column|relation/i.test(q.error.message||'');S.list=[];S.unit=unit;S.at=Date.now();return S.list;}
+      S.noMig=false;
+      // the numbers live Inwards already carry (a cancelled one frees its number)
+      const used={};
+      const u=await SB.from('inward_entries').select('id,document_no,yarn_ul_no,notes').not('yarn_ul_no','is',null).limit(5000);
+      if(!u.error)(u.data||[]).forEach(e=>{if(!isStoreRecordCancelled_(e.notes))used[e.yarn_ul_no]={id:String(e.id),no:e.document_no};});
+      S.list=(q.data||[]).map(r=>Object.assign({},r,{usedBy:used[r.serial_no]||null}));
+      S.unit=unit;S.at=Date.now();
+      return S.list;
+    }catch(e){console.warn('[SARV] Yarn Unloading list not read:',e.message||e);S.list=S.list||[];return S.list;}
+    finally{S.busy=null;}
+  })();
+  return S.busy;
+}
+function inwYarnUlRender_(){
+  const S=sarvInwYarnUl, sel=byId('inwYarnUlNo');if(!sel)return;
+  const cur=sel.value||S.want, mine=sarvEditingInwardId?String(sarvEditingInwardId):'';
+  const opts=(S.list||[]).filter(r=>!r.usedBy||r.usedBy.id===mine);
+  sel.innerHTML='<option value="">-- Select Yarn Unloading No. --</option>'+opts.map(r=>
+    '<option value="'+escText(r.serial_no)+'">'+escText(r.serial_no)+' · '+escText(r.party_name||'-')+' · Inv '+escText(r.invoice_no||'-')+' · '+(r.box_count||0)+' boxes · '+pNum(r.total_weight).toFixed(2)+' kg</option>').join('');
+  if(cur&&opts.some(r=>r.serial_no===cur))sel.value=cur;
+  else if(cur&&S.want===cur&&mine){   // an edit keeps its own number even when the list could not show it
+    sel.insertAdjacentHTML('beforeend','<option value="'+escText(cur)+'">'+escText(cur)+' (this record)</option>');sel.value=cur;
+  }
+  inwYarnUlInfo_();
+}
+// The picked report against this Inward: {row, warns}
+function inwYarnUlCheck_(){
+  const v=pVal('inwYarnUlNo'), r=(sarvInwYarnUl.list||[]).find(x=>x.serial_no===v);
+  if(!r)return {row:null,warns:[]};
+  const warns=[], sup=pVal('supplierName'), inv=pVal('invoiceNumber');
+  if(r.party_name&&sup&&yulKey_(r.party_name)!==yulKey_(sup))warns.push('Party: Yarn Unloading "'+r.party_name+'", this Inward "'+sup+'"');
+  if(r.invoice_no&&inv&&yulKey_(r.invoice_no)!==yulKey_(inv))warns.push('Invoice No.: Yarn Unloading "'+r.invoice_no+'", this Inward "'+inv+'"');
+  const tw=pNum(r.total_weight), yw=inwYarnWeight_();
+  if(tw>0&&yw>0&&Math.abs(yw-tw)>Math.max(0.5,tw*0.005))warns.push('Weight: Yarn Unloading '+tw.toFixed(2)+' kg, WEAVING YARN rows here '+yw.toFixed(2)+' kg');
+  return {row:r,warns};
+}
+function inwYarnUlInfo_(){
+  const box=byId('inwYarnUlInfo');if(!box)return;
+  const S=sarvInwYarnUl;
+  if(S.noMig){box.innerHTML='<span style="color:#92400e;font-weight:700;">The Yarn Unloading link needs sql/YARN_UNLOADING_SERIAL_MIGRATION.sql (Admin). Until then this Inward saves without it.</span>';return;}
+  const {row,warns}=inwYarnUlCheck_();
+  if(!row){
+    const n=(S.list||[]).filter(r=>!r.usedBy).length;
+    box.innerHTML='<span style="color:#475569;">'+(S.list?(n?n+' saved Yarn Unloading report(s) of '+escText(inwYarnUlUnitLabel_())+' not used yet. Choose the one of this delivery.'
+      :'No unused Yarn Unloading report of '+escText(inwYarnUlUnitLabel_())+'. Save it in the Yarn Unloading app first (with this Company Unit), then press Refresh.'):'Loading the Yarn Unloading reports…')+'</span>';
+    return;
+  }
+  const dmy=v=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v||''));return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'-');};
+  box.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px 18px;color:#1e293b;">'
+    +'<span><b>'+escText(row.serial_no)+'</b> · '+escText(row.company_unit==='UNIT-1'?'Unit-1':'Unit-2')+'</span>'
+    +'<span>Party: <b>'+escText(row.party_name||'-')+'</b></span>'
+    +'<span>Invoice: <b>'+escText(row.invoice_no||'-')+'</b></span>'
+    +(row.po_number?'<span>PO: '+escText(row.po_number)+'</span>':'')
+    +'<span>Boxes: <b>'+(row.box_count||0)+'</b></span>'
+    +'<span>Total: <b>'+pNum(row.total_weight).toFixed(2)+' kg</b></span>'
+    +'<span>Received: '+escText(dmy(row.recv_date))+'</span></div>'
+    +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">Check: '+warns.map(escText).join(' · ')+'</div>'
+      :'<div style="margin-top:6px;color:#15803d;font-weight:700;">Party, invoice and weight match this Inward.</div>');
+}
+function inwYarnUlPicked_(){sarvInwYarnUl.want=pVal('inwYarnUlNo');inwYarnUlInfo_();}
+// Show / hide the box with the rows; called every 1.5 s while the Inward panel is open (and after a load / clear)
+async function inwYarnUlRefresh_(force){
+  const g=byId('inwYarnUlGroup');if(!g)return;
+  const need=inwYarnUlNeeded_();
+  g.style.display=need?'':'none';
+  if(!need)return;
+  const before=sarvInwYarnUl.list;
+  await inwYarnUlLoad_(force);
+  if(force||before!==sarvInwYarnUl.list||!byId('inwYarnUlNo').options.length)inwYarnUlRender_();
+  else inwYarnUlInfo_();
+}
+setInterval(()=>{
+  const p=byId('inwardPanel');if(!p||p.offsetParent===null)return;
+  const sig=[inwYarnUlNeeded_(),inwYarnWeight_().toFixed(2),pVal('supplierName'),pVal('invoiceNumber'),inwYarnUlUnit_()].join('|');
+  if(sig===sarvInwYarnUl.sig)return;
+  sarvInwYarnUl.sig=sig;inwYarnUlRefresh_(false);
+},1500);
+// Submit: the gate before anything is written. false = stop (the reason was shown).
+async function inwYarnUlGate_(rows){
+  sarvInwYarnUlChosen='';
+  if(!rows.some(r=>yulNorm_(r.cat)===SARV_YUL_CAT))return true;
+  const list=await inwYarnUlLoad_(true);inwYarnUlRender_();
+  if(sarvInwYarnUl.noMig){showToast('WEAVING YARN: the Yarn Unloading link is not set up on the server yet (YARN_UNLOADING_SERIAL_MIGRATION.sql); saved without it','warn');return true;}
+  const g=byId('inwYarnUlGroup');if(g)g.style.display='';
+  const v=pVal('inwYarnUlNo');
+  if(!v){highlightRequiredField('inwYarnUlNo');byId('inwYarnUlNo')?.scrollIntoView({behavior:'smooth',block:'center'});
+    showToast('A WEAVING YARN item is on this Inward: choose its Yarn Unloading No. ('+inwYarnUlUnitLabel_()+')','warn');return false;}
+  const r=list.find(x=>x.serial_no===v);
+  const mine=String(sarvEditingInwardId||'');
+  if(!r&&!(mine&&v===sarvInwYarnUl.want)){showToast('Yarn Unloading '+v+' is not a saved report of '+inwYarnUlUnitLabel_(),'warn');return false;}
+  if(r&&r.usedBy&&r.usedBy.id!==mine){showToast('Yarn Unloading '+v+' is already used by Inward '+(r.usedBy.no||'')+'. Choose another one.','error');return false;}
+  const {warns}=inwYarnUlCheck_();
+  if(warns.length&&!confirm('Yarn Unloading '+v+' does not match this Inward:\n• '+warns.join('\n• ')+'\n\nSave with this Yarn Unloading No. anyway?'))return false;
+  sarvInwYarnUlChosen=v;
+  return true;
+}
+// After the header is written: the number on the record (or taken off it on an edit that no longer has yarn)
+async function inwYarnUlStore_(id){
+  const v=sarvInwYarnUlChosen||null;
+  if(!v&&!sarvInwYarnUl.editHad)return;
+  try{
+    const r=await SB.from('inward_entries').update({yarn_ul_no:v}).eq('id',id);
+    if(r.error){
+      if(r.error.code==='23505')showToast('Yarn Unloading '+v+' was just used by another Inward, so this Inward is saved WITHOUT it. Open it, choose another and Update.','error');
+      else console.warn('[SARV] Yarn Unloading No. not stored (run YARN_UNLOADING_SERIAL_MIGRATION.sql):',r.error.message);
+    }
+  }catch(e){console.warn('[SARV] Yarn Unloading No. not stored:',e.message||e);}
+  sarvInwYarnUl.at=0;   // the list changes now
+}
+function inwYarnUlReset_(){
+  if(!sarvInwYarnUl)return;
+  const S=sarvInwYarnUl;S.want='';S.editHad=false;S.editStore='';S.sig='';sarvInwYarnUlChosen='';
+  const sel=byId('inwYarnUlNo');if(sel)sel.value='';
+  const g=byId('inwYarnUlGroup');if(g)g.style.display='none';
 }

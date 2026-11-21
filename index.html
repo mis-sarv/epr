@@ -398,6 +398,18 @@
                     </div>
                 </div>
 
+                <!-- ── Yarn Unloading No. (YARN UNLOADING LINK in store-core.js): shown and compulsory while an item is WEAVING YARN ── -->
+                <div id="inwYarnUlGroup" style="display:none; margin-bottom:12px; background:#eff6ff; border:2px solid #3b82f6; border-radius:8px; padding:12px 16px;">
+                    <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px;">
+                        <div class="form-group" style="margin:0; flex:1; min-width:260px;">
+                            <label>Yarn Unloading No. <span style="color:#dc2626;font-weight:700;font-size:10px;">★ MANDATORY FOR WEAVING YARN</span></label>
+                            <select class="form-control" id="inwYarnUlNo" onchange="inwYarnUlPicked_()"></select>
+                        </div>
+                        <button type="button" onclick="inwYarnUlRefresh_(true)" style="padding:8px 14px; border:1.5px solid #3b82f6; background:#fff; color:#1d4ed8; border-radius:6px; font-weight:700; cursor:pointer;">↻ Refresh</button>
+                    </div>
+                    <div id="inwYarnUlInfo" style="margin-top:8px; font-size:12px;"></div>
+                </div>
+
                 <!-- ── Repair Return Outward Selector (shown when Nature = Repaired) ── -->
                 <div id="repairOutwardGroup" style="display:none; margin-bottom:12px; background:#fffbeb; border:2px solid #f59e0b; border-radius:8px; padding:12px 16px;">
                     <div style="font-size:11px; font-weight:800; color:#92400e; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
@@ -4246,6 +4258,8 @@
 <!-- Every <select> / datalist list opens as an iOS-style popover (sheet on a phone). Independent of the scripts above. See ios-dropdown.js. -->
 <script src="ios-dropdown.js?v=20261120a"></script>
 <script src="ios-dialog.js?v=20261120a"></script>
+<!-- Gate-2 QR on the Inward / NB Supplier Copy and the Outward Receiver Copy (buildStoreNativePdfBlob). Independent; see sarv-qr.js. -->
+<script src="sarv-qr.js?v=20261120a"></script>
 <!-- Yellow spotlight that follows the mouse (desktop only). See cursor-glow.js. -->
 <script src="cursor-glow.js"></script>
 <!-- OTA update readiness: confirms the running bundle to capacitor-updater so

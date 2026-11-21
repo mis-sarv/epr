@@ -168,6 +168,13 @@
         }
         
         .top-meta-fields { grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); }
+        /* Serial No. (read-only, from the series) + Company Unit, above the bill fields */
+        .field select { padding: 12px; margin-top: 6px; background: #f8fafc; border: 2px solid #94a3b8; border-radius: 10px;
+                        font-size: 16px; font-weight: bold; width: 100%; color: #0f172a; }
+        .field select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.2); background: #ffffff; }
+        .field select.need { border-color: #dc2626; background: #fef2f2; }
+        #yuSerialNo { background: #e2e8f0; color: #1d4ed8; letter-spacing: .5px; cursor: not-allowed; }
+        .yu-hint { font-size: 11px; font-weight: 600; color: #64748b; margin-top: 4px; }
 
         .field { 
             display: flex; 
@@ -378,7 +385,17 @@
 <div class="container no-print">
     <div class="main-title">SARV INDIA HOME FURNISHING</div>
         <h3>YARN UNLOADING FORMAT</h3>
-        
+
+        <!-- Serial No. = the next number of the Y-UL series (taken on the final Save), Company Unit = UNIT-1 / UNIT-2 (compulsory) -->
+        <div class="top-meta-fields" id="yuSerialRow">
+            <div class="field">Serial No: <input type="text" id="yuSerialNo" readonly tabindex="-1" placeholder="Getting next no..."><span class="yu-hint" id="yuSerialHint">Auto · next serial</span></div>
+            <div class="field">Company Unit: <select id="cUnit" onchange="this.classList.remove('need'); saveToLocal()">
+                <option value="">-- Select Unit --</option>
+                <option value="UNIT-1">Unit-1</option>
+                <option value="UNIT-2">Unit-2</option>
+            </select></div>
+        </div>
+
         <div class="top-meta-fields">
             <div class="field">Bill Date: <input type="date" id="billDate" oninput="saveToLocal()"></div>
             <div class="field">Invoice No: <input type="text" id="invoiceNo" placeholder="Invoice No." oninput="saveToLocal()"></div>
@@ -497,6 +514,7 @@
             id:          getDraftId(),
             device_id:   getDeviceId(),
             status:      'draft',
+            company_unit: val('cUnit') || null,
             bill_date:   dte('billDate'),
             recv_date:   dte('recvDate'),
             invoice_no:  val('invoiceNo') || null,
@@ -515,7 +533,7 @@
         };
 
         const anyField = ['bill_date','recv_date','invoice_no','po_number','gate_entry','party_name',
-                          'vehicle_no','brand','denier','batch_no','unloader','rate'].some(k => row[k]);
+                          'vehicle_no','brand','denier','batch_no','unloader','rate','company_unit'].some(k => row[k]);
         if (!weights.length && !anyField) return null;
         return row;
     }
@@ -541,7 +559,7 @@
         if (!row) { setSyncStatus('ready'); return; }   // फॉर्म खाली है, भेजने लायक कुछ नहीं
 
         cloudBusy = true;
-        sb.from(DRAFT_TABLE).upsert(row, { onConflict: 'id' })
+        yuUpsert(row)
           .then(({ error }) => {
               if (error) { console.error("Draft cloud sync failed", error); setSyncStatus('fail'); }
               else setSyncStatus('ok');
@@ -563,11 +581,12 @@
     /* सेव हुई रिपोर्ट को क्लाउड row (id = rep.cloudId) में लिखता है.
        Promise<boolean> लौटाता है — PDF अपलोड इसी के बाद होता है, ताकि
        pdf_url लिखते समय row मौजूद हो. नेट न हो तो false, ऐप चलता रहता है. */
-    function pushSavedReportToCloud(rep) {
+    function pushSavedReportToCloud(rep, retried) {
         if (!sb || !rep.cloudId) return Promise.resolve(false);
         const nd = (x) => (x && x !== '-') ? x : null;    // "-" को date कॉलम में न भेजें
-        return sb.from(DRAFT_TABLE).upsert({
+        return yuUpsert({
             id: rep.cloudId, device_id: getDeviceId(), status: 'saved',
+            serial_no: rep.serialNo || null, company_unit: rep.companyUnit || null,
             bill_date: nd(rep.billDate), recv_date: nd(rep.recvDate),
             invoice_no: nd(rep.invoiceNo), po_number: nd(rep.poNumber), gate_entry: nd(rep.gateEntry),
             party_name: nd(rep.pName), vehicle_no: nd(rep.gNo), brand: nd(rep.yBrand),
@@ -578,8 +597,12 @@
             // सिग्नेचर भी भेजें, वरना क्लाउड से बनी PDF में साइन की जगह खाली रहेगी
             recv_sig: rep.recvSigData || null, incharge_sig: rep.inchargeSigData || null,
             saved_at: new Date().toISOString()
-        }, { onConflict: 'id' })
-        .then(({ error }) => {
+        })
+        .then(async ({ error }) => {
+            // the Serial No. was taken offline and another phone has it: a fresh number, then once more
+            if (error && error.code === '23505' && /serial/i.test(error.message || '') && !retried && rep.serialNo) {
+                if (await yuFixSerial(rep)) return pushSavedReportToCloud(rep, true);
+            }
             if (error) { console.error("Cloud final-save failed", error); return false; }
             return true;
         })
@@ -629,12 +652,87 @@
           .catch((err) => console.error("Cloud draft delete failed", err));
     }
 
+    /* ===================================================================
+       SERIAL NO. (Y-UL-001 ...) + COMPANY UNIT   (sql/YARN_UNLOADING_SERIAL_MIGRATION.sql)
+       One series for both units. A New Entry SHOWS the next number (yu_next_no,
+       nothing kept); the final Save TAKES one (the server locks its counter, so
+       two phones never get the same). p_min = this phone's own next number, so a
+       number saved here offline is never handed out again. Offline / before the
+       migration the phone goes on from its own highest (yarn_ul_last + its saved
+       reports). If such an offline number turns out to be taken when the report
+       reaches the cloud (unique index), the report gets a fresh number and the
+       user is told to print its PDF again (yuFixSerial).
+       The new columns are written only where the table has them: yuUpsert drops
+       them and tries again on a "column" error, so nothing stops before the
+       migration is run.
+       =================================================================== */
+    const YU_SERIES = 'Y-UL-';
+    let yuSeriesOn = null;          // false = the server has no yu_next_no yet
+    const yuSerialFmt = n => YU_SERIES + String(n).padStart(3, '0');
+    const yuSerialNum = v => { const m = /^Y-UL-(\d{1,15})$/.exec(String(v || '')); return m ? +m[1] : 0; };
+    const yuUnitLabel = v => v === 'UNIT-1' ? 'Unit-1' : v === 'UNIT-2' ? 'Unit-2' : (v || '-');
+    function yuLocalMax() {
+        let mx = parseInt(localStorage.getItem('yarn_ul_last') || '0', 10) || 0;
+        try { (JSON.parse(localStorage.getItem('yarn_reports')) || []).forEach(r => { mx = Math.max(mx, yuSerialNum(r.serialNo)); }); } catch (e) {}
+        return mx;
+    }
+    async function yuNextSerial(reserve) {
+        const localNext = yuLocalMax() + 1;
+        if (sb && navigator.onLine !== false && yuSeriesOn !== false && yuToken()) {
+            try {
+                const r = await sb.rpc('yu_next_no', { p_token: yuToken(), p_reserve: !!reserve, p_min: localNext });
+                if (!r.error && r.data && r.data.success && r.data.no) { yuSeriesOn = true; return { no: r.data.no, server: true }; }
+                if (r.error && (r.error.code === 'PGRST202' || r.error.code === '42883')) yuSeriesOn = false;
+            } catch (e) { /* no net: the phone's own number */ }
+        }
+        return { no: yuSerialFmt(localNext), server: false };
+    }
+    async function yuFillSerial() {
+        const box = document.getElementById('yuSerialNo'), hint = document.getElementById('yuSerialHint');
+        if (!box) return;
+        box.value = '';
+        const r = await yuNextSerial(false);
+        box.value = r.no;
+        if (hint) hint.textContent = r.server ? 'Auto · next serial' : (yuSeriesOn === false ? 'Auto · this phone (server series not set up)' : 'Auto · offline, from this phone');
+    }
+    async function yuTakeSerial() {
+        const r = await yuNextSerial(true);
+        try { localStorage.setItem('yarn_ul_last', String(Math.max(yuLocalMax(), yuSerialNum(r.no)))); } catch (e) {}
+        return r.no;
+    }
+    const YU_NEW_COLS = ['serial_no', 'company_unit'];
+    function yuUpsert(row) {
+        return sb.from(DRAFT_TABLE).upsert(row, { onConflict: 'id' }).then(res => {
+            if (res.error && /serial_no|company_unit|column/i.test(res.error.message || '') && res.error.code !== '23505' && YU_NEW_COLS.some(k => k in row)) {
+                const slim = Object.assign({}, row); YU_NEW_COLS.forEach(k => delete slim[k]);
+                return sb.from(DRAFT_TABLE).upsert(slim, { onConflict: 'id' });
+            }
+            return res;
+        });
+    }
+    // An offline number already used by another phone: a fresh one from the server, on the report here and in the cloud
+    async function yuFixSerial(rep) {
+        const old = rep.serialNo;
+        const r = await yuNextSerial(true);
+        if (!r.server) return false;
+        rep.serialNo = r.no;
+        try {
+            const reports = JSON.parse(localStorage.getItem('yarn_reports')) || [];
+            const x = reports.find(z => z.cloudId === rep.cloudId);
+            if (x) { x.serialNo = r.no; x.pdfUrl = null; localStorage.setItem('yarn_reports', JSON.stringify(reports)); }
+            localStorage.setItem('yarn_ul_last', String(Math.max(yuLocalMax(), yuSerialNum(r.no))));
+        } catch (e) {}
+        alert('Serial No. ' + old + ' was already used by another phone (saved offline).\n\nThis report is now ' + r.no + '. Please download its PDF again from DOWNLOAD REPORT.');
+        return true;
+    }
+
     window.onload = () => {
         canvas = document.getElementById('sig-canvas');
         if(canvas) ctx = canvas.getContext('2d');
         document.getElementById('inputRows').innerHTML = '';
         if(canvas) initCanvas();
         yuBoot();
+        yuProbeCols();
     };
 
     /* ===================================================================
@@ -815,10 +913,12 @@
         document.getElementById('entry-screen').style.display = 'block';
         document.getElementById('inputRows').innerHTML = '';
         document.querySelectorAll('.top-meta-fields input, .header-fields input').forEach(i => i.value = '');
+        document.getElementById('cUnit').value = ''; document.getElementById('cUnit').classList.remove('need');
         localStorage.removeItem('yarn_data');
         setSyncStatus(sb ? 'ready' : 'off');
         uSum();
         addNewBox();
+        yuFillSerial();
     }
 
     function resumeDraft() {
@@ -826,6 +926,7 @@
         document.getElementById('dashboard-screen').style.display = 'none';
         document.getElementById('entry-screen').style.display = 'block';
         loadSavedData();
+        yuFillSerial();
         queueCloudSync();   // रिज्यूम किया हुआ ड्राफ्ट भी क्लाउड पर भेज दें
     }
 
@@ -914,6 +1015,8 @@
     function startSave() { 
         const count = document.querySelectorAll('.filled-row').length;
         if(count === 0) return alert("Please enter at least one box weight before saving!");
+        const cu = document.getElementById('cUnit');
+        if (!cu.value) { cu.classList.add('need'); cu.scrollIntoView({ behavior: 'smooth', block: 'center' }); cu.focus(); return alert("Please choose the Company Unit (Unit-1 / Unit-2) before saving!"); }
         currentStep = 1;
         // FIX: पिछली बार CANCEL किया हो तो पुराना सिग्नेचर कैनवास पर पड़ा रह जाता था
         recvSigData = null; inchargeSigData = null;
@@ -936,11 +1039,17 @@
             recvSigData = canvas.toDataURL(); currentStep = 3; clearSig(); document.getElementById('sig-label').innerText="Store Incharge Sign:";
         } else {
             if(!sigDrawn) return alert("कृपया Store Incharge का सिग्नेचर करें!");
-            inchargeSigData = canvas.toDataURL(); saveFinalReport();
+            inchargeSigData = canvas.toDataURL(); saveFinalReport();   // takes the Serial No. first (async)
         }
     }
 
-    function saveFinalReport() {
+    let yuSaving = false;
+    async function saveFinalReport() {
+        if (yuSaving) return;          // a second tap while the number is being taken
+        yuSaving = true;
+        const nb = document.getElementById('modal-next-btn'); if (nb) { nb.disabled = true; nb.innerText = 'Saving...'; }
+        let serialNo = '';
+        try { serialNo = await yuTakeSerial(); } finally { yuSaving = false; if (nb) { nb.disabled = false; nb.innerText = 'Next'; } }
         const total = uSum(), count = document.querySelectorAll('.filled-row').length;
         const rate = parseFloat(document.getElementById('uRate').value)||0;
         
@@ -951,6 +1060,8 @@
 
         const reportData = {
             id: Date.now(),
+            serialNo: serialNo,
+            companyUnit: document.getElementById('cUnit').value || '',
             dateSaved: new Date().toLocaleString('en-IN'),
             billDate: document.getElementById('billDate').value || "-",
             invoiceNo: document.getElementById('invoiceNo').value || "-",
@@ -1000,6 +1111,7 @@
         localStorage.removeItem('yarn_data');
         document.getElementById('inputRows').innerHTML = '';
         document.querySelectorAll('input').forEach(i => { if(i.type !== 'password') i.value = ''; });
+        document.getElementById('cUnit').value = '';
 
         closeModal();
         showDashboard();
@@ -1008,7 +1120,7 @@
         buildPdf(reportData, null, {
             cloudId: reportData.cloudId,
             rowReady: rowReady,
-            msgPrefix: "✅ Data Saved Successfully!\n\n"
+            msgPrefix: "✅ Data Saved Successfully! Serial No: " + serialNo + "\n\n"
         });
     }
 
@@ -1033,7 +1145,7 @@
        एक्सेल में सीधा खुलता है. हर बॉक्स की एक लाइन, साथ में हेडर
        डिटेल्स — जिससे Excel में फ़िल्टर/पिवट आसानी से लग जाए.
        ========================================================= */
-    const CSV_COLS = ["Invoice No","PO Number","Gate Entry No","Bill Date","Recv Date","Party Name",
+    const CSV_COLS = ["Serial No","Company Unit","Invoice No","PO Number","Gate Entry No","Bill Date","Recv Date","Party Name",
                       "Vehicle No","Brand","Denier","Batch No","Unloading Contractor","Rate Per Box",
                       "Box No","Weight KG","Total Boxes","Total Weight KG","Average Weight KG",
                       "Total Amount","Receiver Name","Saved On"];
@@ -1046,7 +1158,7 @@
 
     function reportToCsvRows(d) {
         const wts  = Array.isArray(d.weights) ? d.weights : [];
-        const base = [d.invoiceNo, d.poNumber, d.gateEntry, fmtDate(d.billDate), fmtDate(d.recvDate),
+        const base = [d.serialNo || '', yuUnitLabel(d.companyUnit), d.invoiceNo, d.poNumber, d.gateEntry, fmtDate(d.billDate), fmtDate(d.recvDate),
                       d.pName, d.gNo, d.yBrand, d.yDenier, d.batchNo, d.uName, d.uRate];
         const tail = [d.count, d.total, d.avg, d.amount, d.receiverName || '', d.dateSaved || ''];
         if (!wts.length) return csvRow(base.concat(['', ''], tail));
@@ -1089,6 +1201,7 @@
             billDate: g('billDate'), recvDate: g('recvDate'), invoiceNo: g('invoiceNo'),
             poNumber: g('poNumber'), gateEntry: g('gateEntry'), pName: g('pName'), gNo: g('gNo'),
             yBrand: g('yBrand'), yDenier: g('yDenier'), batchNo: g('bNo'), uName: g('uName'),
+            serialNo: '', companyUnit: document.getElementById('cUnit').value || '',
             uRate: rate, weights: weights, count: count, total: total.toFixed(2),
             avg: count > 0 ? (total / count).toFixed(2) : "0.00",
             amount: (count * rate).toFixed(2), receiverName: "", dateSaved: ""
@@ -1139,9 +1252,16 @@
        मिलाकर कई MB हो जाते हैं, जो मोबाइल डेटा पर भारी पड़ता. लिस्ट को box_count
        और total_weight से काम चल जाता है; पूरा डेटा सिर्फ़ PDF/CSV के वक़्त
        उसी एक row का मँगाया जाता है. */
-    const CLOUD_LITE_COLS = 'id,device_id,status,bill_date,recv_date,invoice_no,po_number,' +
+    let CLOUD_LITE_COLS = 'id,device_id,status,bill_date,recv_date,invoice_no,po_number,' +
                             'gate_entry,party_name,vehicle_no,brand,denier,batch_no,unloader,' +
                             'rate,box_count,total_weight,receiver_name,saved_at,updated_at,pdf_url';
+    // Serial No. / Unit / the Inward that used it, once the table has them (YARN_UNLOADING_SERIAL_MIGRATION.sql)
+    function yuProbeCols() {
+        if (!sb) return;
+        sb.from(DRAFT_TABLE).select('serial_no,company_unit,inward_no').limit(1).then(({ error }) => {
+            if (!error && CLOUD_LITE_COLS.indexOf('serial_no') < 0) CLOUD_LITE_COLS += ',serial_no,company_unit,inward_no';
+        }).catch(() => {});
+    }
 
     function fetchCloudRow(id) {
         return sb.from(DRAFT_TABLE).select('*').eq('id', id).limit(1)
@@ -1219,12 +1339,12 @@
             const isMine = (r.id === myId);
             html += `<div class="report-card">
                 <div class="report-info">
-                    <b>Inv: ${safeTxt(r.invoice_no) || '-'}</b> | Party: ${safeTxt(r.party_name) || '-'}
+                    ${r.serial_no ? '<b style="color:#1d4ed8;">' + safeTxt(r.serial_no) + '</b> · ' + yuUnitLabel(safeTxt(r.company_unit)) + ' | ' : ''}<b>Inv: ${safeTxt(r.invoice_no) || '-'}</b> | Party: ${safeTxt(r.party_name) || '-'}
                     ${isMine ? '<span class="status-chip chip-mine">इस फोन का</span>' : ''}<br>
                     <small style="color:#64748b;">
                         ${r.updated_at ? new Date(r.updated_at).toLocaleString('en-IN') : ''} -
                         <b>${r.box_count || 0} Boxes</b> (${safeTxt(r.total_weight) || 0} KG)
-                        ${r.vehicle_no ? ' | ' + safeTxt(r.vehicle_no) : ''}
+                        ${r.vehicle_no ? ' | ' + safeTxt(r.vehicle_no) : ''}${r.inward_no ? ' | <b style="color:#15803d;">Inward ' + safeTxt(r.inward_no) + '</b>' : ''}
                     </small>
                 </div>
                 <div class="report-actions">
@@ -1277,6 +1397,7 @@
                 recv: full.recv_date || "", ge: full.gate_entry || "", po: full.po_number || "",
                 inv: full.invoice_no || "", u: full.unloader || "",
                 r: (full.rate === null || full.rate === undefined) ? "" : String(full.rate),
+                cu: full.company_unit || "",
                 weights: ws
             };
 
@@ -1354,12 +1475,12 @@
             const when    = r.saved_at || r.updated_at;
             html += `<div class="report-card">
                 <div class="report-info">
-                    <b>Inv: ${safeTxt(r.invoice_no) || '-'}</b> | Party: ${safeTxt(r.party_name) || '-'}
+                    ${r.serial_no ? '<b style="color:#1d4ed8;">' + safeTxt(r.serial_no) + '</b> · ' + yuUnitLabel(safeTxt(r.company_unit)) + ' | ' : ''}<b>Inv: ${safeTxt(r.invoice_no) || '-'}</b> | Party: ${safeTxt(r.party_name) || '-'}
                     <span class="status-chip ${isSaved ? 'chip-saved' : 'chip-draft'}">${isSaved ? 'SAVED' : 'DRAFT'}</span><br>
                     <small style="color:#64748b;">
                         ${when ? new Date(when).toLocaleString('en-IN') : ''} -
                         <b>${r.box_count || 0} Boxes</b> (${safeTxt(r.total_weight) || 0} KG)
-                        ${r.vehicle_no ? ' | ' + safeTxt(r.vehicle_no) : ''}
+                        ${r.vehicle_no ? ' | ' + safeTxt(r.vehicle_no) : ''}${r.inward_no ? ' | <b style="color:#15803d;">Inward ' + safeTxt(r.inward_no) + '</b>' : ''}
                     </small>
                 </div>
                 <div class="report-actions">
@@ -1381,6 +1502,8 @@
         const rate  = parseFloat(r.rate) || 0;
         const when  = r.saved_at || r.updated_at;
         return {
+            serialNo:   safeTxt(r.serial_no) || "",
+            companyUnit: safeTxt(r.company_unit) || "",
             billDate:   r.bill_date  || "-",
             recvDate:   r.recv_date  || "-",
             invoiceNo:  safeTxt(r.invoice_no) || "-",
@@ -1493,7 +1616,7 @@
         reports.forEach((r, idx) => {
             html += `<div class="report-card">
                 <div class="report-info">
-                    <b>Inv: ${r.invoiceNo}</b> | Party: ${r.pName}<br>
+                    ${r.serialNo ? '<b style="color:#1d4ed8;">' + r.serialNo + '</b> · ' + yuUnitLabel(r.companyUnit) + ' | ' : ''}<b>Inv: ${r.invoiceNo}</b> | Party: ${r.pName}<br>
                     <small style="color:#64748b;">${r.dateSaved} - <b>${r.count} Boxes</b> (${r.total} KG)</small>
                 </div>
                 <div class="report-actions">
@@ -1521,9 +1644,14 @@
         if(!d) return alert("Error loading report!");
         // जिस रिपोर्ट की PDF अभी क्लाउड पर नहीं पहुँची (सेव के वक़्त नेट नहीं था),
         // उसका row और PDF दोनों अभी भेज दें. पुरानी रिपोर्ट्स में cloudId नहीं है, वो छोड़ दें.
-        const opts = (d.cloudId && !d.pdfUrl) ? { cloudId: d.cloudId, rowReady: pushSavedReportToCloud(d) } : {};
-        // #report-list से स्कोप किया है, वरना क्लाउड लिस्ट के बटन भी मैच हो जाते
-        buildPdf(d, document.querySelectorAll('#report-list .btn-print')[index], opts);
+        const btn = document.querySelectorAll('#report-list .btn-print')[index];   // #report-list से स्कोप किया है, वरना क्लाउड लिस्ट के बटन भी मैच हो जाते
+        if (d.cloudId && !d.pdfUrl) {
+            // the cloud row first: an offline Serial No. may change there (yuFixSerial), and the PDF must print the final one
+            const rowReady = pushSavedReportToCloud(d);
+            rowReady.then(() => buildPdf(d, btn, { cloudId: d.cloudId, rowReady: rowReady }));
+            return;
+        }
+        buildPdf(d, btn, {});
     }
 
     /* PDF बनाने वाला असली फंक्शन. लोकल रिपोर्ट और क्लाउड रिपोर्ट — दोनों इसी को
@@ -1532,6 +1660,7 @@
        opts.cloudId  = दिया हो तो PDF क्लाउड पर अपलोड होकर उस row के pdf_url में जाएगी
        opts.rowReady = Promise — अपलोड से पहले क्लाउड row बनने का इंतज़ार
        opts.msgPrefix = सफलता वाले मैसेज के आगे जोड़ने वाला टेक्स्ट */
+    const yuEsc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
     function buildPdf(d, btn, opts) {
         opts = opts || {};
         /* FIX: पुरानी या अधूरी रिपोर्ट (weights/सिग्नेचर मिसिंग) पर PDF क्रैश हो जाती थी.
@@ -1626,6 +1755,8 @@
                 <div style="text-align: center;">
                     <h1 style="margin:0; font-size:26px; color:#000; font-weight:900;">SARV INDIA HOME FURNISHING</h1>
                     <h2 style="margin:8px 0 0 0; text-decoration:underline; font-size:18px; color:#333;">YARN UNLOADING SUMMARY</h2>
+                    <div style="margin-top:10px; font-size:15px; font-weight:800; color:#000;">Serial No: <span style="border:1.5px solid #000; padding:3px 10px; border-radius:6px;">${yuEsc(d.serialNo || '-')}</span>
+                        &nbsp;&nbsp; Company Unit: <span style="border:1.5px solid #000; padding:3px 10px; border-radius:6px;">${yuEsc(yuUnitLabel(d.companyUnit))}</span></div>
                 </div>
 
                 <table class="summary-table">
@@ -1654,7 +1785,7 @@
                 <div class="compact-header">
                     <h3 style="margin:0; font-size:13px; color:#000; font-weight:bold;">YARN UNLOADING WEIGHT DETAILS</h3>
                     <p style="margin:2px; font-size:9px; font-weight:bold;">
-                        Date: ${fmtDate(d.recvDate)} | Inv No: ${d.invoiceNo} | Batch No: ${d.batchNo} | PO: ${d.poNumber} | Gate: ${d.gateEntry}<br>
+                        S.No: ${yuEsc(d.serialNo || '-')} | Unit: ${yuEsc(yuUnitLabel(d.companyUnit))} | Date: ${fmtDate(d.recvDate)} | Inv No: ${d.invoiceNo} | Batch No: ${d.batchNo} | PO: ${d.poNumber} | Gate: ${d.gateEntry}<br>
                         Party: ${d.pName} | Vehicle: ${d.gNo} | Brand: ${d.yBrand} | Denier: ${d.yDenier}
                     </p>
                 </div>
@@ -1789,7 +1920,7 @@
 
         const ws = []; document.querySelectorAll('.w-input').forEach(i=>ws.push(i.value));
         try {
-        localStorage.setItem('yarn_data', JSON.stringify({ p:document.getElementById('pName').value, g:document.getElementById('gNo').value, b:document.getElementById('yBrand').value, d:document.getElementById('yDenier').value, bt:document.getElementById('bNo').value, bill:document.getElementById('billDate').value, recv:document.getElementById('recvDate').value, ge:document.getElementById('gateEntry').value, po:document.getElementById('poNumber').value, inv:document.getElementById('invoiceNo').value, u:document.getElementById('uName').value, r:document.getElementById('uRate').value, weights:ws }));
+        localStorage.setItem('yarn_data', JSON.stringify({ p:document.getElementById('pName').value, g:document.getElementById('gNo').value, b:document.getElementById('yBrand').value, d:document.getElementById('yDenier').value, bt:document.getElementById('bNo').value, bill:document.getElementById('billDate').value, recv:document.getElementById('recvDate').value, ge:document.getElementById('gateEntry').value, po:document.getElementById('poNumber').value, inv:document.getElementById('invoiceNo').value, u:document.getElementById('uName').value, r:document.getElementById('uRate').value, cu:document.getElementById('cUnit').value, weights:ws }));
         } catch (err) { console.error("Draft save failed (storage full?)", err); }
 
         queueCloudSync();      // लोकल सेव के साथ-साथ क्लाउड ड्राफ्ट भी अपडेट
@@ -1808,7 +1939,7 @@
     function loadSavedData() {
         const d = JSON.parse(localStorage.getItem('yarn_data')); if(!d) return;
         document.getElementById('inputRows').innerHTML = '';
-        document.getElementById('pName').value = d.p || ""; document.getElementById('gNo').value = d.g || ""; document.getElementById('yBrand').value = d.b || ""; document.getElementById('yDenier').value = d.d || ""; document.getElementById('bNo').value = d.bt || ""; document.getElementById('billDate').value = d.bill || ""; document.getElementById('recvDate').value = d.recv || ""; document.getElementById('gateEntry').value = d.ge || ""; document.getElementById('poNumber').value = d.po || ""; document.getElementById('invoiceNo').value = d.inv || ""; document.getElementById('uName').value = d.u || ""; document.getElementById('uRate').value = d.r || "";
+        document.getElementById('pName').value = d.p || ""; document.getElementById('gNo').value = d.g || ""; document.getElementById('yBrand').value = d.b || ""; document.getElementById('yDenier').value = d.d || ""; document.getElementById('bNo').value = d.bt || ""; document.getElementById('billDate').value = d.bill || ""; document.getElementById('recvDate').value = d.recv || ""; document.getElementById('gateEntry').value = d.ge || ""; document.getElementById('poNumber').value = d.po || ""; document.getElementById('invoiceNo').value = d.inv || ""; document.getElementById('uName').value = d.u || ""; document.getElementById('uRate').value = d.r || ""; document.getElementById('cUnit').value = d.cu || "";
         if(d.weights && d.weights.length > 0) {
             d.weights.forEach(v => addNewBox(v, true));     // बल्क लोड, बिना focus
             const ins = document.querySelectorAll('.w-input');

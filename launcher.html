@@ -501,6 +501,49 @@ button.go:hover{background:#1d4ed8; filter:none; box-shadow:none;}</style>
 /* iOS touch: a tile gives a little under the finger */
 a.app{transition:transform .22s cubic-bezier(.32,.72,0,1),box-shadow .2s,background .2s;}
 a.app:active{transform:scale(.965);}
+/* APP CAROUSEL (script at the end of the page, CAROUSEL): the app buttons sit on a 3D drum (CSS rotateX +
+   translateZ, perspective on the grid) that turns slowly by itself like a wheel. The button at the front is
+   the active one: full size, lit in its own colour, with "Open"; the others lean away round the drum, smaller
+   and fainter, and the back half is hidden. The script writes each button's transform every frame and adds
+   .carousel to the grid; without the script (or with "Grid" chosen, or with reduced motion) the grid is the
+   plain two-column list as before. Heights are fixed here so every face of the drum is the same size. */
+.grid{position:relative;}
+.grid.carousel{
+  display:block; height:min(430px, 64vh); perspective:1000px; perspective-origin:50% 50%;
+  touch-action:none; user-select:none; -webkit-user-select:none; cursor:grab; outline:none;
+  -webkit-mask-image:linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+  mask-image:linear-gradient(to bottom, transparent 0, #000 16%, #000 84%, transparent 100%);
+}
+.grid.carousel.dragging{cursor:grabbing;}
+.grid.carousel a.app{
+  position:absolute; left:6%; right:6%; top:50%; height:72px; margin-top:-36px; box-sizing:border-box;
+  padding:12px 15px; animation:none !important; transition:box-shadow .25s, border-color .25s, background .25s;
+  backface-visibility:hidden; -webkit-backface-visibility:hidden; will-change:transform, opacity;
+}
+.grid.carousel a.app .t, .grid.carousel a.app .s{display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.grid.carousel a.app .s{margin-top:2px;}
+/* the item in focus */
+.grid.carousel a.app.is-active{
+  border-color:var(--a); background:var(--surface-2, var(--surface));
+  box-shadow:0 0 0 2px var(--a), 0 22px 48px -14px rgba(0,0,0,.75), 0 0 34px -6px var(--a);
+}
+.grid.carousel a.app.is-active .tile{transform:scale(1.08);}
+.grid.carousel a.app .tile{transition:transform .25s;}
+.grid.carousel a.app.is-active .go{color:var(--a); font-size:0; flex:0 0 auto;}
+.grid.carousel a.app.is-active .go::before{
+  content:'Open \203A'; font-size:12px; font-weight:800; letter-spacing:.02em; color:#fff;
+  background:var(--a); border-radius:999px; padding:5px 11px; display:inline-block;
+}
+/* the bar under the drum: position, Grid / Wheel switch */
+.car-bar{display:flex; align-items:center; justify-content:center; gap:10px; margin:6px 0 2px; font-size:11px; color:var(--txt-3);}
+.car-bar button{
+  font:inherit; font-weight:700; color:var(--txt-2); background:var(--surface); border:1px solid var(--hairline);
+  border-radius:999px; padding:4px 11px; cursor:pointer;
+}
+.car-bar button:hover{color:var(--txt); border-color:var(--accent);}
+.car-bar .car-pos{font-variant-numeric:tabular-nums; font-weight:700; color:var(--txt-2); min-width:54px; text-align:center;}
+.car-bar .car-hint{opacity:.85;}
+@media (max-width:440px){ .car-bar .car-hint{display:none;} .grid.carousel a.app{left:2%; right:2%;} }
 </style>
 <script src="ios-ui.js?v=20261118a" defer></script>
 <script src="ios-dropdown.js?v=20261120a" defer></script>
@@ -1979,7 +2022,7 @@ async function fillEmpDatalist(){
 <!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
 <script src="launcher-lock.js?v=20261118a"></script>
 <script src="launcher-login.js?v=20261118a"></script>
-<script src="launcher-visitor.js?v=20261120a"></script>
+<script src="launcher-visitor.js?v=20261120c"></script>
 <!-- The splash that prevents the login screen from flashing does not run on
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->
@@ -1987,6 +2030,182 @@ async function fillEmpDatalist(){
 <script>
 /* Warm the first apps while the launcher sits idle, so a tap opens them from cache. Light: HTML only, 6 pages at most. */
 (function(){var g=document.getElementById("appGrid");if(!g)return;var t=0;new MutationObserver(function(){clearTimeout(t);t=setTimeout(function(){if(!window.IosUI)return;IosUI.idle(function(){[].slice.call(g.querySelectorAll("a.app[href]")).slice(0,6).forEach(function(a){IosUI.prefetch(a.href);});},4000);},600);}).observe(g,{childList:true});})();
+</script>
+<script>
+/* CAROUSEL: the app buttons on a 3D drum (CSS .grid.carousel, after "iOS touch").
+   Geometry: N buttons, one face each, step = 360 / N degrees; the drum's radius R makes the faces touch
+   (half a face / tan(180 / N)), never less than 150 px so a short list still reads. Button i is at angle
+   a = rot - i * step and gets  translateZ(-R) rotateX(a) translateZ(R):  a = 0 is the front, a positive angle
+   is higher up. So when rot grows the drum turns upwards and the NEXT button comes up from below into focus.
+   The front one (|a| smallest) is the ACTIVE item (.is-active): lit, "Open", and the only one a click opens; a
+   click on another button turns it to the front first. The back half (|a| > 90) is hidden.
+   Motion: turns by itself (one button every ~2.6 s) while nobody touches it; stops and settles on the nearest
+   button while the mouse is over it, the keyboard is in it, or a finger / mouse drags it (then picks up again
+   a few seconds later). Mouse wheel, drag / swipe, Up / Down keys and the bar's buttons turn it; Enter opens.
+   Reduced motion: no turning by itself (and the plain grid by default). "Grid view" in the bar switches back to
+   the two-column list (kept per device, localStorage sarv_launcher_view); fewer than 4 apps are always a list.
+   The grid is redrawn by renderHome / the extra tiles, so a MutationObserver rebuilds the drum, keeping the
+   app that was in front. Each button's inline transform / opacity is all that is written. */
+(function(){
+  var g=document.getElementById('appGrid'); if(!g||!window.requestAnimationFrame)return;
+  var calm=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
+  var K_VIEW='sarv_launcher_view', MIN=4, FACE=82, TURN=2.6, IDLE=3500;
+  var items=[], step=0, R=0, rot=0, target=null, last=0, raf=0, on=false;
+  var hover=false, focusIn=false, holdUntil=0, drag=null, moved=false, active=-1, bar=null, snapT=0;
+
+  function view(){try{return localStorage.getItem(K_VIEW)||(calm.matches?'grid':'wheel');}catch(e){return calm.matches?'grid':'wheel';}}
+  function setView(v){try{localStorage.setItem(K_VIEW,v);}catch(e){}build();}
+  var norm=function(a){a%=360;if(a>180)a-=360;if(a<=-180)a+=360;return a;};
+  var nearest=function(){return Math.round(rot/step)*step;};
+  function hold(ms){holdUntil=Date.now()+(ms==null?IDLE:ms);}
+  function moving(){return !drag&&target==null&&!hover&&!focusIn&&!calm.matches&&Date.now()>holdUntil&&document.visibilityState!=='hidden';}
+
+  function place(){
+    var best=-1,bestA=999;
+    for(var i=0;i<items.length;i++){
+      var a=norm(rot-i*step), el=items[i], ab=Math.abs(a);
+      if(ab<bestA){bestA=ab;best=i;}
+      if(ab>90){el.style.visibility='hidden';el.style.opacity='0';continue;}
+      var c=Math.cos(a*Math.PI/180), near=Math.max(0,1-ab/step);
+      el.style.visibility='';
+      el.style.transform='translateZ('+(-R).toFixed(1)+'px) rotateX('+a.toFixed(2)+'deg) translateZ('+R.toFixed(1)+'px) scale('+(1+0.06*near).toFixed(3)+')';
+      el.style.opacity=(0.18+0.82*c*c).toFixed(3);
+      el.style.zIndex=String(Math.round(c*100));
+    }
+    if(best!==active){
+      if(items[active]){items[active].classList.remove('is-active');items[active].removeAttribute('aria-current');}
+      active=best;
+      if(items[active]){items[active].classList.add('is-active');items[active].setAttribute('aria-current','true');}
+      paintBar();
+    }
+  }
+  function frame(t){
+    raf=on?requestAnimationFrame(frame):0;
+    var dt=last?Math.min(0.05,(t-last)/1000):0; last=t;
+    if(!on||g.offsetParent===null)return;        // login screen / hidden: nothing to draw
+    if(drag){/* rot follows the pointer */}
+    else if(target!=null){var d=target-rot; if(Math.abs(d)<0.03){rot=target;target=null;} else rot+=d*Math.min(1,dt*10);}
+    else if(moving())rot+=(step/TURN)*dt;
+    else if(Math.abs(nearest()-rot)>0.03)target=nearest();   // stopped (mouse over, keys, a hold): settle on a button
+    place();
+  }
+  function go(to){target=to;hold();if(!raf&&on){last=0;raf=requestAnimationFrame(frame);}}
+  function stepBy(k){go((target!=null?target:nearest())+k*step);}
+  function toItem(i){go(rot+norm(i*step-rot));}
+
+  // ── the bar under the drum: position, previous / next, Grid / Wheel ──
+  function paintBar(){
+    if(!bar)return;
+    var n=items.length;
+    bar.querySelector('.car-pos').textContent=on&&n?((active+1)+' / '+n):'';
+    ['up','down','pos','hint'].forEach(function(k){var e=bar.querySelector('[data-c='+k+']');if(e)e.style.display=on?'':'none';});
+    bar.querySelector('[data-c=mode]').textContent=on?'Grid view':'Wheel view';
+  }
+  function ensureBar(show){
+    if(!bar){
+      bar=document.createElement('div');bar.className='car-bar';bar.setAttribute('aria-label','App wheel');
+      bar.innerHTML='<button type="button" data-c="up" aria-label="Previous app">&#9650;</button>'
+        +'<span class="car-pos" data-c="pos" aria-live="polite"></span>'
+        +'<button type="button" data-c="down" aria-label="Next app">&#9660;</button>'
+        +'<span class="car-hint" data-c="hint">Scroll, drag or &uarr; &darr; &middot; Enter opens</span>'
+        +'<button type="button" data-c="mode"></button>';
+      bar.addEventListener('click',function(e){
+        var b=e.target.closest('button');if(!b)return;
+        var c=b.getAttribute('data-c');
+        if(c==='up')stepBy(-1);else if(c==='down')stepBy(1);else if(c==='mode')setView(on?'grid':'wheel');
+      });
+      g.parentNode.insertBefore(bar,g.nextSibling);
+    }
+    bar.style.display=show?'':'none';
+    paintBar();
+  }
+
+  // ── build / tear down (every redraw of the grid) ──
+  function clear(el){el.style.transform='';el.style.opacity='';el.style.visibility='';el.style.zIndex='';el.classList.remove('is-active');el.removeAttribute('aria-current');}
+  function build(){
+    var keep=items[active]||null;
+    items.forEach(clear);
+    items=[].slice.call(g.children).filter(function(el){return el.matches&&el.matches('a.app');});
+    active=-1;
+    on=view()==='wheel'&&items.length>=MIN;
+    g.classList.toggle('carousel',on);
+    if(on){g.tabIndex=0;g.setAttribute('aria-roledescription','carousel');}
+    else{g.removeAttribute('tabindex');g.removeAttribute('aria-roledescription');}
+    ensureBar(items.length>=MIN);
+    if(!on){g.style.height='';if(raf)cancelAnimationFrame(raf);raf=0;return;}
+    step=360/items.length;
+    R=Math.max(150,(FACE/2)/Math.tan(Math.PI/items.length));
+    g.style.height=Math.round(Math.min(430,window.innerHeight*0.64,2*R*0.92+72))+'px';   // the drum's own height, at most the CSS one
+    var k=keep?items.indexOf(keep):-1;
+    rot=k>0?k*step:0; target=null;                 // the app that was in front stays there (else the first: Visitor Approvals / My SOPs)
+    hold(1800);                                    // a moment to read the first one before it turns
+    place();
+    if(!raf){last=0;raf=requestAnimationFrame(frame);}
+  }
+  var bt=0;
+  new MutationObserver(function(){clearTimeout(bt);bt=setTimeout(build,30);}).observe(g,{childList:true});
+
+  // ── mouse over: stop and settle; leave: turn again ──
+  g.addEventListener('pointerenter',function(e){if(on&&e.pointerType==='mouse'){hover=true;target=nearest();}});
+  g.addEventListener('pointerleave',function(e){if(e.pointerType==='mouse'){hover=false;hold(1200);}});
+  g.addEventListener('focusin',function(e){
+    if(!on)return; focusIn=true;
+    var i=items.indexOf(e.target.closest?e.target.closest('a.app'):null);
+    if(i>=0&&i!==active)toItem(i);
+  });
+  g.addEventListener('focusout',function(){setTimeout(function(){focusIn=g.contains(document.activeElement);if(!focusIn)hold();},0);});
+
+  // ── wheel / drag / swipe ──
+  g.addEventListener('wheel',function(e){
+    if(!on)return; e.preventDefault();
+    var d=e.deltaMode===1?e.deltaY*33:e.deltaY;
+    target=null; rot+=d/110*step; hold();
+    clearTimeout(snapT); snapT=setTimeout(function(){target=nearest();},140);
+  },{passive:false});
+  g.addEventListener('pointerdown',function(e){
+    if(!on||e.button>0)return;
+    var now=Date.now();
+    drag={y:e.clientY,rot:rot,id:e.pointerId,v:0,ly:e.clientY,lt:now}; moved=false; target=null;
+  });
+  g.addEventListener('pointermove',function(e){
+    if(!drag||e.pointerId!==drag.id)return;
+    var dy=e.clientY-drag.y;
+    if(!moved&&Math.abs(dy)>6){moved=true;g.classList.add('dragging');try{g.setPointerCapture(e.pointerId);}catch(x){}}
+    if(moved){
+      rot=drag.rot-dy*(step/FACE);
+      var now=Date.now(); drag.v=(e.clientY-drag.ly)/Math.max(1,now-drag.lt); drag.ly=e.clientY; drag.lt=now;
+    }
+  });
+  function endDrag(){
+    if(!drag)return;
+    var fling=moved?-drag.v*160*(step/FACE):0;      // a quick swipe carries on a little
+    drag=null; g.classList.remove('dragging'); hold();
+    target=Math.round((rot+fling)/step)*step;
+  }
+  g.addEventListener('pointerup',endDrag); g.addEventListener('pointercancel',endDrag);
+
+  // ── click: only the active button opens; another one comes to the front first; a drag is never a click ──
+  g.addEventListener('click',function(e){
+    if(!on)return;
+    var el=e.target.closest?e.target.closest('a.app'):null; if(!el)return;
+    if(moved){e.preventDefault();e.stopPropagation();moved=false;return;}
+    var i=items.indexOf(el);
+    if(i>=0&&i!==active){e.preventDefault();e.stopPropagation();toItem(i);}
+  },true);
+
+  // ── keys ──
+  g.addEventListener('keydown',function(e){
+    if(!on)return;
+    if(e.key==='ArrowDown'||e.key==='ArrowRight'){e.preventDefault();stepBy(1);}
+    else if(e.key==='ArrowUp'||e.key==='ArrowLeft'){e.preventDefault();stepBy(-1);}
+    else if(e.key==='Home'){e.preventDefault();toItem(0);}
+    else if(e.key==='End'){e.preventDefault();toItem(items.length-1);}
+    else if((e.key==='Enter'||e.key===' ')&&e.target===g&&items[active]){e.preventDefault();items[active].click();}
+  });
+  if(calm.addEventListener)calm.addEventListener('change',build);
+  document.addEventListener('visibilitychange',function(){last=0;});
+  build();
+})();
 </script>
 <script src="cursor-glow.js"></script>
 </body>

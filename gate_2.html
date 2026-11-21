@@ -125,6 +125,16 @@
             #gatePrintRoot * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .no-print { display: none !important; }
         }
+        /* QR scanner frame (section 12B): four corner marks and a moving line, over the live camera */
+        .scan-frame { position: relative; width: min(68vw, 300px); height: min(68vw, 300px); border-radius: 22px; box-shadow: 0 0 0 9999px rgba(0,0,0,0.42); }
+        .scan-frame span { position: absolute; width: 34px; height: 34px; border: 4px solid #fff; }
+        .scan-frame span:nth-child(1) { top: 0; left: 0; border-right: 0; border-bottom: 0; border-top-left-radius: 22px; }
+        .scan-frame span:nth-child(2) { top: 0; right: 0; border-left: 0; border-bottom: 0; border-top-right-radius: 22px; }
+        .scan-frame span:nth-child(3) { bottom: 0; left: 0; border-right: 0; border-top: 0; border-bottom-left-radius: 22px; }
+        .scan-frame span:nth-child(4) { bottom: 0; right: 0; border-left: 0; border-top: 0; border-bottom-right-radius: 22px; }
+        .scan-frame .scan-line { position: absolute; left: 10%; right: 10%; height: 2px; top: 12%; background: #34d399; box-shadow: 0 0 12px #34d399; border-radius: 2px; animation: scanMove 2.2s ease-in-out infinite alternate; }
+        @keyframes scanMove { from { top: 12%; } to { top: 86%; } }
+        .scan-frame.hit span { border-color: #34d399; }
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
@@ -133,6 +143,8 @@
 <script src="ios-ui.js?v=20261118a" defer></script>
 <script src="ios-dropdown.js?v=20261120a" defer></script>
 <script src="ios-dialog.js?v=20261120a"></script>
+<!-- QR scanner (Scan QR at the bottom of the menu): reads the slips / store copies / gate passes, see sarv-qr.js -->
+<script src="sarv-qr.js?v=20261120a"></script>
 </head>
 <body class="text-gray-900 antialiased select-none">
 
@@ -229,6 +241,15 @@
                         <span class="text-xs font-extrabold tracking-wide uppercase">TRANSFER</span>
                     </button>
 
+                    <!-- SAMPLE & OTHER BUTTON (Returnable / Non-Returnable inward with approval; a returnable one goes out again with its own Outward No.) -->
+                    <button onclick="showView('sampleMenu')" class="ios-btn relative bg-rose-500/10 border border-rose-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-rose-600">
+                        <span id="smpMainBadge" class="hidden absolute top-2.5 right-2.5 bg-rose-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs"></span>
+                        <div class="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center text-xl shadow-md shadow-rose-500/30">
+                            <i class="fa-solid fa-boxes-packing"></i>
+                        </div>
+                        <span class="text-xs font-extrabold tracking-wide uppercase text-center leading-tight">SAMPLE &amp; OTHER</span>
+                    </button>
+
                     <!-- VISITOR BUTTON -->
                     <button onclick="showView('visitorMenu')" class="ios-btn relative bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-emerald-600">
                         <span id="visMainBadge" class="hidden absolute top-2.5 right-2.5 bg-emerald-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs"></span>
@@ -247,7 +268,7 @@
                     </button>
 
                     <!-- HYDRA / JCB INWARD BUTTON (Placed right after Dharam Kanta) -->
-                    <button onclick="showView('hydraForm')" class="ios-btn relative bg-amber-500/10 border border-amber-500/25 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-amber-800">
+                    <button onclick="showView('hydraMenu')" class="ios-btn relative col-span-2 bg-amber-500/10 border border-amber-500/25 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-amber-800">
                         <span id="hydraMenuLiveBadge" class="hidden absolute top-2.5 right-2.5 bg-amber-500 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs animate-pulse">1 ACTIVE</span>
                         <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-md shadow-amber-500/30">
                             <i class="fa-solid fa-truck-monster"></i>
@@ -261,6 +282,17 @@
                             <i class="fa-solid fa-id-card-clip"></i>
                         </div>
                         <span class="text-xs font-extrabold tracking-wide uppercase">NEW EMPLOYEE</span>
+                    </button>
+
+                    <!-- SCAN QR (bottom of the menu): a Packing Slip / Store copy / Gate pass QR opens its gate step with the data filled in (section 12B) -->
+                    <button onclick="openScanner()" class="ios-btn col-span-2 bg-gray-900 text-white rounded-[20px] p-4 flex items-center justify-center gap-3 shadow-lg">
+                        <div class="w-11 h-11 rounded-xl bg-white/15 flex items-center justify-center text-xl">
+                            <i class="fa-solid fa-qrcode"></i>
+                        </div>
+                        <div class="text-left">
+                            <span class="block text-sm font-extrabold tracking-wide uppercase">Scan QR</span>
+                            <span class="block text-[10.5px] font-semibold text-white/70">Packing slip · Store copy · Gate pass</span>
+                        </div>
                     </button>
                 </div>
             </div>
@@ -485,6 +517,20 @@
                         <i class="fa-solid fa-chevron-right text-indigo-600"></i>
                     </button>
 
+                    <!-- SAMPLE / OTHER RETURN (the returnable Sample & Other entries waiting to go back) -->
+                    <button onclick="showView('sampleReturn')" class="ios-btn w-full p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-between">
+                        <div class="flex items-center gap-3.5">
+                            <div class="w-11 h-11 rounded-xl bg-rose-500 text-white flex items-center justify-center text-lg shadow-sm">
+                                <i class="fa-solid fa-rotate-left"></i>
+                            </div>
+                            <div class="text-left">
+                                <h3 class="text-sm font-extrabold text-gray-900">SAMPLE / OTHER RETURN</h3>
+                                <p class="text-[11px] text-gray-500">Returnable items: item photo + Outward No.</p>
+                            </div>
+                        </div>
+                        <span class="flex items-center gap-2"><span id="smpRetBadge2" class="hidden min-w-[22px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center"></span><i class="fa-solid fa-chevron-right text-rose-500"></i></span>
+                    </button>
+
                     <!-- OUT FROM ADMIN OFFICE -->
                     <button onclick="showComingSoon('Out From Admin Office')" class="ios-btn w-full p-4 bg-gray-100/80 border border-gray-200/70 rounded-2xl flex items-center justify-between">
                         <div class="flex items-center gap-3.5">
@@ -629,6 +675,9 @@
                         </div>
                         <input type="text" id="dispOutwardNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                     </div>
+
+                    <!-- The ERP Packing Slip read by Scan QR (gateScanPackingSlip); saved with the entry as erpSlipNo -->
+                    <div id="dispScanCard" class="hidden"></div>
 
                     <!-- Auto-Generated Packing Slip Number -->
                     <div class="bg-gradient-to-r from-indigo-50 to-blue-50 p-3.5 rounded-2xl border border-indigo-100 flex items-center justify-between">
@@ -927,33 +976,257 @@
                 </div>
             </div>
 
-            <!-- VIEW 7: HYDRA / JCB INWARD & LIVE MINUTE TIMER WORKFLOW -->
-            <div id="view-hydraForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet space-y-5">
-                <div class="flex items-center justify-between pb-3.5 border-b border-gray-100">
+            <!-- VIEW 8A: SAMPLE & OTHER MENU (New entry -> approver approves on the launcher -> Done = inward -> a returnable one waits in Return Pending -> Outward) -->
+            <div id="view-sampleMenu" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
                     <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
-                    <h2 class="text-[16px] font-bold text-gray-900">Hydra / JCB Inward</h2>
+                    <h2 class="text-[16px] font-bold text-gray-900">Sample &amp; Other</h2>
                     <span class="w-10"></span>
                 </div>
+                <div class="space-y-3">
+                    <button onclick="showView('sampleForm')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-rose-500/10 border border-rose-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center text-xl shadow-md shadow-rose-500/30 shrink-0"><i class="fa-solid fa-boxes-packing"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-rose-800 uppercase tracking-wide">New Sample / Other Entry</span>
+                            <span class="block text-[11px] font-semibold text-rose-700/80">Returnable or Non-Returnable: bill + item photo, approver</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-rose-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('samplePending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-amber-500/10 border border-amber-500/25 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-md shadow-amber-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-amber-800 uppercase tracking-wide">Approval Pending</span>
+                            <span id="smpPendSub" class="block text-[11px] font-semibold text-amber-700/80">Waiting for the approver's PIN</span>
+                        </div>
+                        <span id="smpPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-amber-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-amber-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('sampleReturn')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-rotate-left"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">Return Pending</span>
+                            <span class="block text-[11px] font-semibold text-blue-700/80">Returnable items: Outward with item photo + Outward No.</span>
+                        </div>
+                        <span id="smpRetBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
+                    </button>
+                </div>
+            </div>
 
-                <!-- ACTIVE / IN-PROGRESS HYDRA SESSIONS (Running Timer -> Stop -> Store Entry -> Gate Out) -->
-                <div id="activeHydraSessionsBox" class="hidden space-y-3">
-                    <div class="flex items-center justify-between px-1">
-                        <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider flex items-center gap-1.5">
-                            <span class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                            Active Hydra / JCB Sessions
-                        </span>
-                        <span id="activeHydraCountBadge" class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">0 Active</span>
+            <!-- VIEW 8B: NEW SAMPLE / OTHER ENTRY (the rest of the form opens only after Returnable / Non-Returnable is chosen) -->
+            <div id="view-sampleForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('sampleMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">New Sample / Other Entry</h2>
+                    <span class="w-10"></span>
+                </div>
+                <form id="formSample" class="space-y-3.5">
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Inward No <span id="smpInwardNoHint" class="normal-case font-semibold text-rose-600">· Auto</span></label>
+                        <input type="text" id="smpInwardNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                     </div>
-                    <div id="activeHydraList" class="space-y-3"></div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Entry Type *</label>
+                        <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl">
+                            <button type="button" id="smpTypeRET" onclick="smpPickType('RETURNABLE')" class="py-2.5 rounded-lg text-xs font-extrabold text-gray-500 transition-all">Returnable</button>
+                            <button type="button" id="smpTypeNON" onclick="smpPickType('NON-RETURNABLE')" class="py-2.5 rounded-lg text-xs font-extrabold text-gray-500 transition-all">Non-Returnable</button>
+                        </div>
+                        <p id="smpTypeNote" class="text-[10.5px] font-semibold text-gray-400 mt-1 px-0.5">Choose the entry type to fill the form.</p>
+                    </div>
+
+                    <div id="smpFields" class="hidden space-y-3.5">
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase">Supplier Name *</label>
+                                <button type="button" onclick="openMasterModal('parties')" class="ios-btn text-[11px] font-bold text-rose-700 flex items-center gap-1">
+                                    <i class="fa-solid fa-plus-circle"></i> Add Party
+                                </button>
+                            </div>
+                            <div class="relative">
+                                <input type="text" id="smpSupplier" autocomplete="off" placeholder="Type to search the supplier..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-semibold text-gray-900 focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white">
+                                <div id="smpSupplierList" class="gate-combo hidden"></div>
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Person Name *</label>
+                                <input type="text" id="smpPerson" placeholder="Who brought it" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Mobile No *</label>
+                                <input type="tel" id="smpMobile" inputmode="numeric" maxlength="10" oninput="this.value = this.value.replace(/\D/g, '').slice(0, 10)" placeholder="10 digits" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-mono font-bold tracking-wide focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item / Description</label>
+                            <input type="text" id="smpItem" placeholder="e.g. Fabric sample, machine part..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white">
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Bill Photo *</label>
+                                <label class="ios-btn flex flex-col items-center justify-center p-3 bg-rose-50/70 border-2 border-dashed border-rose-200 rounded-2xl cursor-pointer text-center">
+                                    <i class="fa-solid fa-file-invoice text-rose-500 text-lg mb-1"></i>
+                                    <span id="smpBillLabel" class="text-[11px] font-semibold text-rose-700 truncate w-full">Upload Bill</span>
+                                    <input type="file" id="smpBillPhoto" data-up="gate-sample-bill" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'smpBillLabel', 'smpBillPreview', 'smpBill', 'smpPreviewRow')">
+                                </label>
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item Photo *</label>
+                                <label class="ios-btn flex flex-col items-center justify-center p-3 bg-rose-50/70 border-2 border-dashed border-rose-200 rounded-2xl cursor-pointer text-center">
+                                    <i class="fa-solid fa-camera text-rose-500 text-lg mb-1"></i>
+                                    <span id="smpItemLabel" class="text-[11px] font-semibold text-rose-700 truncate w-full">Upload Item</span>
+                                    <input type="file" id="smpItemPhoto" data-up="gate-sample-item" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'smpItemLabel', 'smpItemPreview', 'smpItem', 'smpPreviewRow')">
+                                </label>
+                            </div>
+                        </div>
+                        <div id="smpPreviewRow" class="hidden grid grid-cols-2 gap-3">
+                            <div class="rounded-xl overflow-hidden border border-rose-200 bg-gray-50 h-20 flex items-center justify-center">
+                                <img id="smpBillPreview" class="w-full h-full object-cover hidden" alt="Bill">
+                            </div>
+                            <div class="rounded-xl overflow-hidden border border-rose-200 bg-gray-50 h-20 flex items-center justify-center">
+                                <img id="smpItemPreview" class="w-full h-full object-cover hidden" alt="Item">
+                            </div>
+                        </div>
+
+                        <!-- Whom to Approve: only an ERP user (gateCombo over visHostOptions), he approves it on the launcher with his PIN -->
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase">Whom to Approve *</label>
+                                <span class="text-[10px] font-semibold text-rose-600">Approves with his PIN</span>
+                            </div>
+                            <div class="relative">
+                                <input type="text" id="smpApprover" autocomplete="off" placeholder="Type to search the person..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-rose-500 focus:bg-white">
+                                <div id="smpApproverList" class="gate-combo hidden"></div>
+                            </div>
+                        </div>
+
+                        <button type="submit" class="ios-btn w-full bg-rose-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-center gap-2 text-sm mt-2">
+                            <i class="fa-solid fa-paper-plane"></i> Send for Approval
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- VIEW 8C: SAMPLE APPROVAL PENDING (approved -> Done = inward; pending / rejected -> Close) -->
+            <div id="view-samplePending" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('sampleMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Sample Approval Pending</h2>
+                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="smpPollIcon" class="fa-solid fa-rotate"></i></button>
+                </div>
+                <p id="smpPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
+                <div id="smpPendList" class="space-y-2.5"></div>
+            </div>
+
+            <!-- VIEW 8D: RETURN PENDING (returnable items inside -> Outward with item photo; + what was completed in the last 2 days) -->
+            <div id="view-sampleReturn" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('sampleMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Return Pending</h2>
+                    <span class="w-10"></span>
+                </div>
+                <input type="text" id="smpRetSearch" oninput="renderSampleReturn()" autocomplete="off" placeholder="Search supplier, person, mobile, item, inward / outward no..." class="w-full px-3.5 py-2.5 mb-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl mb-3">
+                    <button id="smpTabPend" onclick="smpRetTab('pend')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Return Pending <span id="smpTabPendN"></span></button>
+                    <button id="smpTabDone" onclick="smpRetTab('done')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Completed · last 2 days <span id="smpTabDoneN"></span></button>
+                </div>
+                <div id="smpRetList" class="space-y-2.5"></div>
+            </div>
+
+            <!-- VIEW 7A: HYDRA / JCB MENU (New entry -> approver approves on the launcher -> Start Work -> Existing -> Out), like the Visitor menu -->
+            <div id="view-hydraMenu" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Hydra / JCB</h2>
+                    <span class="w-10"></span>
+                </div>
+                <div class="space-y-3">
+                    <button onclick="showView('hydraForm')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-amber-500/10 border border-amber-500/25 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-500 text-white flex items-center justify-center text-xl shadow-md shadow-amber-500/30 shrink-0"><i class="fa-solid fa-truck-monster"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-amber-800 uppercase tracking-wide">New Hydra / JCB Entry</span>
+                            <span class="block text-[11px] font-semibold text-amber-700/80">Approval request: supplier, live photo, approver</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-amber-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('hydraPending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-orange-500/10 border border-orange-500/25 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl shadow-md shadow-orange-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-orange-800 uppercase tracking-wide">Approval Pending</span>
+                            <span id="hydPendSub" class="block text-[11px] font-semibold text-orange-700/80">Waiting for the approver's PIN</span>
+                        </div>
+                        <span id="hydPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-orange-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-orange-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('hydraExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-stopwatch"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">Existing Hydra / JCB</span>
+                            <span class="block text-[11px] font-semibold text-blue-700/80">Inside: timer, work complete, store entry, Out with photo</span>
+                        </div>
+                        <span id="hydInsideBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 7B: HYDRA APPROVAL PENDING (waiting for the approver / approved -> Start Work & Timer / rejected -> Out) -->
+            <div id="view-hydraPending" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('hydraMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Hydra Approval Pending</h2>
+                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="hydPollIcon" class="fa-solid fa-rotate"></i></button>
+                </div>
+                <p id="hydPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
+                <div id="hydPendList" class="space-y-2.5"></div>
+            </div>
+
+            <!-- VIEW 7C: EXISTING HYDRA / JCB (every one still inside: timer -> stop -> store entry -> Out; + the ones out in the last 2 days) -->
+            <div id="view-hydraExisting" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('hydraMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Existing Hydra / JCB</h2>
+                    <span class="w-10"></span>
+                </div>
+                <input type="text" id="hydExistSearch" oninput="renderHydraExisting()" autocomplete="off" placeholder="Search supplier, vehicle, approver, pass no..." class="w-full px-3.5 py-2.5 mb-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl mb-3">
+                    <button id="hydTabIn" onclick="hydExistTab('in')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Inside <span id="hydTabInN"></span></button>
+                    <button id="hydTabOut" onclick="hydExistTab('out')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Out · last 2 days <span id="hydTabOutN"></span></button>
+                </div>
+                <div id="activeHydraList" class="space-y-3"></div>
+            </div>
+
+            <!-- VIEW 7: NEW HYDRA / JCB ENTRY (sent for approval; the minute timer starts with Start Work after the approval) -->
+            <div id="view-hydraForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet space-y-5">
+                <div class="flex items-center justify-between pb-3.5 border-b border-gray-100">
+                    <button onclick="showView('hydraMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">New Hydra / JCB Entry</h2>
+                    <span class="w-10"></span>
                 </div>
 
                 <!-- NEW HYDRA / JCB INWARD ENTRY FORM -->
                 <form id="formHydraInward" class="space-y-3.5">
                     <div class="flex items-center justify-between px-0.5">
-                        <span class="text-xs font-extrabold text-gray-800 uppercase tracking-wide">New Hydra / JCB Entry</span>
-                        <span class="text-[10px] font-semibold text-amber-600">Auto-Starts Minute Timer</span>
+                        <span class="text-xs font-extrabold text-gray-800 uppercase tracking-wide">Approval Request</span>
+                        <span class="text-[10px] font-semibold text-amber-600">Timer starts after approval</span>
                     </div>
 
                     <!-- Supplier Name (Fixed Party Dropdown) -->
@@ -977,11 +1250,28 @@
                         <input type="text" id="hydraVehicleNo" list="gateVehicleList" autocomplete="off" placeholder="e.g. HR20CR4510" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm uppercase font-mono font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
                     </div>
 
+                    <!-- Approver: only an ERP user (gateCombo over visHostOptions), because that user approves it from the launcher with his PIN -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Approver *</label>
+                            <span class="text-[10px] font-semibold text-amber-600">Approves with his PIN</span>
+                        </div>
+                        <div class="relative">
+                            <input type="text" id="hydraApprover" autocomplete="off" placeholder="Type to search the person..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
+                            <div id="hydraApproverList" class="gate-combo hidden"></div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Work / Purpose *</label>
+                        <input type="text" id="hydraPurpose" placeholder="e.g. Machine shifting, loading, unloading..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white">
+                    </div>
+
                     <!-- Auto Date & Time Stamp -->
                     <div class="bg-gradient-to-r from-amber-50 to-orange-50 p-3.5 rounded-2xl border border-amber-200/80 flex items-center justify-between">
                         <div>
                             <span class="block text-[10px] font-bold text-amber-600 uppercase">Date & Time Stamp (Auto)</span>
-                            <span class="text-[11px] font-semibold text-gray-600">Timer starts on submit</span>
+                            <span class="text-[11px] font-semibold text-gray-600">Arrival at the gate</span>
                         </div>
                         <span id="hydraAutoDateTime" class="font-mono text-xs font-extrabold bg-white text-amber-800 px-3 py-1.5 rounded-xl shadow-2xs border border-amber-200">--</span>
                     </div>
@@ -1006,7 +1296,7 @@
                     </div>
 
                     <button type="submit" class="ios-btn w-full bg-amber-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-amber-500/30 flex items-center justify-center gap-2 text-sm mt-2">
-                        <i class="fa-solid fa-play"></i> Submit & Start Minute Timer
+                        <i class="fa-solid fa-paper-plane"></i> Send for Approval
                     </button>
                 </form>
             </div>
@@ -1106,18 +1396,18 @@
         </div>
     </div>
 
-    <!-- Visitor Out: out photo (camera) + remarks, both compulsory -->
+    <!-- Visitor / Hydra Out: out photo (camera) + remarks, both compulsory (texts set by openVisitorOut for a Hydra) -->
     <div id="visOutModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeVisitorOut()"></div>
         <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
             <div class="px-5 py-3.5 border-b border-gray-100 shrink-0 flex items-center justify-between gap-3">
-                <h3 class="text-base font-bold text-gray-900">Visitor Out</h3>
+                <h3 id="visOutTitle" class="text-base font-bold text-gray-900">Visitor Out</h3>
                 <button type="button" onclick="closeVisitorOut()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <div class="p-5 overflow-y-auto space-y-3.5">
                 <div id="visOutWho" class="flex items-center gap-3"></div>
                 <div>
-                    <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Photo at Out *</label>
+                    <label id="visOutPhotoTitle" class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Photo at Out *</label>
                     <label class="ios-btn flex flex-col items-center justify-center p-4 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
                         <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-base mb-1.5 shadow-sm"><i class="fa-solid fa-camera"></i></div>
                         <span id="visOutPhotoLabel" class="text-xs font-bold text-blue-800 truncate w-full">Tap to capture the visitor</span>
@@ -1132,9 +1422,69 @@
                     <textarea id="visOutRemarks" rows="2" placeholder="e.g. Meeting done, no material taken" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"></textarea>
                 </div>
                 <button type="button" id="visOutSaveBtn" onclick="saveVisitorOut()" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
-                    <i class="fa-solid fa-right-from-bracket"></i> Mark Visitor Out
+                    <i class="fa-solid fa-right-from-bracket"></i> <span id="visOutSaveTxt">Mark Visitor Out</span>
                 </button>
             </div>
+        </div>
+    </div>
+
+    <!-- Sample / Other Return: a returnable item goes out with its own Outward No. (series OUT) and an item photo (compulsory) -->
+    <div id="smpRetModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="smpCloseReturn()"></div>
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 border-b border-gray-100 shrink-0 flex items-center justify-between gap-3">
+                <h3 class="text-base font-bold text-gray-900">Return · Outward</h3>
+                <button type="button" onclick="smpCloseReturn()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto space-y-3.5">
+                <div id="smpRetWho" class="flex items-center gap-3"></div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Outward No <span id="smpRetOutNoHint" class="normal-case font-semibold text-blue-600">· Auto</span></label>
+                    <input type="text" id="smpRetOutNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-3 bg-gray-100 border border-gray-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item Photo at Return *</label>
+                    <label class="ios-btn flex flex-col items-center justify-center p-4 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
+                        <div class="w-10 h-10 rounded-full bg-blue-600 text-white flex items-center justify-center text-base mb-1.5 shadow-sm"><i class="fa-solid fa-camera"></i></div>
+                        <span id="smpRetPhotoLabel" class="text-xs font-bold text-blue-800 truncate w-full">Tap to capture the item going out</span>
+                        <input type="file" id="smpRetPhoto" data-up="gate-sample-return" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'smpRetPhotoLabel', 'smpRetPreviewImg', 'smpRet', 'smpRetPreviewBox')">
+                    </label>
+                    <div id="smpRetPreviewBox" class="hidden mt-2.5 rounded-2xl overflow-hidden border border-blue-200 bg-gray-50 h-32">
+                        <img id="smpRetPreviewImg" class="w-full h-full object-cover" alt="Item at return">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Remarks</label>
+                    <textarea id="smpRetRemarks" rows="2" placeholder="e.g. Sample returned to the same person" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white"></textarea>
+                </div>
+                <button type="button" onclick="smpSaveReturn()" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
+                    <i class="fa-solid fa-right-from-bracket"></i> Save Return Outward
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR SCANNER (section 12B): live camera; BarcodeDetector or jsQR via sarv-qr.js; also from a photo or a typed number -->
+    <div id="scanModal" class="fixed inset-0 z-[70] hidden bg-black flex flex-col">
+        <div class="flex items-center justify-between px-4 pt-[max(12px,env(safe-area-inset-top))] pb-3 text-white shrink-0">
+            <button type="button" onclick="closeScanner()" class="ios-btn w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-sm" aria-label="Close"><i class="fa-solid fa-xmark"></i></button>
+            <span class="text-[15px] font-bold">Scan QR</span>
+            <button type="button" id="scanTorchBtn" onclick="scanToggleTorch()" class="ios-btn hidden w-9 h-9 rounded-full bg-white/15 flex items-center justify-center text-sm" aria-label="Torch"><i class="fa-solid fa-bolt"></i></button>
+            <span id="scanTorchGap" class="w-9"></span>
+        </div>
+        <div class="relative flex-1 overflow-hidden">
+            <video id="scanVideo" playsinline muted autoplay class="absolute inset-0 w-full h-full object-cover"></video>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div class="scan-frame"><span></span><span></span><span></span><span></span><i class="scan-line"></i></div>
+            </div>
+            <p id="scanMsg" class="absolute left-4 right-4 bottom-4 text-center text-[12px] font-semibold text-white bg-black/55 rounded-2xl px-3 py-2">Point the camera at the QR of a Packing Slip, a Store copy or a Gate pass</p>
+        </div>
+        <div class="grid grid-cols-2 gap-2.5 p-4 pb-[max(16px,env(safe-area-inset-bottom))] shrink-0">
+            <label class="ios-btn flex items-center justify-center gap-2 py-3 rounded-2xl bg-white/15 text-white text-[13px] font-bold cursor-pointer">
+                <i class="fa-solid fa-image"></i> From Photo
+                <input type="file" id="scanFileInput" data-up="gate-scan-photo" accept="image/*" class="hidden" onchange="scanFromPhoto(this)">
+            </label>
+            <button type="button" onclick="scanTypeIn()" class="ios-btn flex items-center justify-center gap-2 py-3 rounded-2xl bg-white/15 text-white text-[13px] font-bold"><i class="fa-solid fa-keyboard"></i> Type No.</button>
         </div>
     </div>
 
@@ -1486,7 +1836,10 @@
             visVehicle: null,
             dkVehicle: null,
             hydraIn: null,
-            visOut: null
+            visOut: null,
+            smpBill: null,
+            smpItem: null,
+            smpRet: null
         };
 
         let generatedStoreNo = '';
@@ -1862,6 +2215,8 @@
                     if ((e._rev || 0) === rev) { e._dirty = false; e._photoDirty = false; }   // changed again meanwhile: stays dirty
                     e._syncedAt = new Date().toISOString(); e.photoKeys = r.data.photoKeys || e.photoKeys || []; delete e._err;
                     if (r.data.visApproval) e.visApproval = r.data.visApproval;
+                    // a Hydra that asked for approval and got none back: the server's gate_entry_save is older than the Hydra approval
+                    if ((isHydra(e) || isSample(e)) && e.needApproval) HYD_NOSRV = !r.data.visApproval && !e.visApproval;
                 }
                 saveEntries();
 
@@ -1955,9 +2310,7 @@
         // After a pull changed something: redraw the live parts without touching what is being typed
         function gateRefreshViews() {
             updateHydraLiveUI();
-            const hv = document.getElementById('view-hydraForm');
             const typing = document.activeElement && /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-            if (hv && hv.classList.contains('active') && !typing) renderActiveHydraSessions();
             const qm = document.getElementById('qrVerifyModal');
             if (qm && !qm.classList.contains('hidden') && !typing) lookupPassForVerify();
             visRefreshUi();
@@ -2067,6 +2420,9 @@
             gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
             gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
             gateCombo({ inputId: 'hydraSupplierName', listId: 'hydraSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
+            gateCombo({ inputId: 'hydraApprover', listId: 'hydraApproverList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a Hydra / JCB.' });
+            gateCombo({ inputId: 'smpSupplier', listId: 'smpSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
+            gateCombo({ inputId: 'smpApprover', listId: 'smpApproverList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve it.' });
             const rn = document.getElementById('inRefNo'), rt = document.getElementById('inRefType');
             if (rn) { rn.addEventListener('input', refDetailSoon); rn.addEventListener('change', loadRefDetail); }
             if (rt) rt.addEventListener('change', () => { document.getElementById('inRefNo').value = ''; clearRefDetail(); });
@@ -2271,6 +2627,13 @@
                 'view-visitorExisting',
                 'view-visitorForm',
                 'view-dharamKantaForm',
+                'view-sampleMenu',
+                'view-sampleForm',
+                'view-samplePending',
+                'view-sampleReturn',
+                'view-hydraMenu',
+                'view-hydraPending',
+                'view-hydraExisting',
                 'view-hydraForm'
             ];
             views.forEach(v => {
@@ -2326,6 +2689,16 @@
             if (viewId === 'visitorExisting') renderVisitorExisting();
             if (viewId === 'visitorMenu') visRefreshUi();
 
+            // Hydra / JCB: the same three steps (its Approval Pending uses the same quick poll)
+            if (viewId === 'hydraPending') { renderHydraPending(); visPollStart(); }
+            if (viewId === 'hydraExisting') renderHydraExisting();
+            if (viewId === 'hydraMenu') visRefreshUi();
+
+            // Sample & Other: the same approval steps; Return Pending = returnable items still with us
+            if (viewId === 'sampleForm') initSampleForm();
+            if (viewId === 'samplePending') { renderSamplePending(); visPollStart(); }
+            if (viewId === 'sampleReturn') renderSampleReturn();
+            if (viewId === 'sampleMenu') visRefreshUi();
             if (viewId === 'hydraForm') {
                 initHydraView();
             }
@@ -2546,6 +2919,7 @@
             form.reset();
             matchedDispatchDkEntry = null;
             tempPhotos.dispVehicle = null;
+            dispScanSet(null);   // a slip read by Scan QR is set again by gateScanPackingSlip after this
 
             gateFillNo('OUT', 'dispOutwardNo', 'dispOutwardNoHint');
             generatedPackingSlipNo = '';
@@ -2705,10 +3079,18 @@
                 status: 'IN'
             };
 
+            // the ERP Packing Slip read by Scan QR goes with it (only when it is for this vehicle)
+            if (DISP_SCAN && (!DISP_SCAN.veh || dkVehKey(DISP_SCAN.veh) === dkVehKey(vehicleNo))) {
+                newDispatchEntry.erpSlipNo = DISP_SCAN.no;
+                newDispatchEntry.erpParty = DISP_SCAN.p || '';
+                newDispatchEntry.host += ` | Slip: ${DISP_SCAN.no}`;
+                if (DISP_SCAN.p) newDispatchEntry.name = `${DISP_SCAN.p} · ${vehicleNo}`;
+            }
             commitEntry(newDispatchEntry);
             this.reset();
             tempPhotos.dispVehicle = null;
             matchedDispatchDkEntry = null;
+            dispScanSet(null);
 
             showView('actionMenu');
             showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) • Approval Pending`, 'info');
@@ -2943,14 +3325,16 @@
         function visPollStop() { clearInterval(visPollTimer); visPollTimer = null; }
         async function visPollNow(manual) {
             if (visPollBusy) return;
-            const uids = gateEntries.filter(e => isVisPending(e) && e._syncedAt && e.uid).map(e => e.uid);
-            if (manual) gateSync(false);   // sends what is waiting (a new visitor) and pulls the rest
-            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) renderVisitorPending(); return; }
+            // visitors and Hydra / JCB entries waiting for a decision (one call for both)
+            const uids = gateEntries.filter(e => (isVisPending(e) || isHydPending(e) || isSmpPending(e)) && e._syncedAt && e.uid).map(e => e.uid);
+            if (manual) gateSync(false);   // sends what is waiting (a new visitor / Hydra) and pulls the rest
+            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) { renderVisitorPending(); renderHydraPending(); renderSamplePending(); } return; }
             visPollBusy = true;
-            const icon = document.getElementById('visPollIcon'); if (icon) icon.classList.add('fa-spin');
+            const icons = ['visPollIcon', 'hydPollIcon', 'smpPollIcon'].map(i => document.getElementById(i)).filter(Boolean);
+            icons.forEach(i => i.classList.add('fa-spin'));
             const r = await gateRpc('gate_vis_status', { p_uids: uids });
-            visPollBusy = false; if (icon) icon.classList.remove('fa-spin');
-            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); } return; }
+            visPollBusy = false; icons.forEach(i => i.classList.remove('fa-spin'));
+            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); renderHydraPending(); renderSamplePending(); } return; }
             VIS_NOMIG = false;
             let changed = false;
             const rows = r.data.rows || {};
@@ -2959,6 +3343,7 @@
                 const { photoKeys, ...apr } = a;
                 const was = visAprStatus(e);
                 if (JSON.stringify(apr) !== JSON.stringify(e.visApproval || null)) { e.visApproval = apr; changed = true; }
+                if (isHydra(e) || isSample(e)) HYD_NOSRV = false;
                 if (Array.isArray(photoKeys) && photoKeys.join(',') !== (e.photoKeys || []).join(',')) { e.photoKeys = photoKeys; changed = true; }
                 if (was === 'PENDING' && apr.status === 'APPROVED') showIosBanner(`${e.name}: approved by ${apr.decidedBy || apr.host}`, 'success');
                 if (was === 'PENDING' && apr.status === 'REJECTED') showIosBanner(`${e.name}: rejected by ${apr.decidedBy || apr.host}`, 'error');
@@ -2979,10 +3364,12 @@
             const active = id => { const v = document.getElementById(id); return v && v.classList.contains('active'); };
             if (active('view-visitorPending')) renderVisitorPending();
             if (active('view-visitorExisting')) renderVisitorExisting();
-            // an open visitor pass shows the decision / signature as soon as it arrives
+            hydRefreshUi();
+            smpRefreshUi();
+            // an open visitor / Hydra pass shows the decision / signature as soon as it arrives
             const pm = document.getElementById('passModal');
             const oe = pm && !pm.classList.contains('hidden') && GATE_OPEN_PASS ? gateEntries.find(x => x.id === GATE_OPEN_PASS) : null;
-            if (oe && isVisitor(oe)) {
+            if (oe && needsApr(oe)) {
                 const sig = JSON.stringify(oe.visApproval || null) + (oe.photoKeys || []).join(',') + oe.status;
                 if (sig !== visRefreshUi._open) { visRefreshUi._open = sig; openPassModal(oe.id); }
             }
@@ -3107,13 +3494,30 @@
         function openVisitorOut(id) {
             const e = gateEntries.find(x => x.id === id);
             if (!e || e.status !== 'IN') return;
+            // a Hydra / JCB goes out only from Existing Hydra once its store entry is done, or straight away when it never started work (pending / rejected)
+            const hyd = isHydra(e);
+            if (hyd && !isHydPending(e) && e.hydraStage !== 'STORE_APPROVED') {
+                showIosBanner(e.hydraStage === 'RUNNING' ? 'Stop the Hydra work first (Work Complete photo)' : 'Submit the Store Entry first', 'error');
+                closePassModal(); closeQrVerifyModal();
+                showView('hydraExisting'); return;
+            }
             VIS_OUT_ID = id;
             tempPhotos.visOut = null;
-            document.getElementById('visOutPhoto').value = '';
-            document.getElementById('visOutPhotoLabel').textContent = 'Tap to capture the visitor';
+            const inp = document.getElementById('visOutPhoto');
+            inp.value = '';
+            inp.setAttribute('capture', hyd ? 'environment' : 'user');
+            document.getElementById('visOutTitle').textContent = hyd ? 'Hydra / JCB Out' : 'Visitor Out';
+            document.getElementById('visOutPhotoTitle').textContent = hyd ? 'Hydra / Vehicle Photo at Out *' : 'Visitor Photo at Out *';
+            document.getElementById('visOutSaveTxt').textContent = hyd ? 'Mark Hydra / JCB Out' : 'Mark Visitor Out';
+            document.getElementById('visOutRemarks').placeholder = hyd ? 'e.g. Work done, nothing taken out' : 'e.g. Meeting done, no material taken';
+            document.getElementById('visOutPhotoLabel').textContent = hyd ? 'Tap to capture the Hydra / JCB' : 'Tap to capture the visitor';
             document.getElementById('visOutPreviewBox').classList.add('hidden');
             document.getElementById('visOutRemarks').value = '';
-            document.getElementById('visOutWho').innerHTML = `${visThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+            document.getElementById('visOutWho').innerHTML = hyd ? `${hydThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
+                <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)}${e.approver ? ' · Approver: ' + esc(e.approver) : ''}</p>
+                <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${e.totalMinutes ? ' · Worked ' + esc(e.totalMinutes) + ' min' : ''}</p></div>`
+                : `${visThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                 <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
                 <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)} · Meet: ${esc(e.host)}</p>
                 <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}</p></div>`;
@@ -3125,29 +3529,36 @@
             const e = gateEntries.find(x => x.id === VIS_OUT_ID);
             if (!e) { closeVisitorOut(); return; }
             const remarks = document.getElementById('visOutRemarks').value.trim();
-            if (!tempPhotos.visOut) { showIosBanner('Capture the visitor photo at Out', 'error'); return; }
+            const hyd = isHydra(e);
+            if (!tempPhotos.visOut) { showIosBanner(hyd ? 'Capture the Hydra / JCB photo at Out' : 'Capture the visitor photo at Out', 'error'); return; }
             if (!remarks) { showIosBanner('Write the remarks', 'error'); document.getElementById('visOutRemarks').focus(); return; }
             e.status = 'OUT';
             e.outTime = new Date().toISOString();
             e.outPhoto = tempPhotos.visOut;
             e.outRemarks = remarks;
             e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            if (hyd) {
+                e.hydraStage = 'EXITED';
+                e.purpose = `${e.purpose || ''} • Exited Gate-2`;
+            }
             touchEntry(e, true);
             tempPhotos.visOut = null;
             closeVisitorOut();
             lookupPassForVerify();
             showIosBanner(`${e.name} (${e.id}) Marked Out`, 'success');
+            if (hyd) { updateHydraLiveUI(); openPassModal(e.id); }
         }
 
         // The host's decision on the pass (and on its print): approved by, time, his signature
         function renderPassApproval(entry) {
             const box = document.getElementById('modalApprovalBox');
             if (!box) return;
-            const a = isVisitor(entry) && entry.needApproval ? visApr(entry) : null;
-            if (!isVisitor(entry) || !entry.needApproval) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            const a = needsApr(entry) ? visApr(entry) : null;
+            if (!needsApr(entry)) { box.classList.add('hidden'); box.innerHTML = ''; return; }
             box.classList.remove('hidden');
+            const who = isHydra(entry) || isSample(entry) ? entry.approver : entry.host;
             if (!a || a.status === 'PENDING') {
-                box.innerHTML = `<div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-center text-xs font-bold text-amber-800">Waiting for ${esc((a && a.host) || entry.host)}'s approval: not valid until approved</div>`;
+                box.innerHTML = `<div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-center text-xs font-bold text-amber-800">Waiting for ${esc((a && a.host) || who)}'s approval: not valid until approved</div>`;
                 return;
             }
             if (a.status !== 'APPROVED') {
@@ -3157,10 +3568,10 @@
             const sign = photoOf(entry, 'hostSign');
             box.innerHTML = `<div class="rounded-xl border border-emerald-300 bg-emerald-50/60 p-3 flex items-end justify-between gap-3">
                 <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-emerald-700 uppercase">Approved by (Whom to Meet)</p>
+                    <p class="text-[10px] font-bold text-emerald-700 uppercase">Approved by (${isHydra(entry) || isSample(entry) ? 'Approver' : 'Whom to Meet'})</p>
                     <p class="text-sm font-extrabold text-gray-900 break-words">${esc(a.decidedBy || a.host)}</p>
                     <p class="text-[11px] font-semibold text-gray-600">${esc([a.decidedDesig, a.decidedEmp].filter(Boolean).join(' · '))}</p>
-                    <p class="text-[11px] font-semibold text-gray-600">${esc(formatDateTimeShort(a.decidedAt))} · PIN verified${a.via === 'ADMIN' ? ' (Admin for ' + esc(a.host || entry.host) + ')' : ''}</p>
+                    <p class="text-[11px] font-semibold text-gray-600">${esc(formatDateTimeShort(a.decidedAt))} · PIN verified${a.via === 'ADMIN' ? ' (Admin for ' + esc(a.host || who) + ')' : ''}</p>
                 </div>
                 <div class="text-center shrink-0">
                     ${sign ? `<img src="${sign}" alt="Signature" class="h-14 max-w-[140px] object-contain bg-white rounded-lg border border-emerald-200">`
@@ -3324,12 +3735,36 @@
         });
 
         // ==========================================
-        // 8B. HYDRA / JCB INWARD, MINUTE TIMER, STORE APPROVAL & GATE OUT
+        // 8B. HYDRA / JCB: APPROVAL (like the Visitor), MINUTE TIMER, STORE ENTRY & OUT WITH PHOTO
         // ==========================================
-        let tempHydraStopPhotos = {};
+        /* Hydra / JCB tile -> three buttons, like the Visitor:
+             New Hydra / JCB Entry  supplier, vehicle, Approver (an ERP user), work, live photo -> Send for Approval.
+                                    The request reaches the server with the entry (gate_entry_save; the same
+                                    gate_visitor_approvals table as the visitors, GATE2_VISITOR_APPROVAL_MIGRATION.sql)
+                                    and the approver approves it on the launcher with his own PIN, or rejects it.
+             Approval Pending       the decision (same quick poll as the visitors); Approved -> Start Work starts the
+                                    minute timer (workStart); Pending / Rejected -> Out straight away.
+             Existing Hydra / JCB   Inside: Running timer -> Stop (work complete photo) -> Store Entry -> Out with a
+                                    photo + remarks (the Visitor Out popup); Out: the last VIS_OUT_DAYS days.
+           The decision (entry.visApproval) is SERVER-OWNED, exactly as for a visitor. Hydra entries from before this flow
+           (no needApproval) are treated as already started, their timer counts from the entry time. */
+        let tempHydraStopPhotos = {}, hydStoreNoDraft = {};
+        let HYD_NOSRV = false, HYD_EXIST_TAB = 'in';
+        const HYD_APPROVER_KEY = 'gate2_hyd_approver_v1';   // the last approver chosen on this phone (most days the same person)
+        const isHydra = e => !!e && e.category === 'HYDRA / JCB';
+        // an entry the launcher decides on (Whom to Meet for a visitor, the Approver for a Hydra)
+        const needsApr = e => (isVisitor(e) || isHydra(e) || isSample(e)) && !!e.needApproval;
+        const isHydPending = e => isHydra(e) && e.needApproval && e.status === 'IN' && !e.hydDoneAt;
+        const isHydInside = e => isHydra(e) && e.status === 'IN' && (!e.needApproval || !!e.hydDoneAt);
+        const isHydRecentOut = e => isHydra(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
+        const hydStart = h => h.workStart || h.inTime;      // the timer counts from Start Work
+        // no approval on the server yet (no migration, or one older than the Hydra approval): Start Work without one
+        const hydNoApproval = () => VIS_NOMIG || HYD_NOSRV;
+        const hydWork = e => String((e && e.purpose) || '').split('•')[0].trim();
+        const hydGuard = () => `${appSettings.guardName} (${appSettings.shiftName})`;
 
         function getActiveHydraEntries() {
-            return gateEntries.filter(e => e.category === 'HYDRA / JCB' && e.status !== 'OUT');
+            return gateEntries.filter(isHydInside);
         }
 
         function formatElapsedMinutesAndClock(startIso, endIso = null) {
@@ -3345,6 +3780,7 @@
             return { diffSec, totalMins, exactMins, clockStr };
         }
 
+        // every second: the form's time stamp, the tile badge and the running timers
         function updateHydraLiveUI() {
             const now = new Date();
             const stampEl = document.getElementById('hydraAutoDateTime');
@@ -3354,31 +3790,56 @@
             }
 
             const activeList = getActiveHydraEntries();
+            const pend = gateEntries.filter(isHydPending);
+            const ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
             const menuBadge = document.getElementById('hydraMenuLiveBadge');
             if (menuBadge) {
-                if (activeList.length > 0) {
-                    const runningOne = activeList.find(h => h.hydraStage === 'RUNNING');
-                    if (runningOne) {
-                        const { exactMins } = formatElapsedMinutesAndClock(runningOne.inTime);
-                        menuBadge.textContent = `${activeList.length} LIVE • ${exactMins}m`;
-                    } else {
-                        menuBadge.textContent = `${activeList.length} PENDING`;
-                    }
-                    menuBadge.classList.remove('hidden');
-                } else {
-                    menuBadge.classList.add('hidden');
-                }
+                const runningOne = activeList.find(h => h.hydraStage === 'RUNNING');
+                let txt = '';
+                if (runningOne) txt = `${activeList.length} LIVE • ${formatElapsedMinutesAndClock(hydStart(runningOne)).exactMins}m`;
+                else if (ready) txt = `${ready} APPROVED`;
+                else if (activeList.length) txt = `${activeList.length} INSIDE`;
+                else if (pend.length) txt = `${pend.length} PENDING`;
+                menuBadge.textContent = txt;
+                menuBadge.classList.toggle('hidden', !txt);
+                menuBadge.classList.toggle('bg-emerald-600', !runningOne && !!ready);
+                menuBadge.classList.toggle('bg-amber-500', !!runningOne || !ready);
             }
 
             activeList.forEach(h => {
                 if (h.hydraStage === 'RUNNING') {
                     const timerEl = document.getElementById(`hydraTimer_${h.id}`);
                     if (timerEl) {
-                        const { exactMins, clockStr } = formatElapsedMinutesAndClock(h.inTime);
+                        const { exactMins, clockStr } = formatElapsedMinutesAndClock(hydStart(h));
                         timerEl.textContent = `${exactMins} Min (${clockStr})`;
                     }
                 }
             });
+        }
+
+        // badges of the Hydra menu + whichever Hydra list is open (called from visRefreshUi)
+        function hydRefreshUi() {
+            const pend = gateEntries.filter(isHydPending), inside = gateEntries.filter(isHydInside);
+            const ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
+            const pb = document.getElementById('hydPendBadge'), ib = document.getElementById('hydInsideBadge');
+            if (pb) { pb.textContent = pend.length; pb.classList.toggle('hidden', !pend.length); }
+            if (ib) { ib.textContent = inside.length; ib.classList.toggle('hidden', !inside.length); }
+            const sub = document.getElementById('hydPendSub');
+            if (sub) sub.textContent = ready ? `${ready} approved: press Start Work` : "Waiting for the approver's PIN";
+            const active = id => { const v = document.getElementById(id); return v && v.classList.contains('active'); };
+            if (active('view-hydraPending')) renderHydraPending();
+            // a Store Entry No being typed in a card is not thrown away by a redraw
+            const ae = document.activeElement;
+            const typing = ae && /^(INPUT|TEXTAREA)$/.test(ae.tagName) && ae.type !== 'file' && ae.closest && ae.closest('#activeHydraList');
+            if (active('view-hydraExisting') && !typing) renderHydraExisting();
+            updateHydraLiveUI();
+        }
+
+        function hydThumb(e, cls) {
+            const src = photoOf(e, 'inwardPhoto');
+            if (!src && (e.photoKeys || []).indexOf('inwardPhoto') >= 0) gateEnsurePhotos(e).then(got => { if (got) visRefreshUi(); });
+            return src ? `<img src="${src}" alt="" class="${cls} object-cover">`
+                : `<div class="${cls} bg-amber-100 text-amber-700 flex items-center justify-center text-lg"><i class="fa-solid fa-truck-monster"></i></div>`;
         }
 
         function initHydraView() {
@@ -3390,116 +3851,228 @@
             document.getElementById('hydraInPreviewImg').classList.add('hidden');
 
             refreshMasterDropdowns();
-
-            renderActiveHydraSessions();
+            // the approver chosen last time on this phone, if he is still an ERP user (the box takes list values only)
+            const last = readLS(HYD_APPROVER_KEY, '');
+            if (last && GATE_COMBOS.hydraApprover) GATE_COMBOS.hydraApprover.set(last, true);
             updateHydraLiveUI();
         }
 
-        function renderActiveHydraSessions() {
-            const box = document.getElementById('activeHydraSessionsBox');
-            const list = document.getElementById('activeHydraList');
-            const countBadge = document.getElementById('activeHydraCountBadge');
-            if (!box || !list) return;
-
-            const active = getActiveHydraEntries();
-            if (active.length === 0) {
-                box.classList.add('hidden');
-                list.innerHTML = '';
-                return;
-            }
-
-            box.classList.remove('hidden');
-            if (countBadge) countBadge.textContent = `${active.length} Active`;
-
-            list.innerHTML = active.map(h => {
-                const { exactMins, clockStr } = formatElapsedMinutesAndClock(h.inTime, h.stopTime || null);
-                const stage = h.hydraStage || 'RUNNING';
-
-                if (stage === 'RUNNING') {
-                    return `
-                        <div class="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-3 ios-spring">
-                            <div class="flex items-start justify-between gap-2">
-                                <div>
-                                    <span class="inline-block font-mono text-[10px] font-extrabold bg-amber-600 text-white px-2 py-0.5 rounded-md">${esc(h.id)}</span>
-                                    <h4 class="text-sm font-extrabold text-gray-900 mt-1">${esc(h.name)}</h4>
-                                    <p class="text-[11px] font-semibold text-gray-600">Vehicle: ${esc(h.vehicle)} • In: ${formatDateTimeShort(h.inTime)}</p>
-                                </div>
-                                ${h.inwardPhoto ? `<img src="${h.inwardPhoto}" class="w-12 h-12 rounded-xl object-cover border border-amber-300 shrink-0" alt="Hydra In">` : ''}
-                            </div>
-
-                            <div class="bg-white p-3 rounded-xl border border-amber-200 flex items-center justify-between">
-                                <span class="text-[11px] font-bold text-gray-500 uppercase">Running Time</span>
-                                <span id="hydraTimer_${esc(h.id)}" class="font-mono text-sm font-extrabold text-amber-700">${exactMins} Min (${clockStr})</span>
-                            </div>
-
-                            <div>
-                                <label class="block text-[10px] font-bold text-amber-900 uppercase mb-1">Work Complete Live Photo *</label>
-                                <label class="ios-btn flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer text-center">
-                                    <i class="fa-solid fa-camera text-amber-600 text-sm"></i>
-                                    <span id="hydraStopLabel_${esc(h.id)}" class="text-[11px] font-bold text-amber-900 truncate">Capture Work Complete Photo</span>
-                                    <input type="file" accept="image/*" capture="environment" class="hidden" onchange="handleHydraStopPhoto(this, '${esc(h.id)}')">
-                                </label>
-                                <div id="hydraStopPreviewBox_${esc(h.id)}" class="hidden mt-2 rounded-xl overflow-hidden border border-amber-200 h-24 bg-white">
-                                    <img id="hydraStopPreviewImg_${esc(h.id)}" class="w-full h-full object-cover" alt="Work Complete">
-                                </div>
-                            </div>
-
-                            <button type="button" onclick="stopHydraWork('${esc(h.id)}')" class="ios-btn w-full py-3 bg-red-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-stop"></i> STOP HYDRA WORK & TIMER
-                            </button>
-                        </div>
-                    `;
+        // ── Approval Pending ──
+        function renderHydraPending() {
+            const box = document.getElementById('hydPendList'), note = document.getElementById('hydPendNote');
+            if (!box) return;
+            const rows = gateEntries.filter(isHydPending).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const offline = !GATE_USER || GATE_OFFLINE || navigator.onLine === false;
+            const msg = VIS_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin: run it in the Supabase SQL Editor). Until then a Hydra / JCB can Start Work without approval.'
+                : HYD_NOSRV ? 'The server has the older visitor-only approval: the Admin must run GATE2_VISITOR_APPROVAL_MIGRATION.sql again for Hydra / JCB approvals. Until then Start Work needs no approval.'
+                : offline ? 'No internet: new entries are sent for approval as soon as the net is back.' : '';
+            note.textContent = msg; note.classList.toggle('hidden', !msg);
+            if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No Hydra / JCB is waiting for approval.</p>'; return; }
+            box.innerHTML = rows.map(e => {
+                const a = visApr(e), st = a ? a.status : '';
+                let badge, line;
+                if (!e._syncedAt) {
+                    badge = visBadge('Waiting to send', 'bg-gray-200 text-gray-700');
+                    line = 'On this phone only: it goes to ' + esc(e.approver) + ' with the next sync.';
+                } else if (!a) {
+                    badge = visBadge(hydNoApproval() ? 'No approval system' : 'Sending', 'bg-gray-200 text-gray-700');
+                    line = hydNoApproval() ? 'Server migration missing: Start Work is allowed.' : 'Request is being made on the server...';
+                } else if (st === 'PENDING') {
+                    badge = visBadge('Approval Pending', 'bg-amber-100 text-amber-800');
+                    line = a.hostFound ? 'Waiting for ' + esc(a.host || e.approver) + ' (PIN on the launcher)' : esc(e.approver) + ' has no ERP login: the Admin can approve it.';
+                } else if (st === 'APPROVED') {
+                    badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '');
+                } else if (st === 'REJECTED') {
+                    badge = visBadge('Rejected', 'bg-red-100 text-red-700');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-');
+                } else {
+                    badge = visBadge(st || '-', 'bg-gray-200 text-gray-700');
+                    line = esc(a.remarks || '');
                 }
-
-                if (stage === 'STOPPED_STORE_PENDING') {
-                    const suggestedStoreNo = 'STR-HYD-' + h.id.replace(/\D/g, '').slice(-4).padStart(4, '0');
-                    return `
-                        <div class="p-4 rounded-2xl bg-blue-50/90 border border-blue-200 space-y-3 ios-spring">
-                            <div class="flex items-start justify-between gap-2">
-                                <div>
-                                    <span class="inline-block font-mono text-[10px] font-extrabold bg-blue-600 text-white px-2 py-0.5 rounded-md">${esc(h.id)} • STORE ENTRY PENDING</span>
-                                    <h4 class="text-sm font-extrabold text-gray-900 mt-1">${esc(h.name)}</h4>
-                                    <p class="text-[11px] font-bold text-blue-800">Total Worked: ${h.totalMinutes || exactMins} Minutes</p>
-                                </div>
-                                <div class="flex gap-1.5 shrink-0">
-                                    ${h.inwardPhoto ? `<img src="${h.inwardPhoto}" class="w-11 h-11 rounded-xl object-cover border border-blue-200" alt="In">` : ''}
-                                    ${h.stopPhoto ? `<img src="${h.stopPhoto}" class="w-11 h-11 rounded-xl object-cover border border-blue-200" alt="Stop">` : ''}
-                                </div>
-                            </div>
-
-                            <div>
-                                <label class="block text-[10px] font-bold text-blue-800 uppercase mb-1">Store Entry No (For Approval) *</label>
-                                <input type="text" id="hydraStoreNo_${esc(h.id)}" value="${suggestedStoreNo}" class="w-full px-3 py-2.5 bg-white border border-blue-300 rounded-xl text-xs font-mono font-extrabold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            </div>
-
-                            <button type="button" onclick="approveHydraStoreEntry('${esc(h.id)}')" class="ios-btn w-full py-3 bg-blue-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
-                                <i class="fa-solid fa-check-double"></i> Submit Store Entry & Approve
-                            </button>
+                const canStart = st === 'APPROVED' || (hydNoApproval() && !a);
+                const acts = `<button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>`
+                    + (canStart ? `<button onclick="hydStartWork('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-play"></i> Start Work & Timer</button>` : '')
+                    + (st === 'REJECTED' || st === 'PENDING' || !a ? `<button onclick="openVisitorOut('${esc(e.id)}')" class="ios-btn px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>` : '');
+                return `<div class="rounded-2xl border ${st === 'APPROVED' ? 'border-emerald-300 bg-emerald-50/40' : st === 'REJECTED' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${hydThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">Approver: ${esc(e.approver || '-')} · ${esc(hydWork(e))}</p>
+                            <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
                         </div>
-                    `;
-                }
-
-                return `
-                    <div class="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-300 space-y-3 ios-spring">
-                        <div class="flex items-start justify-between gap-2">
-                            <div>
-                                <span class="inline-block font-mono text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-md">${esc(h.id)} • STORE APPROVED</span>
-                                <h4 class="text-sm font-extrabold text-gray-900 mt-1">${esc(h.name)}</h4>
-                                <p class="text-[11px] font-bold text-emerald-800">Store Ref: ${esc(h.storeEntryNo || 'Approved')} • ${h.totalMinutes || exactMins} Mins</p>
-                            </div>
-                            <button type="button" onclick="openPassModal('${esc(h.id)}')" class="ios-btn w-8 h-8 rounded-full bg-white text-emerald-700 border border-emerald-200 flex items-center justify-center text-xs" title="View Slip">
-                                <i class="fa-solid fa-receipt"></i>
-                            </button>
-                        </div>
-
-                        <button type="button" onclick="gateOutHydraEntry('${esc(h.id)}')" class="ios-btn w-full py-3 bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
-                            <i class="fa-solid fa-right-from-bracket"></i> Gate Out Hydra Now
-                        </button>
                     </div>
-                `;
+                    <div class="flex gap-2">${acts}</div>
+                </div>`;
             }).join('');
         }
 
+        // Approved -> the work starts now: the minute timer counts from here, the entry moves to Existing Hydra / JCB
+        function hydStartWork(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || !isHydPending(e)) return;
+            if (!(visAprStatus(e) === 'APPROVED' || (hydNoApproval() && !visApr(e)))) { showIosBanner('Start Work only after the approver approves', 'error'); return; }
+            const now = new Date().toISOString();
+            e.hydDoneAt = now;
+            e.hydDoneBy = hydGuard();
+            e.workStart = now;
+            e.hydraStage = 'RUNNING';
+            e.host = `Approver: ${e.approver || '-'} • Timer Running`;
+            touchEntry(e);
+            showView('hydraExisting');
+            showIosBanner(`${e.name}: work started, timer running`, 'success');
+        }
+
+        // ── Existing Hydra / JCB ──
+        function hydExistTab(tab) {
+            HYD_EXIST_TAB = tab === 'out' ? 'out' : 'in';
+            renderHydraExisting();
+        }
+        function renderActiveHydraSessions() { renderHydraExisting(); }
+
+        function renderHydraExisting() {
+            const list = document.getElementById('activeHydraList');
+            if (!list) return;
+            const words = String((document.getElementById('hydExistSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+            const hit = e => !words.length || words.every(w => [e.id, e.name, e.vehicle, e.approver, hydWork(e), e.storeEntryNo, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
+            const inside = getActiveHydraEntries().sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const out = gateEntries.filter(isHydRecentOut).sort((a, b) => new Date(b.outTime) - new Date(a.outTime));
+            document.getElementById('hydTabInN').textContent = '(' + inside.length + ')';
+            document.getElementById('hydTabOutN').textContent = '(' + out.length + ')';
+            const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
+            document.getElementById('hydTabIn').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (HYD_EXIST_TAB === 'in' ? on : off);
+            document.getElementById('hydTabOut').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (HYD_EXIST_TAB === 'out' ? on : off);
+            const rows = (HYD_EXIST_TAB === 'in' ? inside : out).filter(hit);
+            if (!rows.length) {
+                list.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${HYD_EXIST_TAB === 'in' ? 'No Hydra / JCB inside.' : 'No Hydra / JCB went out in the last ' + VIS_OUT_DAYS + ' days.'}</p>`;
+                return;
+            }
+            list.innerHTML = rows.map(HYD_EXIST_TAB === 'in' ? hydCardHtml : hydOutRowHtml).join('');
+        }
+
+        const hydAprLine = h => {
+            const a = visApr(h);
+            return a && a.status === 'APPROVED' ? `<p class="text-[10.5px] font-semibold text-gray-500 truncate">Approved by ${esc(a.decidedBy || a.host)} · ${esc(hydWork(h))}</p>`
+                : hydWork(h) ? `<p class="text-[10.5px] font-semibold text-gray-500 truncate">${esc(hydWork(h))}</p>` : '';
+        };
+
+        // one Hydra still inside: Running -> Stop (photo) -> Store Entry -> Out (photo + remarks)
+        function hydCardHtml(h) {
+            const { exactMins, clockStr } = formatElapsedMinutesAndClock(hydStart(h), h.stopTime || null);
+            const stage = h.hydraStage || 'RUNNING';
+            const id = esc(h.id);
+
+            if (stage === 'RUNNING') {
+                const stopImg = tempHydraStopPhotos[h.id];
+                return `
+                    <div class="p-4 rounded-2xl bg-amber-50/90 border border-amber-300 space-y-3 ios-spring">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <span class="inline-block font-mono text-[10px] font-extrabold bg-amber-600 text-white px-2 py-0.5 rounded-md">${id}</span>
+                                <h4 class="text-sm font-extrabold text-gray-900 mt-1 truncate">${esc(h.name)}</h4>
+                                <p class="text-[11px] font-semibold text-gray-600">Vehicle: ${esc(h.vehicle)} • Start: ${formatDateTimeShort(hydStart(h))}</p>
+                                ${hydAprLine(h)}
+                            </div>
+                            ${hydThumb(h, 'w-12 h-12 rounded-xl border border-amber-300 shrink-0')}
+                        </div>
+
+                        <div class="bg-white p-3 rounded-xl border border-amber-200 flex items-center justify-between">
+                            <span class="text-[11px] font-bold text-gray-500 uppercase">Running Time</span>
+                            <span id="hydraTimer_${id}" class="font-mono text-sm font-extrabold text-amber-700">${exactMins} Min (${clockStr})</span>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-amber-900 uppercase mb-1">Work Complete Live Photo *</label>
+                            <label class="ios-btn flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer text-center">
+                                <i class="fa-solid fa-camera text-amber-600 text-sm"></i>
+                                <span id="hydraStopLabel_${id}" class="text-[11px] font-bold text-amber-900 truncate">${stopImg ? '✓ Photo ready' : 'Capture Work Complete Photo'}</span>
+                                <input type="file" data-up="gate-hydra-stop" accept="image/*" capture="environment" class="hidden" onchange="handleHydraStopPhoto(this, '${id}')">
+                            </label>
+                            <div id="hydraStopPreviewBox_${id}" class="${stopImg ? '' : 'hidden '}mt-2 rounded-xl overflow-hidden border border-amber-200 h-24 bg-white">
+                                <img id="hydraStopPreviewImg_${id}" ${stopImg ? `src="${stopImg}"` : ''} class="w-full h-full object-cover" alt="Work Complete">
+                            </div>
+                        </div>
+
+                        <button type="button" onclick="stopHydraWork('${id}')" class="ios-btn w-full py-3 bg-red-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-stop"></i> STOP HYDRA WORK & TIMER
+                        </button>
+                    </div>
+                `;
+            }
+
+            if (stage === 'STOPPED_STORE_PENDING') {
+                const storeNo = hydStoreNoDraft[h.id] != null ? hydStoreNoDraft[h.id] : 'STR-HYD-' + h.id.replace(/\D/g, '').slice(-4).padStart(4, '0');
+                return `
+                    <div class="p-4 rounded-2xl bg-blue-50/90 border border-blue-200 space-y-3 ios-spring">
+                        <div class="flex items-start justify-between gap-2">
+                            <div class="min-w-0">
+                                <span class="inline-block font-mono text-[10px] font-extrabold bg-blue-600 text-white px-2 py-0.5 rounded-md">${id} • STORE ENTRY PENDING</span>
+                                <h4 class="text-sm font-extrabold text-gray-900 mt-1 truncate">${esc(h.name)}</h4>
+                                <p class="text-[11px] font-bold text-blue-800">Total Worked: ${esc(h.totalMinutes || exactMins)} Minutes</p>
+                                ${hydAprLine(h)}
+                            </div>
+                            <div class="flex gap-1.5 shrink-0">
+                                ${hydThumb(h, 'w-11 h-11 rounded-xl border border-blue-200')}
+                                ${photoOf(h, 'stopPhoto') ? `<img src="${photoOf(h, 'stopPhoto')}" class="w-11 h-11 rounded-xl object-cover border border-blue-200" alt="Stop">` : ''}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block text-[10px] font-bold text-blue-800 uppercase mb-1">Store Entry No (For Approval) *</label>
+                            <input type="text" id="hydraStoreNo_${id}" value="${esc(storeNo)}" oninput="hydStoreNoDraft['${id}'] = this.value" class="w-full px-3 py-2.5 bg-white border border-blue-300 rounded-xl text-xs font-mono font-extrabold uppercase text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+
+                        <button type="button" onclick="approveHydraStoreEntry('${id}')" class="ios-btn w-full py-3 bg-blue-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-check-double"></i> Submit Store Entry & Approve
+                        </button>
+                    </div>
+                `;
+            }
+
+            return `
+                <div class="p-4 rounded-2xl bg-emerald-50/90 border border-emerald-300 space-y-3 ios-spring">
+                    <div class="flex items-start justify-between gap-2">
+                        <div class="min-w-0">
+                            <span class="inline-block font-mono text-[10px] font-extrabold bg-emerald-600 text-white px-2 py-0.5 rounded-md">${id} • STORE APPROVED</span>
+                            <h4 class="text-sm font-extrabold text-gray-900 mt-1 truncate">${esc(h.name)}</h4>
+                            <p class="text-[11px] font-bold text-emerald-800">Store Ref: ${esc(h.storeEntryNo || 'Approved')} • ${esc(h.totalMinutes || exactMins)} Mins</p>
+                            ${hydAprLine(h)}
+                        </div>
+                        <button type="button" onclick="openPassModal('${id}')" class="ios-btn w-8 h-8 rounded-full bg-white text-emerald-700 border border-emerald-200 flex items-center justify-center text-xs shrink-0" title="View Slip">
+                            <i class="fa-solid fa-receipt"></i>
+                        </button>
+                    </div>
+
+                    <button type="button" onclick="openVisitorOut('${id}')" class="ios-btn w-full py-3 bg-emerald-600 text-white font-extrabold text-xs rounded-xl shadow-md flex items-center justify-center gap-2">
+                        <i class="fa-solid fa-right-from-bracket"></i> Gate Out (Photo + Remarks)
+                    </button>
+                </div>
+            `;
+        }
+
+        // one Hydra that went out in the last VIS_OUT_DAYS days
+        function hydOutRowHtml(e) {
+            const mins = e.totalMinutes || '';
+            return `<div class="rounded-2xl border border-gray-200 bg-white p-3 space-y-2.5">
+                <div class="flex items-start gap-3">
+                    ${hydThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${visBadge('Out', 'bg-emerald-100 text-emerald-800')}</div>
+                        <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)}${e.storeEntryNo ? ' · Store ' + esc(e.storeEntryNo) : ''}</p>
+                        <p class="text-[11px] font-semibold text-gray-600 truncate">Approver: ${esc(e.approver || '-')} · ${esc(hydWork(e))}</p>
+                        <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))} · Out ${esc(formatDateTimeShort(e.outTime))}${mins ? ' · Worked ' + esc(mins) + ' min' : ''}</p>
+                        ${e.outRemarks ? `<p class="text-[11px] font-semibold text-gray-700 mt-0.5">Remarks: ${esc(e.outRemarks)}</p>` : ''}
+                    </div>
+                </div>
+                <div class="flex gap-2">
+                    <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>
+                </div>
+            </div>`;
+        }
+
+        // ── New Hydra / JCB Entry: sent for approval (the timer starts with Start Work) ──
         document.getElementById('formHydraInward').addEventListener('submit', function(e) {
             e.preventDefault();
             // only a name from the list (the box throws anything else back on blur; checked again here)
@@ -3507,6 +4080,18 @@
             const supplier = supHit ? supHit.value : (GATE_COMBOS.hydraSupplierName ? '' : document.getElementById('hydraSupplierName').value.trim());
             if (!supplier) {
                 showIosBanner('Please choose the Supplier Name from the list!', 'error');
+                return;
+            }
+            const apOpt = GATE_COMBOS.hydraApprover ? GATE_COMBOS.hydraApprover.match(document.getElementById('hydraApprover').value) : null;
+            if (!apOpt) {
+                showIosBanner('Choose the Approver from the list (an ERP user)', 'error');
+                document.getElementById('hydraApprover').focus();
+                return;
+            }
+            const work = document.getElementById('hydraPurpose').value.trim();
+            if (!work) {
+                showIosBanner('Write the Work / Purpose', 'error');
+                document.getElementById('hydraPurpose').focus();
                 return;
             }
             if (!tempPhotos.hydraIn) {
@@ -3524,28 +4109,35 @@
                 name: supplier,
                 mobile: 'Hydra / JCB Crane',
                 vehicle: vehicle,
-                hydraStage: 'RUNNING',
-                host: `Hydra Inward • Timer Running`,
-                purpose: `Started at ${formatDateTimeShort(nowIso)} • Live Photo Captured`,
+                hydraStage: 'APPROVAL',
+                approver: apOpt.value,
+                host: `Approver: ${apOpt.value} • Approval Pending`,
+                purpose: `${work} • Live Photo Captured`,
                 inwardPhoto: tempPhotos.hydraIn,
                 stopPhoto: null,
-                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                guard: hydGuard(),
                 inTime: nowIso,
+                workStart: null,
                 stopTime: null,
                 outTime: null,
-                status: 'IN'
+                status: 'IN',
+                // the approver decides on the launcher (GATE2_VISITOR_APPROVAL_MIGRATION.sql makes the request when it reaches the server)
+                needApproval: true,
+                hostUserId: apOpt.id || null,
+                hostEmpCode: apOpt.emp || null,
+                hostDept: apOpt.dept || null
             };
 
             commitEntry(newHydra);
+            writeLS(HYD_APPROVER_KEY, apOpt.value);
             this.reset();
             tempPhotos.hydraIn = null;
             document.getElementById('hydraInPhotoLabel').textContent = 'Tap to Capture Hydra Live Photo';
             document.getElementById('hydraInPreviewBox').classList.add('hidden');
             document.getElementById('hydraInPreviewImg').classList.add('hidden');
 
-            renderActiveHydraSessions();
-            updateHydraLiveUI();
-            showIosBanner(`Hydra ${hydId} Inward Saved • Timer Started!`, 'success');
+            showView('hydraPending');
+            showIosBanner(`Hydra ${hydId} sent to ${apOpt.value} for approval`, 'success');
         });
 
         async function handleHydraStopPhoto(input, id) {
@@ -3555,7 +4147,9 @@
             try {
                 const compressed = await compressImageFile(input.files[0]);
                 tempHydraStopPhotos[id] = compressed;
-                if (labelEl) labelEl.textContent = '✓ ' + input.files[0].name;
+                // the card may have been redrawn meanwhile: look the elements up again
+                const lab = document.getElementById(`hydraStopLabel_${id}`);
+                if (lab) lab.textContent = '✓ ' + input.files[0].name;
                 const imgEl = document.getElementById(`hydraStopPreviewImg_${id}`);
                 const boxEl = document.getElementById(`hydraStopPreviewBox_${id}`);
                 if (imgEl) imgEl.src = compressed;
@@ -3575,7 +4169,7 @@
             }
 
             const stopIso = new Date().toISOString();
-            const { totalMins, clockStr } = formatElapsedMinutesAndClock(entry.inTime, stopIso);
+            const { totalMins, clockStr } = formatElapsedMinutesAndClock(hydStart(entry), stopIso);
 
             entry.stopTime = stopIso;
             entry.totalMinutes = totalMins;
@@ -3583,11 +4177,11 @@
             entry.stopPhoto = tempHydraStopPhotos[id];
             entry.hydraStage = 'STOPPED_STORE_PENDING';
             entry.host = `Total Time: ${totalMins} Mins • Store Entry Pending`;
-            entry.purpose = `Work Completed (${clockStr}) • Completion Photo Verified`;
+            entry.purpose = `${hydWork(entry) || 'Work'} • Work Completed (${clockStr}) • Completion Photo Verified`;
 
             delete tempHydraStopPhotos[id];
             touchEntry(entry, true);
-            renderActiveHydraSessions();
+            renderHydraExisting();
             updateHydraLiveUI();
             showIosBanner(`Timer Stopped at ${totalMins} Mins • Enter Store No`, 'info');
         }
@@ -3603,28 +4197,337 @@
             entry.hydraStage = 'STORE_APPROVED';
             entry.approvalStatus = 'STORE APPROVED';
             entry.host = `Store Ref: ${storeNo} • Total Time: ${entry.totalMinutes || 1} Mins`;
-            entry.purpose = `Store Approved (${storeNo}) • Ready for Gate Out`;
+            entry.purpose = `${hydWork(entry) || 'Work'} • Store Approved (${storeNo}) • Ready for Gate Out`;
 
+            delete hydStoreNoDraft[id];
             touchEntry(entry);
-            renderActiveHydraSessions();
+            renderHydraExisting();
             updateHydraLiveUI();
             showIosBanner(`Store Approved (${storeNo}) • Ready for Gate Out`, 'success');
         }
 
-        function gateOutHydraEntry(id) {
-            const entry = gateEntries.find(e => e.id === id);
-            if (!entry) return;
+        // Gate Out = the Out popup (photo + remarks, both compulsory), as for a visitor
+        function gateOutHydraEntry(id) { openVisitorOut(id); }
 
-            entry.status = 'OUT';
-            entry.hydraStage = 'EXITED';
-            entry.outTime = new Date().toISOString();
-            entry.purpose = `${entry.purpose} • Exited Gate-2`;
+        // ==========================================
+        // 8C. SAMPLE & OTHER: RETURNABLE / NON-RETURNABLE INWARD WITH APPROVAL, RETURN OUTWARD
+        // ==========================================
+        /* SAMPLE & OTHER tile -> three buttons, like the Visitor:
+             New Sample / Other Entry  Entry Type first (Returnable / Non-Returnable, compulsory; the rest of the form
+                                       opens only after it), Supplier (gateCombo), Person, Mobile, Item, Bill + Item photo
+                                       (both compulsory), Whom to Approve (an ERP user). The entry IS an inward: its id is
+                                       the next Inward No. (series IN, taken at Save). The request reaches the server with
+                                       the entry (gate_entry_save, the same gate_visitor_approvals table) and the approver
+                                       decides on the launcher with his own PIN.
+             Approval Pending          Approved -> Done = inward complete: a NON-RETURNABLE one is closed (status CLOSED,
+                                       nothing goes back), a RETURNABLE one waits in Return Pending (status IN).
+                                       Pending / Rejected -> Close (sent back, status OUT, with a reason).
+             Return Pending            the returnable items still with us -> Return · Outward: item photo (compulsory) and
+                                       the next Outward No. (series OUT, kept in entry.outwardNo, so the OUT series counts
+                                       it) -> status OUT. Completed tab = returned / closed in the last VIS_OUT_DAYS days.
+           The decision (entry.visApproval) is SERVER-OWNED, as for a visitor; HYD_NOSRV covers a server whose
+           gate_entry_save is older than these approvals (Done is then allowed without one, with a note). */
+        let SMP_TYPE = '', SMP_RET_ID = null, SMP_RET_TAB = 'pend';
+        const SMP_APPROVER_KEY = 'gate2_smp_approver_v1';   // the last approver chosen on this phone
+        const isSample = e => !!e && e.category === 'SAMPLE / OTHER';
+        const smpReturnable = e => !!e && e.returnType === 'RETURNABLE';
+        const smpTypeLabel = e => smpReturnable(e) ? 'Returnable' : 'Non-Returnable';
+        const isSmpPending = e => isSample(e) && e.needApproval && e.status === 'IN' && !e.smpDoneAt;
+        const isSmpReturnPending = e => isSample(e) && smpReturnable(e) && e.status === 'IN' && (!e.needApproval || !!e.smpDoneAt);
+        const smpDoneTime = e => e.outTime || e.closedAt || null;
+        const isSmpRecentDone = e => isSample(e) && (e.status === 'OUT' || e.status === 'CLOSED') && smpDoneTime(e) && (Date.now() - new Date(smpDoneTime(e)).getTime()) <= VIS_OUT_DAYS * 86400000;
+        const smpItemText = e => String((e && e.purpose) || '').split('•')[0].trim();
 
-            touchEntry(entry);
-            renderActiveHydraSessions();
-            updateHydraLiveUI();
-            showIosBanner(`Hydra ${entry.id} Gate Out Completed`, 'success');
-            openPassModal(entry.id);
+        function smpThumb(e, cls) {
+            const src = photoOf(e, 'itemPhoto');
+            if (!src && (e.photoKeys || []).indexOf('itemPhoto') >= 0) gateEnsurePhotos(e).then(got => { if (got) visRefreshUi(); });
+            return src ? `<img src="${src}" alt="" class="${cls} object-cover">`
+                : `<div class="${cls} bg-rose-100 text-rose-600 flex items-center justify-center text-lg"><i class="fa-solid fa-boxes-packing"></i></div>`;
+        }
+        const smpTypeBadge = e => visBadge(smpTypeLabel(e), smpReturnable(e) ? 'bg-blue-100 text-blue-800' : 'bg-gray-200 text-gray-700');
+
+        // badges of the tile / menu + whichever Sample list is open (called from visRefreshUi)
+        function smpRefreshUi() {
+            const pend = gateEntries.filter(isSmpPending), ret = gateEntries.filter(isSmpReturnPending);
+            const ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
+            const set = (id, n) => { const b = document.getElementById(id); if (b) { b.textContent = n; b.classList.toggle('hidden', !n); } };
+            set('smpPendBadge', pend.length); set('smpRetBadge', ret.length); set('smpRetBadge2', ret.length);
+            const sub = document.getElementById('smpPendSub');
+            if (sub) sub.textContent = ready ? `${ready} approved: press Done to complete the inward` : "Waiting for the approver's PIN";
+            const mb = document.getElementById('smpMainBadge');
+            if (mb) {
+                const txt = ready ? ready + ' APPROVED' : pend.length ? pend.length + ' PENDING' : ret.length ? ret.length + ' RETURN' : '';
+                mb.textContent = txt; mb.classList.toggle('hidden', !txt);
+                mb.classList.toggle('bg-emerald-600', !!ready); mb.classList.toggle('bg-rose-500', !ready);
+            }
+            const active = id => { const v = document.getElementById(id); return v && v.classList.contains('active'); };
+            if (active('view-samplePending')) renderSamplePending();
+            if (active('view-sampleReturn')) renderSampleReturn();
+        }
+
+        // ── New entry ──
+        function smpPickType(t) {
+            SMP_TYPE = t === 'RETURNABLE' ? 'RETURNABLE' : 'NON-RETURNABLE';
+            const on = 'py-2.5 rounded-lg text-xs font-extrabold transition-all bg-white shadow-sm ', off = 'py-2.5 rounded-lg text-xs font-extrabold transition-all text-gray-500';
+            document.getElementById('smpTypeRET').className = SMP_TYPE === 'RETURNABLE' ? on + 'text-blue-700' : off;
+            document.getElementById('smpTypeNON').className = SMP_TYPE === 'NON-RETURNABLE' ? on + 'text-gray-900' : off;
+            document.getElementById('smpTypeNote').textContent = SMP_TYPE === 'RETURNABLE'
+                ? 'Returnable: after the inward it waits in Return Pending until it goes back (item photo + Outward No.).'
+                : 'Non-Returnable: the inward is closed once approved; nothing goes back.';
+            document.getElementById('smpFields').classList.remove('hidden');
+        }
+        function smpResetForm() {
+            document.getElementById('formSample').reset();
+            SMP_TYPE = '';
+            const off = 'py-2.5 rounded-lg text-xs font-extrabold text-gray-500 transition-all';
+            document.getElementById('smpTypeRET').className = off;
+            document.getElementById('smpTypeNON').className = off;
+            document.getElementById('smpTypeNote').textContent = 'Choose the entry type to fill the form.';
+            document.getElementById('smpFields').classList.add('hidden');
+            tempPhotos.smpBill = null; tempPhotos.smpItem = null;
+            document.getElementById('smpBillLabel').textContent = 'Upload Bill';
+            document.getElementById('smpItemLabel').textContent = 'Upload Item';
+            ['smpBillPreview', 'smpItemPreview', 'smpPreviewRow'].forEach(id => document.getElementById(id).classList.add('hidden'));
+        }
+        function initSampleForm() {
+            smpResetForm();
+            refreshMasterDropdowns();
+            gateFillNo('IN', 'smpInwardNo', 'smpInwardNoHint');
+            const last = readLS(SMP_APPROVER_KEY, '');
+            if (last && GATE_COMBOS.smpApprover) GATE_COMBOS.smpApprover.set(last, true);
+        }
+
+        document.getElementById('formSample').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            if (gateSaving.SMP) return;
+            if (!SMP_TYPE) { showIosBanner('Choose the Entry Type: Returnable or Non-Returnable', 'error'); return; }
+            const supHit = GATE_COMBOS.smpSupplier ? GATE_COMBOS.smpSupplier.match(document.getElementById('smpSupplier').value) : null;
+            const supplier = supHit ? supHit.value : (GATE_COMBOS.smpSupplier ? '' : document.getElementById('smpSupplier').value.trim());
+            if (!supplier) { showIosBanner('Please choose the Supplier Name from the list!', 'error'); return; }
+            const person = document.getElementById('smpPerson').value.trim();
+            if (!person) { showIosBanner('Write the Person Name', 'error'); document.getElementById('smpPerson').focus(); return; }
+            const mobile = document.getElementById('smpMobile').value.replace(/\D/g, '');
+            if (!/^\d{10}$/.test(mobile)) { showIosBanner('Enter a valid 10-digit Mobile No', 'error'); document.getElementById('smpMobile').focus(); return; }
+            if (!tempPhotos.smpBill || !tempPhotos.smpItem) { showIosBanner('Both the Bill Photo and the Item Photo are required!', 'error'); return; }
+            const apOpt = GATE_COMBOS.smpApprover ? GATE_COMBOS.smpApprover.match(document.getElementById('smpApprover').value) : null;
+            if (!apOpt) { showIosBanner('Choose Whom to Approve from the list (an ERP user)', 'error'); document.getElementById('smpApprover').focus(); return; }
+            const item = document.getElementById('smpItem').value.trim() || 'Sample / Other';
+
+            // Everything checked: now TAKE the Inward No. (the entry is an inward of the IN series)
+            gateSaving.SMP = true;
+            let inNo;
+            try { inNo = await gateTakeNo('IN', 'smpInwardNo'); } finally { gateSaving.SMP = false; }
+            if (!inNo) { showIosBanner('Could not get an Inward No. Try again.', 'error'); return; }
+            const typeLbl = SMP_TYPE === 'RETURNABLE' ? 'Returnable' : 'Non-Returnable';
+
+            const entry = {
+                id: inNo,
+                category: 'SAMPLE / OTHER',
+                returnType: SMP_TYPE,
+                name: supplier,
+                personName: person,
+                mobile,
+                vehicle: 'N/A',
+                approver: apOpt.value,
+                host: `Approver: ${apOpt.value} • Approval Pending`,
+                purpose: `${item} • ${typeLbl} • Bill & Item Photo Attached`,
+                billPhoto: tempPhotos.smpBill,
+                itemPhoto: tempPhotos.smpItem,
+                guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                inTime: new Date().toISOString(),
+                outTime: null,
+                status: 'IN',
+                smpStage: 'APPROVAL',
+                // the approver decides on the launcher (GATE2_VISITOR_APPROVAL_MIGRATION.sql makes the request when it reaches the server)
+                needApproval: true,
+                hostUserId: apOpt.id || null,
+                hostEmpCode: apOpt.emp || null,
+                hostDept: apOpt.dept || null
+            };
+            commitEntry(entry);
+            writeLS(SMP_APPROVER_KEY, apOpt.value);
+            smpResetForm();
+            showView('samplePending');
+            showIosBanner(`Inward ${inNo} (${typeLbl}) sent to ${apOpt.value} for approval`, 'success');
+        });
+
+        // ── Approval Pending ──
+        function renderSamplePending() {
+            const box = document.getElementById('smpPendList'), note = document.getElementById('smpPendNote');
+            if (!box) return;
+            const rows = gateEntries.filter(isSmpPending).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const offline = !GATE_USER || GATE_OFFLINE || navigator.onLine === false;
+            const msg = VIS_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin: run it in the Supabase SQL Editor). Until then Done works without approval.'
+                : HYD_NOSRV ? 'The server has an older approval set-up: the Admin must run GATE2_VISITOR_APPROVAL_MIGRATION.sql again for Sample / Other approvals. Until then Done needs no approval.'
+                : offline ? 'No internet: new entries are sent for approval as soon as the net is back.' : '';
+            note.textContent = msg; note.classList.toggle('hidden', !msg);
+            if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No Sample / Other entry is waiting for approval.</p>'; return; }
+            box.innerHTML = rows.map(e => {
+                const a = visApr(e), st = a ? a.status : '';
+                let badge, line;
+                if (!e._syncedAt) {
+                    badge = visBadge('Waiting to send', 'bg-gray-200 text-gray-700');
+                    line = 'On this phone only: it goes to ' + esc(e.approver) + ' with the next sync.';
+                } else if (!a) {
+                    badge = visBadge(hydNoApproval() ? 'No approval system' : 'Sending', 'bg-gray-200 text-gray-700');
+                    line = hydNoApproval() ? 'Server migration missing: Done is allowed.' : 'Request is being made on the server...';
+                } else if (st === 'PENDING') {
+                    badge = visBadge('Approval Pending', 'bg-amber-100 text-amber-800');
+                    line = a.hostFound ? 'Waiting for ' + esc(a.host || e.approver) + ' (PIN on the launcher)' : esc(e.approver) + ' has no ERP login: the Admin can approve it.';
+                } else if (st === 'APPROVED') {
+                    badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '');
+                } else if (st === 'REJECTED') {
+                    badge = visBadge('Rejected', 'bg-red-100 text-red-700');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-');
+                } else {
+                    badge = visBadge(st || '-', 'bg-gray-200 text-gray-700');
+                    line = esc(a.remarks || '');
+                }
+                const canDone = st === 'APPROVED' || (hydNoApproval() && !a);
+                const acts = `<button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>`
+                    + (canDone ? `<button onclick="smpMarkDone('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-check"></i> Done · Inward</button>` : '')
+                    + (st === 'REJECTED' || st === 'PENDING' || !a ? `<button onclick="smpClose('${esc(e.id)}')" class="ios-btn px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-xmark"></i> Close</button>` : '');
+                return `<div class="rounded-2xl border ${st === 'APPROVED' ? 'border-emerald-300 bg-emerald-50/40' : st === 'REJECTED' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${smpThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.personName || '-')} · ${esc(e.mobile)}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">${smpTypeBadge(e)} ${esc(smpItemText(e))} · Approver: ${esc(e.approver || '-')}</p>
+                            <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">${acts}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // Approved -> the inward is complete: non-returnable = closed, returnable = waits in Return Pending
+        function smpMarkDone(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || !isSmpPending(e)) return;
+            if (!(visAprStatus(e) === 'APPROVED' || (hydNoApproval() && !visApr(e)))) { showIosBanner('Done only after the approver approves', 'error'); return; }
+            const now = new Date().toISOString();
+            e.smpDoneAt = now;
+            e.smpDoneBy = `${appSettings.guardName} (${appSettings.shiftName})`;
+            if (smpReturnable(e)) {
+                e.smpStage = 'RETURN_PENDING';
+                e.host = `Approver: ${e.approver || '-'} • Return Pending`;
+            } else {
+                e.smpStage = 'DONE';
+                e.status = 'CLOSED';
+                e.closedAt = now;
+                e.host = `Approver: ${e.approver || '-'} • Inward Done (Non-Returnable)`;
+            }
+            touchEntry(e);
+            showIosBanner(smpReturnable(e) ? `${e.id}: inward done, waiting in Return Pending` : `${e.id}: inward done and closed`, 'success');
+            if (smpReturnable(e)) showView('sampleReturn'); else renderSamplePending();
+        }
+
+        // Pending / rejected and the person takes it back: closed with a reason (status OUT, so the server drops the request)
+        async function smpClose(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || !isSmpPending(e)) return;
+            const why = (window.IosDialog && IosDialog.prompt)
+                ? await IosDialog.prompt(`Close ${e.id} without inward? The item goes back with ${e.personName || 'the person'}. Write the reason.`, '')
+                : window.prompt(`Close ${e.id} without inward? Write the reason.`, '');
+            if (why == null) return;
+            if (!String(why).trim()) { showIosBanner('Write the reason to close it', 'error'); return; }
+            e.status = 'OUT';
+            e.outTime = new Date().toISOString();
+            e.smpStage = 'SENT_BACK';
+            e.outRemarks = String(why).trim();
+            e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            e.host = `Approver: ${e.approver || '-'} • Closed without inward`;
+            touchEntry(e);
+            showIosBanner(`${e.id} closed`, 'success');
+        }
+
+        // ── Return Pending / Completed ──
+        function smpRetTab(tab) { SMP_RET_TAB = tab === 'done' ? 'done' : 'pend'; renderSampleReturn(); }
+        function renderSampleReturn() {
+            const box = document.getElementById('smpRetList');
+            if (!box) return;
+            const words = String((document.getElementById('smpRetSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+            const hit = e => !words.length || words.every(w => [e.id, e.outwardNo, e.name, e.personName, e.mobile, smpItemText(e), e.approver, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
+            const pend = gateEntries.filter(isSmpReturnPending).sort((a, b) => new Date(a.inTime) - new Date(b.inTime));   // oldest first: the longest out
+            const done = gateEntries.filter(isSmpRecentDone).sort((a, b) => new Date(smpDoneTime(b)) - new Date(smpDoneTime(a)));
+            document.getElementById('smpTabPendN').textContent = '(' + pend.length + ')';
+            document.getElementById('smpTabDoneN').textContent = '(' + done.length + ')';
+            const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
+            document.getElementById('smpTabPend').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (SMP_RET_TAB === 'pend' ? on : off);
+            document.getElementById('smpTabDone').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (SMP_RET_TAB === 'done' ? on : off);
+            const rows = (SMP_RET_TAB === 'pend' ? pend : done).filter(hit);
+            if (!rows.length) { box.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${SMP_RET_TAB === 'pend' ? 'No returnable item is waiting to go back.' : 'Nothing completed in the last ' + VIS_OUT_DAYS + ' days.'}</p>`; return; }
+            box.innerHTML = rows.map(e => {
+                const days = Math.floor((Date.now() - new Date(e.inTime).getTime()) / 86400000);
+                const state = SMP_RET_TAB === 'pend' ? visBadge(days >= 1 ? 'Pending ' + days + ' d' : 'Pending', days >= 7 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800')
+                    : e.smpStage === 'RETURNED' ? visBadge('Returned', 'bg-emerald-100 text-emerald-800')
+                    : e.status === 'CLOSED' ? visBadge('Inward done', 'bg-gray-200 text-gray-700') : visBadge('Closed', 'bg-gray-200 text-gray-700');
+                return `<div class="rounded-2xl border ${SMP_RET_TAB === 'pend' && days >= 7 ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${smpThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${state}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">Inward ${esc(e.id)}${e.outwardNo ? ' · Outward ' + esc(e.outwardNo) : ''} · ${esc(e.personName || '-')} · ${esc(e.mobile)}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">${smpTypeBadge(e)} ${esc(smpItemText(e))}</p>
+                            <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${smpDoneTime(e) ? ' · ' + (e.smpStage === 'RETURNED' ? 'Out ' : 'Closed ') + esc(formatDateTimeShort(smpDoneTime(e))) : ''}</p>
+                            ${e.outRemarks ? `<p class="text-[11px] font-semibold text-gray-700 mt-0.5">Remarks: ${esc(e.outRemarks)}</p>` : ''}
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>
+                        ${SMP_RET_TAB === 'pend' ? `<button onclick="smpOpenReturn('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Return · Outward</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ── Return (Outward): item photo + the next Outward No. ──
+        function smpOpenReturn(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || e.status !== 'IN') return;
+            if (isSmpPending(e)) { showIosBanner('Not inward yet: it is waiting for approval / Done', 'error'); showView('samplePending'); return; }
+            if (!smpReturnable(e)) { showIosBanner('A Non-Returnable entry has no return', 'error'); return; }
+            SMP_RET_ID = id;
+            tempPhotos.smpRet = null;
+            document.getElementById('smpRetPhoto').value = '';
+            document.getElementById('smpRetPhotoLabel').textContent = 'Tap to capture the item going out';
+            document.getElementById('smpRetPreviewBox').classList.add('hidden');
+            document.getElementById('smpRetRemarks').value = '';
+            document.getElementById('smpRetWho').innerHTML = `${smpThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
+                <p class="text-[11px] font-semibold text-gray-500 truncate">Inward ${esc(e.id)} · ${esc(e.personName || '-')} · ${esc(e.mobile)}</p>
+                <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(smpItemText(e))} · In ${esc(formatDateTimeShort(e.inTime))}</p></div>`;
+            closePassModal(); closeQrVerifyModal();
+            document.getElementById('smpRetModal').classList.remove('hidden');
+            gateFillNo('OUT', 'smpRetOutNo', 'smpRetOutNoHint');
+        }
+        function smpCloseReturn() { document.getElementById('smpRetModal').classList.add('hidden'); SMP_RET_ID = null; }
+        async function smpSaveReturn() {
+            if (gateSaving.SMPRET) return;
+            const e = gateEntries.find(x => x.id === SMP_RET_ID);
+            if (!e || !isSmpReturnPending(e)) { smpCloseReturn(); return; }
+            if (!tempPhotos.smpRet) { showIosBanner('Capture the item photo at return', 'error'); return; }
+            // Everything checked: now TAKE the Outward No.
+            gateSaving.SMPRET = true;
+            let outNo;
+            try { outNo = await gateTakeNo('OUT', 'smpRetOutNo'); } finally { gateSaving.SMPRET = false; }
+            if (!outNo) { showIosBanner('Could not get an Outward No. Try again.', 'error'); return; }
+            e.outwardNo = outNo;
+            e.status = 'OUT';
+            e.outTime = new Date().toISOString();
+            e.outPhoto = tempPhotos.smpRet;
+            e.outRemarks = document.getElementById('smpRetRemarks').value.trim();
+            e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            e.smpStage = 'RETURNED';
+            e.host = `Returned • Outward ${outNo} | Approver: ${e.approver || '-'}`;
+            touchEntry(e, true);
+            tempPhotos.smpRet = null;
+            smpCloseReturn();
+            showIosBanner(`Returned: Outward ${outNo} saved (Inward ${e.id})`, 'success');
+            openPassModal(e.id);
         }
 
         // ==========================================
@@ -3787,7 +4690,9 @@
             document.getElementById('modalCategory').textContent = entry.category;
             document.getElementById('modalName').textContent = entry.name;
             document.getElementById('modalHost').textContent = entry.host;
-            document.getElementById('modalSubInfo').textContent = `${entry.vehicle} | ${entry.mobile}`;
+            document.getElementById('modalSubInfo').textContent = isSample(entry)
+                ? `${smpTypeLabel(entry)} | ${entry.personName || '-'} | ${entry.mobile}${entry.outwardNo ? ' | Outward ' + entry.outwardNo : ''}`
+                : `${entry.vehicle} | ${entry.mobile}`;
             document.getElementById('modalInTime').textContent = formatDateTimeShort(entry.inTime);
             document.getElementById('modalGuardInfo').textContent = entry.guard || `${appSettings.guardName} (${appSettings.shiftName})`;
             document.getElementById('modalPurpose').textContent = entry.purpose;
@@ -3801,7 +4706,7 @@
                 approvalBadge.innerHTML = `<i class="fa-solid fa-circle-check"></i> STORE APPROVED`;
                 approvalBadge.className = 'inline-flex items-center gap-1 bg-emerald-500/15 text-emerald-700 border border-emerald-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase';
                 approvalBadge.classList.remove('hidden');
-            } else if (isVisitor(entry) && entry.needApproval) {
+            } else if (needsApr(entry)) {
                 const st = visAprStatus(entry) || 'PENDING';
                 const look = st === 'APPROVED' ? ['fa-circle-check', 'APPROVED', 'bg-emerald-500/15 text-emerald-700 border-emerald-300']
                     : st === 'PENDING' ? ['fa-clock', 'APPROVAL PENDING', 'bg-amber-500/15 text-amber-700 border-amber-300']
@@ -3845,16 +4750,23 @@
             const markOutBtn = document.getElementById('modalMarkOutBtn');
             if (entry.status === 'IN' && !dkNoMarkOut(entry)) {
                 markOutBtn.classList.remove('hidden');
-                if (entry.category === 'HYDRA / JCB' && entry.hydraStage !== 'STORE_APPROVED') {
-                    markOutBtn.innerHTML = `<i class="fa-solid fa-truck-monster"></i> Manage Hydra`;
+                if (isSample(entry)) {
+                    // waiting for approval -> Approval Pending; a returnable one already inward -> its Return (Outward)
+                    const pend = isSmpPending(entry);
+                    markOutBtn.innerHTML = `<i class="fa-solid ${pend ? 'fa-user-clock' : 'fa-rotate-left'}"></i> ${pend ? 'Approval Pending' : 'Return · Outward'}`;
+                    markOutBtn.onclick = () => { closePassModal(); if (pend) showView('samplePending'); else smpOpenReturn(entry.id); };
+                } else if (isHydra(entry) && (isHydPending(entry) || entry.hydraStage !== 'STORE_APPROVED')) {
+                    // waiting for approval -> Approval Pending; at work / store entry pending -> Existing Hydra / JCB
+                    const pend = isHydPending(entry);
+                    markOutBtn.innerHTML = `<i class="fa-solid fa-truck-monster"></i> ${pend ? 'Approval Pending' : 'Manage Hydra'}`;
                     markOutBtn.onclick = () => {
                         closePassModal();
-                        showView('hydraForm');
+                        showView(pend ? 'hydraPending' : 'hydraExisting');
                     };
                 } else {
                     markOutBtn.innerHTML = `<i class="fa-solid fa-right-from-bracket"></i> Mark Out`;
                     markOutBtn.onclick = () => {
-                        if (entry.category === 'HYDRA / JCB') {
+                        if (isHydra(entry)) {
                             gateOutHydraEntry(entry.id);
                         } else {
                             quickMarkOutFromVerify(entry.id);
@@ -3876,7 +4788,7 @@
             const add = (f, label) => { const src = photoOf(entry, f); if (src) photoList.push({ label, src }); };
             add('billPhoto', 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', 'Gate Pass Photo');
             add('visitorPhoto', 'Visitor Photo'); add('vehiclePhoto', 'Vehicle Photo');
-            add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', 'Visitor at Out');
+            add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', isHydra(entry) ? 'Hydra at Out' : isSample(entry) ? 'Item at Return' : 'Visitor at Out');
 
             const photosBox = document.getElementById('modalPhotosBox');
             if (photoList.length > 0) {
@@ -3971,6 +4883,8 @@
                                 <span class="text-[10px] font-bold text-blue-600 uppercase">${esc(item.category)}</span>
                                 ${isInside
                                     ? `<span class="text-[9px] font-extrabold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">INSIDE</span>`
+                                    : item.status === 'CLOSED'
+                                    ? `<span class="text-[9px] font-extrabold bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">CLOSED</span>`
                                     : `<span class="text-[9px] font-extrabold bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded">EXITED</span>`
                                 }
                             </div>
@@ -3980,8 +4894,10 @@
                         <div class="flex items-center gap-1.5 shrink-0">
                             <button onclick="closeQrVerifyModal(); openPassModal('${esc(item.id)}')" class="ios-btn px-2.5 py-1.5 bg-blue-50 text-blue-600 rounded-lg text-[11px] font-bold">Slip</button>
                             ${isInside && !dkNoMarkOut(item) ? (
-                                item.category === 'HYDRA / JCB'
-                                    ? `<button onclick="closeQrVerifyModal(); showView('hydraForm')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Hydra</button>`
+                                isSample(item)
+                                    ? `<button onclick="closeQrVerifyModal(); ${isSmpPending(item) ? "showView('samplePending')" : "smpOpenReturn('" + esc(item.id) + "')"}" class="ios-btn px-2.5 py-1.5 bg-rose-500 text-white rounded-lg text-[11px] font-bold">${isSmpPending(item) ? 'Pending' : 'Return'}</button>`
+                                    : item.category === 'HYDRA / JCB'
+                                    ? `<button onclick="closeQrVerifyModal(); showView('${isHydPending(item) ? 'hydraPending' : 'hydraExisting'}')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Hydra</button>`
                                     : `<button onclick="quickMarkOutFromVerify('${esc(item.id)}')" class="ios-btn px-2.5 py-1.5 bg-amber-500 text-white rounded-lg text-[11px] font-bold">Mark Out</button>`
                             ) : ''}
                             <button onclick="closeQrVerifyModal(); confirmDeleteEntry('${esc(item.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center" title="Delete">
@@ -3997,12 +4913,242 @@
             const entry = gateEntries.find(e => e.id === id);
             if (!entry) return;
             if (isVisitor(entry)) { openVisitorOut(id); return; }   // a visitor goes out only with a photo + remarks
+            if (isHydra(entry)) { closeQrVerifyModal(); openVisitorOut(id); return; }
+            if (isSample(entry)) { closeQrVerifyModal(); if (isSmpPending(entry)) showView('samplePending'); else smpOpenReturn(id); return; }   // its own Return (Outward No. + item photo)   // so does a Hydra / JCB (or it is sent to its next step)
             if (dkNoMarkOut(entry)) { showIosBanner('A Dharam Kanta slip has no Mark Out: make its Outward Dispatch Packing slip (or delete the slip).', 'error'); return; }
             entry.status = 'OUT';
             entry.outTime = new Date().toISOString();
             touchEntry(entry);
             lookupPassForVerify();
             showIosBanner(`${entry.name} (${entry.id}) Marked Out`, 'success');
+        }
+
+        // ==========================================
+        // 12B. SCAN QR: A PRINTED SLIP / STORE COPY / GATE PASS OPENS ITS GATE STEP, FILLED IN
+        // ==========================================
+        /* Scan QR (bottom of the menu) reads (sarv-qr.js parse):
+             PKS  ERP Packing Slip (packing.html, Original / Duplicate)  -> Out From Dispatch: the tempo's pending
+                  Dharam Kanta slip is picked by itself (Tare + vehicle), the slip's party / packs / weight shown in
+                  #dispScanCard and saved with the entry (erpSlipNo); no DK slip for the tempo -> Dharam Kanta form
+                  with the vehicle filled (weigh it empty first). A slip already made at the gate -> its pass.
+             OUT  Store Outward Receiver Copy (store-core.js)  -> Out From Store with the Store Gate Pass chosen;
+                  already checked out -> its pass. Only TODAY's outward, like the list itself; one the phone does
+                  not know yet (lists not refreshed) is taken from the code.
+             IN   Inward / NB Supplier Copy  -> the open gate Inward of that PO / PR (its pass, Mark Out) if the
+                  vehicle is inside, else the Inward form with Party / PO-PR / numbers filled in.
+             GATE a Gate-2 pass (its own QR)  -> the next step of that entry: Visitor / Hydra / Sample approval or
+                  Out, a Dharam Kanta slip -> its Dispatch Packing entry, anything else -> the pass (Mark Out).
+             A typed number (Type No.) is looked up the same way: gate entry no, then store outward no.
+           Camera: getUserMedia (rear), a frame every ~0.2 s through SarvQR.decode; a photo can be read too. */
+        let SCAN = { stream: null, timer: 0, busy: false, cv: null, done: false, torch: false };
+        let DISP_SCAN = null;   // the ERP Packing Slip read for the Dispatch form now open
+
+        const scanMsg = (t, bad) => { const m = document.getElementById('scanMsg'); if (m) { m.textContent = t; m.className = 'absolute left-4 right-4 bottom-4 text-center text-[12px] font-semibold rounded-2xl px-3 py-2 ' + (bad ? 'text-white bg-red-600/80' : 'text-white bg-black/55'); } };
+        const scanDmy = v => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || '')); return m ? m[3] + '-' + m[2] + '-' + m[1] : String(v || ''); };
+
+        async function openScanner() {
+            const modal = document.getElementById('scanModal');
+            modal.classList.remove('hidden');
+            SCAN.done = false; SCAN.busy = false;
+            document.querySelector('#scanModal .scan-frame').classList.remove('hit');
+            scanMsg('Starting the camera...');
+            const okDec = await SarvQR.decoderReady();
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { scanMsg('This phone gives no live camera here: use From Photo or Type No.', true); return; }
+            try {
+                SCAN.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+            } catch (e) {
+                scanMsg(e && e.name === 'NotAllowedError' ? 'Camera permission is off: allow it, or use From Photo / Type No.' : 'Camera could not start: use From Photo or Type No.', true);
+                return;
+            }
+            if (modal.classList.contains('hidden')) { scanStop(); return; }   // closed while asking for the camera
+            const v = document.getElementById('scanVideo');
+            v.srcObject = SCAN.stream;
+            try { await v.play(); } catch (e) { }
+            const track = SCAN.stream.getVideoTracks()[0];
+            const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+            document.getElementById('scanTorchBtn').classList.toggle('hidden', !caps.torch);
+            document.getElementById('scanTorchGap').classList.toggle('hidden', !!caps.torch);
+            scanMsg(okDec ? 'Point the camera at the QR of a Packing Slip, a Store copy or a Gate pass' : 'Scanner library not loaded (no internet?): use Type No.', !okDec);
+            SCAN.cv = SCAN.cv || document.createElement('canvas');
+            const tick = async () => {
+                if (SCAN.done || !SCAN.stream) return;
+                if (!SCAN.busy && v.readyState >= 2) {
+                    SCAN.busy = true;
+                    let text = '';
+                    try { text = await SarvQR.decode(v, SCAN.cv); } catch (e) { }
+                    SCAN.busy = false;
+                    if (text && !SCAN.done) { scanFound(text); return; }
+                }
+                SCAN.timer = setTimeout(tick, 180);
+            };
+            tick();
+        }
+        function scanStop() {
+            clearTimeout(SCAN.timer);
+            if (SCAN.stream) SCAN.stream.getTracks().forEach(t => { try { t.stop(); } catch (e) { } });
+            SCAN.stream = null; SCAN.torch = false;
+            const v = document.getElementById('scanVideo'); if (v) v.srcObject = null;
+        }
+        function closeScanner() { SCAN.done = true; scanStop(); document.getElementById('scanModal').classList.add('hidden'); }
+        async function scanToggleTorch() {
+            const track = SCAN.stream && SCAN.stream.getVideoTracks()[0]; if (!track) return;
+            SCAN.torch = !SCAN.torch;
+            try { await track.applyConstraints({ advanced: [{ torch: SCAN.torch }] }); } catch (e) { SCAN.torch = false; }
+        }
+        async function scanFromPhoto(input) {
+            const f = input.files && input.files[0]; input.value = '';
+            if (!f) return;
+            scanMsg('Reading the photo...');
+            await SarvQR.decoderReady();
+            const url = URL.createObjectURL(f);
+            const img = new Image();
+            img.onload = async () => {
+                let text = '';
+                try { text = await SarvQR.decode(img); } catch (e) { }
+                URL.revokeObjectURL(url);
+                if (text) scanFound(text); else scanMsg('No QR found in that photo. Take it closer and straight.', true);
+            };
+            img.onerror = () => { URL.revokeObjectURL(url); scanMsg('That photo could not be opened.', true); };
+            img.src = url;
+        }
+        async function scanTypeIn() {
+            const t = window.IosDialog && IosDialog.prompt ? await IosDialog.prompt('Type the Gate pass no. (VIS- / IN- / DK- ...) or the Store Outward no.', '') : window.prompt('Type the number', '');
+            if (t != null && String(t).trim()) scanFound(String(t).trim());
+        }
+        function scanFound(text) {
+            SCAN.done = true;
+            const fr = document.querySelector('#scanModal .scan-frame'); if (fr) fr.classList.add('hit');
+            try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) { }
+            setTimeout(() => { closeScanner(); gateScanHandle(text); }, 180);
+        }
+
+        // ── what was read -> the gate step ──
+        async function gateScanHandle(text) {
+            const o = SarvQR.parse(text);
+            if (!o) return;
+            if (o.t === 'PKS') return gateScanPackingSlip(o);
+            if (o.t === 'OUT') return gateScanStoreOut(o);
+            if (o.t === 'IN') return gateScanInward(o);
+            if (o.t === 'GATE') return gateScanGateEntry(o.id);
+            // typed / unknown text: a gate entry no., a gate outward no., else a store outward no.
+            const k = normKey(o.text);
+            const ge = gateEntries.find(e => normKey(e.id) === k || normKey(e.outwardNo) === k || normKey(e.erpSlipNo) === k);
+            if (ge) return gateScanGateEntry(ge.id);
+            if (getStorePass(o.text) || (GATE_MASTERS.passes || []).some(p => normKey(p.no) === k)) {
+                const p = (GATE_MASTERS.passes || []).find(x => normKey(x.no) === k);
+                return gateScanStoreOut({ t: 'OUT', no: p ? p.no : o.text });
+            }
+            showIosBanner(`Nothing found for "${o.text}" on this phone. Sync and try again.`, 'error');
+        }
+
+        // A Gate-2 pass: the next step of that entry
+        function gateScanGateEntry(id) {
+            const e = gateEntries.find(x => normKey(x.id) === normKey(id));
+            if (!e) { gateSync(false); showIosBanner(`Pass ${id} is not on this phone yet. Syncing: scan again in a moment.`, 'error'); return; }
+            const say = t => showIosBanner(`${e.id}: ${t}`, 'info');
+            if (isVisitor(e)) {
+                if (isVisPending(e)) { showView('visitorPending'); return say('waiting for approval / Done'); }
+                if (e.status === 'IN') { openVisitorOut(e.id); return say('mark the visitor Out'); }
+            } else if (isHydra(e)) {
+                if (isHydPending(e)) { showView('hydraPending'); return say('waiting for approval / Start Work'); }
+                if (e.status === 'IN') { if (e.hydraStage === 'STORE_APPROVED') openVisitorOut(e.id); else showView('hydraExisting'); return say(e.hydraStage === 'STORE_APPROVED' ? 'Gate Out with photo' : 'finish the work / store entry'); }
+            } else if (isSample(e)) {
+                if (isSmpPending(e)) { showView('samplePending'); return say('waiting for approval / Done'); }
+                if (isSmpReturnPending(e)) { smpOpenReturn(e.id); return say('return it with the item photo'); }
+            } else if (e.category === 'DHARAM KANTA' && dkAwaitingDispatch().some(d => d.id === e.id)) {
+                showView('outwardDispatchForm'); selectDispatchDkChip(e.id);
+                return say('Dharam Kanta slip picked: weigh Gross and take the photo');
+            }
+            openPassModal(e.id);
+            if (e.status === 'IN' && !dkNoMarkOut(e)) say('inside: Mark Out from the pass');
+        }
+
+        // ERP Packing Slip -> Out From Dispatch with the tempo's Dharam Kanta slip
+        function dispScanSet(o) {
+            DISP_SCAN = o || null;
+            const c = document.getElementById('dispScanCard'); if (!c) return;
+            if (!o) { c.className = 'hidden'; c.innerHTML = ''; return; }
+            c.className = 'rounded-2xl border border-emerald-300 bg-emerald-50/60 p-3';
+            c.innerHTML = `<div class="flex items-center justify-between gap-2">
+                    <span class="text-[10px] font-extrabold text-emerald-700 uppercase tracking-wide"><i class="fa-solid fa-qrcode mr-1"></i>Packing Slip scanned</span>
+                    <span class="font-mono text-[12px] font-extrabold text-gray-900">${esc(o.no)}</span></div>
+                <p class="text-[13px] font-extrabold text-gray-900 mt-1 truncate">${esc(o.p || '-')}</p>
+                <p class="text-[11px] font-semibold text-gray-600">${esc(o.veh || '-')}${o.drv ? ' · ' + esc(o.drv) : ''}${o.to ? ' · To ' + esc(o.to) : ''}</p>
+                <p class="text-[11px] font-semibold text-gray-600">${o.pk != null ? esc(o.pk) + ' packs · ' : ''}${o.q != null ? esc(o.q) + ' pcs · ' : ''}${o.wt != null ? esc(o.wt) + ' Kg' : ''}${o.d ? ' · ' + esc(scanDmy(o.d)) : ''}</p>`;
+        }
+        async function gateScanPackingSlip(o) {
+            const made = gateEntries.find(e => e.category === 'DISPATCH PACKING' && normKey(e.erpSlipNo) === normKey(o.no));
+            if (made) { openPassModal(made.id); showIosBanner(`Slip ${o.no} already has gate entry ${made.id}${made.status === 'IN' ? ': Mark Out when it leaves' : ''}`, 'info'); return; }
+            const k = dkVehKey(o.veh);
+            const dk = k ? dkAwaitingDispatch().find(d => dkVehKey(d.vehicle) === k) : null;
+            if (dk) {
+                showView('outwardDispatchForm');
+                selectDispatchDkChip(dk.id);
+                dispScanSet(o);
+                showIosBanner(`Slip ${o.no}: Dharam Kanta ${dk.id} picked. Weigh Gross + take the photo.`, 'success');
+                return;
+            }
+            const pick = window.IosDialog && IosDialog.choose
+                ? await IosDialog.choose(`Slip ${o.no}: vehicle ${o.veh || '(none on the slip)'} has no Dharam Kanta slip waiting. Weigh the empty vehicle first?`, [{ label: 'Open Dharam Kanta', value: 'dk', bold: true }, { label: 'Dispatch form', value: 'disp' }, { label: 'Cancel', cancel: true }])
+                : 'dk';
+            if (pick === 'dk') {
+                showView('dharamKantaForm');
+                const vb = document.getElementById('dkVehicleNo'); if (vb && o.veh) { vb.value = String(o.veh).toUpperCase(); dkVehicleCheck(); }
+            } else if (pick === 'disp') {
+                showView('outwardDispatchForm');
+                dispScanSet(o);
+            }
+        }
+
+        // Store Outward Receiver Copy -> Out From Store with the pass chosen
+        async function gateScanStoreOut(o) {
+            const no = String(o.no || '').trim();
+            if (!no) return;
+            if (usedPassNos().has(no)) {
+                const ge = gateEntries.find(e => e.category === 'OUTWARD' && (e.passNo === no || (e.host || '').indexOf('Store Pass: ' + no) >= 0));
+                if (ge) openPassModal(ge.id);
+                showIosBanner(`Outward ${no} has already gone out${ge ? ' (' + ge.id + ')' : ''}`, 'error');
+                return;
+            }
+            const td = localYmd();
+            const known = (GATE_MASTERS.passes || []).find(p => p.no === no);
+            const day = passYmd(known ? known.date : o.d);
+            if (day && day !== td) {
+                showIosBanner(`Outward ${no} is dated ${scanDmy(day)}: only today's Store Outward can go out here.`, 'error');
+                return;
+            }
+            if (storePassCodes().indexOf(no) < 0 && !known && GATE_USER && !GATE_OFFLINE && navigator.onLine !== false) {
+                await gateLoadMasters(false);   // made a minute ago: the list on the phone is older
+            }
+            if (storePassCodes().indexOf(no) < 0) {
+                // not in the ERP list of this phone: taken from the code itself (today's, checked above)
+                storeGatePassesDB[no] = { party: o.p || '', item: o.it || '', qty: o.q != null ? String(o.q) : '', date: td, nature: o.nat || '', receiver: o.rcv || '', viaQr: true };
+                writeLS('iosGateStorePasses_v2', storeGatePassesDB);
+            }
+            showView('outwardStoreForm');
+            if (GATE_COMBOS.storePassSelect) GATE_COMBOS.storePassSelect.set(no);   // runs fetchStoreGatePassDetails
+            else { document.getElementById('storePassSelect').value = no; fetchStoreGatePassDetails(); }
+            showIosBanner(`Outward ${no} filled: take the gate pass + item photos and confirm`, 'success');
+        }
+
+        // Inward / NB Supplier Copy -> the vehicle's open gate Inward, else the Inward form filled in
+        function gateScanInward(o) {
+            const refs = [o.po, o.pr].filter(Boolean).join(',').split(/[,;]\s*/).map(x => x.trim()).filter(Boolean);
+            const open = gateEntries.find(e => e.category === 'INWARD' && e.status === 'IN' && refs.some(r => (e.host || '').toUpperCase().indexOf(r.toUpperCase()) >= 0));
+            if (open) {
+                openPassModal(open.id);
+                showIosBanner(`${o.no}: gate Inward ${open.id} of this ${o.po ? 'PO' : 'PR'} is inside. Mark Out when the vehicle leaves.`, 'info');
+                return;
+            }
+            showView('inwardForm');
+            const pc = GATE_COMBOS.inPartyName;
+            if (pc && o.p) pc.set(o.p, true);   // silent: the PO list popup is not needed, the numbers come from the code
+            const partyOk = !pc || !o.p || !!pc.match(o.p);
+            const rt = document.getElementById('inRefType'), rn = document.getElementById('inRefNo');
+            if (rt) rt.value = o.po ? 'PO' : o.pr ? 'PR' : rt.value;
+            if (rn) { rn.value = (o.po || o.pr || '').trim(); if (rn.value) loadRefDetail(); }
+            showIosBanner(partyOk ? `Inward ${o.no} filled (${o.p || '-'}): take the bill + item photos and save`
+                : `Party "${o.p}" is not in the list: choose it, the ${o.po ? 'PO' : 'PR'} No. is filled`, partyOk ? 'success' : 'error');
         }
 
         // ==========================================

@@ -30,7 +30,8 @@
     - Debit     Debit Notes: waiting for verification / verified.
     - All       every record and where it stands (read only unless it is theirs).
   Tapping a record opens the pipeline sheet: attachments strip (Store PDF,
-  Actual Bill, Unloader photos, Field Boy photos), the whole pipeline, the
+  Actual Bill, PO / PR / Yarn Unloading PDFs, Unloader photos, Field Boy photos)
+  with the whole pipeline inside the same Attachments card, the
   user's own step and the Debit Note. OKAY is possible only after every page /
   photo has been looked at in the viewer (HOLD any time).
 
@@ -100,6 +101,8 @@ body.sheeted #app{transform:translateY(calc(var(--sat) + 8px)) scale(.925);borde
 .wrap{max-width:760px;margin:0 auto;padding:0 16px}
 .large{font-size:34px;font-weight:700;letter-spacing:.012em;margin:2px 0 6px;transition:opacity .2s}
 .sub{color:var(--label2);font-size:15px;margin:0 0 12px}
+.sub b{color:var(--label);font-weight:600}
+.rolebtn{margin-left:6px;padding:2px 10px;border-radius:12px;background:var(--fill);color:var(--blue);font-size:13px;font-weight:600}
 .ptr{height:0;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;color:var(--label2)}
 .spin{width:20px;height:20px;border-radius:50%;border:2.5px solid var(--fill2);border-top-color:var(--label2);animation:sp .8s linear infinite;margin-bottom:8px}
 @keyframes sp{to{transform:rotate(360deg)}}
@@ -234,6 +237,18 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 .gap{height:10px}
 /* timeline */
 .tl{padding:6px 0}
+/* The bill check pipeline sits inside the Attachments card, under the attachments (paintSheet) */
+/* The "Bill Check Pipeline" slide of the viewer (pipeTimeline on a sheet-coloured card) and its thumbnail */
+.vs>.vpipe{width:min(720px,100%);max-height:100%;overflow-y:auto;background:var(--bg);color:var(--label);border-radius:12px;padding:14px 0 18px;touch-action:pan-x pan-y;-webkit-overflow-scrolling:touch;align-self:center}
+.vpipe .vph{padding:0 16px 8px;font-size:20px;font-weight:700}
+.vpipe .vps{padding:0 16px 10px;font-size:14px;color:var(--label2)}
+.vpipe .tl{background:var(--card);margin:0 12px;border-radius:12px}
+.pipe-th{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:0 10px;background:var(--card)}
+.pipe-th i{display:block;height:6px;border-radius:3px;background:var(--green)}
+.pipe-th i:nth-child(2){background:var(--blue);width:80%}.pipe-th i:nth-child(3){background:var(--fill2);width:65%}.pipe-th i:nth-child(4){background:var(--fill2);width:50%}
+.vf .pipe-th{padding:0 5px;gap:4px}.vf .pipe-th i{height:4px}
+.att-pipe-h{margin:6px 16px 0;padding-top:12px;border-top:.5px solid var(--sep);font-size:13px;text-transform:uppercase;color:var(--label2);letter-spacing:-.003em;display:flex;align-items:center;gap:8px}
+.att-pipe-h .n{background:var(--fill);border-radius:9px;padding:0 7px;font-size:12px;color:var(--label2);text-transform:none}
 .step{position:relative;display:flex;gap:13px;padding:10px 16px}
 .step .dot{position:relative;flex:none;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;background:var(--fill2);z-index:1}
 .step .dot.ok{background:var(--green)}.step .dot.hold{background:var(--orange)}.step .dot.next{background:var(--blue)}.step .dot.red{background:var(--red)}
@@ -290,6 +305,18 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 .vfoot{flex:none;background:rgba(28,28,30,.78);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);padding:8px 0 calc(var(--sab) + 8px)}
 .vcap{padding:0 16px 8px;font-size:13px;color:rgba(235,235,245,.7);text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .vcap .open{color:#0a84ff;margin-left:8px;text-decoration:none}
+/* Comment on one attachment (viewer), highlighted under the commenter's step (ATTACHMENT COMMENTS) */
+.vcmrow{display:flex;align-items:center;gap:10px;padding:0 12px 8px;min-width:0}
+.vcm{flex:none;height:30px;padding:0 13px;border-radius:15px;background:#ffd60a;color:#1c1c1e;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.vcm .n{background:#1c1c1e;color:#ffd60a;border-radius:9px;padding:0 6px;font-size:12px;line-height:18px}
+.vcml{flex:1;min-width:0;font-size:12.5px;color:rgba(235,235,245,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.th .cmb{position:absolute;left:5px;top:5px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#ffd60a;color:#1c1c1e;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;z-index:1}
+.step.has-cm{background:rgba(255,214,10,.13)}
+.step .cms{margin-top:7px;display:flex;flex-direction:column;gap:5px}
+.step .cm{background:rgba(255,214,10,.24);border-left:3px solid #ffd60a;border-radius:6px;padding:6px 9px;font-size:13.5px;color:var(--label);overflow-wrap:anywhere}
+.step .cm .att{font-weight:600}
+.step .cm small{display:block;color:var(--label2);font-size:11.5px;margin-top:2px}
+.step .cm button{float:right;color:var(--red);font-size:12px;margin-left:8px}
 .vfilm{display:flex;gap:6px;overflow-x:auto;padding:0 12px;scrollbar-width:none}
 .vfilm::-webkit-scrollbar{display:none}
 .vf{flex:none;position:relative;width:38px;height:50px;border-radius:5px;overflow:hidden;background:#2c2c2e;opacity:.55;transition:opacity .2s,transform .25s var(--spring);box-shadow:0 0 0 1.5px transparent}
@@ -394,6 +421,7 @@ const buzz = (n) => { try { navigator.vibrate && navigator.vibrate(n || 8); } ca
 
 /* ── Icons (SF Symbols look: thin round strokes) ── */
 const IC = {
+  cmt:'<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.6A8 8 0 1121 12z"/></svg>',
   chev:'<svg width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 1l6 6-6 6"/></svg>',
   back:'<svg width="12" height="20" viewBox="0 0 12 20" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2L2 10l8 8"/></svg>',
   check:'<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>',
@@ -416,7 +444,8 @@ const S = {
   map:{},                 // 'inward:12' -> pipeline row from scs_get
   att:{},                 // key -> {state, slides, errs}
   seen:{},                // key -> Set of slide numbers looked at in the viewer
-  printed:{}, printMissing:false   // Print Account Copy (EA): key -> printed state
+  printed:{}, printMissing:false,  // Print Account Copy (EA): key -> printed state
+  role:''                 // ROLE CHOOSER: the one step the user checks as now ('' = all of their steps)
 };
 const TYPE_LOOK = { 'INWARD':['IN','#0a84ff'], 'INWARD NB':['NB','#ff3b30'], 'OUTWARD':['OUT','#34c759'], 'ISSUE':['ISS','#af52de'] };
 const ERR = {
@@ -476,7 +505,35 @@ const rowOf = r => S.map[r.key] || null;
 const stepOf = (r, code) => ((rowOf(r) || {}).steps || {})[code] || null;
 const debitOf = r => { const d = (rowOf(r) || {}).debit; return d && d.status !== 'WITHDRAWN' ? d : null; };
 const labelOf = c => c === 'DEBIT' ? 'Debit Note' : ((S.flow.find(s => s.code === c) || {}).label || c);
-const canDo = (code, store) => !!(S.can && S.can[code] && S.can[code][store || 'STORE 2']);
+const canDoRaw = (code, store) => !!(S.can && S.can[code] && S.can[code][store || 'STORE 2']);
+/* ROLE CHOOSER: a user with MORE than one step of the pipeline (e.g. GM and EA) is asked when the app opens which role
+   they check bills for now (chooseRole). While a role is chosen only THAT step counts as theirs: To Check, Hold,
+   "Your step", the Check / PIN, the comment's step, the EA's Accountant Copy and Print. Rights that are not a step
+   of the flow (Debit Note raise / verify) are not narrowed. The server still checks every action on its own. */
+const isFlowCode = code => S.flow.some(x => x.code === code);
+const canDo = (code, store) => canDoRaw(code, store) && (!S.role || code === S.role || !isFlowCode(code));
+const myRoles = () => S.flow.filter(x => canDoRaw(x.code, 'STORE 1') || canDoRaw(x.code, 'STORE 2'));
+const ROLE_KEY = () => 'bc_role:' + ((S.user && (S.user.id || S.user.user_id)) || '') + ':' + (ISSUE_MODE ? 'issue' : 'bill');
+async function chooseRole(manual){
+  const roles = myRoles();
+  if (roles.length < 2) { if (S.role && !roles.some(x => x.code === S.role)) S.role = ''; if (manual) toast(roles.length ? 'You have only one step: ' + roles[0].label : 'No step is assigned to you.'); return; }
+  // how many fresh bills wait for each role, so the choice is easy
+  const keep = S.role, count = code => { S.role = code; LOCKS = null; const d = segData(baseRows()); return (d.todo[code] || []).filter(x => !x.hold).length; };
+  const n = {}; roles.forEach(x => { n[x.code] = count(x.code); }); S.role = ''; LOCKS = null;
+  const all = Object.keys(n).reduce((a, k) => a + n[k], 0);
+  let last = ''; try { last = localStorage.getItem(ROLE_KEY()) || ''; } catch (e) {}
+  const items = roles.map(x => ({ t:x.label + ' · ' + n[x.code] + ' to check' + (x.code === last ? ' · last time' : ''), s:x.code === keep ? 'b' : '' }))
+    .concat([{ t:'All my steps · ' + all + ' to check', s:keep === '' && manual ? 'b' : '' }]);
+  const i = await iosMenu({ title:'Check bills as', message:'You have ' + roles.length + ' steps. Choose the role you want to check bills for now.', items });
+  if (i < 0) { S.role = keep; LOCKS = null; if (!manual) paintAll(); return; }   // Cancel: as it was
+  S.role = i < roles.length ? roles[i].code : '';
+  try { localStorage.setItem(ROLE_KEY(), S.role || 'ALL'); } catch (e) {}
+  LOCKS = null; S.seg = 'TODO'; S.att = {};          // the Accountant Copy may come / go with the role (EA)
+  paintAll();
+  const st = roles.find(x => x.code === S.role);
+  toast(st ? 'Checking as ' + st.label : 'Checking as all your steps');
+  buzz(8);
+}
 function stageOf(r){ for (const s of S.flow) { const x = stepOf(r, s.code); if (!x || x.status !== 'OKAY') return { step:s, hold:!!x && x.status === 'HOLD' }; } return { step:null, hold:false }; }
 function prevOk(r, code){ for (const s of S.flow) { if (s.code === code) return { ok:true }; const x = stepOf(r, s.code); if (!x || x.status !== 'OKAY') return { ok:false, label:s.label }; } return { ok:true }; }
 function mineStep(r){                         // the step this record waits at, when it is this user's
@@ -708,7 +765,11 @@ function pdfJs(){
   return PDFJS_P;
 }
 async function pdfDoc(url){ const lib = await pdfJs(); return lib.getDocument({ url, withCredentials:false }).promise; }
-const ATT_LABEL = { STORE:r => r.kind === 'inward' ? 'Supplier Copy' : 'Receiver Copy', ACCOUNT:() => 'Accountant Copy', BILL:r => r.kind === 'inward' ? 'Actual Bill' : 'Attachments', UNLOAD:() => 'Unloader', FIELD:() => 'Field Boy' };
+const ATT_LABEL = { STORE:r => r.kind === 'inward' ? 'Supplier Copy' : 'Receiver Copy', ACCOUNT:() => 'Accountant Copy', BILL:r => r.kind === 'inward' ? 'Actual Bill' : 'Attachments',
+  PO:() => 'PO', PR:() => 'PR', YARN:() => 'Yarn Unloading', UNLOAD:() => 'Unloader', FIELD:() => 'Field Boy' };
+// Slide order on the sheet and in the viewer
+// PR, PO, Actual Bill, Supplier / Receiver Copy first, then all other attachments
+const ATT_ORDER = ['PR', 'PO', 'BILL', 'STORE', 'ACCOUNT', 'YARN', 'UNLOAD', 'FIELD'];
 
 async function loadAttachments(r, force){
   let a = S.att[r.key];
@@ -724,11 +785,13 @@ async function loadAttachments(r, force){
     const ctx = { rec, invUnload:[], pd };
     const run = (id, fn) => fn(r, ctx).then(x => ({ id, x }), e => ({ id, e: e.message || String(e) }));
     const out = {};
-    const first = await Promise.all([run('STORE', attStore), run('ACCOUNT', attAccount), run('BILL', attBill), r.kind === 'inward' ? run('FIELD', attField) : Promise.resolve(null)]);
+    const inw = r.kind === 'inward';
+    const first = await Promise.all([run('STORE', attStore), run('ACCOUNT', attAccount), run('BILL', attBill),
+      inw ? run('FIELD', attField) : Promise.resolve(null), inw ? run('PO', attPo) : Promise.resolve(null), inw ? run('YARN', attYarn) : Promise.resolve(null)]);
     first.forEach(o => { if (o) out[o.id] = o; });
-    if (r.kind === 'inward') { const u = await run('UNLOAD', attUnload); out.UNLOAD = u; }
+    if (inw) { const [u, pr] = await Promise.all([run('UNLOAD', attUnload), run('PR', attPr)]); out.UNLOAD = u; out.PR = pr; }
     const slides = [];
-    ['STORE', 'ACCOUNT', 'BILL', 'UNLOAD', 'FIELD'].forEach(id => {
+    ATT_ORDER.forEach(id => {
       const o = out[id]; if (!o) return;
       const label = ATT_LABEL[id](r);
       if (o.e) { a.errs.push(label + ': ' + o.e); return; }
@@ -737,6 +800,12 @@ async function loadAttachments(r, force){
       if (!list.length) a.empty = (a.empty || []).concat({ label, text:o.x.empty || 'Nothing attached.' });
       list.forEach((s, i) => slides.push(Object.assign({ group:id, label, pos:i + 1, of:list.length }, s)));
     });
+    // The Bill Check Pipeline slide (history, remarks, comments): not an attachment, never counted as "to look at" (needSeen)
+    {
+      const lastOf = g => { let k = -1; slides.forEach((s, i) => { if (s.group === g) k = i; }); return k; };
+      const at = Math.max(lastOf('STORE'), lastOf('BILL'), lastOf('PO'), lastOf('PR')) + 1;
+      slides.splice(at, 0, { type:'pipe', group:'PIPE', label:'Pipeline', pos:1, of:1, caption:'Bill check pipeline · every step with its history, remarks and comments' });
+    }
     slides.forEach((s, i) => { s.n = i; });
     a.slides = slides; a.state = a.errs.length ? 'error' : 'ready'; a.accUrl = (a.accShown && ctx.acc && ctx.acc.currentUrl) || '';
     if (CUR && CUR.r === r && ctx.acc) CUR.acc = ctx.acc;
@@ -813,6 +882,63 @@ async function attField(r, ctx){
   });
   return { slides, empty:'Field Boy PR ' + prs.map(p => p.req_no).join(', ') + ': no item photo for the items on this Inward.' };
 }
+/* PO / PR / Yarn Unloading PDFs of an Inward: the saved PDFs of the documents the receipt was booked against,
+   read like the Store PDF (pdf.js, one slide per page) so they are counted in "Looked at n of N" too.
+     PO    inward_entries.po_number (one or more, comma list) -> purchase_orders.pdf_url_single / pdf_url / pdf_url_two_page
+     PR    inward_entries.req_no + the PRs behind those POs (linked_req_nos) -> purchase_requirements.pdf_url_single / ...
+     YARN  inward_entries.yarn_ul_no (a WEAVING YARN receipt, YARN_UNLOADING_SERIAL_MIGRATION.sql) -> yarn_unloading_drafts.pdf_url
+   null = does not apply (no PO / PR / yarn on this bill). A PDF that is not saved or cannot be opened is a note, never
+   an error, so one missing file of an old PO does not stop the bill being checked. */
+const splitNos = v => [...new Set((Array.isArray(v) ? v : String(v || '').split(/[,;]/)).map(x => String(x || '').trim()).filter(Boolean))];
+const inList = nos => '(' + nos.map(n => '"' + String(n).replace(/"/g, '') + '"').join(',') + ')';
+async function pdfSlides(list, emptyText){
+  const slides = [], miss = [];
+  for (const it of list) {
+    if (!it.url) { miss.push(it.name + ': no PDF saved'); continue; }
+    try {
+      const doc = await pdfDoc(it.url);
+      for (let p = 1; p <= doc.numPages; p++) slides.push({ type:'pdf', doc, page:p, open:it.url, caption:it.name + (doc.numPages > 1 ? ' · page ' + p + ' of ' + doc.numPages : '') });
+    } catch (e) { miss.push(it.name + ': the PDF could not be opened'); }
+  }
+  return { slides, empty:(miss.length ? miss.join(' · ') : emptyText) };
+}
+const docUrl = d => d.pdf_url_single || d.pdf_url || d.pdf_url_two_page || '';
+async function attPo(r, ctx){
+  const nos = splitNos(ctx.rec.po_number);
+  if (!nos.length) return null;
+  const pos = await rest('purchase_orders?select=po_no,pdf_url,pdf_url_single,pdf_url_two_page,linked_req_nos&po_no=in.' + encodeURIComponent(inList(nos)));
+  ctx.pos = pos;
+  const list = nos.map(n => { const p = pos.find(x => x.po_no === n); return { name:'PO ' + n, url:p ? docUrl(p) : '' }; });
+  return pdfSlides(list, 'PO ' + nos.join(', ') + ': no PDF saved.');
+}
+async function attPr(r, ctx){
+  // the POs are read first (attPo, same batch before this one): their PRs belong to this bill too
+  const fromPo = (ctx.pos || []).reduce((a, p) => a.concat(splitNos(p.linked_req_nos)), []);
+  const nos = splitNos(splitNos(ctx.rec.req_no).concat(fromPo));
+  if (!nos.length) return null;
+  const prs = await rest('purchase_requirements?select=req_no,pdf_url,pdf_url_single,pdf_url_two_page&req_no=in.' + encodeURIComponent(inList(nos)));
+  const list = nos.map(n => { const p = prs.find(x => x.req_no === n); return { name:'PR ' + n, url:p ? docUrl(p) : '' }; });
+  return pdfSlides(list, 'PR ' + nos.join(', ') + ': no PDF saved.');
+}
+async function attYarn(r, ctx){
+  const no = String(ctx.rec.yarn_ul_no || '').trim();
+  if (!no) return null;
+  let y = [];
+  try { y = await rest('yarn_unloading_drafts?select=serial_no,pdf_url,box_count,total_weight&serial_no=eq.' + encodeURIComponent(no)); } catch (e) {}
+  const row = y[0];
+  const name = 'Yarn Unloading ' + no + (row && row.box_count ? ' · ' + row.box_count + ' boxes · ' + (Number(row.total_weight) || 0).toFixed(2) + ' kg' : '');
+  return pdfSlides([{ name, url:row && /^https?:/i.test(row.pdf_url || '') ? row.pdf_url : '' }], name + ': its PDF is not in the cloud yet (it goes up when the report is saved or printed with internet on).');
+}
+// The pipeline slide: where the bill stands, then the whole timeline
+function pipeSlideHtml(r){
+  if (!CUR || CUR.r !== r) return '<div class="vps">Open the bill again to see its pipeline.</div>';
+  const st = stageOf(r), db = debitOf(r);
+  const where = r.cancelled ? 'Cancelled: it is not checked.' : !st.step ? 'Every step is OKAY.' : st.hold ? 'On hold at ' + st.step.label + '.' : 'Waiting at ' + st.step.label + '.';
+  const nc = (CUR.cmts || []).length;
+  return '<div class="vph">Bill Check Pipeline</div><div class="vps">' + esc(r.no || '') + ' · ' + esc(where)
+    + (db ? ' · Debit Note ' + esc(db.status === 'VERIFIED' ? 'verified' : 'raised') : '') + (nc ? ' · ' + nc + ' comment' + (nc > 1 ? 's' : '') : '')
+    + (CUR.hist == null ? ' · loading history…' : '') + '</div>' + pipeTimeline(r);
+}
 /* A PDF page as a canvas: small for the strip, sharp for the viewer. */
 async function pdfCanvas(s, cssW){
   const page = await s.doc.getPage(s.page), vp1 = page.getViewport({ scale:1 });
@@ -823,6 +949,7 @@ async function pdfCanvas(s, cssW){
   return c;
 }
 async function fillThumb(box, s){
+  if (s.type === 'pipe') { const d = document.createElement('div'); d.className = 'pipe-th'; d.innerHTML = '<i></i><i></i><i></i><i></i>'; box.prepend(d); return; }
   if (s.type === 'img') { const im = new Image(); im.src = s.src; im.alt = ''; im.draggable = false; box.prepend(im); return; }
   if (s.type === 'pdf') { try { const c = await (s._th || (s._th = pdfCanvas(s, 110))); const k = document.createElement('canvas'); k.width = c.width; k.height = c.height; k.getContext('2d').drawImage(c, 0, 0); box.prepend(k); } catch (e) {} }
 }
@@ -885,8 +1012,11 @@ function skeleton(){ let h = '<div class="sec skel"><div class="grp">'; for (let
 
 function paintAll(){ paintHeader(); paintList(); }
 function paintHeader(){
-  const mine = S.flow.filter(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2')).map(s => s.label);
-  $('subline').textContent = S.missing ? '' : mine.length ? 'Your steps: ' + mine.join(' · ') : (S.loaded ? 'You can view the pipeline; no step is assigned to you.' : '');
+  const mine = S.flow.filter(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2')).map(s => s.label), multi = myRoles().length > 1;
+  const roleSt = S.role && S.flow.find(x => x.code === S.role);
+  $('subline').innerHTML = S.missing ? '' : roleSt ? 'Checking as <b>' + esc(roleSt.label) + '</b> <button class="rolebtn" data-role="1">Change</button>'
+    : mine.length ? esc('Your steps: ' + mine.join(' · ')) + (multi ? ' <button class="rolebtn" data-role="1">Choose role</button>' : '')
+    : esc(S.loaded ? 'You can view the pipeline; no step is assigned to you.' : '');
   $('meBtn').textContent = ((S.user && (S.user.user_name || S.user.name)) || '?').trim().charAt(0).toUpperCase();
   const d = segData(baseRows()), cnt = o => Object.keys(o).reduce((n, k) => n + o[k].length, 0);
   const heldMine = Object.keys(d.todo).reduce((n, k) => n + d.todo[k].filter(x => x.hold).length, 0), freshMine = cnt(d.todo) - heldMine;
@@ -1035,10 +1165,11 @@ const busy = on => $('busy').classList.toggle('on', !!on);
 let CUR = null;            // {r, layer, hist, proofs}
 async function openRecord(key){
   const r = S.rows.find(x => x.key === key); if (!r) return;
-  if (CUR && CUR.layer && !CUR.layer.closed) { CUR.r = r; CUR.hist = null; CUR.proofs = null; paintSheet(); }
+  if (CUR && CUR.layer && !CUR.layer.closed) { CUR.r = r; CUR.hist = null; CUR.proofs = null; CUR.cmts = null; paintSheet(); }
   else { CUR = { r, hist:null, proofs:null, acc:null, dbOpen:false, layer:openSheet({ left:'Close', onClose:() => { CUR = null; paintList(); paintHeader(); } }) }; paintSheet(); }
   refreshAtt(r);
   loadHistory(r);
+  loadComments(r);
   loadProofs(r);
 }
 /* A step before this one may have stamped a newer Accountant Copy since the attachments were cached:
@@ -1055,12 +1186,83 @@ async function refreshAtt(r){
   } catch (e) {}
   paintSheet();
 }
+/* ══ ATTACHMENT COMMENTS (sql/BILL_CHECK_ATT_COMMENT_MIGRATION.sql) ═══════
+   The viewer's Comment button writes a comment on the attachment on screen (attKey = its group + caption, so it
+   names the exact page); it belongs to the commenter's step of this bill: the step it waits at for them, else the
+   first step they may do in its store (the server keeps it only when they may do it, else "Other comments").
+   The pipeline shows each step's comments highlighted under it (.step.has-cm / .cm), the thumbnails a count.
+   Without the migration the button says so and nothing else changes. */
+const attKey = s => String(s.group || '') + ':' + String(s.caption || (s.label + ' ' + (s.pos || 1)));
+const attName = s => s.label + (s.of > 1 ? ' ' + s.pos : '');
+function cmtStep(r){ const m = mineStep(r); if (m) return m.step; return S.flow.find(x => canDo(x.code, r.store)) || null; }
+const cmtsOf = r => (CUR && CUR.r === r && CUR.cmts) || [];
+async function loadComments(r){
+  try { const d = await rpc('scs_comments', { p_kind:r.kind, p_record_id:String(r.id) }); if (CUR && CUR.r === r) { CUR.cmts = d.rows || []; CUR.cmtOff = false; paintSheet(); } }
+  catch (e) { if (CUR && CUR.r === r) { CUR.cmts = []; CUR.cmtOff = !!e.missing; paintSheet(); } }
+}
+async function addComment(r, s){
+  if (CUR && CUR.cmtOff) { toast('Comments need sql/BILL_CHECK_ATT_COMMENT_MIGRATION.sql (Admin).', true); return false; }
+  const step = cmtStep(r);
+  const c = await iosAlert({ title:'Comment on ' + attName(s), message:(s.caption || '') + ' · It shows in the pipeline under ' + (step ? step.label : 'Other comments') + '.',
+    input:'Write your comment', buttons:[{ t:'Cancel' }, { t:'Save', s:'b' }] });
+  if (c.i !== 1) return false;
+  if (!c.value) { toast('Write the comment first', true); return false; }
+  try {
+    const d = await rpc('scs_comment_save', { p_kind:r.kind, p_record_id:String(r.id), p_step:step ? step.code : null,
+      p_att_key:attKey(s), p_att_label:attName(s), p_att_caption:s.caption || '', p_text:c.value });
+    if (CUR && CUR.r === r) CUR.cmts = (CUR.cmts || []).concat(d.row ? [d.row] : []);
+    const st = d.row && S.flow.find(x => x.code === d.row.step);
+    toast('Comment saved' + (st ? ' under ' + st.label : ' (Other comments)'));
+    buzz(8);
+    return true;
+  } catch (e) {
+    if (e.missing) { if (CUR) CUR.cmtOff = true; toast('Comments need sql/BILL_CHECK_ATT_COMMENT_MIGRATION.sql (Admin).', true); }
+    else toast('Comment not saved: ' + (e.message || e), true);
+    return false;
+  }
+}
+async function delComment(id){
+  const c = await iosAlert({ title:'Delete this comment?', buttons:[{ t:'Cancel' }, { t:'Delete', s:'d' }] });
+  if (c.i !== 1) return;
+  try { await rpc('scs_comment_delete', { p_id:+id }); if (CUR && CUR.cmts) CUR.cmts = CUR.cmts.filter(x => String(x.id) !== String(id)); toast('Comment deleted'); paintSheet(); }
+  catch (e) { toast('Not deleted: ' + (e.message || e), true); }
+}
+function cmItemHtml(c){
+  return '<div class="cm">' + (c.mine ? '<button data-cmdel="' + esc(String(c.id)) + '">Delete</button>' : '')
+    + '<span class="att">' + esc(c.attLabel || 'Attachment') + '</span>: ' + esc(c.text)
+    + '<small>' + esc([c.attCaption && c.attCaption !== c.attLabel ? c.attCaption : '', c.by ? c.by + (c.emp ? ' (' + c.emp + ')' : '') : '', c.at ? fmtStamp(c.at) : ''].filter(Boolean).join(' · ')) + '</small></div>';
+}
 async function loadHistory(r){ try { const d = await rpc('scs_history', { p_kind:r.kind, p_record_id:String(r.id) }); if (CUR && CUR.r === r) { CUR.hist = d.rows || []; paintSheet(); } } catch (e) { if (CUR && CUR.r === r) { CUR.hist = []; } } }
 async function loadProofs(r){
   const d = debitOf(r); if (!d || !d.proofs) { if (CUR && CUR.r === r) CUR.proofs = []; return; }
   try { const x = await rpc('scs_debit_proofs', { p_kind:r.kind, p_record_id:String(r.id) }); if (CUR && CUR.r === r) { CUR.proofs = x.rows || []; paintSheet(); } } catch (e) { if (CUR && CUR.r === r) CUR.proofs = []; }
 }
 function nextTodo(){ LOCKS = null; const d = segData(baseRows()); const list = []; S.flow.forEach(s => (d.todo[s.code] || []).forEach(x => { if (!x.hold && !lockOf(x.r)) list.push(x.r); })); const i = list.findIndex(x => CUR && x.key === CUR.r.key); return list.find((x, k) => k !== i && (i < 0 || k > i)) || list.find(x => !CUR || x.key !== CUR.r.key) || null; }
+/* The bill check pipeline as a timeline: every step with its status, remarks, who / when, its own history
+   (scs_history) and the attachment comments under it (highlighted), Party Consent after MD-1, then the comments
+   of no step. Drawn in the sheet's Attachments card AND as the "Bill Check Pipeline" slide of the viewer (right
+   after the Supplier Copy), so the two are always the same. */
+function pipeTimeline(r){
+  const store = r.store, stage = stageOf(r);
+  // Each step carries its own history (scs_history rows of that step, oldest first) instead of a separate list at the bottom.
+  const histOf = code => (CUR.hist || []).filter(x => x.step === code);
+  const hxHtml = code => { const l = histOf(code); return l.length ? '<div class="hx">' + l.map(x => '<div><b>' + esc(x.status) + '</b>' + (x.old ? ' (was ' + esc(x.old) + ')' : '')
+      + esc([x.remarks ? ' · “' + x.remarks + '”' : '', x.by ? ' · ' + x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? ' · ' + fmtStamp(x.at) : ''].join('')) + '</div>').join('') + '</div>' : ''; };
+  return '<div class="tl">' + S.flow.map(s => {
+    const x = stepOf(r, s.code), can = canDo(s.code, store) && !r.cancelled, cls = x ? (x.status === 'OKAY' ? 'ok' : 'hold') : (stage.step && stage.step.code === s.code ? 'next' : '');
+    const onCopy = CUR.acc && CUR.acc.stamps && CUR.acc.stamps[s.code];
+    const sub = x ? [x.invoiceNo ? 'Actual Invoice No. ' + x.invoiceNo : '', x.remarks ? '“' + x.remarks + '”' : '', onCopy ? 'signed on the Accountant Copy' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : '', x.total != null ? 'looked at ' + x.seen + ' of ' + x.total : ''].filter(Boolean).join(' · ')
+      : (cls === 'next' ? 'Waiting here' : 'Not reached yet');
+    const cms = (CUR.cmts || []).filter(c => c.step === s.code);
+    return '<div class="step' + (x && x.status === 'OKAY' ? ' done' : '') + (cms.length ? ' has-cm' : '') + '"><span class="dot ' + cls + '">' + (cls === 'ok' ? IC.check : cls === 'hold' ? IC.bang : '') + '</span><div class="bd"><b>' + esc(s.label) + '</b>'
+      + (x ? '<span class="pill ' + (x.status === 'OKAY' ? 'ok' : 'hold') + ' me">' + esc(x.status) + '</span>' : '') + (can ? '<span class="pill blue me">Your step</span>' : '') + '<small>' + esc(sub) + '</small>' + hxHtml(s.code) + (cms.length ? '<div class="cms">' + cms.map(cmItemHtml).join('') + '</div>' : '') + '</div></div>'
+      + (s.code === 'MD1' ? consentStepHtml(r, store) : '');
+  }).join('') + (() => {
+    // comments without a step of this flow (the commenter has no step here)
+    const rest = (CUR.cmts || []).filter(c => !S.flow.some(s => s.code === c.step));
+    return rest.length ? '<div class="step has-cm"><span class="dot"></span><div class="bd"><b>Other comments</b><div class="cms">' + rest.map(cmItemHtml).join('') + '</div></div></div>' : '';
+  })() + '</div>';
+}
 function paintSheet(){
   if (!CUR || CUR.layer.closed) return;
   LOCKS = null;
@@ -1076,11 +1278,14 @@ function paintSheet(){
     + [r.type, fmtDate(r.date), (r.kind === 'inward' ? 'Inv ' : 'GP ') + (r.invoice || '—'), r.store, r.amount > 0 ? fmtAmt(r.amount) : '', 'Qty ' + (r.qty || 0)]
       .filter(Boolean).map((v, i) => '<b>' + esc(v) + '</b>').join('<span class="dotsep">·</span>')
     + (r.items ? '<span class="items">' + esc(r.items) + '</span>' : '') + '</div></div>';
+  // Bill check pipeline: drawn INSIDE the Attachments card, under the attachments (it used to be its own section below)
+  const stage = stageOf(r), started = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
+  const pipe = '<div class="att-pipe-h">Bill check pipeline' + (CUR.hist == null ? '<span class="n">…</span>' : '') + '</div>' + pipeTimeline(r);
   // Attachments
-  h += '<div class="sec"><h3>Attachments' + (a && a.slides.length ? '<span class="n">' + a.slides.length + '</span>' : '') + '</h3><div class="grp">';
+  h += '<div class="sec"><h3>Attachments' + (a && needSeen(a).length ? '<span class="n">' + needSeen(a).length + '</span>' : '') + '</h3><div class="grp">';
   if (!a || a.state === 'loading') h += '<div class="film">' + [0, 1, 2, 3].map(() => '<div class="th"><div class="im sk"></div></div>').join('') + '</div><div class="note" style="padding:0 16px 12px">Collecting the PDF, bill and photos…</div>';
   else {
-    if (a.slides.length) h += '<div class="film">' + a.slides.map(s => '<button class="th' + (seenSet(r.key).has(s.n) ? ' seen' : '') + '" data-view="' + s.n + '"><div class="im" data-th="' + s.n + '"><span class="tick">' + IC.check + '</span></div><div class="lb">' + esc(s.label + (s.of > 1 ? ' ' + s.pos : '')) + '</div></button>').join('') + '</div>';
+    if (a.slides.length) h += '<div class="film">' + a.slides.map(s => '<button class="th' + (seenSet(r.key).has(s.n) ? ' seen' : '') + '" data-view="' + s.n + '"><div class="im" data-th="' + s.n + '"><span class="tick">' + IC.check + '</span>' + ((n => n ? '<span class="cmb" title="Comments">' + n + '</span>' : '')((CUR.cmts || []).filter(c => c.attKey === attKey(s)).length)) + '</div><div class="lb">' + esc(s.label + (s.of > 1 ? ' ' + s.pos : '')) + '</div></button>').join('') + '</div>';
     (a.empty || []).forEach(e => { h += '<div class="kv"><span>' + esc(e.label) + '</span><span style="color:var(--orange)">' + esc(e.text) + '</span></div>'; });
     a.errs.forEach(e => { h += '<div class="kv"><span style="color:var(--red)">Not loaded</span><span>' + esc(e) + '</span></div>'; });
     if (si.total) h += '<div class="prog"><div class="tx"><span>Looked at <b>' + si.n + '</b> of ' + si.total + '</span><span style="color:' + (si.n >= si.total ? 'var(--green)' : 'var(--label2)') + '">' + (si.n >= si.total ? 'All seen' : (si.total - si.n) + ' to go') + '</span></div><div class="bar"><i style="width:' + Math.round(si.n * 100 / si.total) + '%"></i></div></div>'
@@ -1088,22 +1293,8 @@ function paintSheet(){
     else if (!a.errs.length) h += '<div class="note" style="padding:0 16px 12px">This record has no PDF or photo to look at.</div>';
     if (a.state === 'error') h += '<div class="pad" style="padding-top:0"><button class="btn gray" data-retry="1">Try loading again</button></div>';
   }
-  h += '</div></div>';
-  // Pipeline
-  const stage = stageOf(r), started = rowOf(r) && Object.keys(rowOf(r).steps || {}).length;
-  // Each step carries its own history (scs_history rows of that step, oldest first) instead of a separate list at the bottom.
-  const histOf = code => (CUR.hist || []).filter(x => x.step === code);
-  const hxHtml = code => { const l = histOf(code); return l.length ? '<div class="hx">' + l.map(x => '<div><b>' + esc(x.status) + '</b>' + (x.old ? ' (was ' + esc(x.old) + ')' : '')
-      + esc([x.remarks ? ' · “' + x.remarks + '”' : '', x.by ? ' · ' + x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? ' · ' + fmtStamp(x.at) : ''].join('')) + '</div>').join('') + '</div>' : ''; };
-  h += '<div class="sec"><h3>Bill check pipeline' + (CUR.hist == null ? '<span class="n">…</span>' : '') + '</h3><div class="grp tl">' + S.flow.map(s => {
-    const x = stepOf(r, s.code), can = canDo(s.code, store) && !r.cancelled, cls = x ? (x.status === 'OKAY' ? 'ok' : 'hold') : (stage.step && stage.step.code === s.code ? 'next' : '');
-    const onCopy = CUR.acc && CUR.acc.stamps && CUR.acc.stamps[s.code];
-    const sub = x ? [x.invoiceNo ? 'Actual Invoice No. ' + x.invoiceNo : '', x.remarks ? '“' + x.remarks + '”' : '', onCopy ? 'signed on the Accountant Copy' : '', x.by ? x.by + (x.emp ? ' (' + x.emp + ')' : '') : '', x.at ? fmtStamp(x.at) : '', x.total != null ? 'looked at ' + x.seen + ' of ' + x.total : ''].filter(Boolean).join(' · ')
-      : (cls === 'next' ? 'Waiting here' : 'Not reached yet');
-    return '<div class="step' + (x && x.status === 'OKAY' ? ' done' : '') + '"><span class="dot ' + cls + '">' + (cls === 'ok' ? IC.check : cls === 'hold' ? IC.bang : '') + '</span><div class="bd"><b>' + esc(s.label) + '</b>'
-      + (x ? '<span class="pill ' + (x.status === 'OKAY' ? 'ok' : 'hold') + ' me">' + esc(x.status) + '</span>' : '') + (can ? '<span class="pill blue me">Your step</span>' : '') + '<small>' + esc(sub) + '</small>' + hxHtml(s.code) + '</div></div>'
-      + (s.code === 'MD1' ? consentStepHtml(r, store) : '');
-  }).join('') + '</div>';
+  h += pipe + '</div></div>';
+  h += '<div class="sec">';   // the own-step notes, cancelled note etc. under the Attachments + pipeline card
   if (r.cancelled) h += '<div class="foot">This record is cancelled; it cannot be checked.</div>';
   // Own step
   const myStage = mine && prevOk(r, mine.step.code).ok ? mine : null;
@@ -1133,6 +1324,7 @@ function paintSheet(){
   body.scrollTop = keepScroll;
   body.querySelectorAll('[data-keep]').forEach(i => { if (keep[i.dataset.keep] != null) i.value = keep[i.dataset.keep]; });
   if (a && a.slides.length) body.querySelectorAll('[data-th]').forEach(b => { const s = a.slides[+b.dataset.th]; if (s) fillThumb(b, s); });
+  document.querySelectorAll('.viewer [data-vpipe]').forEach(v => { const y = v.scrollTop; v.innerHTML = pipeSlideHtml(r); v.scrollTop = y; });
 }
 /* Party Consent: a step of the pipeline only while the bill has a Debit Note (raised at MD-1 / MD-2), drawn right after
    MD-1. It is the Accountant's verification of that Debit Note (scs_debit_verify): consent person, 10-digit mobile,
@@ -1473,7 +1665,7 @@ function openViewer(r, start, onDone){
   el.innerHTML = '<div class="vbar"><button class="nbtn" data-x="1">' + IC.back + '<span>Done</span></button><div class="vt"><b data-t="1"></b><small data-s="1"></small></div><span style="min-width:70px;display:flex;justify-content:flex-end"><button class="vgo" data-go="1">Bill Check</button></span></div>'
     + '<div class="car" id="car">' + slides.map(s => '<div class="vs" data-n="' + s.n + '"></div>').join('') + '</div>'
     + '<button class="vnav l" data-nv="-1" aria-label="Previous">' + IC.back + '</button><button class="vnav r" data-nv="1" aria-label="Next" style="transform:translateY(-50%) scaleX(-1)">' + IC.back + '</button>'
-    + '<div class="vfoot"><div class="vcap" data-c="1"></div><div class="vfilm">' + slides.map(s => '<button class="vf' + (ss.has(s.n) ? ' seen' : '') + '" data-f="' + s.n + '"><span class="tk"></span></button>').join('') + '</div></div>';
+    + '<div class="vfoot"><div class="vcap" data-c="1"></div><div class="vcmrow"><button class="vcm" data-cm="1">' + IC.cmt + '<span>Comment</span><span class="n" data-cmn="1" hidden></span></button><span class="vcml" data-cml="1"></span></div><div class="vfilm">' + slides.map(s => '<button class="vf' + (ss.has(s.n) ? ' seen' : '') + '" data-f="' + s.n + '"><span class="tk"></span></button>').join('') + '</div></div>';
   $('layer').appendChild(el);
   const l = { kind:'viewer', el, onClose:() => { if (onDone) onDone(); if (CUR) paintSheet(); } };
   pushLayer(l); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
@@ -1485,9 +1677,11 @@ function openViewer(r, start, onDone){
     try {
       let node;
       if (s.type === 'img') { node = new Image(); node.alt = ''; node.draggable = false; await new Promise((ok, no) => { node.onload = ok; node.onerror = () => no(new Error('This photo could not be shown.')); node.src = s.src; }); }
-      else if (s.type === 'pdf') node = await pdfCanvas(s, Math.min(window.innerWidth, 900));
+      // a page that opens zoomed (desktop TOP HALF) is drawn wider, so it stays sharp at that zoom
+      else if (s.type === 'pdf') node = await pdfCanvas(s, topHalfOf(s) ? Math.min(window.innerWidth, 1800) : Math.min(window.innerWidth, 900));
+      else if (s.type === 'pipe') { box.innerHTML = '<div class="vpipe" data-vpipe="1">' + pipeSlideHtml(r) + '</div>'; return; }
       else throw new Error('Nothing to show.');
-      node.className = 'vi'; box.innerHTML = ''; box.appendChild(node); zooms.set(i, attachZoom(box, car));
+      node.className = 'vi'; box.innerHTML = ''; box.appendChild(node); zooms.set(i, attachZoom(box, car, topHalfOf(s)));
     } catch (e) { box.innerHTML = '<div class="msg"><b>Could not show this</b>' + esc(e.message || '') + '</div>'; }
   };
   /* Every attachment seen and the last one on screen: the right arrow (and the green Bill Check pill, for touch screens where
@@ -1506,16 +1700,27 @@ function openViewer(r, start, onDone){
     return true;
   };
   let cur = -1;
+  // this page's comments: count on the button, the latest one beside it
+  const cmPaint = () => {
+    const s = slides[cur]; if (!s) return;
+    el.querySelector('.vcmrow').style.display = s.type === 'pipe' ? 'none' : '';   // comments are on the attachments themselves
+    const list = cmtsOf(r).filter(c => c.attKey === attKey(s)), n = el.querySelector('[data-cmn]'), t = el.querySelector('[data-cml]');
+    n.hidden = !list.length; n.textContent = list.length;
+    const lastC = list[list.length - 1];
+    t.textContent = lastC ? (lastC.by || '') + ': ' + lastC.text : (CUR && CUR.cmtOff ? '' : 'Anything wrong on this page? Comment, it shows under your step.');
+  };
   const show = (i, jump) => {
     if (i === cur) return; cur = i; const s = slides[i];
     ss.add(s.n); films[i].classList.add('seen');
     films.forEach((f, k) => f.classList.toggle('on', k === i));
     films[i].scrollIntoView({ inline:'center', block:'nearest', behavior:'smooth' });
     el.querySelector('[data-t]').textContent = s.label + (s.of > 1 ? ' ' + s.pos + ' / ' + s.of : '');
-    el.querySelector('[data-s]').textContent = (i + 1) + ' of ' + slides.length + ' · looked at ' + slides.filter(x => ss.has(x.n)).length + ' of ' + slides.length;
+    { const need = needSeen(a); el.querySelector('[data-s]').textContent = (i + 1) + ' of ' + slides.length + ' · looked at ' + need.filter(x => ss.has(x.n)).length + ' of ' + need.length; }
     el.querySelector('[data-c]').innerHTML = esc(s.caption || '') + (s.open ? '<a class="open" href="' + esc(s.open) + '" target="_blank" rel="noopener">Open original</a>' : '');
+    cmPaint();
     [i - 1, i, i + 1].forEach(k => { if (k >= 0 && k < slides.length) mount(k); });
     zooms.forEach((z, k) => { if (k !== i) z.reset(); });
+    car.classList.toggle('lock', boxes[i].classList.contains('zoomed'));   // only the slide on screen decides (a preloaded neighbour may open zoomed)
     const last = i === slides.length - 1, can = last && !!ckCode();
     el.querySelectorAll('.vnav').forEach(b => { const fwd = +b.dataset.nv > 0; b.disabled = (!fwd && i === 0) || (fwd && last && !can); b.classList.toggle('go', fwd && can); b.title = fwd && can ? 'Bill Check' : ''; });
     el.querySelector('.vgo').classList.toggle('on', can);
@@ -1525,6 +1730,7 @@ function openViewer(r, start, onDone){
   car.addEventListener('scroll', () => { clearTimeout(st); st = setTimeout(() => { const i = Math.round(car.scrollLeft / Math.max(1, car.clientWidth)); if (i >= 0 && i < slides.length) show(i); }, 60); }, { passive:true });
   el.addEventListener('click', e => {
     if (e.target.closest('[data-x]')) return closeLayer(l);
+    if (e.target.closest('[data-cm]')) { const s = slides[cur]; if (s) addComment(r, s).then(ok => { if (ok) cmPaint(); }); return; }
     if (e.target.closest('.vgo')) return goCheck();
     const nv = e.target.closest('[data-nv]'); if (nv && !nv.disabled && +nv.dataset.nv > 0 && cur === slides.length - 1) return goCheck();
     if (nv && !nv.disabled) return car.scrollTo({ left:(cur + +nv.dataset.nv) * car.clientWidth, behavior:'smooth' });
@@ -1537,9 +1743,19 @@ function openViewer(r, start, onDone){
 }
 /* Pinch, double-tap and wheel zoom on one slide; a one-finger drag pans only while zoomed
    (otherwise the browser swipes the carousel). */
-function attachZoom(box, car){
+/* DESKTOP TOP HALF: on a desktop (mouse + a screen 1024 px or wider; never a phone or tablet) the pages of the PR, PO,
+   Actual Bill and Supplier / Receiver Copy open zoomed: the page as wide as the viewer allows, at most twice its
+   fitted size, with its TOP half on screen (number, party, items). The mouse wheel then scrolls it down (Ctrl +
+   wheel / a trackpad pinch zooms), a drag pans, a double-click goes to the whole page and back; going to another
+   slide and back opens it the same way again. */
+const TOP_HALF_GROUPS = ['STORE', 'PR', 'PO', 'BILL'];
+const isDesktop = () => !!(window.matchMedia && window.matchMedia('(hover: hover) and (pointer: fine)').matches) && window.innerWidth >= 1024;
+const topHalfOf = s => !!s && s.type === 'pdf' && TOP_HALF_GROUPS.indexOf(s.group) >= 0 && isDesktop();
+function attachZoom(box, car, topHalf){
   const el = box.firstElementChild; let s = 1, tx = 0, ty = 0, last = 0, startD = 0, startS = 1; const ptrs = new Map();
-  const apply = () => { el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')'; box.classList.toggle('zoomed', s > 1.01); car.classList.toggle('lock', s > 1.01); };
+  const onScreen = () => Math.abs(box.getBoundingClientRect().left - car.getBoundingClientRect().left) < 4;
+  // the carousel's swipe lock follows the slide on screen only (a neighbour is loaded, and may open zoomed, beforehand)
+  const apply = () => { el.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + s + ')'; box.classList.toggle('zoomed', s > 1.01); if (onScreen()) car.classList.toggle('lock', s > 1.01); };
   const clamp = () => { const r = box.getBoundingClientRect(), w = el.offsetWidth * s, h = el.offsetHeight * s, mx = Math.max(0, (w - r.width) / 2), my = Math.max(0, (h - r.height) / 2); tx = Math.max(-mx, Math.min(mx, tx)); ty = Math.max(-my, Math.min(my, ty)); };
   const zoomAt = (ns, cx, cy) => { ns = Math.max(1, Math.min(6, ns)); const r = box.getBoundingClientRect(), ox = cx - (r.left + r.width / 2), oy = cy - (r.top + r.height / 2); tx = ox - (ox - tx) * ns / s; ty = oy - (oy - ty) * ns / s; s = ns; if (s <= 1.01) { s = 1; tx = ty = 0; } clamp(); apply(); };
   box.addEventListener('pointerdown', e => {
@@ -1556,8 +1772,20 @@ function attachZoom(box, car){
   });
   const up = e => { ptrs.delete(e.pointerId); };
   box.addEventListener('pointerup', up); box.addEventListener('pointercancel', up); box.addEventListener('pointerleave', up);
-  box.addEventListener('wheel', e => { e.preventDefault(); zoomAt(s * Math.exp(-e.deltaY * .0016), e.clientX, e.clientY); }, { passive:false });
-  return { reset:() => { if (s !== 1) { s = 1; tx = ty = 0; apply(); } } };
+  // zoomed in: the wheel moves over the page (down to its lower half); Ctrl + wheel and a trackpad pinch still zoom
+  box.addEventListener('wheel', e => {
+    e.preventDefault();
+    if (s > 1.01 && !e.ctrlKey) { ty -= e.deltaY; tx -= e.deltaX; clamp(); apply(); return; }
+    zoomAt(s * Math.exp(-e.deltaY * .0016), e.clientX, e.clientY);
+  }, { passive:false });
+  // the page as wide as the box allows (at most 2x its fitted size), its top edge at the top of the screen
+  const toTop = () => {
+    const r = box.getBoundingClientRect(), ns = Math.min(2, r.width / Math.max(1, el.offsetWidth));
+    if (!(ns > 1.01)) { if (s !== 1) { s = 1; tx = ty = 0; apply(); } return; }
+    s = ns; tx = 0; ty = Math.max(0, (el.offsetHeight * s - r.height) / 2); apply();
+  };
+  if (topHalf) toTop();
+  return { reset:() => { if (topHalf) toTop(); else if (s !== 1) { s = 1; tx = ty = 0; apply(); } } };
 }
 
 /* ══ Events ════════════════════════════════════════════════════════════ */
@@ -1581,6 +1809,7 @@ document.addEventListener('click', async e => {
   const more = t.closest('[data-more]'); if (more) { S.show[more.dataset.more] = (S.show[more.dataset.more] || 40) + 40; return paintList(); }
   if (t.closest('#bkBtn')) { location.href = 'launcher.html'; return; }
   if (t.closest('#meBtn')) return meMenu();
+  if (t.closest('[data-role]')) return chooseRole(true);
   if (t.closest('#qx')) { $('q').value = ''; S.q = ''; $('searchBox').classList.remove('has'); return paintAll(); }
   // record sheet
   const nxt = t.closest('[data-next]'); if (nxt) return openRecord(nxt.dataset.next);
@@ -1597,12 +1826,15 @@ document.addEventListener('click', async e => {
   const dbt = t.closest('[data-debit]'); if (dbt && !dbt.disabled) return debitAct(dbt.dataset.debit);
   const pd = t.closest('[data-pdel]'); if (pd) { e.stopPropagation(); return delProof(pd.dataset.pdel); }
   const pv = t.closest('[data-pview]'); if (pv) return viewProof(pv.dataset.pview);
+  const cd = t.closest('[data-cmdel]'); if (cd) { e.stopPropagation(); return delComment(cd.dataset.cmdel); }
 });
 document.addEventListener('change', e => { if (e.target.matches('[data-proof]')) { const f = e.target.files; addProofs(f); e.target.value = ''; } });
 $('q').addEventListener('input', e => { S.q = e.target.value.trim(); $('searchBox').classList.toggle('has', !!e.target.value); paintAll(); });
 async function meMenu(){
   const u = S.user || {};
-  const i = await iosMenu({ title:u.user_name || u.name || 'Account', message:[u.emp_code, u.role].filter(Boolean).join(' · '), items:[{ t:'Refresh' }, { t:'Open ERP' }, { t:'Log out', s:'d' }] });
+  const multi = myRoles().length > 1;
+  const i = await iosMenu({ title:u.user_name || u.name || 'Account', message:[u.emp_code, u.role].filter(Boolean).join(' · '), items:[{ t:'Refresh' }, { t:'Open ERP' }, { t:'Log out', s:'d' }].concat(multi ? [{ t:'Change role' }] : []) });
+  if (i === 3) return chooseRole(true);
   if (i === 0) refresh(true); else if (i === 1) location.href = 'index.html';
   else if (i === 2) { const c = await iosAlert({ title:'Log out?', message:'This ends the session in every app.', buttons:[{ t:'Cancel' }, { t:'Log out', s:'d' }] }); if (c.i === 1) SARV_GATE.logout({ url:SUPABASE_URL, key:SUPABASE_ANON }); }
 }
@@ -1625,6 +1857,8 @@ async function refresh(manual){ if (manual) toast('Refreshing…'); await loadLi
   S.user = await SARV_GATE.boot({ url:SUPABASE_URL, key:SUPABASE_ANON, app:APP_KEY, label:APP_NAME });
   paintAll();
   try { await loadList(); } finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  // More than one step: which role now? (ROLE CHOOSER; every time the app is opened)
+  if (S.can && !S.missing) chooseRole(false);
   // New bills show up on their own; never while a sheet is open, so nothing moves under the checker.
   setInterval(() => { if (!LAYERS.length && document.visibilityState === 'visible') loadList(); }, 60000);
   document.addEventListener('visibilitychange', () => { if (!LAYERS.length && document.visibilityState === 'visible') loadList(); });
