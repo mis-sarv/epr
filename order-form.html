@@ -565,7 +565,8 @@ body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);pad
 .oh-lot-btn small{font-weight:600;opacity:.85;font-size:9.5px}
 .oh-lot-btn:disabled{opacity:.55;cursor:wait}
 /* PROCUREMENT (TRIMS MANAGER): amber until the product's material requirement
-   is saved, green once it is. Generate Lot Card waits on it (locked state). */
+   is saved, green once it is. Generate Lot Card no longer waits on it; the
+   .locked style below is kept but no longer used. */
 .oh-lot-btn.proc{background:#B45309;color:#fff}
 .oh-lot-btn.proc:hover{background:#92400E}
 .oh-lot-btn.proc.done{background:#15803D}
@@ -7357,10 +7358,12 @@ async function ofFillLotBoxes(){
   }
 }
 /* ── Material requirement (Trims Manager) per order product ──────────────────
-   A product's Lot Card can be generated only once its trims / packing material
-   requirement is SAVED in the Trims Manager: Order Form → PROCUREMENT (Trims
-   Manager, product-wise) → Generate Lot Card. "Saved" = the product's sheet
-   has at least one line with an Item Master item and an Order Qty above 0.
+   Shows whether a product's trims / packing material requirement is SAVED in
+   the Trims Manager (Order Form → PROCUREMENT (Trims Manager, product-wise)).
+   It used to lock Generate Lot Card until saved; now it is only shown (amber
+   PROCUREMENT button + "Requirement: …" line, a reminder after Generate) and
+   the Lot Card can be made either way. "Saved" = the product's sheet has at
+   least one line with an Item Master item and an Order Qty above 0.
 
    Returns {mode, by, err}:
      mode 'line'  — product-wise sheets (TRIMS_MANAGER_V3_MIGRATION.sql run);
@@ -7426,10 +7429,11 @@ function ofRenderLotBox(box,orderNo,status,products,lots,prog,total,lotErr,req){
        exists, so the requirement can still be opened and followed up. */
     const procBtn=(req&&req.mode==='off')?''
       :`<button type="button" class="oh-lot-btn proc ${rs.saved?'done':''}" onclick="ofOpenTrims('${jsNo}',${ln})" title="${esc('Trims & packing material requirement for product #'+ln+': '+rs.label)}">${rs.saved?'✓ ':''}PROCUREMENT (TRIMS MANAGER)${rs.saved?` <small>${rs.items} item(s)</small>`:''}</button>`;
-    /* Step 2 — the Lot Card, only after step 1 is saved. */
-    const genBtn=rs.saved
-      ?`<button type="button" class="oh-lot-btn gen" onclick="ofGenerateLot('${jsNo}',${ln},this)">Generate Lot Card</button>`
-      :`<button type="button" class="oh-lot-btn gen locked" disabled title="${esc('Save the material requirement first: PROCUREMENT (TRIMS MANAGER) → fill the item rows → Save. ('+rs.label+')')}">Generate Lot Card</button>`;
+    /* Step 2 — the Lot Card. No longer locked behind step 1: production may
+       start before the trims requirement is saved, so the button is always
+       active on a Confirmed order. The amber "Requirement: …" line under the
+       product and the amber PROCUREMENT button still show it is pending. */
+    const genBtn=`<button type="button" class="oh-lot-btn gen" onclick="ofGenerateLot('${jsNo}',${ln},this)"${rs.saved?'':` title="${esc('Material requirement not saved yet ('+rs.label+'). The Lot Card can still be made; save it later in PROCUREMENT (TRIMS MANAGER).')}"`}>Generate Lot Card</button>`;
     h+=`<div class="oh-lot-row">
       <div class="oh-lot-prod">#${ln} ${esc(p.itemCode||p.fabric||'Product')}
         <small>${esc([p.category,p.size,qty?qty.toLocaleString('en-IN')+' pcs':''].filter(Boolean).join(' · '))}${photos?' · '+photos:''}</small>
@@ -7453,15 +7457,12 @@ async function ofGenerateLot(orderNo,line,btn){
     }
     const p=fo&&(fo.products||[])[line-1];
     if(!p){ toast('Product #'+line+' of Order '+orderNo+' was not found'); return; }
-    /* Re-checked against the database at the moment of generating, not just
-       from the button's state: the list may have been open for a while, or the
-       sheet deleted since. No saved requirement → no Lot Card. */
-    const rs=ofReqState_(await ofLoadTrimsReq_([orderNo]),orderNo,line);
-    if(!rs.saved){
-      toast('Product #'+line+': save the material requirement in PROCUREMENT (TRIMS MANAGER) first ('+rs.label+')');
-      ofFillLotBoxes();
-      return;
-    }
+    /* The material requirement no longer blocks the Lot Card (it used to: no
+       saved Trims sheet → no lot). It is still read here, only to remind the
+       user when it is pending; a failed read never stops the lot either. */
+    let rs={saved:true};
+    try{ rs=ofReqState_(await ofLoadTrimsReq_([orderNo]),orderNo,line); }catch(_){}
+    if(!rs.saved) toast('Product #'+line+': material requirement not saved yet. Save it later in PROCUREMENT (TRIMS MANAGER)');
     const images=[
       ...(p.photoUrls||[]).map(url=>({url,tag:'PRODUCT'})),
       ...(p.embossPhotoUrls||[]).map(url=>({url,tag:'EMBOSS'}))
