@@ -58,7 +58,12 @@
   WHO SEES IT (Bill Check, not Issue): the Accountant Copy is an attachment ONLY for a user with
   the EA step, and only once MD-1 Bill Check is OKAY (accVisible); for everyone else, and before
   MD-1, it is not shown at all. The signing steps still stamp it in the background (acc_get).
-  PRINT ACCOUNT COPY (EA only, button under the tabs, S.seg 'PRINT'): every bill past MD-1, series
+  PRINT ACCOUNT COPY (EA only): two buttons under the tabs, "Print Account Copy" (S.seg 'PRINT' = still to
+  print) and "Printed Account Copy" (S.seg 'PRINTED' = printed, downloaded or skipped; a bill moves there
+  as soon as it is). Every Print / Download asks the user's OWN PIN first and the server checks it before it
+  records the print (acc_print_mark p_pin, PIN_INVALID); only then the copy prints / saves. A copy printed
+  again (it was printed / downloaded before) carries a "DUPLICATE · PRINT NO. n" line with the first print
+  time and this one, stamped on every page with pdf-lib (accDupStamp). Every bill past MD-1, series
   by series, oldest first; only the oldest not-yet-printed bill of a series can be printed or
   downloaded, the later ones are locked like the check order. Printed state on the server
   (sql/BILL_CHECK_ACCOUNT_PRINT_MIGRATION.sql, acc_print_list / acc_print_mark); without it, on this
@@ -139,6 +144,12 @@ body.sheeted #app{transform:translateY(calc(var(--sat) + 8px)) scale(.925);borde
 .chip.on{background:var(--blue);color:#fff}
 .chip.sp{width:1px;padding:0;background:var(--sep);height:20px;align-self:center;border-radius:0}
 /* EA only: the separate Print Account Copy filter under the tabs */
+.accpw{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.accpw[hidden]{display:none}
+.accp.done{background:rgba(52,199,89,.13);color:#248a3d}
+.accp.done.on{background:#248a3d;color:#fff}
+.accp.done .bdg{background:#248a3d}
+.accp.done.on .bdg,.accp.on .bdg{background:rgba(255,255,255,.28)}
 .accp{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;height:34px;border-radius:9px;background:rgba(88,86,214,.12);color:#5856d6;font-size:14px;font-weight:600;transition:background .2s,color .2s,transform .15s}
 .accp:active{transform:scale(.98)}
 .accp.on{background:#5856d6;color:#fff}
@@ -389,7 +400,7 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
     <div class="chips" id="chipsStore"></div>
     <div class="chips" id="chips"></div>
     <div class="seg" id="seg"></div>
-    <button class="accp" id="accPrint" hidden></button>
+    <div class="accpw" id="accPrintRow" hidden><button class="accp" id="accPrint"></button><button class="accp done" id="accPrinted"></button></div>
     <label class="search" id="searchBox">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
       <input id="q" type="search" placeholder="Search record, party, invoice" autocomplete="off">
@@ -633,15 +644,69 @@ async function loadPrinted(){
     try { S.printed = JSON.parse(localStorage.getItem(PRINT_LS()) || '{}') || {}; } catch (x) { S.printed = {}; }
   }
 }
-async function markPrinted(r, how){
+// how many times this copy was really printed / downloaded (a skip is not a print); older lists only had 'times'
+function printsOf(r){
+  const p = S.printed[r.key]; if (!p) return 0;
+  if (p.prints != null) return +p.prints || 0;
+  return p.how === 'SKIP' ? Math.max(0, (p.times || 1) - 1) : (p.times || 1);
+}
+/* Records a print / download / skip. PRINT / DOWNLOAD carry the user's own PIN: the server checks it before it
+   writes anything (acc_print_mark p_pin; a server without it = the PIN is checked with acc_sign_pin first, then the
+   older call). Resolves {prints, firstPrintAt, by, at}; throws on a wrong PIN (code PIN_INVALID). */
+async function markPrinted(r, how, pin){
+  const me = (S.user && (S.user.user_name || S.user.name)) || '', now = new Date().toISOString(), old = S.printed[r.key] || {};
+  const printing = how !== 'SKIP';
+  let res = null;
   if (S.printMissing) {
-    S.printed[r.key] = { lastAt:new Date().toISOString(), lastBy:(S.user && (S.user.user_name || S.user.name)) || '', how, times:((S.printed[r.key] || {}).times || 0) + 1 };
-    try { localStorage.setItem(PRINT_LS(), JSON.stringify(S.printed)); } catch (e) {}
+    if (printing) await rpc('acc_sign_pin', { p_pin:pin });           // throws PIN_INVALID on a wrong PIN
   } else {
-    await rpc('acc_print_mark', { p_kind:r.kind, p_record_id:String(r.id), p_action:how });
-    S.printed[r.key] = { lastAt:new Date().toISOString(), lastBy:(S.user && (S.user.user_name || S.user.name)) || '', how, times:((S.printed[r.key] || {}).times || 0) + 1 };
+    try {
+      res = await rpc('acc_print_mark', { p_kind:r.kind, p_record_id:String(r.id), p_action:how, p_pin:printing ? pin : null });
+    } catch (e) {
+      if (!e.missing) throw e;
+      // the server still has the call without a PIN: check the PIN, then record
+      if (printing) await rpc('acc_sign_pin', { p_pin:pin });
+      await rpc('acc_print_mark', { p_kind:r.kind, p_record_id:String(r.id), p_action:how });
+    }
   }
+  const prints = res && res.prints != null ? +res.prints : printsOf(r) + (printing ? 1 : 0);
+  S.printed[r.key] = Object.assign({}, old, { lastAt:now, lastBy:me, how, times:(old.times || 0) + 1, prints,
+    firstPrintAt:(res && res.firstPrintAt) || old.firstPrintAt || (printing ? now : null),
+    lastPrintAt:printing ? now : old.lastPrintAt || null, lastPrintBy:printing ? me : old.lastPrintBy || null });
+  if (S.printMissing) { try { localStorage.setItem(PRINT_LS(), JSON.stringify(S.printed)); } catch (e) {} }
   PLOCKS = null;
+  return { prints, firstPrintAt:S.printed[r.key].firstPrintAt, by:(res && res.by) || me, at:(res && res.at) || now };
+}
+// The user's own PIN for one print / download (4+ digits send it by themselves). Null = cancelled.
+async function askPrintPin(r, download, dup){
+  const c = await iosAlert({ title:'Enter your PIN', message:(download ? 'To download' : 'To print') + ' the Accountant Copy of ' + (r.no || 'this bill') + (dup ? ' again (it prints as DUPLICATE)' : '') + '.',
+    input:'PIN', inputType:'password', auto:4, buttons:[{ t:'Cancel' }, { t:download ? 'Download' : 'Print', s:'b' }] });
+  if (c.i !== 1) return null;
+  if (!c.value) { toast('Enter your PIN.', true); return null; }
+  return c.value;
+}
+/* A copy printed again: one line on top of every page, "DUPLICATE · PRINT NO. n · FIRST PRINTED dd/mm/yyyy hh:mm ·
+   THIS PRINT dd/mm/yyyy hh:mm BY name", red. The copy's own page is drawn a little smaller (DUP_SCALE, centred, lower)
+   so the line gets a band of its own about 7 mm from the top edge: never over the heading / copy tag, and inside the
+   area every printer prints (the Store PDF's own margin is only 4-8 mm). */
+const DUP_SCALE = 0.965;
+async function accDupStamp(blob, m){
+  if (!window.PDFLib) throw new Error('pdf-lib did not load (check the internet connection).');
+  const { PDFDocument, StandardFonts, rgb } = window.PDFLib, MM = 72 / 25.4;
+  const bytes = await blob.arrayBuffer(), src = await PDFDocument.load(bytes), out = await PDFDocument.create();
+  const font = await out.embedFont(StandardFonts.HelveticaBold);
+  const txt = winAnsi('DUPLICATE  ·  PRINT NO. ' + m.prints + (m.firstPrintAt ? '  ·  FIRST PRINTED ' + stampText(m.firstPrintAt) : '') + '  ·  THIS PRINT ' + stampText(m.at) + (m.by ? ' BY ' + String(m.by).toUpperCase() : ''));
+  const embedded = await out.embedPdf(bytes, src.getPageIndices());
+  embedded.forEach(ep => {
+    const width = ep.width, height = ep.height, pg = out.addPage([width, height]);
+    const free = height * (1 - DUP_SCALE);                          // the room the smaller copy leaves: 3/4 of it on top
+    pg.drawPage(ep, { x:width * (1 - DUP_SCALE) / 2, y:free * 0.25, xScale:DUP_SCALE, yScale:DUP_SCALE });
+    let size = 7.5; while (size > 5 && font.widthOfTextAtSize(txt, size) > width - 30) size -= 0.25;
+    const w = font.widthOfTextAtSize(txt, size), x = (width - w) / 2, y = height - 7 * MM - size * 0.35;
+    pg.drawRectangle({ x:x - 4, y:y - 2.2, width:w + 8, height:size + 4, color:rgb(1, 1, 1), borderColor:rgb(0.8, 0.1, 0.1), borderWidth:0.6 });
+    pg.drawText(txt, { x, y, size, font, color:rgb(0.8, 0.1, 0.1) });
+  });
+  return new Blob([await out.save()], { type:'application/pdf' });
 }
 // the latest Accountant Copy of one bill as a file (the page's own blob, so it can be printed / saved here)
 async function accBlob(r){
@@ -689,9 +754,9 @@ async function accPrintAct(r){
     if (c.i === 1) { const o = S.rows.find(x => x.key === lk.key); if (o) accPrintAct(o); }
     return;
   }
-  const done = S.printed[r.key];
-  const i = await iosMenu({ title:'Accountant Copy · ' + (r.no || ''), message:done ? 'Printed ' + (done.times || 1) + '× · last ' + fmtStamp(done.lastAt) + (done.lastBy ? ' by ' + done.lastBy : '') : (r.party || ''),
-    items:[{ t:done ? 'Print again' : 'Print' }, { t:done ? 'Download again' : 'Download PDF' }, { t:'Open the bill' }].concat(done ? [] : [{ t:'Skip (do not print)', s:'d' }]) });
+  const done = S.printed[r.key], np = printsOf(r);
+  const i = await iosMenu({ title:'Accountant Copy · ' + (r.no || ''), message:np ? 'Printed ' + np + '× · first ' + fmtStamp(done.firstPrintAt || done.firstAt) + ' · last ' + fmtStamp(done.lastPrintAt || done.lastAt) + ((done.lastPrintBy || done.lastBy) ? ' by ' + (done.lastPrintBy || done.lastBy) : '') + '. A new print says DUPLICATE.' : done ? 'Skipped ' + fmtStamp(done.lastAt) + ': not printed yet.' : (r.party || ''),
+    items:[{ t:np ? 'Print again (duplicate)' : 'Print' }, { t:np ? 'Download again (duplicate)' : 'Download PDF' }, { t:'Open the bill' }].concat(done ? [] : [{ t:'Skip (do not print)', s:'d' }]) });
   if (i === 3) return accSkip(r);
   if (i === 2) return openRecord(r.key);
   if (i !== 0 && i !== 1) return;
@@ -707,9 +772,22 @@ async function accPrintAct(r){
     try { await markPrinted(r, 'SKIP'); toast(r.no + ' skipped'); } catch (e) { toast(e.message || String(e), true); }
     return paintAll();
   }
-  if (i === 0) printBlob(blob); else saveBlob(blob, String(r.no || 'bill').replace(/[\\/:*?"<>|\s]+/g, '_') + '_ACCOUNT_COPY.pdf');
-  try { await markPrinted(r, i === 0 ? 'PRINT' : 'DOWNLOAD'); }
-  catch (e) { toast('Printed, but not recorded: ' + (e.message || e), true); }
+  // the user's own PIN, checked by the server while it records the print; only then it prints / saves
+  const pin = await askPrintPin(r, i === 1, np > 0);
+  if (pin == null) return;
+  busy(true);
+  let m;
+  try { m = await markPrinted(r, i === 0 ? 'PRINT' : 'DOWNLOAD', pin); }
+  catch (e) { busy(false); buzz([20, 40, 20]); return toast(e.code === 'PIN_INVALID' ? 'Incorrect PIN: nothing printed.' : (e.message || String(e)), true); }
+  // printed before: this one is a DUPLICATE, stamped with its print number and the first print time
+  if (m.prints > 1) {
+    try { blob = await accDupStamp(blob, m); }
+    catch (e) { busy(false); return toast('The DUPLICATE line could not be added: ' + (e.message || e), true); }
+  }
+  busy(false);
+  const fname = String(r.no || 'bill').replace(/[\\/:*?"<>|\s]+/g, '_') + '_ACCOUNT_COPY' + (m.prints > 1 ? '_DUPLICATE_' + m.prints : '') + '.pdf';
+  if (i === 0) printBlob(blob); else saveBlob(blob, fname);
+  if (!np && S.seg === 'PRINT') toast((r.no || '') + (i === 0 ? ' printed' : ' downloaded') + ': moved to Printed Account Copy');
   paintAll();
 }
 
@@ -1049,12 +1127,12 @@ function rowHtml(x, i){
   const lk = x.print ? printLockOf(r) : lockOf(r), pr = x.print ? S.printed[r.key] : null;
   const hs = x.view ? stageOf(r) : null, hx = hs && hs.step ? stepOf(r, hs.step.code) : null;
   const tags = (SAVING[r.key] ? '<span class="pill blue">Saving…</span>' : '') + (lk ? '<span class="pill gray">Locked</span>' : '')
-    + (x.print && !lk && !pr ? '<span class="pnx"><span class="pskip" role="button" data-pskip="' + esc(r.key) + '">Skip</span><span class="pill blue">Print next</span></span>' : '') + (pr ? '<span class="pill ' + (pr.how === 'SKIP' ? 'gray">Skipped' : 'ok">Printed' + ((pr.times || 1) > 1 ? ' ×' + pr.times : '')) + '</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
+    + (x.print && !lk && !pr ? '<span class="pnx"><span class="pskip" role="button" data-pskip="' + esc(r.key) + '">Skip</span><span class="pill blue">Print next</span></span>' : '') + (pr ? '<span class="pill ' + (pr.how === 'SKIP' && !printsOf(r) ? 'gray">Skipped' : 'ok">Printed' + (printsOf(r) > 1 ? ' ×' + printsOf(r) : '')) + '</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
     + (db ? '<span class="pill red">' + (db.status === 'VERIFIED' ? 'Debit ✓' : 'Debit') + '</span>' : '');
   const hl = db && db.status === 'RAISED' ? '<div class="dbn">Debit: ' + esc(db.reason || '') + (db.amount != null ? ' · ₹' + esc(String(db.amount)) : '') + '</div>' : '';
   return '<button class="cell rec' + (lk ? ' locked' : '') + '" style="--i:' + Math.min(i, 14) + '" data-open="' + esc(r.key) + '">'
     + '<span class="ico" style="background:' + look[1] + '">' + look[0] + '</span>'
-    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? (x.print ? 'Print ' : 'Check ') + lk.no + ' first' : pr ? (pr.how === 'SKIP' ? 'Skipped ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '') : 'Printed ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '')) : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
+    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? (x.print ? 'Print ' : 'Check ') + lk.no + ' first' : pr ? (pr.how === 'SKIP' && !printsOf(r) ? 'Skipped ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '') : 'Printed ' + printsOf(r) + '× · last ' + fmtStamp(pr.lastPrintAt || pr.lastAt) + ((pr.lastPrintBy || pr.lastBy) ? ' · ' + (pr.lastPrintBy || pr.lastBy) : '')) : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
     + '<span class="end"><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (fmtAmt(r.amount) ? '<span class="a">' + esc(fmtAmt(r.amount)) + '</span>' : '') + tags + '</span>'
     + '<span class="chev">' + IC.chev + '</span></button>';
 }
@@ -1084,14 +1162,20 @@ function paintHeader(){
   const defs = [['TODO', 'To Check', freshMine, 1, ''], ['DONE', 'Done', cnt(d.done), 0, ''], ['HOLD', 'Hold', holdAny, 1, alertUser && holdAny ? 't-hold' : ''], ['DEBIT', 'Debit', debitAny, 1, alertUser && debitAny ? 't-debit' : ''], ['ALL', 'All', 0, 0, '']]
     .filter(x => !(ISSUE_MODE && x[0] === 'DEBIT'));                 // an Issue has no Debit Note
   // Print Account Copy: the EA's own filter, a separate button under the tabs (not one more tab)
-  const ea = anyEa(), pb = $('accPrint');
-  if (S.seg === 'PRINT' && !ea) S.seg = 'TODO';
-  if (S.seg !== 'PRINT' && !defs.some(x => x[0] === S.seg)) S.seg = 'TODO';
-  pb.hidden = !ea;
+  const ea = anyEa(), pb = $('accPrint'), pd = $('accPrinted');
+  const inPrint = S.seg === 'PRINT' || S.seg === 'PRINTED';
+  if (inPrint && !ea) S.seg = 'TODO';
+  if (!(S.seg === 'PRINT' || S.seg === 'PRINTED') && !defs.some(x => x[0] === S.seg)) S.seg = 'TODO';
+  $('accPrintRow').hidden = !ea;
   if (ea) {
-    const waiting = printRows().filter(r => !isPrinted(r)).length;
+    const all = printRows(), waiting = all.filter(r => !isPrinted(r)).length, done = all.length - waiting;
+    const ic = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2"/><path d="M7 14h10v7H7z"/></svg>';
     pb.className = 'accp' + (S.seg === 'PRINT' ? ' on' : '');
-    pb.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4v-7h16v7h-2"/><path d="M7 14h10v7H7z"/></svg>Print Account Copy' + (waiting ? '<span class="bdg">' + waiting + '</span>' : '');
+    pb.innerHTML = ic + 'Print Account Copy' + (waiting ? '<span class="bdg">' + waiting + '</span>' : '');
+    pb.title = 'Pending for print: in series order, oldest first';
+    pd.className = 'accp done' + (S.seg === 'PRINTED' ? ' on' : '');
+    pd.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>Printed Account Copy' + (done ? '<span class="bdg">' + done + '</span>' : '');
+    pd.title = 'Already printed / downloaded (or skipped): print again any time';
   }
   const i = defs.findIndex(x => x[0] === S.seg);
   $('seg').style.gridTemplateColumns = 'repeat(' + defs.length + ',1fr)';
@@ -1112,17 +1196,25 @@ function paintList(){
   const d = segData(baseRows());
   let h = '';
   const noStep = !S.flow.some(s => canDo(s.code, 'STORE 1') || canDo(s.code, 'STORE 2'));
-  if (S.seg === 'PRINT') {
-    // series by series, oldest first; the next one to print of each series is open, the rest locked; printed ones below, newest first
+  if (S.seg === 'PRINT' || S.seg === 'PRINTED') {
     PLOCKS = null;
     const shown = new Set(baseRows().map(r => r.key)), all = printRows().filter(r => shown.has(r.key));
-    const todo = all.filter(r => !isPrinted(r)).sort(seqCmp), done = all.filter(isPrinted).sort((a, b) => String((S.printed[b.key] || {}).lastAt || '').localeCompare(String((S.printed[a.key] || {}).lastAt || '')));
-    const series = [];
-    todo.forEach(r => { const k = seqSeries(r); let g = series.find(x => x.k === k); if (!g) series.push(g = { k, label:(r.store === 'STORE 1' ? 'Store 1' : 'Store 2') + ' · ' + (r.type || ''), list:[] }); g.list.push({ r, print:true }); });
-    series.forEach(g => { h += sectionHtml('p' + g.k, g.label + ' · to print', g.list, 'Print in series order, oldest first. The next one opens after this one is printed or downloaded.'); });
-    if (done.length) h += sectionHtml('pDone', 'Printed', done.map(r => ({ r, print:true })), 'Open one to print or download it again.');
+    if (S.seg === 'PRINT') {
+      // PENDING FOR PRINT: series by series, oldest first; the next one of each series is open, the rest locked.
+      // A printed / downloaded / skipped bill leaves this list at once (it is under Printed Account Copy).
+      const todo = all.filter(r => !isPrinted(r)).sort(seqCmp), series = [];
+      todo.forEach(r => { const k = seqSeries(r); let g = series.find(x => x.k === k); if (!g) series.push(g = { k, label:(r.store === 'STORE 1' ? 'Store 1' : 'Store 2') + ' · ' + (r.type || ''), list:[] }); g.list.push({ r, print:true }); });
+      series.forEach(g => { h += sectionHtml('p' + g.k, g.label + ' · pending for print', g.list, 'Print in series order, oldest first. Your PIN is asked for every print / download; the next one opens after it.'); });
+      if (!todo.length) h = emptyHtml(IC.done, 'Nothing pending', all.length ? 'Every Accountant Copy is printed (or skipped). See Printed Account Copy.' : 'A bill comes here once MD-1 Bill Check gives it OKAY.');
+    } else {
+      // ALREADY PRINTED: printed, downloaded or skipped, the latest first; a print from here is a DUPLICATE (stamped)
+      const done = all.filter(isPrinted).sort((a, b) => String((S.printed[b.key] || {}).lastAt || '').localeCompare(String((S.printed[a.key] || {}).lastAt || '')));
+      const pr = done.filter(r => (S.printed[r.key] || {}).how !== 'SKIP' || printsOf(r)), sk = done.filter(r => !pr.includes(r));
+      if (pr.length) h += sectionHtml('pDone', 'Printed · ' + pr.length, pr.map(r => ({ r, print:true })), 'Print / download again with your PIN: the copy then says DUPLICATE, with the print number and the first print time.');
+      if (sk.length) h += sectionHtml('pSkip', 'Skipped · ' + sk.length, sk.map(r => ({ r, print:true })), 'Skipped without printing. Print / download it any time with your PIN.');
+      if (!done.length) h = emptyHtml(IC.doc, 'Nothing printed yet', 'Bills you print, download or skip in Print Account Copy move here.');
+    }
     if (S.printMissing) h += '<div class="foot" style="margin:14px 16px 0;font-size:13px;color:var(--orange)">Printed bills are kept on this device only. Admin: run sql/BILL_CHECK_ACCOUNT_PRINT_MIGRATION.sql so every device and every EA follows the same order.</div>';
-    if (!todo.length && !done.length) h = emptyHtml(IC.doc, 'Nothing to print', 'A bill comes here once MD-1 Bill Check gives it OKAY.');
   } else if (S.seg === 'TODO') {
     S.flow.forEach(s => { const fr = (d.todo[s.code] || []).filter(x => !x.hold); if (fr.length) h += sectionHtml('t' + s.code, s.label, fr, 'Check in series order, oldest first. Hold a bill to move on to the next one.'); });
     if (!h) h = emptyHtml(IC.inbox, noStep ? 'No step assigned' : 'All caught up', noStep ? 'The Admin gives a bill check step in Manage access. You can still browse All.' : 'Nothing is waiting for your check. New bills appear here on their own.');
@@ -1859,8 +1951,9 @@ document.addEventListener('click', async e => {
   const psk = t.closest('[data-pskip]');
   if (psk) { e.preventDefault(); e.stopPropagation(); const rr = S.rows.find(x => x.key === psk.dataset.pskip); if (rr) accSkip(rr); return; }
   const open = t.closest('[data-open]');
-  if (open && S.seg === 'PRINT') { const rr = S.rows.find(x => x.key === open.dataset.open); if (rr) accPrintAct(rr); return; }
+  if (open && (S.seg === 'PRINT' || S.seg === 'PRINTED')) { const rr = S.rows.find(x => x.key === open.dataset.open); if (rr) accPrintAct(rr); return; }
   if (t.closest('#accPrint')) { S.seg = S.seg === 'PRINT' ? 'TODO' : 'PRINT'; paintAll(); return buzz(6); }
+  if (t.closest('#accPrinted')) { S.seg = S.seg === 'PRINTED' ? 'TODO' : 'PRINTED'; paintAll(); return buzz(6); }
   if (open) {
     const rr = S.rows.find(x => x.key === open.dataset.open), lk = rr && S.seg === 'TODO' ? lockOf(rr) : null;
     if (lk) {

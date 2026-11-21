@@ -3576,6 +3576,118 @@
         const pctCls = p => p == null ? 'text-slate-400' : (p >= 90 ? 'text-green-600' : (p >= 60 ? 'text-amber-600' : 'text-red-600'));
         const PHASE_LABEL = { 'on-time': 'On time', grace: 'Grace used', late: 'Late' };
 
+        /* ── TASK DONE CELEBRATION (tmWin) ──
+           After the server has accepted a completion (Confirm Task Done = tm_mark_done, Live Photo = tm_mark_live, an
+           FMS step = fms_step_done), a winner screen like a quiz app's "correct answer": confetti bursts from both
+           bottom corners (canvas, own code, no library), a green check pops in with the task, the points and the
+           phase; a short buzz on a phone. Closes by itself (WIN_MS) or on a tap / key. A late completion that earned
+           nothing (pts <= 0) gets the same card in orange, without confetti. prefers-reduced-motion = no confetti and
+           no bounce, just the card. o = {title, task, pts ('+10' text or null), good (bool), line, note}. */
+        const WIN_MS = 3600;
+        let WIN = null;
+        function tmWinCss_() {
+            if (document.getElementById('tmWinCss')) return;
+            const st = document.createElement('style'); st.id = 'tmWinCss';
+            st.textContent = `
+#tmWin{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;padding:24px;background:rgba(15,23,42,.42);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);opacity:0;transition:opacity .22s ease}
+#tmWin.in{opacity:1}
+#tmWin canvas{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2}
+#tmWin .wcard{position:relative;z-index:1;width:100%;max-width:320px;background:#fff;border-radius:28px;padding:30px 22px 20px;text-align:center;box-shadow:0 24px 60px rgba(15,23,42,.35);transform:scale(.6) translateY(30px);opacity:0;transition:transform .5s cubic-bezier(.2,1.4,.4,1),opacity .25s ease}
+#tmWin.in .wcard{transform:none;opacity:1}
+#tmWin .wbadge{width:92px;height:92px;margin:-74px auto 12px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;box-shadow:0 10px 26px var(--wsh),0 0 0 8px #fff;background:var(--wbg);transform:scale(0);animation:tmWinPop .55s .12s cubic-bezier(.2,1.6,.4,1) forwards}
+#tmWin .wbadge svg{width:50px;height:50px;stroke-dasharray:40;stroke-dashoffset:40;animation:tmWinTick .38s .45s ease-out forwards}
+#tmWin .wring{position:absolute;left:50%;top:-28px;width:92px;height:92px;margin-left:-46px;border-radius:50%;border:3px solid var(--wbg);opacity:0;animation:tmWinRing .9s .25s ease-out forwards}
+#tmWin .wtitle{font-size:24px;font-weight:900;letter-spacing:-.02em;color:#0f172a;line-height:1.15}
+#tmWin .wtask{margin-top:6px;font-size:13.5px;font-weight:700;color:#475569;line-height:1.35;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+#tmWin .wpts{margin-top:14px;font-size:44px;font-weight:900;line-height:1;color:var(--wfg);animation:tmWinPts .6s .35s cubic-bezier(.2,1.6,.4,1) both}
+#tmWin .wline{margin-top:6px;display:inline-flex;align-items:center;gap:6px;padding:4px 12px;border-radius:999px;font-size:12px;font-weight:800;background:var(--wlbg);color:var(--wfg)}
+#tmWin .wnote{margin-top:10px;font-size:11.5px;font-weight:600;color:#64748b}
+#tmWin .wtap{margin-top:16px;font-size:11px;font-weight:700;color:#94a3b8}
+@keyframes tmWinPop{0%{transform:scale(0) rotate(-25deg)}100%{transform:scale(1) rotate(0)}}
+@keyframes tmWinTick{to{stroke-dashoffset:0}}
+@keyframes tmWinRing{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.9)}}
+@keyframes tmWinPts{0%{opacity:0;transform:scale(.4)}100%{opacity:1;transform:scale(1)}}
+@media (prefers-reduced-motion: reduce){#tmWin .wcard,#tmWin .wbadge,#tmWin .wbadge svg,#tmWin .wring,#tmWin .wpts{animation:none!important;transition:opacity .2s!important;transform:none!important;stroke-dashoffset:0!important}}`;
+            document.head.appendChild(st);
+        }
+        function tmWinClose_() {
+            if (!WIN) return;
+            const w = WIN; WIN = null;
+            clearTimeout(w.timer); cancelAnimationFrame(w.raf);
+            document.removeEventListener('keydown', w.onKey, true);
+            w.el.classList.remove('in');
+            setTimeout(() => w.el.remove(), 240);
+        }
+        // Confetti: paper pieces shot up from the two bottom corners, falling with gravity, drag, spin and flutter
+        function tmWinConfetti_(cv, w) {
+            const dpr = Math.min(2, window.devicePixelRatio || 1), W = innerWidth, H = innerHeight;
+            cv.width = W * dpr; cv.height = H * dpr;
+            const cx = cv.getContext('2d'); cx.scale(dpr, dpr);
+            const COLS = ['#22c55e', '#3b82f6', '#f59e0b', '#ef4444', '#a855f7', '#06b6d4', '#ec4899', '#facc15'];
+            const P = [], burst = (fromLeft, n, power) => {
+                for (let i = 0; i < n; i++) {
+                    const ang = (fromLeft ? -62 : -118) + (Math.random() - .5) * 38, sp = power * (0.55 + Math.random() * 0.6);
+                    P.push({ x: fromLeft ? -8 : W + 8, y: H + 8, vx: Math.cos(ang * Math.PI / 180) * sp, vy: Math.sin(ang * Math.PI / 180) * sp,
+                        w: 6 + Math.random() * 7, h: 9 + Math.random() * 9, rot: Math.random() * 6.3, vr: (Math.random() - .5) * 0.32,
+                        flip: Math.random() * 6.3, vf: 0.09 + Math.random() * 0.14, col: COLS[(Math.random() * COLS.length) | 0], round: Math.random() < 0.22 });
+                }
+            };
+            const power = Math.max(15, Math.min(24, H / 38));
+            burst(true, 70, power); burst(false, 70, power);
+            const t0 = performance.now(); let second = false;
+            const step = now => {
+                if (!WIN || WIN !== w) return;
+                if (!second && now - t0 > 260) { second = true; burst(true, 40, power * 0.85); burst(false, 40, power * 0.85); }
+                cx.clearRect(0, 0, W, H);
+                let alive = 0;
+                for (const p of P) {
+                    p.vy += 0.36; p.vx *= 0.985; p.vy *= 0.985; p.x += p.vx + Math.sin(p.flip) * 0.6; p.y += p.vy; p.rot += p.vr; p.flip += p.vf;
+                    if (p.y > H + 30) continue;
+                    alive++;
+                    cx.save(); cx.translate(p.x, p.y); cx.rotate(p.rot); cx.scale(1, Math.cos(p.flip));
+                    cx.fillStyle = p.col;
+                    if (p.round) { cx.beginPath(); cx.arc(0, 0, p.w / 2, 0, 6.283); cx.fill(); } else cx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                    cx.restore();
+                }
+                if (alive || now - t0 < 600) w.raf = requestAnimationFrame(step); else cx.clearRect(0, 0, W, H);
+            };
+            w.raf = requestAnimationFrame(step);
+        }
+        function tmWin(o) {
+            tmWinClose_(); tmWinCss_();
+            const good = o.good !== false;
+            const calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const el = document.createElement('div'); el.id = 'tmWin'; el.setAttribute('role', 'dialog'); el.setAttribute('aria-live', 'assertive');
+            el.style.setProperty('--wbg', good ? 'linear-gradient(135deg,#22c55e,#16a34a)' : 'linear-gradient(135deg,#fb923c,#ea580c)');
+            el.style.setProperty('--wsh', good ? 'rgba(22,163,74,.45)' : 'rgba(234,88,12,.4)');
+            el.style.setProperty('--wfg', good ? '#16a34a' : '#ea580c');
+            el.style.setProperty('--wlbg', good ? '#dcfce7' : '#ffedd5');
+            el.innerHTML = '<canvas></canvas><div class="wcard"><div class="wring"></div><div class="wbadge">'
+                + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></div>'
+                + '<div class="wtitle">' + esc(o.title || 'Task Done') + '</div>'
+                + (o.task ? '<div class="wtask">' + esc(o.task) + '</div>' : '')
+                + (o.pts != null ? '<div class="wpts">' + esc(o.pts) + '</div>' : '')
+                + (o.line ? '<div class="wline">' + esc(o.line) + '</div>' : '')
+                + (o.note ? '<div class="wnote">' + esc(o.note) + '</div>' : '')
+                + '<div class="wtap">Tap anywhere to continue</div></div>';
+            document.body.appendChild(el);
+            const w = WIN = { el, raf: 0, timer: 0, onKey: e => { if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tmWinClose_(); } } };
+            el.addEventListener('click', tmWinClose_);
+            document.addEventListener('keydown', w.onKey, true);
+            void el.offsetWidth; el.classList.add('in');
+            if (good && !calm) tmWinConfetti_(el.querySelector('canvas'), w);
+            try { if (navigator.vibrate) navigator.vibrate(good ? [18, 50, 26] : 30); } catch (e) {}
+            w.timer = setTimeout(tmWinClose_, WIN_MS);
+        }
+        window.tmWin = tmWin;
+        // A ticked task's celebration from its score (good = it earned something, or a personal task)
+        function tmWinForTask_(t, sc, title, note) {
+            const good = sc.pts > 0 || !!t.isSelfTask;
+            tmWin({ title: title || (good ? (sc.phase === 'on-time' ? 'Well done!' : 'Task Done!') : 'Task Done'), task: t.desc,
+                pts: t.isSelfTask ? null : signed(sc.pts), good,
+                line: (PHASE_LABEL[sc.phase] || 'Done') + (t.isSelfTask ? ' · personal task' : ''), note: note || (t.isSelfTask ? 'Personal task: not counted in the score' : '') });
+        }
+
         /* The points box on a task card. Re-drawn every few seconds by
            liveTick() (it carries data-live), so "losing points" counts down
            in front of the user and the number drops the moment a deduction
@@ -3755,7 +3867,7 @@
                 showCustomModal('Not saved', esc(why || (r.error + (r.detail ? ': ' + r.detail : ''))), true);
                 return fmsMineLoad();
             }
-            showCustomModal('Step done', esc(x.s.name || x.def.name) + ' · ' + esc(x.rec.rec_no || '') + ' is marked done. The next step of the flow starts now.');
+            tmWin({ title: 'Step done!', task: (x.s.name || x.def.name) + (x.rec.rec_no ? ' · ' + x.rec.rec_no : ''), line: 'FMS step', note: 'The next step of the flow starts now.' });
             fmsMineLoad();
         };
         function renderDashSummary() {
@@ -4177,7 +4289,7 @@
                 return res.error === 'NO_MIGRATION' ? showCustomModal('Server update needed', 'Live Photo tasks need a server update. Admin: run <code>TM_LIVE_PHOTO_MIGRATION.sql</code> in the Supabase SQL Editor.', true) : tmErr(res);
             }
             closeLiveCam(); await refreshAndRerender();
-            const t = findTask(p.e, p.t); if (t) { const sc = taskScore(t, p.d, recOf(t, p.d)); if (sc.state === 'done') showCustomModal(sc.phase === 'on-time' ? 'Live photo saved' : 'Live photo saved (late)', `<div class="text-5xl font-extrabold ${sc.pts >= sc.base ? 'text-green-600' : (sc.pts > 0 ? 'text-orange-600' : 'text-red-600')}">${signed(sc.pts)}</div><div class="text-sm font-bold text-slate-500 mt-1">${esc(PHASE_LABEL[sc.phase] || '')} · saved with your location and the time</div>`); }
+            const t = findTask(p.e, p.t); if (t) { const sc = taskScore(t, p.d, recOf(t, p.d)); if (sc.state === 'done') tmWinForTask_(t, sc, sc.pts > 0 ? 'Live photo saved!' : 'Live photo saved', 'Saved with your location and the time'); }
         };
         // "26.912345, 75.787654 · ±12 m · Map"
         function geoHtml(g) {
@@ -4470,7 +4582,7 @@
                 if (!res.ok) return tmErr(res);
                 closeTaskPinModal(); await refreshAndRerender();
                 // Say straight away what the tick earned.
-                const t = findTask(p.e, p.t); if (t) { const sc = taskScore(t, p.d, recOf(t, p.d)); if (sc.state === 'done') showCustomModal(sc.phase === 'on-time' ? 'Well done!' : 'Task Done', `<div class="text-5xl font-extrabold ${sc.pts >= sc.base ? 'text-green-600' : (sc.pts > 0 ? 'text-orange-600' : 'text-red-600')}">${signed(sc.pts)}</div><div class="text-sm font-bold text-slate-500 mt-1">${PHASE_LABEL[sc.phase]}${t.isSelfTask ? ' · personal task, not counted' : ''}</div>`); }
+                const t = findTask(p.e, p.t); if (t) { const sc = taskScore(t, p.d, recOf(t, p.d)); if (sc.state === 'done') tmWinForTask_(t, sc); }
             } catch (e) { showCustomModal("Photo problem", esc(e.message || e), true); }
             finally { setBusy('taskPinConfirmBtn', false, 'Confirm'); }
         }

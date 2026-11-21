@@ -218,7 +218,8 @@
 
                 <div class="grid grid-cols-2 gap-3">
                     <!-- INWARD BUTTON -->
-                    <button onclick="showView('inwardForm')" class="ios-btn bg-blue-500/10 border border-blue-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-blue-600">
+                    <button onclick="showView('inwardMenu')" class="ios-btn relative bg-blue-500/10 border border-blue-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-blue-600">
+                        <span id="inwMainBadge" class="hidden absolute top-2.5 right-2.5 bg-blue-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs"></span>
                         <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30">
                             <i class="fa-solid fa-box-open"></i>
                         </div>
@@ -300,9 +301,78 @@
             </div>
 
             <!-- VIEW 2: INWARD ENTRY FORM -->
-            <div id="view-inwardForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+            <!-- VIEW 2A: INWARD MENU (New entry -> approver approves on the launcher -> Allow Unloading -> Existing -> Out), like the Hydra / Visitor menus -->
+            <div id="view-inwardMenu" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
                 <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
                     <button onclick="showView('actionMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Inward Material</h2>
+                    <span class="w-10"></span>
+                </div>
+                <div class="space-y-3">
+                    <button onclick="showView('inwardForm')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-box-open"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">New Inward Entry</span>
+                            <span class="block text-[11px] font-semibold text-blue-700/80">Approval request: party, PO / PR, bill + item photo, approver</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('inwardPending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-orange-500/10 border border-orange-500/25 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl shadow-md shadow-orange-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-orange-800 uppercase tracking-wide">Approval Pending</span>
+                            <span id="inwPendSub" class="block text-[11px] font-semibold text-orange-700/80">Waiting for the approver's PIN</span>
+                        </div>
+                        <span id="inwPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-orange-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-orange-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('inwardExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-500/30 shrink-0"><i class="fa-solid fa-truck-ramp-box"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-emerald-800 uppercase tracking-wide">Existing Inward</span>
+                            <span class="block text-[11px] font-semibold text-emerald-700/80">Inside (unloading): Out with vehicle photo + remarks</span>
+                        </div>
+                        <span id="inwInsideBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-emerald-500 text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 2B: INWARD APPROVAL PENDING (waiting / approved -> Allow Unloading / rejected -> Send Back) -->
+            <div id="view-inwardPending" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Inward Approval Pending</h2>
+                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="inwPollIcon" class="fa-solid fa-rotate"></i></button>
+                </div>
+                <p id="inwPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
+                <div id="inwPendList" class="space-y-2.5"></div>
+            </div>
+
+            <!-- VIEW 2C: EXISTING INWARD (approved and unloading inside -> Out with a photo; + the ones out in the last 2 days) -->
+            <div id="view-inwardExisting" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Existing Inward</h2>
+                    <span class="w-10"></span>
+                </div>
+                <input type="text" id="inwExistSearch" oninput="renderInwardExisting()" autocomplete="off" placeholder="Search party, PO / PR, vehicle, inward no..." class="w-full px-3.5 py-2.5 mb-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl mb-3">
+                    <button id="inwTabIn" onclick="inwExistTab('in')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Inside <span id="inwTabInN"></span></button>
+                    <button id="inwTabOut" onclick="inwExistTab('out')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Out · last 2 days <span id="inwTabOutN"></span></button>
+                </div>
+                <div id="inwExistList" class="space-y-3"></div>
+            </div>
+
+            <div id="view-inwardForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
                     <h2 class="text-[16px] font-bold text-gray-900">Inward Material Entry</h2>
@@ -465,6 +535,18 @@
                         </div>
                     </div>
 
+                    <!-- Whom to Approve: an ERP user approves the inward on the launcher with his PIN (8D INWARD APPROVAL) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase">Whom to Approve *</label>
+                            <span id="inApHint" class="text-[10px] font-semibold text-blue-600">Approves with his PIN</span>
+                        </div>
+                        <div class="relative">
+                            <input type="text" id="inApprover" autocomplete="off" placeholder="Type to search the person..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                            <div id="inApproverList" class="gate-combo hidden"></div>
+                        </div>
+                    </div>
+
                     <!-- Auto Generated Store Entry No -->
                     <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-3.5 rounded-2xl border border-blue-100 flex items-center justify-between">
                         <div>
@@ -475,7 +557,7 @@
                     </div>
 
                     <button type="submit" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
-                        <i class="fa-solid fa-check-circle"></i> Submit Inward Entry
+                        <i class="fa-solid fa-paper-plane"></i> Send for Approval
                     </button>
                 </form>
             </div>
@@ -633,10 +715,10 @@
                         <p id="storeBillState" class="text-[11px] font-semibold text-gray-600 leading-snug"></p>
                     </div>
 
-                    <!-- Unit Transfer mode only (TRANSFER tile > Send to the other unit, gateOpenTransferOut): where it goes + the vehicle.
-                         Party / item / qty come from the Store Gate Pass above, so no Gate Pass Photo is asked in this mode. -->
-                    <div id="outTrBox" class="hidden space-y-3">
-                        <div class="flex items-center justify-between gap-3 px-3.5 py-3 bg-purple-50 border border-purple-200 rounded-xl">
+                    <!-- Vehicle No / Driver / Remarks: in BOTH modes (Out From Store and the Unit Transfer's Send form). Only the
+                         "Send To" line is the transfer's own (gateOpenTransferOut). Party / item / qty come from the Store Gate Pass above. -->
+                    <div id="outTrBox" class="space-y-3">
+                        <div id="outTrToRow" class="hidden flex items-center justify-between gap-3 px-3.5 py-3 bg-purple-50 border border-purple-200 rounded-xl">
                             <span class="text-[11px] font-bold text-purple-700 uppercase">Send To</span>
                             <span id="outTrTo" class="text-sm font-extrabold text-purple-800">-</span>
                         </div>
@@ -805,16 +887,22 @@
                         <span id="visPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-amber-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
                         <i class="fa-solid fa-chevron-right text-amber-500 text-xs"></i>
                     </button>
-                    <!-- Visitors sent here from the other unit (gate-link.js): take them in without a new approval -->
-                    <button onclick="GateLink.openIncoming('VISITOR')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-purple-500/10 border border-purple-500/20 rounded-[20px] text-left">
-                        <div class="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-xl shadow-md shadow-purple-500/30 shrink-0"><i class="fa-solid fa-people-arrows"></i></div>
-                        <div class="min-w-0 flex-1">
-                            <span class="block text-[13px] font-extrabold text-purple-800 uppercase tracking-wide">Arriving From <span data-gl-other-unit></span></span>
-                            <span class="block text-[11px] font-semibold text-purple-700/80">Visitors moved here by the other gate</span>
-                        </div>
-                        <span id="glVisitorBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-purple-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
-                        <i class="fa-solid fa-chevron-right text-purple-500 text-xs"></i>
-                    </button>
+                    <!-- Visitors between the two units (gate-link.js): 1) Go to the other unit = send a visitor who is inside here,
+                         2) Arriving From = take in one the other gate sent (no new approval) -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="GateLink.openGoTo()" class="ios-btn relative flex flex-col items-start gap-2 p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-[20px] text-left">
+                            <span id="glGoBadge" class="hidden absolute top-2.5 right-2.5 min-w-[22px] h-[22px] px-1.5 rounded-full bg-purple-600 text-white text-[10px] font-extrabold flex items-center justify-center"></span>
+                            <div class="w-11 h-11 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-lg shadow-md shadow-purple-500/30"><i class="fa-solid fa-person-walking-arrow-right"></i></div>
+                            <span class="block text-[12px] font-extrabold text-purple-800 uppercase tracking-wide leading-tight">Go to <span data-gl-other-unit></span></span>
+                            <span class="block text-[10.5px] font-semibold text-purple-700/80 leading-snug">Send a visitor or an employee to the other unit</span>
+                        </button>
+                        <button onclick="GateLink.openIncoming('VISITOR')" class="ios-btn relative flex flex-col items-start gap-2 p-3.5 bg-violet-500/10 border border-violet-500/20 rounded-[20px] text-left">
+                            <span id="glVisitorBadge" class="hidden absolute top-2.5 right-2.5 min-w-[22px] h-[22px] px-1.5 rounded-full bg-violet-600 text-white text-[10px] font-extrabold flex items-center justify-center"></span>
+                            <div class="w-11 h-11 rounded-2xl bg-violet-600 text-white flex items-center justify-center text-lg shadow-md shadow-violet-500/30"><i class="fa-solid fa-people-arrows"></i></div>
+                            <span class="block text-[12px] font-extrabold text-violet-800 uppercase tracking-wide leading-tight">Arriving From <span data-gl-other-unit></span></span>
+                            <span class="block text-[10.5px] font-semibold text-violet-700/80 leading-snug">Visitors / employees sent by the other gate</span>
+                        </button>
+                    </div>
                     <button onclick="showView('visitorExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
                         <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-users"></i></div>
                         <div class="min-w-0 flex-1">
@@ -2044,6 +2132,7 @@
                 const d = r.data, m = { at: d.at || new Date().toISOString(), errors: Array.isArray(d.errors) ? d.errors : [] };
                 GATE_SOURCES.forEach(s => { m[s.key] = Array.isArray(d[s.key]) ? d[s.key] : []; });
                 GATE_MASTERS = m; GATE_OFFLINE = false;
+                inwApLoad(true);   // the Inward Whom to Approve list (ERP Dropdown Master) with the other lists
                 writeLS(GATE_MASTERS_KEY, m);
                 GATE_SYNC = { state: 'ok', err: '' };
                 if (manual) showIosBanner(m.errors.length ? 'ERP lists refreshed (could not read: ' + m.errors.join(', ') + ')' : 'ERP lists refreshed', m.errors.length ? 'info' : 'success');
@@ -2267,7 +2356,7 @@
                     e._syncedAt = new Date().toISOString(); e.photoKeys = r.data.photoKeys || e.photoKeys || []; delete e._err;
                     if (r.data.visApproval) e.visApproval = r.data.visApproval;
                     // a Hydra that asked for approval and got none back: the server's gate_entry_save is older than the Hydra approval
-                    if ((isHydra(e) || isSample(e)) && e.needApproval) HYD_NOSRV = !r.data.visApproval && !e.visApproval;
+                    if ((isHydra(e) || isSample(e) || isInward(e)) && e.needApproval) HYD_NOSRV = !r.data.visApproval && !e.visApproval;
                 }
                 saveEntries();
 
@@ -2393,14 +2482,17 @@
             Object.keys(storeGatePassesDB).forEach(c => { if (!seen.has(c) && passYmd(storeGatePassesDB[c].date) === td && !used.has(c)) { seen.add(c); out.push(c); } });
             return out;
         }
-        const isTransferPass = p => /transfer/i.test((p && p.nature) || '');   // the ERP's Store Transfer outward ("Store Transfer")
+        /* A unit transfer = a Store Outward whose PARTY is our own other unit (SARV INDIA HOME FURNISHING UNIT-I /
+           UNIT-II, as the ERP writes it). Not decided by the nature: 'Transfer' is also used for outside parties. Such a
+           pass is offered ONLY in the Unit Transfer's Send form, every other pass ONLY in the normal Out From Store. */
+        const isTransferPass = p => /SARV\s*INDIA\b.*\bUNIT\s*-?\s*(I{1,2}|[12])\b/i.test((p && p.party) || '');
         const storePassOptions = () => {
             const rows = storePassCodes().map(code => {
                 const p = getStorePass(code) || {}, tr = isTransferPass(p);
-                return { value: code, tr, sub: (p.party || '') + (tr ? ' · STORE TRANSFER' : ''), hay: [p.nature, p.receiver, p.item].filter(Boolean).join(' ') };
+                return { value: code, tr, sub: p.party || '', hay: [p.nature, p.receiver, p.item].filter(Boolean).join(' ') };
             });
-            // Send to the other unit: the Store Transfer passes first (any pass may still be chosen)
-            return OUT_STORE_TR ? rows.filter(o => o.tr).concat(rows.filter(o => !o.tr)) : rows;
+            // Send to the other unit: the unit-transfer passes only; Out From Store: all the others
+            return rows.filter(o => o.tr === !!OUT_STORE_TR);
         };
 
         // ==========================================
@@ -2477,6 +2569,7 @@
             gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
             gateCombo({ inputId: 'hydraSupplierName', listId: 'hydraSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
             gateCombo({ inputId: 'hydraApprover', listId: 'hydraApproverList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a Hydra / JCB.' });
+            gateCombo({ inputId: 'inApprover', listId: 'inApproverList', options: inwApOptions, emptyText: 'Not in the Whom to Approve list. The Admin adds people in ERP › Dropdown Master › Inward › Whom to Approve.' });
             gateCombo({ inputId: 'smpSupplier', listId: 'smpSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
             gateCombo({ inputId: 'smpApprover', listId: 'smpApproverList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve it.' });
             const rn = document.getElementById('inRefNo'), rt = document.getElementById('inRefType');
@@ -2674,6 +2767,9 @@
         function showView(viewId) {
             const views = [
                 'view-actionMenu',
+                'view-inwardMenu',
+                'view-inwardPending',
+                'view-inwardExisting',
                 'view-inwardForm',
                 'view-outwardMenu',
                 'view-outwardStoreForm',
@@ -2704,6 +2800,10 @@
             }
 
             if (viewId === 'inwardForm') {
+                inwApLoad(false); inwApHint();
+                // the approver chosen last time on this phone (most days the same person)
+                const lastAp = readLS(INW_APPROVER_KEY, '');
+                if (lastAp && GATE_COMBOS.inApprover && !document.getElementById('inApprover').value) GATE_COMBOS.inApprover.set(lastAp, true);
                 // Store ref follows the Inward No.'s digits (STR-IN-0007 for IN-0007); set again on Save from the number taken.
                 gateFillNo('IN', 'inwardNo', 'inwardNoHint', no => {
                     generatedStoreNo = 'STR-IN-' + no.slice(GATE_SERIES.IN.length);
@@ -2711,6 +2811,8 @@
                 });
             }
 
+            if (viewId === 'inwardPending') renderInwardPending();
+            if (viewId === 'inwardExisting') renderInwardExisting();
             if (viewId === 'outwardStoreForm') {
                 OUT_STORE_TR = OUT_STORE_TR_NEXT; OUT_STORE_TR_NEXT = false;   // gateOpenTransferOut() asks for the transfer mode
                 document.getElementById('formOutwardStore').reset();
@@ -2807,6 +2909,9 @@
                 return;
             }
             { const vv = document.getElementById('inVehicle').value.trim(); if (vv && !GATE_COMBOS.inVehicle.match(vv)) { showIosBanner('Choose the Vehicle Number from the list!', 'error'); return; } }
+            // Whom to Approve (an ERP user, from the list only)
+            const inAp = GATE_COMBOS.inApprover ? GATE_COMBOS.inApprover.match(document.getElementById('inApprover').value) : null;
+            if (!inAp) { showIosBanner('Choose Whom to Approve from the list (an ERP user)', 'error'); document.getElementById('inApprover').focus(); return; }
             const inwardType = document.querySelector('input[name="inwardType"]:checked').value;
             const partyName = document.getElementById('inPartyName').value;
             const refType = document.getElementById('inRefType').value;
@@ -2848,7 +2953,14 @@
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
                 outTime: null,
-                status: 'IN'
+                status: 'IN',
+                // 8D INWARD APPROVAL: the approver decides on the launcher (gate_entry_save makes the request)
+                inStage: 'APPROVAL',
+                approver: inAp.apName || inAp.value,
+                needApproval: true,
+                hostUserId: inAp.id || null,
+                hostEmpCode: inAp.emp || null,
+                hostDept: inAp.dept || null
             };
 
             commitEntry(newEntry);
@@ -2866,9 +2978,9 @@
             document.getElementById('inDkPhotoBox').classList.add('hidden');
             if (isInwardDkActive) toggleInwardDharamKanta();
 
-            showView('actionMenu');
-            showIosBanner(`Inward ${customInwardNo} Saved (${generatedStoreNo})`, 'success');
-            openPassModal(newEntry.id);
+            writeLS(INW_APPROVER_KEY, inAp.value);
+            showView('inwardPending');
+            showIosBanner(`Inward ${customInwardNo} (${generatedStoreNo}) sent to ${inAp.apName || inAp.value} for approval`, 'success');
         });
 
         // ==========================================
@@ -2889,10 +3001,10 @@
             const tr = OUT_STORE_TR;
             document.getElementById('outStoreTitle').textContent = tr ? 'Send to ' + GATE_OTHER_UNIT : 'Out From Store';
             document.getElementById('outTrTo').textContent = GATE_OTHER_UNIT + ' (' + GATE_OTHER_NAME + ')';
-            document.getElementById('outTrBox').classList.toggle('hidden', !tr);
+            document.getElementById('outTrToRow').classList.toggle('hidden', !tr);
             document.getElementById('outStorePassNote').textContent = tr
-                ? "Today's Store Outward numbers not yet out; the ERP's Store Transfer passes are listed first. Party, item and qty come from the pass."
-                : "Only today's Store Outward numbers (not yet checked out here) are listed.";
+                ? "Only today's Store Outward numbers to Sarv India Home Furnishing Unit-I / Unit-II (not yet out). Party, item, qty and the Store Bill come from the pass."
+                : "Only today's Store Outward numbers (not yet checked out here). A pass to Sarv India Unit-I / Unit-II goes out from TRANSFER › Send.";
         }
         /* ── STORE BILL of the chosen Store Gate Pass ──
            The ERP indexes every Store PDF in pdf_documents (document_no + variant; SINGLE = the one-page Receiver Copy,
@@ -3076,15 +3188,19 @@
                 return;
             }
 
+            // the same Vehicle No / Driver / Remarks boxes as the Send form
+            const oval = id => (document.getElementById(id).value || '').trim();
+            const oVeh = oval('outTrVehicle').toUpperCase(), oDrv = oval('outTrDriver'), oRem = oval('outTrRemarks');
             const newOutward = {
                 id: customOutwardNo,
                 category: 'OUTWARD',
                 passNo: passNo,
                 name: data.party,
-                mobile: 'Store Exit',
-                vehicle: 'N/A',
-                host: `Store Pass: ${passNo} | Qty: ${data.qty}`,
-                purpose: `${data.item} • ${billNote} • Item Photo ✓`,
+                mobile: oDrv || 'Store Exit',
+                vehicle: oVeh || 'N/A',
+                host: `Store Pass: ${passNo} | Qty: ${data.qty}${oDrv ? ' | ' + oDrv : ''}`,
+                purpose: `${data.item} • ${billNote} • Item Photo ✓${oRem ? ' • ' + oRem : ''}`,
+                items: data.item, qty: data.qty, driver: oDrv, remarks: oRem,
                 passPhoto: bill ? bill.img : null, passPdf: bill ? bill.url : null,
                 itemPhoto: tempPhotos.outItem,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
@@ -3501,6 +3617,12 @@
         const visAprStatus = e => (visApr(e) || {}).status || '';
         // waiting for (or just got) the host's decision; Done moves it to Existing Visitor
         const isVisPending = e => isVisitor(e) && e.needApproval && e.status === 'IN' && !e.visDoneAt;
+        // 8D INWARD APPROVAL: an inward that asked for approval waits until Allow Unloading (inDoneAt); older ones count as inside
+        const INW_APPROVER_KEY = 'gate2_inw_approver_v1';
+        const isInward = e => !!e && e.category === 'INWARD';
+        const isInwPending = e => isInward(e) && !!e.needApproval && e.status === 'IN' && !e.inDoneAt;
+        const isInwInside = e => isInward(e) && e.status === 'IN' && (!e.needApproval || !!e.inDoneAt);
+        const isInwRecentOut = e => isInward(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
         const isVisInside = e => isVisitor(e) && e.status === 'IN' && (!e.needApproval || !!e.visDoneAt);
         const isVisRecentOut = e => isVisitor(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
         const visPurpose = e => String((e && e.purpose) || '').split('•')[0].trim();
@@ -3533,15 +3655,15 @@
         async function visPollNow(manual) {
             if (visPollBusy) return;
             // visitors and Hydra / JCB entries waiting for a decision (one call for both)
-            const uids = gateEntries.filter(e => (isVisPending(e) || isHydPending(e) || isSmpPending(e)) && e._syncedAt && e.uid).map(e => e.uid);
+            const uids = gateEntries.filter(e => (isVisPending(e) || isHydPending(e) || isSmpPending(e) || isInwPending(e)) && e._syncedAt && e.uid).map(e => e.uid);
             if (manual) gateSync(false);   // sends what is waiting (a new visitor / Hydra) and pulls the rest
-            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) { renderVisitorPending(); renderHydraPending(); renderSamplePending(); } return; }
+            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) { renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); } return; }
             visPollBusy = true;
-            const icons = ['visPollIcon', 'hydPollIcon', 'smpPollIcon'].map(i => document.getElementById(i)).filter(Boolean);
+            const icons = ['visPollIcon', 'hydPollIcon', 'smpPollIcon', 'inwPollIcon'].map(i => document.getElementById(i)).filter(Boolean);
             icons.forEach(i => i.classList.add('fa-spin'));
             const r = await gateRpc('gate_vis_status', { p_uids: uids });
             visPollBusy = false; icons.forEach(i => i.classList.remove('fa-spin'));
-            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); renderHydraPending(); renderSamplePending(); } return; }
+            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); } return; }
             VIS_NOMIG = false;
             let changed = false;
             const rows = r.data.rows || {};
@@ -3550,7 +3672,7 @@
                 const { photoKeys, ...apr } = a;
                 const was = visAprStatus(e);
                 if (JSON.stringify(apr) !== JSON.stringify(e.visApproval || null)) { e.visApproval = apr; changed = true; }
-                if (isHydra(e) || isSample(e)) HYD_NOSRV = false;
+                if (isHydra(e) || isSample(e) || isInward(e)) HYD_NOSRV = false;
                 if (Array.isArray(photoKeys) && photoKeys.join(',') !== (e.photoKeys || []).join(',')) { e.photoKeys = photoKeys; changed = true; }
                 if (was === 'PENDING' && apr.status === 'APPROVED') showIosBanner(`${e.name}: approved by ${apr.decidedBy || apr.host}`, 'success');
                 if (was === 'PENDING' && apr.status === 'REJECTED') showIosBanner(`${e.name}: rejected by ${apr.decidedBy || apr.host}`, 'error');
@@ -3565,6 +3687,9 @@
             const pb = document.getElementById('visPendBadge'), ib = document.getElementById('visInsideBadge'), mb = document.getElementById('visMainBadge');
             if (pb) { pb.textContent = pend.length; pb.classList.toggle('hidden', !pend.length); }
             if (ib) { ib.textContent = inside.length; ib.classList.toggle('hidden', !inside.length); }
+            // Visitor menu › Go to <other unit> (gate-link.js): how many visitors inside here could be sent
+            const goN = inside.length + gateEntries.filter(e => e.category === 'EMPLOYEE' && e.status === 'IN').length;   // + employees from the other unit
+            const gb = document.getElementById('glGoBadge'); if (gb) { gb.textContent = goN; gb.classList.toggle('hidden', !goN); }
             const sub = document.getElementById('visPendSub');
             if (sub) sub.textContent = ready ? `${ready} approved: print the pass and press Done` : "Waiting for the host's PIN approval";
             if (mb) { mb.textContent = ready ? ready + ' APPROVED' : pend.length ? pend.length + ' PENDING' : ''; mb.classList.toggle('hidden', !pend.length); mb.classList.toggle('bg-amber-500', !ready); mb.classList.toggle('bg-emerald-600', !!ready); }
@@ -3573,6 +3698,7 @@
             if (active('view-visitorExisting')) renderVisitorExisting();
             hydRefreshUi();
             smpRefreshUi();
+            inwRefreshUi();
             // an open visitor / Hydra pass shows the decision / signature as soon as it arrives
             const pm = document.getElementById('passModal');
             const oe = pm && !pm.classList.contains('hidden') && GATE_OPEN_PASS ? gateEntries.find(x => x.id === GATE_OPEN_PASS) : null;
@@ -3709,19 +3835,26 @@
                 closePassModal(); closeQrVerifyModal();
                 showView('hydraExisting'); return;
             }
+            // an inward still waiting for approval goes back from Approval Pending (Send Back), not from here
+            const inw = isInward(e);
+            if (inw && isInwPending(e)) { closePassModal(); closeQrVerifyModal(); showView('inwardPending'); showIosBanner('Waiting for approval: use Send Back to return it', 'info'); return; }
             VIS_OUT_ID = id;
             tempPhotos.visOut = null;
             const inp = document.getElementById('visOutPhoto');
             inp.value = '';
-            inp.setAttribute('capture', hyd ? 'environment' : 'user');
-            document.getElementById('visOutTitle').textContent = hyd ? 'Hydra / JCB Out' : 'Visitor Out';
-            document.getElementById('visOutPhotoTitle').textContent = hyd ? 'Hydra / Vehicle Photo at Out *' : 'Visitor Photo at Out *';
-            document.getElementById('visOutSaveTxt').textContent = hyd ? 'Mark Hydra / JCB Out' : 'Mark Visitor Out';
-            document.getElementById('visOutRemarks').placeholder = hyd ? 'e.g. Work done, nothing taken out' : 'e.g. Meeting done, no material taken';
-            document.getElementById('visOutPhotoLabel').textContent = hyd ? 'Tap to capture the Hydra / JCB' : 'Tap to capture the visitor';
+            inp.setAttribute('capture', hyd || inw ? 'environment' : 'user');
+            document.getElementById('visOutTitle').textContent = hyd ? 'Hydra / JCB Out' : inw ? 'Inward Vehicle Out' : 'Visitor Out';
+            document.getElementById('visOutPhotoTitle').textContent = hyd ? 'Hydra / Vehicle Photo at Out *' : inw ? 'Vehicle Photo at Out (after unloading) *' : 'Visitor Photo at Out *';
+            document.getElementById('visOutSaveTxt').textContent = hyd ? 'Mark Hydra / JCB Out' : inw ? 'Mark Vehicle Out' : 'Mark Visitor Out';
+            document.getElementById('visOutRemarks').placeholder = hyd ? 'e.g. Work done, nothing taken out' : inw ? 'e.g. Material unloaded, vehicle empty' : 'e.g. Meeting done, no material taken';
+            document.getElementById('visOutPhotoLabel').textContent = hyd ? 'Tap to capture the Hydra / JCB' : inw ? 'Tap to capture the vehicle' : 'Tap to capture the visitor';
             document.getElementById('visOutPreviewBox').classList.add('hidden');
             document.getElementById('visOutRemarks').value = '';
-            document.getElementById('visOutWho').innerHTML = hyd ? `${hydThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+            document.getElementById('visOutWho').innerHTML = inw ? `${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
+                <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(inwRef(e))}</p>
+                <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${e.approver ? ' · Approver: ' + esc(e.approver) : ''}</p></div>`
+                : hyd ? `${hydThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                 <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
                 <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)}${e.approver ? ' · Approver: ' + esc(e.approver) : ''}</p>
                 <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${e.totalMinutes ? ' · Worked ' + esc(e.totalMinutes) + ' min' : ''}</p></div>`
@@ -3737,14 +3870,15 @@
             const e = gateEntries.find(x => x.id === VIS_OUT_ID);
             if (!e) { closeVisitorOut(); return; }
             const remarks = document.getElementById('visOutRemarks').value.trim();
-            const hyd = isHydra(e);
-            if (!tempPhotos.visOut) { showIosBanner(hyd ? 'Capture the Hydra / JCB photo at Out' : 'Capture the visitor photo at Out', 'error'); return; }
+            const hyd = isHydra(e), inw = isInward(e);
+            if (!tempPhotos.visOut) { showIosBanner(hyd ? 'Capture the Hydra / JCB photo at Out' : inw ? 'Capture the vehicle photo at Out' : 'Capture the visitor photo at Out', 'error'); return; }
             if (!remarks) { showIosBanner('Write the remarks', 'error'); document.getElementById('visOutRemarks').focus(); return; }
             e.status = 'OUT';
             e.outTime = new Date().toISOString();
             e.outPhoto = tempPhotos.visOut;
             e.outRemarks = remarks;
             e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            if (inw) e.inStage = 'EXITED';
             if (hyd) {
                 e.hydraStage = 'EXITED';
                 e.purpose = `${e.purpose || ''} • Exited Gate-2`;
@@ -3764,7 +3898,7 @@
             const a = needsApr(entry) ? visApr(entry) : null;
             if (!needsApr(entry)) { box.classList.add('hidden'); box.innerHTML = ''; return; }
             box.classList.remove('hidden');
-            const who = isHydra(entry) || isSample(entry) ? entry.approver : entry.host;
+            const who = isHydra(entry) || isSample(entry) || isInward(entry) ? entry.approver : entry.host;
             if (!a || a.status === 'PENDING') {
                 box.innerHTML = `<div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-center text-xs font-bold text-amber-800">Waiting for ${esc((a && a.host) || who)}'s approval: not valid until approved</div>`;
                 return;
@@ -3943,6 +4077,222 @@
         });
 
         // ==========================================
+        // 8D. INWARD APPROVAL: NEW ENTRY -> APPROVER (launcher PIN) -> ALLOW UNLOADING -> OUT WITH PHOTO
+        // ==========================================
+        /* INWARD tile -> three buttons, like the Hydra / JCB and the Visitor:
+             New Inward Entry   the Inward Material form (party, PO / PR, vehicle, bill + item photo, Dharam Kanta) +
+                                Whom to Approve (an ERP user, gateCombo over visHostOptions; the last one kept on the phone)
+                                -> Send for Approval. The request reaches the server with the entry (gate_entry_save,
+                                the same gate_visitor_approvals table; category INWARD) and the approver approves it on the
+                                launcher (launcher-visitor.js) with his own PIN, or rejects it.
+             Approval Pending   the decision (the same quick poll as the visitors); Approved -> Allow Unloading (inDoneAt,
+                                the vehicle may go in and unload; it moves to Existing Inward); Pending / Rejected -> Send
+                                Back (with a reason: status OUT, inStage SENT_BACK, the server drops the request).
+             Existing Inward    Inside: approved and unloading -> Out with the vehicle photo + remarks (the Visitor Out
+                                popup); Out: the last VIS_OUT_DAYS days.
+           The ERP's Inward form offers a gate Inward under Gate Entry No. only once it is APPROVED (gate_inward_list).
+           The decision (entry.visApproval) is SERVER-OWNED, as for a visitor. Inward entries from before this flow (no
+           needApproval) count as inside; HYD_NOSRV / VIS_NOMIG = a server without these approvals: Allow Unloading then
+           works without one, with a note. */
+        let INW_EXIST_TAB = 'in';
+        /* INWARD APPROVER LIST: Whom to Approve = the ERP's Dropdown Master key of THIS gate (erp_gate1InwApprover / erp_gate2InwApprover) (sales_dropdowns,
+           anon read like the ERP; values "NAME (EMP CODE)" picked there from the Employee Master). The Emp Code finds
+           the person's ERP login (VIS_HOSTS, and on the server gate_vis_host_) for the launcher approval; one without
+           a login is offered with a note: the Admin approves it. Read with the masters and when the form opens (every
+           5 min at most), kept on the phone for offline use. Empty list = every ERP user (visHostOptions), as before. */
+        var INW_AP;   // {at, values} | null; var + lazy read: the masters may load before this line ran
+        const INW_AP_KEY = 'gate2_inw_aplist_v1', INW_DD_KEY = GATE_ID === 'G1' ? 'erp_gate1InwApprover' : 'erp_gate2InwApprover';   // one list per gate
+        function inwApList() { if (INW_AP === undefined) INW_AP = readLS(INW_AP_KEY, null); return (INW_AP && INW_AP.values) || []; }
+        async function inwApLoad(force) {
+            inwApList();
+            if (!force && INW_AP && Date.now() - new Date(INW_AP.at).getTime() < 300000) return;
+            if (navigator.onLine === false) return;
+            try {
+                if (!gateSb) gateSb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+                const { data, error } = await gateSb.from('sales_dropdowns').select('id,value').eq('key', INW_DD_KEY).order('id');
+                if (error) return;
+                INW_AP = { at: new Date().toISOString(), values: (data || []).map(r => String(r.value || '').trim()).filter(Boolean) };
+                writeLS(INW_AP_KEY, INW_AP);
+                inwApHint();
+            } catch (e) { /* offline / no table: the last list (or every ERP user) stays */ }
+        }
+        function inwApOptions() {
+            const vals = inwApList();
+            if (!vals.length) return visHostOptions();
+            const users = (VIS_HOSTS && Array.isArray(VIS_HOSTS.hosts)) ? VIS_HOSTS.hosts : [];
+            const emps = GATE_MASTERS.hosts || [];
+            return vals.map(v => {
+                const m = /^(.*?)\s*\(([^()]+)\)\s*$/.exec(v);
+                const name = (m ? m[1] : v).trim(), emp = m ? m[2].trim() : '';
+                const u = users.find(x => emp && normKey(x.empCode) === normKey(emp)) || users.find(x => normKey(x.name) === normKey(name));
+                const em = emps.find(x => emp && normKey(x.empCode) === normKey(emp));
+                const dept = (u && u.dept) || (em && em.dept) || '', desig = (u && u.desig) || (em && em.desig) || '';
+                return {
+                    value: v, apName: name, id: u ? u.id : null, emp: emp || (u && u.empCode) || '', dept,
+                    sub: [emp, desig, dept].filter(Boolean).join(' · ') + (users.length && !u ? ' · no ERP login: the Admin approves' : ''),
+                    hay: [emp, desig, dept].filter(Boolean).join(' ')
+                };
+            });
+        }
+        function inwApHint() {
+            const h = document.getElementById('inApHint'); if (!h) return;
+            const n = inwApList().length;
+            h.textContent = n ? n + ' in the list (ERP Dropdown Master)' : 'Every ERP user (list not set in the ERP)';
+        }
+        const inwRef = e => (e.refType && e.refNo) ? e.refType + ': ' + e.refNo : String(e.host || '').split('|')[0].trim() || '-';
+        function inwThumb(e, cls) {
+            const f = photoOf(e, 'itemPhoto') ? 'itemPhoto' : 'billPhoto', src = photoOf(e, f);
+            if (!src && (e.photoKeys || []).some(k => k === 'itemPhoto' || k === 'billPhoto')) gateEnsurePhotos(e).then(got => { if (got) visRefreshUi(); });
+            return src ? `<img src="${src}" alt="" class="${cls} object-cover">`
+                : `<div class="${cls} bg-blue-100 text-blue-700 flex items-center justify-center text-lg"><i class="fa-solid fa-box-open"></i></div>`;
+        }
+        // badges of the tile / menu + whichever Inward list is open (called from visRefreshUi)
+        function inwRefreshUi() {
+            const pend = gateEntries.filter(isInwPending), inside = gateEntries.filter(isInwInside);
+            const ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
+            const set = (id, n) => { const b = document.getElementById(id); if (b) { b.textContent = n; b.classList.toggle('hidden', !n); } };
+            set('inwPendBadge', pend.length); set('inwInsideBadge', inside.length);
+            const sub = document.getElementById('inwPendSub');
+            if (sub) sub.textContent = ready ? `${ready} approved: press Allow Unloading` : "Waiting for the approver's PIN";
+            const mb = document.getElementById('inwMainBadge');
+            if (mb) {
+                const txt = ready ? ready + ' APPROVED' : pend.length ? pend.length + ' PENDING' : inside.length ? inside.length + ' INSIDE' : '';
+                mb.textContent = txt; mb.classList.toggle('hidden', !txt);
+                mb.classList.toggle('bg-emerald-600', !!ready); mb.classList.toggle('bg-amber-500', !ready && !!pend.length); mb.classList.toggle('bg-blue-600', !ready && !pend.length);
+            }
+            const active = id => { const v = document.getElementById(id); return v && v.classList.contains('active'); };
+            if (active('view-inwardPending')) renderInwardPending();
+            const ae = document.activeElement;
+            if (active('view-inwardExisting') && !(ae && ae.id === 'inwExistSearch')) renderInwardExisting();
+        }
+
+        // ── Approval Pending ──
+        function renderInwardPending() {
+            const box = document.getElementById('inwPendList'), note = document.getElementById('inwPendNote');
+            if (!box) return;
+            const rows = gateEntries.filter(isInwPending).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const offline = !GATE_USER || GATE_OFFLINE || navigator.onLine === false;
+            const msg = VIS_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin: run it in the Supabase SQL Editor). Until then Allow Unloading works without approval.'
+                : HYD_NOSRV ? 'The server has an older approval set-up: the Admin must run GATE2_VISITOR_APPROVAL_MIGRATION.sql and GATE1_UNIT1_MIGRATION.sql again for Inward approvals. Until then Allow Unloading needs no approval.'
+                : offline ? 'No internet: new entries are sent for approval as soon as the net is back.' : '';
+            note.textContent = msg; note.classList.toggle('hidden', !msg);
+            if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No inward is waiting for approval.</p>'; return; }
+            box.innerHTML = rows.map(e => {
+                const a = visApr(e), st = a ? a.status : '';
+                let badge, line;
+                if (!e._syncedAt) {
+                    badge = visBadge('Waiting to send', 'bg-gray-200 text-gray-700');
+                    line = 'On this phone only: it goes to ' + esc(e.approver) + ' with the next sync.';
+                } else if (!a) {
+                    badge = visBadge(hydNoApproval() ? 'No approval system' : 'Sending', 'bg-gray-200 text-gray-700');
+                    line = hydNoApproval() ? 'Server migration missing: Allow Unloading is allowed.' : 'Request is being made on the server...';
+                } else if (st === 'PENDING') {
+                    badge = visBadge('Approval Pending', 'bg-amber-100 text-amber-800');
+                    line = a.hostFound ? 'Waiting for ' + esc(a.host || e.approver) + ' (PIN on the launcher)' : esc(e.approver) + ' has no ERP login: the Admin can approve it.';
+                } else if (st === 'APPROVED') {
+                    badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '');
+                } else if (st === 'REJECTED') {
+                    badge = visBadge('Rejected', 'bg-red-100 text-red-700');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-');
+                } else {
+                    badge = visBadge(st || '-', 'bg-gray-200 text-gray-700');
+                    line = esc(a.remarks || '');
+                }
+                const canGo = st === 'APPROVED' || (hydNoApproval() && !a);
+                const acts = `<button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>`
+                    + (canGo ? `<button onclick="inwMarkDone('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-truck-ramp-box"></i> Allow Unloading</button>` : '')
+                    + (st === 'REJECTED' || st === 'PENDING' || !a ? `<button onclick="inwSendBack('${esc(e.id)}')" class="ios-btn px-3 py-2 rounded-xl bg-gray-100 text-gray-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-rotate-left"></i> Send Back</button>` : '');
+                return `<div class="rounded-2xl border ${st === 'APPROVED' ? 'border-emerald-300 bg-emerald-50/40' : st === 'REJECTED' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(inwRef(e))} · Approver: ${esc(e.approver || '-')}</p>
+                            <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">${acts}</div>
+                </div>`;
+            }).join('');
+        }
+
+        // Approved -> the vehicle may go in and unload; the entry moves to Existing Inward
+        function inwMarkDone(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || !isInwPending(e)) return;
+            if (!(visAprStatus(e) === 'APPROVED' || (hydNoApproval() && !visApr(e)))) { showIosBanner('Allow Unloading only after the approver approves', 'error'); return; }
+            e.inDoneAt = new Date().toISOString();
+            e.inDoneBy = `${appSettings.guardName} (${appSettings.shiftName})`;
+            e.inStage = 'INSIDE';
+            touchEntry(e);
+            showView('inwardExisting');
+            showIosBanner(`${e.id}: approved, unloading allowed`, 'success');
+        }
+
+        // Pending / rejected and the vehicle goes back: closed with a reason (status OUT, so the server drops the request)
+        async function inwSendBack(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || !isInwPending(e)) return;
+            const why = (window.IosDialog && IosDialog.prompt)
+                ? await IosDialog.prompt(`Send ${e.id} back without unloading? The vehicle leaves with the material. Write the reason.`, '')
+                : window.prompt(`Send ${e.id} back without unloading? Write the reason.`, '');
+            if (why == null) return;
+            if (!String(why).trim()) { showIosBanner('Write the reason to send it back', 'error'); return; }
+            e.status = 'OUT';
+            e.outTime = new Date().toISOString();
+            e.inStage = 'SENT_BACK';
+            e.outRemarks = String(why).trim();
+            e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            touchEntry(e);
+            showIosBanner(`${e.id} sent back without unloading`, 'success');
+        }
+
+        // ── Existing Inward ──
+        function inwExistTab(tab) { INW_EXIST_TAB = tab === 'out' ? 'out' : 'in'; renderInwardExisting(); }
+        function renderInwardExisting() {
+            const list = document.getElementById('inwExistList');
+            if (!list) return;
+            const words = String((document.getElementById('inwExistSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+            const hit = e => !words.length || words.every(w => [e.id, e.name, e.vehicle, e.approver, inwRef(e), e.storeRef, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
+            const inside = gateEntries.filter(isInwInside).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const out = gateEntries.filter(isInwRecentOut).sort((a, b) => new Date(b.outTime) - new Date(a.outTime));
+            document.getElementById('inwTabInN').textContent = '(' + inside.length + ')';
+            document.getElementById('inwTabOutN').textContent = '(' + out.length + ')';
+            const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
+            document.getElementById('inwTabIn').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (INW_EXIST_TAB === 'in' ? on : off);
+            document.getElementById('inwTabOut').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (INW_EXIST_TAB === 'out' ? on : off);
+            const rows = (INW_EXIST_TAB === 'in' ? inside : out).filter(hit);
+            if (!rows.length) {
+                list.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${INW_EXIST_TAB === 'in' ? 'No inward vehicle inside.' : 'No inward went out in the last ' + VIS_OUT_DAYS + ' days.'}</p>`;
+                return;
+            }
+            list.innerHTML = rows.map(e => {
+                const a = visApr(e), inTab = INW_EXIST_TAB === 'in';
+                const since = Math.max(0, Math.round((Date.now() - new Date(e.inDoneAt || e.inTime).getTime()) / 60000));
+                const dur = since >= 60 ? Math.floor(since / 60) + 'h ' + (since % 60) + 'm' : since + 'm';
+                const badge = inTab ? visBadge('Inside ' + dur, since > 1440 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')
+                    : visBadge(e.inStage === 'SENT_BACK' ? 'Sent back' : 'Out', e.inStage === 'SENT_BACK' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700');
+                return `<div class="rounded-2xl border border-gray-200 bg-white p-3 space-y-2.5">
+                    <div class="flex items-start gap-3">
+                        ${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(e.storeRef || '')}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(inwRef(e))}${e.approver ? ' · Approved by ' + esc((a && a.decidedBy) || e.approver) : ''}</p>
+                            <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${!inTab && e.outTime ? ' · Out ' + esc(formatDateTimeShort(e.outTime)) : ''}${!inTab && e.outRemarks ? ' · ' + esc(e.outRemarks) : ''}</p>
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>
+                        ${inTab ? `<button onclick="openVisitorOut('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>` : ''}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // ==========================================
         // 8B. HYDRA / JCB: APPROVAL (like the Visitor), MINUTE TIMER, STORE ENTRY & OUT WITH PHOTO
         // ==========================================
         /* Hydra / JCB tile -> three buttons, like the Visitor:
@@ -3961,7 +4311,7 @@
         const HYD_APPROVER_KEY = 'gate2_hyd_approver_v1';   // the last approver chosen on this phone (most days the same person)
         const isHydra = e => !!e && e.category === 'HYDRA / JCB';
         // an entry the launcher decides on (Whom to Meet for a visitor, the Approver for a Hydra)
-        const needsApr = e => (isVisitor(e) || isHydra(e) || isSample(e)) && !!e.needApproval;
+        const needsApr = e => (isVisitor(e) || isHydra(e) || isSample(e) || isInward(e)) && !!e.needApproval;
         const isHydPending = e => isHydra(e) && e.needApproval && e.status === 'IN' && !e.hydDoneAt;
         const isHydInside = e => isHydra(e) && e.status === 'IN' && (!e.needApproval || !!e.hydDoneAt);
         const isHydRecentOut = e => isHydra(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
@@ -4963,6 +5313,11 @@
                     const pend = isSmpPending(entry);
                     markOutBtn.innerHTML = `<i class="fa-solid ${pend ? 'fa-user-clock' : 'fa-rotate-left'}"></i> ${pend ? 'Approval Pending' : 'Return · Outward'}`;
                     markOutBtn.onclick = () => { closePassModal(); if (pend) showView('samplePending'); else smpOpenReturn(entry.id); };
+                } else if (isInward(entry)) {
+                    // waiting for approval -> Approval Pending; approved / older one -> Out with the vehicle photo
+                    const pend = isInwPending(entry);
+                    markOutBtn.innerHTML = `<i class="fa-solid ${pend ? 'fa-user-clock' : 'fa-right-from-bracket'}"></i> ${pend ? 'Approval Pending' : 'Mark Out'}`;
+                    markOutBtn.onclick = () => { closePassModal(); if (pend) showView('inwardPending'); else openVisitorOut(entry.id); };
                 } else if (isHydra(entry) && (isHydPending(entry) || entry.hydraStage !== 'STORE_APPROVED')) {
                     // waiting for approval -> Approval Pending; at work / store entry pending -> Existing Hydra / JCB
                     const pend = isHydPending(entry);
@@ -4995,7 +5350,7 @@
             const photoList = [];
             const add = (f, label) => { const src = photoOf(entry, f); if (src) photoList.push({ label, src }); };
             add('billPhoto', 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', entry.passPdf ? 'Store Bill' : 'Gate Pass Photo');
-            add('visitorPhoto', 'Visitor Photo'); add('vehiclePhoto', 'Vehicle Photo');
+            add('visitorPhoto', entry.category === 'EMPLOYEE' ? 'Employee Photo' : 'Visitor Photo'); add('vehiclePhoto', 'Vehicle Photo');
             add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', isHydra(entry) ? 'Hydra at Out' : isSample(entry) ? 'Item at Return' : 'Visitor at Out');
 
             const photosBox = document.getElementById('modalPhotosBox');
@@ -5122,6 +5477,7 @@
             if (!entry) return;
             if (isVisitor(entry)) { openVisitorOut(id); return; }   // a visitor goes out only with a photo + remarks
             if (isHydra(entry)) { closeQrVerifyModal(); openVisitorOut(id); return; }
+            if (isInward(entry)) { closeQrVerifyModal(); if (isInwPending(entry)) showView('inwardPending'); else openVisitorOut(id); return; }   // Out with the vehicle photo
             if (isSample(entry)) { closeQrVerifyModal(); if (isSmpPending(entry)) showView('samplePending'); else smpOpenReturn(id); return; }   // its own Return (Outward No. + item photo)   // so does a Hydra / JCB (or it is sent to its next step)
             if (dkNoMarkOut(entry)) { showIosBanner('A Dharam Kanta slip has no Mark Out: make its Outward Dispatch Packing slip (or delete the slip).', 'error'); return; }
             entry.status = 'OUT';
@@ -5364,7 +5720,7 @@
             const open = gateEntries.find(e => e.category === 'INWARD' && e.status === 'IN' && refs.some(r => (e.host || '').toUpperCase().indexOf(r.toUpperCase()) >= 0));
             if (open) {
                 openPassModal(open.id);
-                showIosBanner(`${o.no}: gate Inward ${open.id} of this ${o.po ? 'PO' : 'PR'} is inside. Mark Out when the vehicle leaves.`, 'info');
+                showIosBanner(isInwPending(open) ? `${o.no}: gate Inward ${open.id} is waiting for approval` : `${o.no}: gate Inward ${open.id} of this ${o.po ? 'PO' : 'PR'} is inside. Mark Out when the vehicle leaves.`, 'info');
                 return;
             }
             showView('inwardForm');
@@ -5614,8 +5970,9 @@
                 info: '<i class="fa-solid fa-circle-info text-blue-400"></i>'
             };
 
-            banner.className = 'ios-glass-dark text-white px-4 py-2.5 rounded-full shadow-2xl flex items-center gap-2.5 text-xs font-semibold tracking-wide ios-spring border border-white/10';
-            banner.innerHTML = `${iconMap[type] || iconMap.info} <span class="truncate">${message}</span>`;
+            // never wider than the screen: a long message wraps (it used to run off both edges, cut off)
+            banner.className = 'ios-glass-dark text-white px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-2.5 text-xs font-semibold tracking-wide ios-spring border border-white/10 max-w-[calc(100vw-24px)]';
+            banner.innerHTML = `${iconMap[type] || iconMap.info} <span class="min-w-0 break-words leading-snug">${message}</span>`;
 
             container.appendChild(banner);
             setTimeout(() => {
@@ -5627,7 +5984,7 @@
         }
     </script>
     <!-- Between Gate-1 and Gate-2 (unit transfer, visitor moving units, vehicle cross-check): shared by both gates -->
-    <script src="gate-link.js?v=20261121b"></script>
+    <script src="gate-link.js?v=20261121e"></script>
     <script src="app-back.js"></script>
 </body>
 </html>
