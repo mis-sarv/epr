@@ -867,8 +867,22 @@ a.app:active{transform:scale(.965);}
 const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 
+/* NETWORK RETRY: a short drop on the PC or phone (Wi-Fi waking up, a DNS / antivirus hiccup) made the browser
+   answer "TypeError: Failed to fetch" while the internet was otherwise fine; the server never even saw those
+   requests (no 5xx in its logs). A request that got NO answer at all is sent again after 0.7 s and 1.8 s; any
+   real answer (also an error) is returned as it is. */
+function sbFetchRetry(input, init){
+  const waits = [700, 1800];
+  let n = 0;
+  const go = () => fetch(input, init).catch(err => {
+    if (!(err instanceof TypeError) || n >= waits.length || (init && init.signal && init.signal.aborted)) throw err;
+    return new Promise(r => setTimeout(r, waits[n++])).then(go);
+  });
+  return go();
+}
 const SB = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON, {
-  auth: { persistSession: false, autoRefreshToken: false }
+  auth: { persistSession: false, autoRefreshToken: false },
+  global: { fetch: sbFetchRetry }
 });
 
 /* The same keys store-core.js reads and writes. Renaming them would stop
@@ -1018,6 +1032,8 @@ let USERS = [], TABVIS = null;
 const esc = s => String(s==null?'':s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 function showErr(m){ const e=$('err'); e.innerHTML=m; e.style.display='block'; }
 function hideErr(){ $('err').style.display='none'; }
+// clears the box only when it is showing a network message (a retry got through)
+function hideErrIfNet(){ const e = $('err'); if (e && e.style.display !== 'none' && /reach the server|Failed to fetch/i.test(e.textContent || '')) hideErr(); }
 // Small helpers; all three cards use the same error / success boxes.
 const setBox = (id, html) => { const e=$(id); e.innerHTML=html||''; e.style.display=html?'block':'none'; };
 
@@ -1130,6 +1146,13 @@ function allowedAppKeys(roles, appAccess){
 }
 
 /* ── Masters ──────────────────────────────────────────────────────── */
+/* The user list behind the Employee Code box. MASTERS_OK = it was read; until then a login must not say
+   "No active account" (that was only a failed read). A failed read is tried again in the background. */
+let MASTERS_OK = false, mastersRetryT = 0;
+function mastersRetrySoon(){
+  clearTimeout(mastersRetryT);
+  mastersRetryT = setTimeout(() => { if (!MASTERS_OK) loadMasters().then(() => { hideErrIfNet(); }).catch(() => mastersRetrySoon()); }, 5000);
+}
 async function loadMasters(){
   const [u, s] = await Promise.all([
     SB.from('app_users')
@@ -1137,8 +1160,9 @@ async function loadMasters(){
       .order('user_name'),
     SB.from('app_settings').select('key,value').eq('key','tab_visibility')
   ]);
-  if (u.error) throw u.error;
+  if (u.error){ mastersRetrySoon(); throw u.error; }
   USERS = (u.data || []).filter(x => x.is_active !== false);
+  MASTERS_OK = true;
   TABVIS = (!s.error && s.data && s.data[0] && s.data[0].value) || null;
 
   /* The dropdown value is the emp_code (that is the login username), and
@@ -1245,6 +1269,11 @@ async function doLogin(){
   const nm  = $('nameBox').value.trim();
   const pin = $('pinBox').value;
   if (!nm)  return showErr('Please enter your Employee Code');
+  // the list was never read (network): read it now, and say what really went wrong if that fails again
+  if (!MASTERS_OK){
+    try { await loadMasters(); }
+    catch (e) { return showErr(explainErr(e, 'app_users') + '<br><small>Your Employee Code was not checked yet. Tap Login again in a moment.</small>'); }
+  }
   const list = findUsers(nm);
   if (!list.length)
     return showErr('No active account found for "' + esc(nm) + '". New here? Tap <b>New Account</b> below.');
@@ -1960,35 +1989,65 @@ async function doLogout(){
   /* Already logged in? Then go straight to the buttons; no PIN again.
      Fresh roles / access come from the session, so any change the Admin
      made in between applies immediately. */
+  /* KEEP THE LOGIN ON A NETWORK ERROR. This used to read every failed check as "session ended" and delete the
+     token, so a one-second network drop while opening the launcher logged the user out; logging in again then
+     made one more session, and the server keeps only the newest 3 per user (erp_app_login, v_keep), so the
+     user's phone or other PC was pushed out next: the "auto logout". Now only the server's own answer
+     (success:false: ended / revoked / expired / inactive) logs out. With no answer the token is kept, the
+     login card says so, and the check is tried again every 5 s (and at once when the PC is back online). */
+  const openHome = d => {
+    const su = d.user || {};
+    hideErrIfNet();
+    renderHome({
+      id: su.id, name: su.name, primary_role: su.primary_role,
+      roles: su.roles || [], app_access: su.app_access || {},
+      allowed_apps: su.allowed_apps || [],
+      cmp_profile_id: su.cmp_profile_id || null,
+      pk_profile_id: su.pk_profile_id || null
+    });
+    /* The dropdown fills quietly in the background so the login screen
+       works immediately after a Logout. */
+    loadMasters().then(() => addNewAppsToSession(tok, su)).catch(()=>{});
+  };
+  const checkSession = async () => {
+    let r;
+    try { r = await SB.rpc('erp_app_session', { p_token: tok }); } catch (e) { return { net: e }; }
+    if (r.error) return { net: r.error };
+    return { d: r.data || {} };
+  };
   if (tok){
-    try{
-      const r = await SB.rpc('erp_app_session', { p_token: tok });
-      const d = (!r.error && r.data) || {};
-      if (d.success){
-        const su = d.user || {};
-        renderHome({
-          id: su.id, name: su.name, primary_role: su.primary_role,
-          roles: su.roles || [], app_access: su.app_access || {},
-          allowed_apps: su.allowed_apps || [],
-          cmp_profile_id: su.cmp_profile_id || null,
-          pk_profile_id: su.pk_profile_id || null
-        });
-        /* The dropdown fills quietly in the background so the login screen
-           works immediately after a Logout. */
-        loadMasters().then(() => addNewAppsToSession(tok, su)).catch(()=>{});
-        return;
-      }
-      // Session ended or closed: clean up and show the login.
+    const c = await checkSession();
+    if (c.d && c.d.success){ openHome(c.d); return; }
+    if (c.d){
+      // The server says the session is over: clean up and show the login, with the reason
       [K_SSO,K_ROLE,K_ROLES,K_USER,K_SALES].forEach(k => { try{ localStorage.removeItem(k); }catch(e){} });
-    }catch(e){ /* network failed; the login screen below */ }
+      const GW = { SESSION_REVOKED:'Your session was closed: this login was used on more devices than allowed (3 at a time), so the oldest one ended. Please log in again.',
+                   SESSION_EXPIRED:'Your session expired. Please log in again.', USER_INACTIVE:'Your account has been deactivated by the Admin. Please contact them.' };
+      if (!gateNote && GW[c.d.error]) gateNote = GW[c.d.error];
+    } else {
+      // No answer: the login stays. Show the login card with the reason, and keep trying.
+      let tries = 0, done = false;
+      const again = async () => {
+        if (done || !localStorage.getItem(K_SSO) || localStorage.getItem(K_SSO) !== tok) { done = true; return; }
+        const c2 = await checkSession();
+        if (c2.d && c2.d.success){ done = true; openHome(c2.d); return; }
+        if (c2.d){ done = true; [K_SSO,K_ROLE,K_ROLES,K_USER,K_SALES].forEach(k => { try{ localStorage.removeItem(k); }catch(e){} }); hideErrIfNet(); return; }
+        if (++tries < 60) setTimeout(again, 5000);
+      };
+      window.addEventListener('online', () => { tries = 0; again(); });
+      gateNote = explainErr(c.net, 'erp_app_session')
+        + '<br><small>You are still logged in on this device. Trying again by itself… <button type="button" onclick="location.reload()" style="margin-left:6px;padding:3px 10px;border-radius:8px;border:1px solid currentColor;background:transparent;color:inherit;font:inherit;cursor:pointer;">Retry now</button></small>';
+      setTimeout(again, 5000);
+    }
   }
 
   try{
     await loadMasters();
     showLogin();
   }catch(e){
+    const hadNote = !!gateNote;          // e.g. "still logged in, trying again": that message stays on top
     showLogin();
-    showErr(e && e.code === '42501'
+    if (!hadNote) showErr(e && e.code === '42501'
       ? ('No permission to read the user list. Ask the Admin to run section 6 of <b>SINGLE_LOGIN_MIGRATION.sql</b>.'
          + '<br><small style="opacity:.85;">' + esc(e.message || '') + ' <b>[42501]</b></small>')
       : explainErr(e, 'app_users'));

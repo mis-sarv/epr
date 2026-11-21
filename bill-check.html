@@ -247,6 +247,12 @@ button.cell:active,.cell.tap:active{background:var(--fill)}
 .pipe-th i{display:block;height:6px;border-radius:3px;background:var(--green)}
 .pipe-th i:nth-child(2){background:var(--blue);width:80%}.pipe-th i:nth-child(3){background:var(--fill2);width:65%}.pipe-th i:nth-child(4){background:var(--fill2);width:50%}
 .vf .pipe-th{padding:0 5px;gap:4px}.vf .pipe-th i{height:4px}
+.dlrow{display:flex;flex-wrap:wrap;gap:8px;padding:0 16px 12px}
+.dlrow .btn{flex:1 1 140px;width:auto;margin:0}
+.vdl{flex:none;height:30px;padding:0 13px;border-radius:15px;background:rgba(255,255,255,.16);color:#fff;font-size:14px;font-weight:600;display:inline-flex;align-items:center;gap:6px}
+.pnx{display:inline-flex;align-items:center;gap:6px}
+.pskip{display:inline-flex;align-items:center;height:22px;padding:0 10px;border-radius:11px;background:var(--fill);color:var(--red);font-size:12.5px;font-weight:600;cursor:pointer}
+.pskip:active{opacity:.6}
 .att-pipe-h{margin:6px 16px 0;padding-top:12px;border-top:.5px solid var(--sep);font-size:13px;text-transform:uppercase;color:var(--label2);letter-spacing:-.003em;display:flex;align-items:center;gap:8px}
 .att-pipe-h .n{background:var(--fill);border-radius:9px;padding:0 7px;font-size:12px;color:var(--label2);text-transform:none}
 .step{position:relative;display:flex;gap:13px;padding:10px 16px}
@@ -588,7 +594,13 @@ function heldForMe(r){
 const isEa = store => canDo('EA', store);
 const anyEa = () => !ISSUE_MODE && (isEa('STORE 1') || isEa('STORE 2'));
 const md1Ok = r => { const x = stepOf(r, 'MD1'); return !!x && x.status === 'OKAY'; };
-const accVisible = r => ISSUE_MODE || (isEa(r.store) && md1Ok(r));
+// the EA, and the Accounts Check (it comes after MD-1), see the Accountant Copy once MD-1 is OKAY
+const accVisible = r => ISSUE_MODE || ((isEa(r.store) || canDo('AC', r.store)) && md1Ok(r));
+/* AC MODE: the bill waits at the user's Accounts Check step. Its attachments are then only what that step
+   needs: Accountant Copy, the Bill Check Pipeline and the Actual Bill (in that order); each can be downloaded
+   (sheet buttons + the viewer's Download). Every other step / bill shows the full set as before. */
+const acMode = r => { if (ISSUE_MODE || !r || r.kind !== 'inward' && r.kind !== 'outward') return false; const m = mineStep(r); return !!m && m.step.code === 'AC'; };
+const AC_GROUPS = ['ACCOUNT', 'BILL'];
 
 /* ── Print Account Copy (EA only) ─────────────────────────────────────────
    Every bill past MD-1 (not cancelled) of a store where the user is EA, series by series (seqSeries / seqCmp, the check order),
@@ -657,6 +669,19 @@ function saveBlob(blob, name){
   a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
+/* PRINT SKIP: the EA may skip the bill that is next to print in its series (a Skip button before "Print next" in
+   the list, and in the bill's menu), so the next one opens. A skipped bill is not printed but can be printed or
+   downloaded later any time (Print again). Saved as acc_print_mark SKIP, like a bill without a copy. */
+async function accSkip(r){
+  if (!r || S.printed[r.key]) return;
+  const lk = printLockOf(r);
+  if (lk) return toast('Print or skip ' + lk.no + ' first', true);
+  const c = await iosAlert({ title:'Skip ' + (r.no || '') + '?', message:'It is not printed now; the next bill of its series can then be printed. You can still print it later from this list.', buttons:[{ t:'Cancel' }, { t:'Skip', s:'d' }] });
+  if (c.i !== 1) return;
+  try { await markPrinted(r, 'SKIP'); toast((r.no || '') + ' skipped'); buzz(8); }
+  catch (e) { toast(e.message || String(e), true); }
+  paintAll();
+}
 async function accPrintAct(r){
   const lk = printLockOf(r);
   if (lk) {
@@ -666,7 +691,8 @@ async function accPrintAct(r){
   }
   const done = S.printed[r.key];
   const i = await iosMenu({ title:'Accountant Copy · ' + (r.no || ''), message:done ? 'Printed ' + (done.times || 1) + '× · last ' + fmtStamp(done.lastAt) + (done.lastBy ? ' by ' + done.lastBy : '') : (r.party || ''),
-    items:[{ t:done ? 'Print again' : 'Print' }, { t:done ? 'Download again' : 'Download PDF' }, { t:'Open the bill' }] });
+    items:[{ t:done ? 'Print again' : 'Print' }, { t:done ? 'Download again' : 'Download PDF' }, { t:'Open the bill' }].concat(done ? [] : [{ t:'Skip (do not print)', s:'d' }]) });
+  if (i === 3) return accSkip(r);
   if (i === 2) return openRecord(r.key);
   if (i !== 0 && i !== 1) return;
   busy(true);
@@ -774,8 +800,9 @@ const ATT_ORDER = ['PR', 'PO', 'BILL', 'STORE', 'ACCOUNT', 'YARN', 'UNLOAD', 'FI
 async function loadAttachments(r, force){
   let a = S.att[r.key];
   // the set is made again when the Accountant Copy has to appear / go (MD-1 passed it meanwhile)
-  if (a && !force && a.state !== 'error' && a.accShown === accVisible(r)) return a;
-  a = S.att[r.key] = { state:'loading', slides:[], errs:[], accShown:accVisible(r) };
+  if (a && !force && a.state !== 'error' && a.accShown === accVisible(r) && a.acMode === acMode(r)) return a;
+  a = S.att[r.key] = { state:'loading', slides:[], errs:[], accShown:accVisible(r), acMode:acMode(r) };
+  const ac = a.acMode;
   paintSheet();
   try {
     const q = await rest((r.kind === 'inward' ? 'inward_entries' : 'outward_entries') + '?select=*&id=eq.' + encodeURIComponent(r.id));
@@ -786,12 +813,13 @@ async function loadAttachments(r, force){
     const run = (id, fn) => fn(r, ctx).then(x => ({ id, x }), e => ({ id, e: e.message || String(e) }));
     const out = {};
     const inw = r.kind === 'inward';
-    const first = await Promise.all([run('STORE', attStore), run('ACCOUNT', attAccount), run('BILL', attBill),
-      inw ? run('FIELD', attField) : Promise.resolve(null), inw ? run('PO', attPo) : Promise.resolve(null), inw ? run('YARN', attYarn) : Promise.resolve(null)]);
+    const skip = Promise.resolve(null);
+    const first = await Promise.all([ac ? skip : run('STORE', attStore), run('ACCOUNT', attAccount), run('BILL', attBill),
+      inw && !ac ? run('FIELD', attField) : skip, inw && !ac ? run('PO', attPo) : skip, inw && !ac ? run('YARN', attYarn) : skip]);
     first.forEach(o => { if (o) out[o.id] = o; });
-    if (inw) { const [u, pr] = await Promise.all([run('UNLOAD', attUnload), run('PR', attPr)]); out.UNLOAD = u; out.PR = pr; }
+    if (inw && !ac) { const [u, pr] = await Promise.all([run('UNLOAD', attUnload), run('PR', attPr)]); out.UNLOAD = u; out.PR = pr; }
     const slides = [];
-    ATT_ORDER.forEach(id => {
+    (ac ? AC_GROUPS : ATT_ORDER).forEach(id => {
       const o = out[id]; if (!o) return;
       const label = ATT_LABEL[id](r);
       if (o.e) { a.errs.push(label + ': ' + o.e); return; }
@@ -803,7 +831,7 @@ async function loadAttachments(r, force){
     // The Bill Check Pipeline slide (history, remarks, comments): not an attachment, never counted as "to look at" (needSeen)
     {
       const lastOf = g => { let k = -1; slides.forEach((s, i) => { if (s.group === g) k = i; }); return k; };
-      const at = Math.max(lastOf('STORE'), lastOf('BILL'), lastOf('PO'), lastOf('PR')) + 1;
+      const at = ac ? lastOf('ACCOUNT') + 1 : Math.max(lastOf('STORE'), lastOf('BILL'), lastOf('PO'), lastOf('PR')) + 1;
       slides.splice(at, 0, { type:'pipe', group:'PIPE', label:'Pipeline', pos:1, of:1, caption:'Bill check pipeline · every step with its history, remarks and comments' });
     }
     slides.forEach((s, i) => { s.n = i; });
@@ -939,6 +967,35 @@ function pipeSlideHtml(r){
     + (db ? ' · Debit Note ' + esc(db.status === 'VERIFIED' ? 'verified' : 'raised') : '') + (nc ? ' · ' + nc + ' comment' + (nc > 1 ? 's' : '') : '')
     + (CUR.hist == null ? ' · loading history…' : '') + '</div>' + pipeTimeline(r);
 }
+/* DOWNLOAD: a PDF attachment as a file (fetched as a blob, so it is saved, not opened; where the browser /
+   WebView cannot save a blob it is opened instead), the Pipeline as a print-ready page (Save as PDF). */
+const fileBase = r => String(r.no || 'bill').replace(/[^\w.-]+/g, '_');
+async function dlUrl(url, name){
+  try {
+    const resp = await fetch(url); if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    const b = await resp.blob(), href = URL.createObjectURL(b), aEl = document.createElement('a');
+    aEl.href = href; aEl.download = name; document.body.appendChild(aEl); aEl.click();
+    setTimeout(() => { URL.revokeObjectURL(href); aEl.remove(); }, 4000);
+    toast('Downloading ' + name);
+  } catch (e) { window.open(url, '_blank', 'noopener'); }
+}
+function dlPipeline(r){
+  const w = window.open('', '_blank'); if (!w) { toast('Allow pop-ups to save the pipeline', true); return; }
+  const css = [...document.querySelectorAll('style')].map(x => x.textContent).join('\n');
+  w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + esc(fileBase(r)) + '_Pipeline</title><style>' + css
+    + '</style><style>body{background:#fff;color:#000;padding:16px;max-width:760px;margin:0 auto}.vpipe{max-height:none;overflow:visible;background:#fff;color:#000}.step .cm button{display:none}</style></head><body>'
+    + '<div class="vpipe">' + pipeSlideHtml(r) + '</div><script>setTimeout(function(){print()},400)<\/script></body></html>');
+  w.document.close();
+}
+function dlSlide(r, s){
+  if (!s) return;
+  if (s.type === 'pipe') return dlPipeline(r);
+  if (s.open) return dlUrl(s.open, fileBase(r) + '_' + String(s.label || 'attachment').replace(/[^\w.-]+/g, '_') + '.pdf');
+  if (s.type === 'img' && s.src) { const aEl = document.createElement('a'); aEl.href = s.src; aEl.download = fileBase(r) + '_' + String(s.label || 'photo').replace(/[^\w.-]+/g, '_') + '_' + s.pos + '.jpg'; document.body.appendChild(aEl); aEl.click(); aEl.remove(); return; }
+  toast('Nothing to download for this one', true);
+}
+// one file per document (all pages of a PDF are one file): the first slide of each group
+function dlGroup(r, g){ const a = S.att[r.key]; const s = a && a.slides.find(x => x.group === g); if (s) dlSlide(r, s); else toast('Not loaded yet', true); }
 /* A PDF page as a canvas: small for the strip, sharp for the viewer. */
 async function pdfCanvas(s, cssW){
   const page = await s.doc.getPage(s.page), vp1 = page.getViewport({ scale:1 });
@@ -992,12 +1049,12 @@ function rowHtml(x, i){
   const lk = x.print ? printLockOf(r) : lockOf(r), pr = x.print ? S.printed[r.key] : null;
   const hs = x.view ? stageOf(r) : null, hx = hs && hs.step ? stepOf(r, hs.step.code) : null;
   const tags = (SAVING[r.key] ? '<span class="pill blue">Saving…</span>' : '') + (lk ? '<span class="pill gray">Locked</span>' : '')
-    + (x.print && !lk && !pr ? '<span class="pill blue">Print next</span>' : '') + (pr ? '<span class="pill ' + (pr.how === 'SKIP' ? 'gray">Skipped' : 'ok">Printed' + ((pr.times || 1) > 1 ? ' ×' + pr.times : '')) + '</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
+    + (x.print && !lk && !pr ? '<span class="pnx"><span class="pskip" role="button" data-pskip="' + esc(r.key) + '">Skip</span><span class="pill blue">Print next</span></span>' : '') + (pr ? '<span class="pill ' + (pr.how === 'SKIP' ? 'gray">Skipped' : 'ok">Printed' + ((pr.times || 1) > 1 ? ' ×' + pr.times : '')) + '</span>' : '') + (x.hold || x.view ? '<span class="pill hold">On hold</span>' : '') + (x.view ? '<span class="pill gray">View only</span>' : '') + (r.cancelled ? '<span class="pill red">Cancelled</span>' : '')
     + (db ? '<span class="pill red">' + (db.status === 'VERIFIED' ? 'Debit ✓' : 'Debit') + '</span>' : '');
   const hl = db && db.status === 'RAISED' ? '<div class="dbn">Debit: ' + esc(db.reason || '') + (db.amount != null ? ' · ₹' + esc(String(db.amount)) : '') + '</div>' : '';
   return '<button class="cell rec' + (lk ? ' locked' : '') + '" style="--i:' + Math.min(i, 14) + '" data-open="' + esc(r.key) + '">'
     + '<span class="ico" style="background:' + look[1] + '">' + look[0] + '</span>'
-    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? (x.print ? 'Print ' : 'Check ') + lk.no + ' first' : pr ? (pr.how === 'SKIP' ? 'Skipped (no Accountant Copy)' : 'Printed ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '')) : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
+    + '<span class="mid"><div class="t">' + esc(r.no || '—') + '</div><div class="s">' + esc(lk ? (x.print ? 'Print ' : 'Check ') + lk.no + ' first' : pr ? (pr.how === 'SKIP' ? 'Skipped ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '') : 'Printed ' + fmtStamp(pr.lastAt) + (pr.lastBy ? ' · ' + pr.lastBy : '')) : hx ? 'Held at ' + hs.step.label + (hx.remarks ? ': “' + hx.remarks + '”' : '') : (r.party || r.items || '—')) + '</div><div class="pdots">' + dots + '</div>' + hl + '</span>'
     + '<span class="end"><span class="d">' + esc(fmtDate(r.date)) + '</span>' + (fmtAmt(r.amount) ? '<span class="a">' + esc(fmtAmt(r.amount)) + '</span>' : '') + tags + '</span>'
     + '<span class="chev">' + IC.chev + '</span></button>';
 }
@@ -1177,7 +1234,7 @@ async function openRecord(key){
 async function refreshAtt(r){
   const a = S.att[r.key];
   if (!a || a.state !== 'ready') return loadAttachments(r, !!a);
-  if (a.accShown !== accVisible(r)) { S.seen[r.key] = new Set(); return loadAttachments(r, true); }
+  if (a.accShown !== accVisible(r) || a.acMode !== acMode(r)) { S.seen[r.key] = new Set(); return loadAttachments(r, true); }
   try {
     const d = await rpc('acc_get', { p_kind:r.kind, p_record_id:String(r.id) });
     if (CUR && CUR.r === r) CUR.acc = d.row || null;
@@ -1286,6 +1343,12 @@ function paintSheet(){
   if (!a || a.state === 'loading') h += '<div class="film">' + [0, 1, 2, 3].map(() => '<div class="th"><div class="im sk"></div></div>').join('') + '</div><div class="note" style="padding:0 16px 12px">Collecting the PDF, bill and photos…</div>';
   else {
     if (a.slides.length) h += '<div class="film">' + a.slides.map(s => '<button class="th' + (seenSet(r.key).has(s.n) ? ' seen' : '') + '" data-view="' + s.n + '"><div class="im" data-th="' + s.n + '"><span class="tick">' + IC.check + '</span>' + ((n => n ? '<span class="cmb" title="Comments">' + n + '</span>' : '')((CUR.cmts || []).filter(c => c.attKey === attKey(s)).length)) + '</div><div class="lb">' + esc(s.label + (s.of > 1 ? ' ' + s.pos : '')) + '</div></button>').join('') + '</div>';
+    if (a.acMode) {
+      const has = g => a.slides.some(x => x.group === g);
+      h += '<div class="note" style="padding:0 16px 8px">Accounts Check: only the Accountant Copy, the Pipeline and the Actual Bill.</div>'
+        + '<div class="dlrow">' + [['ACCOUNT', 'Accountant Copy'], ['PIPE', 'Pipeline'], ['BILL', 'Actual Bill']].filter(x => has(x[0]))
+          .map(x => '<button class="btn gray" data-dlg="' + x[0] + '">Download ' + esc(x[1]) + '</button>').join('') + '</div>';
+    }
     (a.empty || []).forEach(e => { h += '<div class="kv"><span>' + esc(e.label) + '</span><span style="color:var(--orange)">' + esc(e.text) + '</span></div>'; });
     a.errs.forEach(e => { h += '<div class="kv"><span style="color:var(--red)">Not loaded</span><span>' + esc(e) + '</span></div>'; });
     if (si.total) h += '<div class="prog"><div class="tx"><span>Looked at <b>' + si.n + '</b> of ' + si.total + '</span><span style="color:' + (si.n >= si.total ? 'var(--green)' : 'var(--label2)') + '">' + (si.n >= si.total ? 'All seen' : (si.total - si.n) + ' to go') + '</span></div><div class="bar"><i style="width:' + Math.round(si.n * 100 / si.total) + '%"></i></div></div>'
@@ -1665,7 +1728,7 @@ function openViewer(r, start, onDone){
   el.innerHTML = '<div class="vbar"><button class="nbtn" data-x="1">' + IC.back + '<span>Done</span></button><div class="vt"><b data-t="1"></b><small data-s="1"></small></div><span style="min-width:70px;display:flex;justify-content:flex-end"><button class="vgo" data-go="1">Bill Check</button></span></div>'
     + '<div class="car" id="car">' + slides.map(s => '<div class="vs" data-n="' + s.n + '"></div>').join('') + '</div>'
     + '<button class="vnav l" data-nv="-1" aria-label="Previous">' + IC.back + '</button><button class="vnav r" data-nv="1" aria-label="Next" style="transform:translateY(-50%) scaleX(-1)">' + IC.back + '</button>'
-    + '<div class="vfoot"><div class="vcap" data-c="1"></div><div class="vcmrow"><button class="vcm" data-cm="1">' + IC.cmt + '<span>Comment</span><span class="n" data-cmn="1" hidden></span></button><span class="vcml" data-cml="1"></span></div><div class="vfilm">' + slides.map(s => '<button class="vf' + (ss.has(s.n) ? ' seen' : '') + '" data-f="' + s.n + '"><span class="tk"></span></button>').join('') + '</div></div>';
+    + '<div class="vfoot"><div class="vcap" data-c="1"></div><div class="vcmrow"><button class="vdl" data-dl="1">Download</button><button class="vcm" data-cm="1">' + IC.cmt + '<span>Comment</span><span class="n" data-cmn="1" hidden></span></button><span class="vcml" data-cml="1"></span></div><div class="vfilm">' + slides.map(s => '<button class="vf' + (ss.has(s.n) ? ' seen' : '') + '" data-f="' + s.n + '"><span class="tk"></span></button>').join('') + '</div></div>';
   $('layer').appendChild(el);
   const l = { kind:'viewer', el, onClose:() => { if (onDone) onDone(); if (CUR) paintSheet(); } };
   pushLayer(l); requestAnimationFrame(() => requestAnimationFrame(() => el.classList.add('in')));
@@ -1703,7 +1766,8 @@ function openViewer(r, start, onDone){
   // this page's comments: count on the button, the latest one beside it
   const cmPaint = () => {
     const s = slides[cur]; if (!s) return;
-    el.querySelector('.vcmrow').style.display = s.type === 'pipe' ? 'none' : '';   // comments are on the attachments themselves
+    // comments are on the attachments themselves; Download stays on every slide
+    el.querySelector('[data-cm]').style.display = s.type === 'pipe' ? 'none' : ''; el.querySelector('[data-cml]').style.display = s.type === 'pipe' ? 'none' : '';
     const list = cmtsOf(r).filter(c => c.attKey === attKey(s)), n = el.querySelector('[data-cmn]'), t = el.querySelector('[data-cml]');
     n.hidden = !list.length; n.textContent = list.length;
     const lastC = list[list.length - 1];
@@ -1730,6 +1794,7 @@ function openViewer(r, start, onDone){
   car.addEventListener('scroll', () => { clearTimeout(st); st = setTimeout(() => { const i = Math.round(car.scrollLeft / Math.max(1, car.clientWidth)); if (i >= 0 && i < slides.length) show(i); }, 60); }, { passive:true });
   el.addEventListener('click', e => {
     if (e.target.closest('[data-x]')) return closeLayer(l);
+    if (e.target.closest('[data-dl]')) { dlSlide(r, slides[cur]); return; }
     if (e.target.closest('[data-cm]')) { const s = slides[cur]; if (s) addComment(r, s).then(ok => { if (ok) cmPaint(); }); return; }
     if (e.target.closest('.vgo')) return goCheck();
     const nv = e.target.closest('[data-nv]'); if (nv && !nv.disabled && +nv.dataset.nv > 0 && cur === slides.length - 1) return goCheck();
@@ -1791,6 +1856,8 @@ function attachZoom(box, car, topHalf){
 /* ══ Events ════════════════════════════════════════════════════════════ */
 document.addEventListener('click', async e => {
   const t = e.target;
+  const psk = t.closest('[data-pskip]');
+  if (psk) { e.preventDefault(); e.stopPropagation(); const rr = S.rows.find(x => x.key === psk.dataset.pskip); if (rr) accSkip(rr); return; }
   const open = t.closest('[data-open]');
   if (open && S.seg === 'PRINT') { const rr = S.rows.find(x => x.key === open.dataset.open); if (rr) accPrintAct(rr); return; }
   if (t.closest('#accPrint')) { S.seg = S.seg === 'PRINT' ? 'TODO' : 'PRINT'; paintAll(); return buzz(6); }
@@ -1823,6 +1890,7 @@ document.addEventListener('click', async e => {
     busy(true); try { await stampCopy(CUR.r, stp, sg, x.remarks || ''); busy(false); toast('Accountant Copy signed'); paintSheet(); } catch (er) { busy(false); toast(er.message || String(er), true); }
     return;
   }
+  const dg = t.closest('[data-dlg]'); if (dg && CUR) return dlGroup(CUR.r, dg.dataset.dlg);
   const dbt = t.closest('[data-debit]'); if (dbt && !dbt.disabled) return debitAct(dbt.dataset.debit);
   const pd = t.closest('[data-pdel]'); if (pd) { e.stopPropagation(); return delProof(pd.dataset.pdel); }
   const pv = t.closest('[data-pview]'); if (pv) return viewProof(pv.dataset.pview);
