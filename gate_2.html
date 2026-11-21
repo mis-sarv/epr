@@ -234,7 +234,9 @@
                     </button>
 
                     <!-- TRANSFER BUTTON -->
-                    <button onclick="showComingSoon('Transfer Module')" class="ios-btn bg-purple-500/10 border border-purple-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-purple-600">
+                    <!-- Unit transfer between Gate-1 and Gate-2 (gate-link.js): send out to the other unit / receive what it sent -->
+                    <button onclick="GateLink.openTransfer()" class="ios-btn relative bg-purple-500/10 border border-purple-500/20 rounded-[20px] p-4 flex flex-col items-center justify-center gap-2 text-purple-600">
+                        <span id="glTransferBadge" class="hidden absolute top-2.5 right-2.5 bg-purple-600 text-white text-[9px] font-extrabold px-2 py-0.5 rounded-full shadow-xs"></span>
                         <div class="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-xl shadow-md shadow-purple-500/30">
                             <i class="fa-solid fa-right-left"></i>
                         </div>
@@ -550,10 +552,10 @@
             <!-- VIEW 4: OUT FROM STORE FORM -->
             <div id="view-outwardStoreForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
                 <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
-                    <button onclick="showView('outwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                    <button onclick="outStoreBack()" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
-                    <h2 class="text-[16px] font-bold text-gray-900">Out From Store</h2>
+                    <h2 id="outStoreTitle" class="text-[16px] font-bold text-gray-900">Out From Store</h2>
                     <span class="w-10"></span>
                 </div>
 
@@ -579,7 +581,7 @@
                             <input type="text" id="storePassSelect" required autocomplete="off" placeholder="Type to search today's Outward No / party / receiver..." class="w-full px-3.5 py-3 bg-orange-50/60 border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-500">
                             <div id="storePassList" class="gate-combo hidden"></div>
                         </div>
-                        <p class="text-[10px] font-semibold text-gray-400 mt-1">Only today's Store Outward numbers (not yet checked out here) are listed.</p>
+                        <p id="outStorePassNote" class="text-[10px] font-semibold text-gray-400 mt-1">Only today's Store Outward numbers (not yet checked out here) are listed.</p>
                     </div>
 
                     <!-- Auto-Fetched Details Card from Store -->
@@ -618,16 +620,44 @@
                         </div>
                     </div>
 
-                    <!-- Mandatory Gate Pass Photo & Item Photo (Compressed & Saved) -->
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gate Pass Photo *</label>
-                            <label class="ios-btn flex flex-col items-center justify-center p-3 bg-orange-50/70 border-2 border-dashed border-orange-200 rounded-2xl cursor-pointer text-center">
-                                <i class="fa-solid fa-receipt text-orange-500 text-lg mb-1"></i>
-                                <span id="outPassLabel" class="text-[11px] font-semibold text-orange-700 truncate w-full">Mandatory Photo</span>
-                                <input type="file" id="outPassPhoto" accept="image/*" capture="environment" class="hidden" onchange="handleOutwardPhotoChange(this, 'outPassLabel', 'outPassPreview', 'outPass')">
-                            </label>
+                    <!-- Store Bill of the chosen pass (the ERP's Receiver Copy, page 1): shown here and saved as the entry's
+                         Gate Pass Photo, so the guard no longer photographs the gate pass (STORE BILL block in section 6) -->
+                    <div id="storeBillBox" class="hidden rounded-2xl border border-orange-200 bg-orange-50/40 p-3 space-y-2">
+                        <div class="flex items-center justify-between gap-2">
+                            <span class="text-[10px] font-bold uppercase text-orange-600 bg-orange-100 px-2 py-0.5 rounded-md">Store Bill · Auto From ERP</span>
+                            <button type="button" id="storeBillRetry" onclick="storeBillRetry()" class="hidden ios-btn text-[11px] font-bold text-orange-600"><i class="fa-solid fa-rotate"></i> Try again</button>
                         </div>
+                        <button type="button" id="storeBillThumbBtn" onclick="storeBillView()" class="hidden ios-btn block w-full rounded-xl overflow-hidden border border-orange-200 bg-white">
+                            <img id="storeBillThumb" class="w-full h-44 object-cover object-top" alt="Store Bill">
+                        </button>
+                        <p id="storeBillState" class="text-[11px] font-semibold text-gray-600 leading-snug"></p>
+                    </div>
+
+                    <!-- Unit Transfer mode only (TRANSFER tile > Send to the other unit, gateOpenTransferOut): where it goes + the vehicle.
+                         Party / item / qty come from the Store Gate Pass above, so no Gate Pass Photo is asked in this mode. -->
+                    <div id="outTrBox" class="hidden space-y-3">
+                        <div class="flex items-center justify-between gap-3 px-3.5 py-3 bg-purple-50 border border-purple-200 rounded-xl">
+                            <span class="text-[11px] font-bold text-purple-700 uppercase">Send To</span>
+                            <span id="outTrTo" class="text-sm font-extrabold text-purple-800">-</span>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No</label>
+                                <input type="text" id="outTrVehicle" list="gateVehicleList" autocomplete="off" placeholder="Blank = by hand" style="text-transform:uppercase" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white">
+                            </div>
+                            <div>
+                                <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Driver / Person</label>
+                                <input type="text" id="outTrDriver" autocomplete="off" placeholder="Name" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white">
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Remarks</label>
+                            <input type="text" id="outTrRemarks" autocomplete="off" placeholder="Optional" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white">
+                        </div>
+                    </div>
+
+                    <!-- Mandatory Item Photo (Compressed & Saved); the gate pass itself = the Store Bill above -->
+                    <div id="outPhotoGrid" class="grid grid-cols-1 gap-3">
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item Photo *</label>
                             <label class="ios-btn flex flex-col items-center justify-center p-3 bg-orange-50/70 border-2 border-dashed border-orange-200 rounded-2xl cursor-pointer text-center">
@@ -639,11 +669,7 @@
                     </div>
 
                     <!-- Outward Live Thumbnails Preview -->
-                    <div id="outwardPreviewRow" class="hidden grid grid-cols-2 gap-3">
-                        <div class="relative rounded-xl overflow-hidden border border-orange-200 bg-gray-50 h-20 flex items-center justify-center">
-                            <img id="outPassPreview" class="w-full h-full object-cover hidden" alt="Gate Pass">
-                            <span class="text-[10px] text-gray-400 font-medium">No Pass Photo</span>
-                        </div>
+                    <div id="outwardPreviewRow" class="hidden grid grid-cols-1 gap-3">
                         <div class="relative rounded-xl overflow-hidden border border-orange-200 bg-gray-50 h-20 flex items-center justify-center">
                             <img id="outItemPreview" class="w-full h-full object-cover hidden" alt="Outward Item">
                             <span class="text-[10px] text-gray-400 font-medium">No Item Photo</span>
@@ -651,7 +677,7 @@
                     </div>
 
                     <button type="submit" id="outwardSubmitBtn" disabled class="ios-btn w-full bg-gray-300 text-gray-500 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm transition-all">
-                        <i class="fa-solid fa-lock"></i> Upload Both Photos to Exit
+                        <i class="fa-solid fa-lock"></i> Choose the Store Gate Pass No
                     </button>
                 </form>
             </div>
@@ -778,6 +804,16 @@
                         </div>
                         <span id="visPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-amber-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
                         <i class="fa-solid fa-chevron-right text-amber-500 text-xs"></i>
+                    </button>
+                    <!-- Visitors sent here from the other unit (gate-link.js): take them in without a new approval -->
+                    <button onclick="GateLink.openIncoming('VISITOR')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-purple-500/10 border border-purple-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-purple-600 text-white flex items-center justify-center text-xl shadow-md shadow-purple-500/30 shrink-0"><i class="fa-solid fa-people-arrows"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-purple-800 uppercase tracking-wide">Arriving From <span data-gl-other-unit></span></span>
+                            <span class="block text-[11px] font-semibold text-purple-700/80">Visitors moved here by the other gate</span>
+                        </div>
+                        <span id="glVisitorBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-purple-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-purple-500 text-xs"></i>
                     </button>
                     <button onclick="showView('visitorExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
                         <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-users"></i></div>
@@ -1761,7 +1797,20 @@
         // Gate numbers: never two rows with the same id (the old random 4 digits could repeat)
         const cleanGateId = v => String(v || '').toUpperCase().replace(/[^A-Z0-9\-_\/.]/g, '').slice(0, 30);
         const gateIdTaken = id => gateEntries.some(e => e.id === id || e.outwardNo === id);
+        /* ── WHICH GATE (sql/GATE1_UNIT1_MIGRATION.sql) ──
+           gate_2.html = GATE-2 (Unit-2, Store 2); gate_1.html is a COPY of this file for GATE-1 (Unit-1, Store 1),
+           made with GATE_ID 'G1', its own app key, its own phone storage keys and the G1- number prefix. Both share one
+           register on the server, each sees only its own rows (entry.gate); gate-link.js (loaded by both) does the
+           work BETWEEN the gates: unit transfer, a visitor moving units, a vehicle still inside the other unit. */
+        const GATE_ID = 'G2';
+        const GATE_OTHER = GATE_ID === 'G1' ? 'G2' : 'G1';
+        const GATE_UNIT = GATE_ID === 'G1' ? 'Unit-1' : 'Unit-2', GATE_OTHER_UNIT = GATE_ID === 'G1' ? 'Unit-2' : 'Unit-1';
+        const GATE_NAME = GATE_ID === 'G1' ? 'Gate-1' : 'Gate-2', GATE_OTHER_NAME = GATE_ID === 'G1' ? 'Gate-2' : 'Gate-1';
+        const GATE_PFX = GATE_ID === 'G1' ? 'G1-' : '';          // every number of Gate-1 starts with G1-
+        // Gate-1 asks the server for its own lists / rows; Gate-2 sends nothing extra (works before the migration too)
+        const gateArgs = a => (GATE_ID === 'G2' ? a : Object.assign({ p_gate: GATE_ID }, a));
         function genGateId(prefix) {
+            prefix = GATE_PFX + prefix;
             for (let i = 0; i < 60; i++) {
                 const id = prefix + Math.floor(1000 + Math.random() * 9000);
                 if (!gateIdTaken(id)) return id;
@@ -1769,7 +1818,7 @@
             return prefix + Date.now().toString().slice(-7);
         }
         // the 4-digit part of a fresh gate number (the store ref is built from it)
-        const genGateNum = prefix => genGateId(prefix).slice(prefix.length);
+        const genGateNum = prefix => genGateId(prefix).slice((GATE_PFX + prefix).length);
 
         /* ── NUMBER SERIES FROM THE DATABASE (sql/GATE2_SERIES_MIGRATION.sql) ──
            Inward No., Outward No. (Out From Store + Dispatch share OUT), Packing Slip No.
@@ -1782,7 +1831,9 @@
            continues from the highest number in its own copy of the register (newest
            synced data + its own entries). Visitor / Hydra numbers are not a typed series
            and stay as they were (genGateId). Keep GATE_SERIES = gate_series_prefix_(). */
-        const GATE_SERIES = { IN: 'IN-', OUT: 'OUT-', PKG: 'PKG-', DK: 'DK-' };
+        const GATE_SERIES = { IN: GATE_PFX + 'IN-', OUT: GATE_PFX + 'OUT-', PKG: GATE_PFX + 'PKG-', DK: GATE_PFX + 'DK-' };
+        // the server's series name (= gate_series_prefix_): Gate-2 IN / OUT ..., Gate-1 G1IN / G1OUT ...
+        const gateSeriesName = s => (GATE_ID === 'G1' ? 'G1' : '') + s;
         let gateSeriesOn = null;   // false = the server has no gate_next_no yet
         const gateSeriesFmt = (s, n) => GATE_SERIES[s] + String(n).padStart(4, '0');
         function gateSeriesLocalMax(s) {
@@ -1794,7 +1845,7 @@
             const localNext = gateSeriesLocalMax(s) + 1;
             const online = GATE_USER && !GATE_OFFLINE && navigator.onLine !== false;
             if (online && gateSeriesOn !== false) {
-                const r = await gateRpc('gate_next_no', { p_series: s, p_reserve: !!reserve, p_min: localNext });
+                const r = await gateRpc('gate_next_no', { p_series: gateSeriesName(s), p_reserve: !!reserve, p_min: localNext });
                 if (r.ok && r.data && r.data.no) {
                     gateSeriesOn = true;
                     if (!gateIdTaken(r.data.no)) return { no: r.data.no, server: true };
@@ -1987,7 +2038,7 @@
             if (GATE_OFFLINE && !manual) { gateSyncUi(); return; }
             gateMastersBusy = true;
             GATE_SYNC = Object.assign({}, GATE_SYNC, { state: 'loading' }); gateSyncUi();
-            const r = await gateRpc('gate_masters', {});
+            const r = await gateRpc('gate_masters', gateArgs({}));
             gateMastersBusy = false;
             if (r.ok) {
                 const d = r.data, m = { at: d.at || new Date().toISOString(), errors: Array.isArray(d.errors) ? d.errors : [] };
@@ -2168,7 +2219,7 @@
         }
         function markDirty(e, photos) { e._dirty = true; e._rev = (e._rev || 0) + 1; if (photos) e._photoDirty = true; }
         // a NEW entry (every form) / a CHANGED one (hydra stages, mark out)
-        function commitEntry(e) { e.uid = e.uid || newUid(); markDirty(e, true); gateEntries.unshift(e); saveEntries(); gateSyncSoon(); }
+        function commitEntry(e) { e.uid = e.uid || newUid(); e.gate = e.gate || GATE_ID; markDirty(e, true); gateEntries.unshift(e); saveEntries(); gateSyncSoon(); }
         function touchEntry(e, photos) { markDirty(e, photos); saveEntries(); gateSyncSoon(); }
         const gatePendingCount = () => gateEntries.filter(e => e._dirty).length + gateDeleteQueue.length;
         function gateSyncSoon() {
@@ -2234,7 +2285,7 @@
                 if (!fatal || fatal.indexOf('ERR:') === 0) {
                     let cur = readLS(GATE_CURSOR_KEY, null);
                     for (let page = 0; page < 20; page++) {
-                        const r = await gateRpc('gate_entries_list', { p_since: cur, p_limit: 300 });
+                        const r = await gateRpc('gate_entries_list', gateArgs({ p_since: cur, p_limit: 300 }));
                         if (!r.ok) { fatal = r.error === 'NET' || r.error === 'NO_MIGRATION' ? r.error : 'ERR:' + r.error; break; }
                         if (gateMergeRemote(r.data.rows || [])) changed = true;
                         if (r.data.cursor) { cur = r.data.cursor; writeLS(GATE_CURSOR_KEY, cur); }
@@ -2320,7 +2371,7 @@
         function usedPassNos() {
             const used = new Set();
             gateEntries.forEach(e => {
-                if (e.category !== 'OUTWARD') return;
+                if (e.category !== 'OUTWARD' && e.category !== 'TRANSFER OUT') return;
                 if (e.passNo) used.add(e.passNo);
                 const m = /Store Pass: ([^ |]+)/.exec(e.host || ''); if (m) used.add(m[1]);
             });
@@ -2342,10 +2393,15 @@
             Object.keys(storeGatePassesDB).forEach(c => { if (!seen.has(c) && passYmd(storeGatePassesDB[c].date) === td && !used.has(c)) { seen.add(c); out.push(c); } });
             return out;
         }
-        const storePassOptions = () => storePassCodes().map(code => {
-            const p = getStorePass(code) || {};
-            return { value: code, sub: p.party || '', hay: [p.nature, p.receiver, p.item].filter(Boolean).join(' ') };
-        });
+        const isTransferPass = p => /transfer/i.test((p && p.nature) || '');   // the ERP's Store Transfer outward ("Store Transfer")
+        const storePassOptions = () => {
+            const rows = storePassCodes().map(code => {
+                const p = getStorePass(code) || {}, tr = isTransferPass(p);
+                return { value: code, tr, sub: (p.party || '') + (tr ? ' · STORE TRANSFER' : ''), hay: [p.nature, p.receiver, p.item].filter(Boolean).join(' ') };
+            });
+            // Send to the other unit: the Store Transfer passes first (any pass may still be chosen)
+            return OUT_STORE_TR ? rows.filter(o => o.tr).concat(rows.filter(o => !o.tr)) : rows;
+        };
 
         // ==========================================
         // 1D. INWARD FORM: searchable Party box, PO / PR popup, vehicle from the list only
@@ -2656,12 +2712,14 @@
             }
 
             if (viewId === 'outwardStoreForm') {
+                OUT_STORE_TR = OUT_STORE_TR_NEXT; OUT_STORE_TR_NEXT = false;   // gateOpenTransferOut() asks for the transfer mode
                 document.getElementById('formOutwardStore').reset();
+                if (GATE_COMBOS.storePassSelect) GATE_COMBOS.storePassSelect.set('', true);
+                outStoreApplyMode();
                 gateFillNo('OUT', 'outStoreOutwardNo', 'outStoreOutwardNoHint');
                 document.getElementById('storeFetchedBox').classList.add('hidden');
-                document.getElementById('outPassLabel').textContent = 'Mandatory Photo';
+                document.getElementById('storeBillBox').classList.add('hidden');
                 document.getElementById('outItemLabel').textContent = 'Mandatory Photo';
-                document.getElementById('outPassPreview').classList.add('hidden');
                 document.getElementById('outItemPreview').classList.add('hidden');
                 document.getElementById('outwardPreviewRow').classList.add('hidden');
                 tempPhotos.outPass = null;
@@ -2782,6 +2840,7 @@
                 mobile: 'Store Inward',
                 vehicle: vehicle,
                 host: `${refType}: ${refNo} | ${generatedStoreNo}`,
+                refType: refType, refNo: refNo, storeRef: generatedStoreNo, inwardType: inwardType,   // read by the ERP Inward (gate_inward_list)
                 purpose: `${inwardType} • Bill & Item Photo Attached${dkSummary}`,
                 billPhoto: tempPhotos.inBill,
                 itemPhoto: tempPhotos.inItem,
@@ -2815,6 +2874,123 @@
         // ==========================================
         // 6. OUTWARD FROM STORE
         // ==========================================
+        /* The same form is also the Unit Transfer's "Send to <other unit>" (TRANSFER tile, gate-link.js): against a
+           Store Gate Pass No. only, party / item / qty taken from that pass, so NO Gate Pass Photo is asked; Item Photo
+           stays compulsory; Vehicle No / Driver / Remarks added. It saves a TRANSFER OUT entry (toGate = the other gate),
+           which the other gate sees under Unit Transfer > Arriving. */
+        let OUT_STORE_TR = false, OUT_STORE_TR_NEXT = false;
+        function gateOpenTransferOut() { OUT_STORE_TR_NEXT = true; showView('outwardStoreForm'); }
+        function outStoreBack() {
+            if (!OUT_STORE_TR) return showView('outwardMenu');
+            showView('actionMenu');
+            try { GateLink.openTransfer(); } catch (e) {}
+        }
+        function outStoreApplyMode() {
+            const tr = OUT_STORE_TR;
+            document.getElementById('outStoreTitle').textContent = tr ? 'Send to ' + GATE_OTHER_UNIT : 'Out From Store';
+            document.getElementById('outTrTo').textContent = GATE_OTHER_UNIT + ' (' + GATE_OTHER_NAME + ')';
+            document.getElementById('outTrBox').classList.toggle('hidden', !tr);
+            document.getElementById('outStorePassNote').textContent = tr
+                ? "Today's Store Outward numbers not yet out; the ERP's Store Transfer passes are listed first. Party, item and qty come from the pass."
+                : "Only today's Store Outward numbers (not yet checked out here) are listed.";
+        }
+        /* ── STORE BILL of the chosen Store Gate Pass ──
+           The ERP indexes every Store PDF in pdf_documents (document_no + variant; SINGLE = the one-page Receiver Copy,
+           TWO_PAGE for older ones; public bucket sarv-pdfs, readable with the anon key like bill-check.html does). Page 1
+           is drawn with pdf.js (cdnjs, loaded on first use) into a JPEG: shown under the pass details and saved as the
+           entry's passPhoto (+ passPdf = the PDF link), so the guard takes no Gate Pass Photo any more. No PDF yet (a pass
+           made on this phone, a PDF still uploading) or no internet: the exit is still saved, without it, and the note says so. */
+        const STORE_BILL = {};
+        let GATE_PDFJS_P = null;
+        function gatePdfJs() {
+            if (window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+            if (GATE_PDFJS_P) return GATE_PDFJS_P;
+            const base = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+            GATE_PDFJS_P = new Promise((ok, no) => {
+                const fail = () => { GATE_PDFJS_P = null; no(new Error('the PDF viewer could not be loaded (internet?)')); };
+                const s1 = document.createElement('script'); s1.src = base + 'pdf.min.js'; s1.onerror = fail;
+                // the worker script is loaded too (as bill-check.html does), so pdf.js can fall back to it where a worker cannot start
+                s1.onload = () => {
+                    const s2 = document.createElement('script'); s2.src = base + 'pdf.worker.min.js'; s2.onerror = fail;
+                    s2.onload = () => { try { window.pdfjsLib.GlobalWorkerOptions.workerSrc = s2.src; ok(window.pdfjsLib); } catch (e) { fail(); } };
+                    document.head.appendChild(s2);
+                };
+                document.head.appendChild(s1);
+            });
+            return GATE_PDFJS_P;
+        }
+        function storeBillLoad(no) {
+            const c = STORE_BILL[no];
+            if (c && c.state !== 'err') return c.p;
+            const o = STORE_BILL[no] = { state: 'loading' };
+            o.p = (async () => {
+                try {
+                    if (navigator.onLine === false) throw new Error('no internet');
+                    if (!gateSb) gateSb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+                    const { data, error } = await gateSb.from('pdf_documents').select('variant,public_url,created_at').eq('document_no', no).order('created_at', { ascending: false });
+                    if (error) throw new Error(error.message || 'read failed');
+                    const by = {}; (data || []).forEach(d => { if (d.public_url && !by[d.variant]) by[d.variant] = d.public_url; });
+                    const url = by.SINGLE || by.TWO_PAGE || '';
+                    if (!url) { o.state = 'none'; return o; }
+                    const lib = await gatePdfJs();
+                    const doc = await lib.getDocument({ url, withCredentials: false }).promise;
+                    const pg = await doc.getPage(1), vp = pg.getViewport({ scale: 1100 / pg.getViewport({ scale: 1 }).width });
+                    const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+                    const cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+                    await pg.render({ canvasContext: cx, viewport: vp }).promise;
+                    o.img = cv.toDataURL('image/jpeg', 0.72); o.url = url; o.pages = doc.numPages; o.state = 'ok';
+                } catch (e) { o.state = 'err'; o.err = (e && e.message) || String(e); }
+                return o;
+            })();
+            return o.p;
+        }
+        function storeBillPaint(no) {
+            const box = document.getElementById('storeBillBox'), o = no && STORE_BILL[no];
+            box.classList.toggle('hidden', !no);
+            if (!no) return;
+            const st = document.getElementById('storeBillState'), th = document.getElementById('storeBillThumb'), tb = document.getElementById('storeBillThumbBtn');
+            const ok = o && o.state === 'ok';
+            tb.classList.toggle('hidden', !ok);
+            if (ok) th.src = o.img;
+            document.getElementById('storeBillRetry').classList.toggle('hidden', !o || (o.state !== 'err' && o.state !== 'none'));
+            st.className = 'text-[11px] font-semibold leading-snug ' + (ok ? 'text-emerald-700' : !o || o.state === 'loading' ? 'text-gray-500' : 'text-amber-700');
+            st.innerHTML = !o || o.state === 'loading' ? '<i class="fa-solid fa-spinner fa-spin"></i> Getting the Store Bill of ' + esc(no) + ' from the ERP...'
+                : ok ? '<i class="fa-solid fa-circle-check"></i> Receiver Copy of ' + esc(no) + (o.pages > 1 ? ' (page 1 of ' + o.pages + ')' : '') + ': saved with this exit as the gate pass. Tap to view.'
+                : o.state === 'none' ? 'No Store Bill PDF for ' + esc(no) + ' in the ERP yet (a pass made on this phone, or the PDF is still uploading). The exit can still be saved, without it.'
+                : 'Could not get the Store Bill (' + esc(o.err) + '). The exit can still be saved, without it.';
+        }
+        async function storeBillShow(no) {
+            storeBillPaint(no);
+            if (!no) return;
+            await storeBillLoad(no);
+            if (document.getElementById('storePassSelect').value === no) storeBillPaint(no);
+        }
+        function storeBillRetry() {
+            const no = document.getElementById('storePassSelect').value;
+            if (!no) return;
+            delete STORE_BILL[no];
+            storeBillShow(no);
+        }
+        function storeBillView() {
+            const no = document.getElementById('storePassSelect').value, o = STORE_BILL[no];
+            if (!o || o.state !== 'ok') return;
+            const el = document.createElement('div');
+            el.className = 'fixed inset-0 z-[80] bg-black/90 flex flex-col';
+            el.innerHTML = '<div class="flex items-center justify-between gap-3 px-4 py-3 text-white shrink-0">'
+                + '<span class="text-sm font-bold truncate">Store Bill · ' + esc(no) + '</span>'
+                + '<span class="flex items-center gap-2"><a href="' + esc(o.url) + '" target="_blank" rel="noopener" class="ios-btn text-xs font-bold bg-white/15 px-3 py-1.5 rounded-full">Open PDF</a>'
+                + '<button type="button" data-x="1" class="ios-btn w-8 h-8 rounded-full bg-white/15 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button></span></div>'
+                + '<div class="flex-1 overflow-auto px-2 pb-4"><img src="' + o.img + '" class="w-full max-w-3xl mx-auto bg-white rounded-lg" alt="Store Bill"></div>';
+            el.addEventListener('click', ev => { if (ev.target.closest('[data-x]') || ev.target === el) el.remove(); });
+            document.body.appendChild(el);
+        }
+        // what the save keeps: the bill picture + link (waits up to 8 s for one still loading)
+        async function storeBillForSave(no) {
+            const c = STORE_BILL[no] || (no && navigator.onLine !== false ? (storeBillLoad(no), STORE_BILL[no]) : null);
+            if (!c) return null;
+            const o = await Promise.race([c.p, new Promise(r => setTimeout(() => r(null), 8000))]);
+            return o && o.state === 'ok' ? o : null;
+        }
         function fetchStoreGatePassDetails() {
             const passNo = document.getElementById('storePassSelect').value;
             const box = document.getElementById('storeFetchedBox');
@@ -2833,6 +3009,7 @@
             } else {
                 box.classList.add('hidden');
             }
+            storeBillShow(data ? passNo : '');
             validateOutwardForm();
         }
 
@@ -2843,18 +3020,18 @@
 
         function validateOutwardForm() {
             const passSelected = document.getElementById('storePassSelect').value !== '';
-            const hasPassPhoto = Boolean(tempPhotos.outPass);
-            const hasItemPhoto = Boolean(tempPhotos.outItem);
+            const hasItemPhoto = Boolean(tempPhotos.outItem);   // the gate pass = the Store Bill, fetched by itself
             const btn = document.getElementById('outwardSubmitBtn');
 
-            if (passSelected && hasPassPhoto && hasItemPhoto) {
+            if (passSelected && hasItemPhoto) {
                 btn.disabled = false;
-                btn.className = 'ios-btn w-full bg-orange-500 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-orange-500/30 flex items-center justify-center gap-2 text-sm';
-                btn.innerHTML = '<i class="fa-solid fa-right-from-bracket"></i> Confirm Store Exit';
+                btn.className = 'ios-btn w-full ' + (OUT_STORE_TR ? 'bg-purple-600 shadow-purple-500/30' : 'bg-orange-500 shadow-orange-500/30') + ' text-white font-bold py-3.5 rounded-2xl shadow-lg flex items-center justify-center gap-2 text-sm';
+                btn.innerHTML = OUT_STORE_TR ? '<i class="fa-solid fa-truck-arrow-right"></i> Send Out to ' + esc(GATE_OTHER_UNIT) : '<i class="fa-solid fa-right-from-bracket"></i> Confirm Store Exit';
             } else {
                 btn.disabled = true;
                 btn.className = 'ios-btn w-full bg-gray-300 text-gray-500 font-bold py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm transition-all';
-                btn.innerHTML = '<i class="fa-solid fa-lock"></i> Upload Both Photos to Exit';
+                btn.innerHTML = !passSelected ? '<i class="fa-solid fa-lock"></i> Choose the Store Gate Pass No'
+                    : '<i class="fa-solid fa-lock"></i> Upload the Item Photo to ' + (OUT_STORE_TR ? 'Send' : 'Exit');
             }
         }
 
@@ -2864,10 +3041,40 @@
             const passNo = document.getElementById('storePassSelect').value;
             const data = getStorePass(passNo);
             if (!data) return;
-            // Everything checked: now TAKE the Outward No.
+            // Everything checked: now TAKE the Outward No. (and the Store Bill, if it is still on its way)
             gateSaving.OUT = true;
-            let customOutwardNo;
-            try { customOutwardNo = await gateTakeNo('OUT', 'outStoreOutwardNo'); } finally { gateSaving.OUT = false; }
+            let customOutwardNo, bill = null;
+            try { [customOutwardNo, bill] = await Promise.all([gateTakeNo('OUT', 'outStoreOutwardNo'), storeBillForSave(passNo)]); } finally { gateSaving.OUT = false; }
+            const billNote = bill ? 'Store Bill ✓' : 'Store Bill not found';
+            if (!customOutwardNo) return showIosBanner('Could not make the Outward No. Check the internet and try again', 'error');
+
+            if (OUT_STORE_TR) {
+                const val = id => (document.getElementById(id).value || '').trim();
+                const veh = val('outTrVehicle').toUpperCase(), drv = val('outTrDriver'), rem = val('outTrRemarks'), now = new Date().toISOString();
+                const tr = {
+                    id: customOutwardNo, outwardNo: customOutwardNo, category: 'TRANSFER OUT', toGate: GATE_OTHER,
+                    passNo: passNo, transferRef: passNo, party: data.party,
+                    name: 'To ' + GATE_OTHER_UNIT, mobile: drv || 'Store Transfer', vehicle: veh || 'N/A',
+                    host: `Transfer to ${GATE_OTHER_UNIT} | Store Pass: ${passNo} | Qty: ${data.qty}${drv ? ' | ' + drv : ''}`,
+                    purpose: `${data.item} • ${billNote} • Item Photo ✓${rem ? ' • ' + rem : ''}`,
+                    items: data.item, qty: data.qty, driver: drv, remarks: rem,
+                    passPhoto: bill ? bill.img : null, passPdf: bill ? bill.url : null,
+                    itemPhoto: tempPhotos.outItem,
+                    guard: `${appSettings.guardName} (${appSettings.shiftName})`,
+                    inTime: now, outTime: now, status: 'OUT'
+                };
+                commitEntry(tr);
+                this.reset();
+                fetchStoreGatePassDetails();
+                tempPhotos.outPass = null;
+                tempPhotos.outItem = null;
+                OUT_STORE_TR = false;
+                showView('actionMenu');
+                showIosBanner(`Transfer ${customOutwardNo} (${passNo}) sent to ${GATE_OTHER_UNIT}: ${GATE_OTHER_NAME} sees it as arriving`, 'success');
+                try { GateLink.refresh(); } catch (x) {}
+                openPassModal(tr.id);
+                return;
+            }
 
             const newOutward = {
                 id: customOutwardNo,
@@ -2877,8 +3084,8 @@
                 mobile: 'Store Exit',
                 vehicle: 'N/A',
                 host: `Store Pass: ${passNo} | Qty: ${data.qty}`,
-                purpose: `${data.item} • Pass & Item Photos Verified`,
-                passPhoto: tempPhotos.outPass,
+                purpose: `${data.item} • ${billNote} • Item Photo ✓`,
+                passPhoto: bill ? bill.img : null, passPdf: bill ? bill.url : null,
                 itemPhoto: tempPhotos.outItem,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
@@ -3484,6 +3691,7 @@
                     </div>
                     <div class="flex gap-2">
                         <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-id-badge"></i> Pass</button>
+                        ${VIS_EXIST_TAB === 'in' ? `<button onclick="GateLink.moveVisitor('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-purple-50 text-purple-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-people-arrows"></i> To ${esc(GATE_OTHER_UNIT)}</button>` : ''}
                         ${VIS_EXIST_TAB === 'in' ? `<button onclick="openVisitorOut('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>` : ''}
                     </div>
                 </div>`;
@@ -4786,7 +4994,7 @@
             renderPassApproval(entry);
             const photoList = [];
             const add = (f, label) => { const src = photoOf(entry, f); if (src) photoList.push({ label, src }); };
-            add('billPhoto', 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', 'Gate Pass Photo');
+            add('billPhoto', 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', entry.passPdf ? 'Store Bill' : 'Gate Pass Photo');
             add('visitorPhoto', 'Visitor Photo'); add('vehiclePhoto', 'Vehicle Photo');
             add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', isHydra(entry) ? 'Hydra at Out' : isSample(entry) ? 'Item at Return' : 'Visitor at Out');
 
@@ -5101,11 +5309,19 @@
         }
 
         // Store Outward Receiver Copy -> Out From Store with the pass chosen
+        // A Store copy of the OTHER store belongs to the other gate (Store 1 = Gate-1, Store 2 = Gate-2)
+        const GATE_STORE = GATE_ID === 'G1' ? 'STORE 1' : 'STORE 2';
+        function gateWrongStore(o) {
+            const st = String((o && o.st) || '').toUpperCase().trim();
+            if (!st || st === GATE_STORE) return false;
+            showIosBanner(`${o.no || 'This document'} is of ${st}: it goes through ${GATE_OTHER_NAME} (${GATE_OTHER_UNIT}), not this gate.`, 'error');
+            return true;
+        }
         async function gateScanStoreOut(o) {
             const no = String(o.no || '').trim();
-            if (!no) return;
+            if (!no || gateWrongStore(o)) return;
             if (usedPassNos().has(no)) {
-                const ge = gateEntries.find(e => e.category === 'OUTWARD' && (e.passNo === no || (e.host || '').indexOf('Store Pass: ' + no) >= 0));
+                const ge = gateEntries.find(e => (e.category === 'OUTWARD' || e.category === 'TRANSFER OUT') && (e.passNo === no || (e.host || '').indexOf('Store Pass: ' + no) >= 0));
                 if (ge) openPassModal(ge.id);
                 showIosBanner(`Outward ${no} has already gone out${ge ? ' (' + ge.id + ')' : ''}`, 'error');
                 return;
@@ -5125,14 +5341,25 @@
                 storeGatePassesDB[no] = { party: o.p || '', item: o.it || '', qty: o.q != null ? String(o.q) : '', date: td, nature: o.nat || '', receiver: o.rcv || '', viaQr: true };
                 writeLS('iosGateStorePasses_v2', storeGatePassesDB);
             }
+            // the ERP's Store Transfer outward goes to the other unit: open the Unit Transfer's Send form instead
+            const asTr = isTransferPass(getStorePass(no));
+            OUT_STORE_TR_NEXT = asTr;
             showView('outwardStoreForm');
             if (GATE_COMBOS.storePassSelect) GATE_COMBOS.storePassSelect.set(no);   // runs fetchStoreGatePassDetails
             else { document.getElementById('storePassSelect').value = no; fetchStoreGatePassDetails(); }
-            showIosBanner(`Outward ${no} filled: take the gate pass + item photos and confirm`, 'success');
+            showIosBanner(asTr ? `Store Transfer ${no} filled: take the item photo and send it to ${GATE_OTHER_UNIT}` : `Outward ${no} filled: take the item photo and confirm (the Store Bill comes by itself)`, 'success');
         }
 
         // Inward / NB Supplier Copy -> the vehicle's open gate Inward, else the Inward form filled in
         function gateScanInward(o) {
+            if (gateWrongStore(o)) return;
+            // booked against a gate entry (ERP Inward › Gate Entry No., QR key ge): that entry itself
+            const ge = o.ge && gateEntries.find(e => e.id === String(o.ge).trim());
+            if (ge) {
+                openPassModal(ge.id);
+                showIosBanner(`${o.no} is booked against gate entry ${ge.id}${ge.status === 'IN' ? ': Mark Out when the vehicle leaves' : ''}`, 'info');
+                return;
+            }
             const refs = [o.po, o.pr].filter(Boolean).join(',').split(/[,;]\s*/).map(x => x.trim()).filter(Boolean);
             const open = gateEntries.find(e => e.category === 'INWARD' && e.status === 'IN' && refs.some(r => (e.host || '').toUpperCase().indexOf(r.toUpperCase()) >= 0));
             if (open) {
@@ -5399,6 +5626,8 @@
             }, 2600);
         }
     </script>
+    <!-- Between Gate-1 and Gate-2 (unit transfer, visitor moving units, vehicle cross-check): shared by both gates -->
+    <script src="gate-link.js?v=20261121b"></script>
     <script src="app-back.js"></script>
 </body>
 </html>
