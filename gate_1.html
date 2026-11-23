@@ -845,6 +845,8 @@
                         </div>
                         <span id="autoPackingSlipNo" class="font-mono text-sm font-extrabold bg-white text-indigo-700 px-3 py-1.5 rounded-xl shadow-sm border border-indigo-100">PKG-0000</span>
                     </div>
+                    <!-- 6D LOADED SLIPS: the ERP packing slips on the chosen Dharam Kanta slip's tempo, slip-wise + Grand Total (dispLoadPaint) -->
+                    <div id="dispSlipSum" class="hidden"></div>
 
                     <!-- Dharam Kanta Slip No Input (Auto-fetches Tare Weight & Vehicle No) -->
                     <div>
@@ -882,7 +884,7 @@
                         </div>
                     </div>
 
-                    <!-- Approval by the Net Wt (Approval Rules, section 6C): none, or one person of the rule's group -->
+                    <!-- Approval by the weight DIFFERENCE = Net Wt − Grand Total of the loaded slips (Approval Rules, sections 6C / 6D): none, or one person of the rule's group -->
                     <div id="dispApBox" class="hidden rounded-2xl border px-3.5 py-3 space-y-2"></div>
 
                     <!-- Loaded Vehicle Live Camera Capture -->
@@ -944,7 +946,7 @@
                         <div class="w-12 h-12 rounded-2xl bg-gray-700 text-white flex items-center justify-center text-xl shadow-md shrink-0"><i class="fa-solid fa-sliders"></i></div>
                         <div class="min-w-0 flex-1">
                             <span class="block text-[13px] font-extrabold text-gray-800 uppercase tracking-wide">Approval Rules</span>
-                            <span id="dspRulesSub" class="block text-[11px] font-semibold text-gray-600">Admin: who approves at which Net Wt</span>
+                            <span id="dspRulesSub" class="block text-[11px] font-semibold text-gray-600">Admin: who approves at which weight difference</span>
                         </div>
                         <i class="fa-solid fa-lock text-gray-500 text-xs"></i>
                     </button>
@@ -973,7 +975,7 @@
                     <h2 class="text-[16px] font-bold text-gray-900">Approval Rules</h2>
                     <span class="w-10"></span>
                 </div>
-                <p class="text-[11px] font-semibold text-gray-500 mb-3">A Dispatch Packing Slip needs approval by its <b>Net Wt (Kg)</b>. Each band runs from its From up to (not including) its To; the last band has no To (= and above). The guard picks one person of the band's group; that person approves on the launcher with their PIN. The same rules work for both gates.</p>
+                <p class="text-[11px] font-semibold text-gray-500 mb-3">A Dispatch Packing Slip needs approval by its <b>weight difference (Kg)</b> = Net Wt (Gross − Tare) minus the Grand Total of the ERP packing slips loaded on the tempo (either way); with no packing slip data the Net Wt itself is used. Each band runs from its From up to (not including) its To; the last band has no To (= and above). The guard picks one person of the band's group; that person approves on the launcher with their PIN. The same rules work for both gates.</p>
                 <div id="dspRulesList" class="space-y-2"></div>
                 <div class="flex gap-2 mt-3">
                     <button type="button" onclick="dispRulesAdd()" class="ios-btn flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-extrabold"><i class="fa-solid fa-plus"></i> Add band</button>
@@ -3909,6 +3911,7 @@
 
             if (!rawVal) {
                 matchedDispatchDkEntry = null;
+                dispLoadFor('');
                 badge.textContent = 'Enter Slip to Fetch Tare';
                 badge.className = 'text-[10px] font-bold text-gray-400';
                 vehicleInput.value = '';
@@ -3934,12 +3937,14 @@
 
                 vehicleInput.value = found.vehicle || 'N/A';
                 tareInput.value = tareVal.toFixed(2);
+                dispLoadFor(found.id);   // 6D: the packing slips loaded on this trip
                 grossInput.disabled = false;
                 grossInput.placeholder = 'Enter Gross Wt';
                 grossInput.value = slipGross ? slipGross.toFixed(2) : '';
                 calcDispatchNetWeight();
             } else {
                 matchedDispatchDkEntry = null;
+                dispLoadFor('');
                 badge.textContent = 'Slip Not Found';
                 badge.className = 'text-[10px] font-bold text-red-500';
                 vehicleInput.value = '';
@@ -3962,7 +3967,8 @@
             } else {
                 netInput.value = '';
             }
-            dispApPaint();   // the approval band of this Net Wt (6C)
+            dispApPaint();   // the approval band of the weight difference (6C / 6D)
+            dispLoadPaint();
         }
 
         document.getElementById('formOutwardDispatch').addEventListener('submit', async function(e) {
@@ -3985,9 +3991,11 @@
                 return;
             }
 
-            // 6C DISPATCH APPROVAL: the band of this Net Wt; a group = one person of it (none in the group / offline list = the Admin decides)
+            // 6C DISPATCH APPROVAL: the band of the weight difference (6D: Net − loaded slips; no slip data = the Net Wt);
+            // a group = one person of it (none in the group / offline list = the Admin decides). The server works it out again.
             const netNum = +Math.max(0, gross - tare).toFixed(2);
-            const apRule = dispRuleFor(netNum), apGroup = apRule.approver || 'NONE';
+            const wb = dispWtBasis(netNum);
+            const apRule = dispRuleFor(wb.basis), apGroup = apRule.approver || 'NONE';
             const needAp = apGroup !== 'NONE' && !DISP_NOMIG;
             let apUser = null;
             if (needAp) {
@@ -4018,6 +4026,8 @@
                 mobile: `Outward: ${customOutwardNo}`,
                 vehicle: vehicleNo,
                 grossWeight: +gross.toFixed(2), tareWeight: +tare.toFixed(2), netWeight: netNum,   // the server reads netWeight (approval rule)
+                // 6D: what the page saw; the server's own Grand Total decides the approval
+                slipTotalWt: wb.loaded, wtDiff: wb.diff, apBasis: wb.kind, loadedSlips: wb.slips,
                 approvalStatus: needAp ? 'APPROVAL PENDING' : 'NOT NEEDED',
                 needApproval: needAp,
                 apGroup: apGroup, apRule: { from: apRule.from, to: apRule.to == null ? null : apRule.to, approver: apGroup },
@@ -4025,7 +4035,7 @@
                 hostUserId: apUser ? apUser.id : null, hostEmpCode: apUser ? (apUser.empCode || null) : null,
                 host: `Outward: ${customOutwardNo} | DK: ${dkSlipId} | Tare: ${tare.toFixed(2)} Kg`,
                 // the first part (before •) is what the approver sees on the launcher
-                purpose: `Net Wt: ${net} Kg · Gross: ${gross.toFixed(2)} Kg · Tare: ${tare.toFixed(2)} Kg • ${needAp ? 'APPROVAL: ' + (DISP_GROUPS[apGroup] || apGroup) : 'No approval needed'}`,
+                purpose: (wb.kind === 'DIFF' ? `Diff: ${wb.diff > 0 ? '+' : ''}${wb.diff.toFixed(2)} Kg (Net ${net} − Slips ${wb.loaded.toFixed(2)} Kg) · ` : '') + `Net Wt: ${net} Kg · Gross: ${gross.toFixed(2)} Kg · Tare: ${tare.toFixed(2)} Kg • ${needAp ? 'APPROVAL: ' + (DISP_GROUPS[apGroup] || apGroup) : 'No approval needed'}`,
                 vehiclePhoto: tempPhotos.dispVehicle,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
@@ -4046,6 +4056,7 @@
             tempPhotos.dispVehicle = null;
             matchedDispatchDkEntry = null;
             dispScanSet(null);
+            dispLoadFor('');
             dispApPaint();
 
             if (needAp) {
@@ -4109,12 +4120,13 @@
             const box = document.getElementById('dispApBox'); if (!box) return;
             const net = parseFloat(document.getElementById('dispNetWeight').value);
             if (!matchedDispatchDkEntry || !isFinite(net)) { box.classList.add('hidden'); box.dataset.grp = ''; return; }
-            const rule = dispRuleFor(net), g = rule.approver || 'NONE';
+            const wb = dispWtBasis(net), why = dispWtWhy(wb, net);
+            const rule = dispRuleFor(wb.basis), g = rule.approver || 'NONE';
             box.classList.remove('hidden');
             if (g === 'NONE') {
                 box.className = 'rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-3 space-y-2';
                 box.innerHTML = `<p class="text-xs font-extrabold text-emerald-800"><i class="fa-solid fa-circle-check"></i> No approval needed</p>
-                    <p class="text-[10.5px] font-semibold text-emerald-700/80">Net Wt ${esc(net.toFixed(2))} Kg is in the band ${esc(dispBandText(rule))}.</p>`;
+                    <p class="text-[10.5px] font-semibold text-emerald-700/80">${why} is in the band ${esc(dispBandText(rule))}.</p>`;
                 box.dataset.grp = g; return;
             }
             if (DISP_NOMIG) {
@@ -4127,7 +4139,7 @@
             const pick = cur || (list.some(u => u.id === last) ? last : (list.length === 1 ? list[0].id : ''));
             box.className = 'rounded-2xl border border-orange-200 bg-orange-50/70 px-3.5 py-3 space-y-2';
             box.innerHTML = `<p class="text-xs font-extrabold text-orange-800"><i class="fa-solid fa-user-shield"></i> Approval needed: ${esc(DISP_GROUPS[g] || g)}</p>
-                <p class="text-[10.5px] font-semibold text-orange-700/80">Net Wt ${esc(net.toFixed(2))} Kg is in the band ${esc(dispBandText(rule))}.</p>`
+                <p class="text-[10.5px] font-semibold text-orange-700/80">${why} is in the band ${esc(dispBandText(rule))}.</p>`
                 + (list.length
                     ? `<label class="block text-[10px] font-bold text-gray-500 uppercase">Whom to Approve *</label>
                        <select id="dispApprover" class="w-full px-3.5 py-3 bg-white border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400">
@@ -4136,6 +4148,82 @@
                        </select>`
                     : `<p class="text-[11px] font-bold text-amber-800">${DISP_CFG.server ? 'Nobody has this role yet' : 'The approver list is not loaded (offline)'}: the slip is sent for approval anyway and the Admin decides it on the launcher.</p>`);
             box.dataset.grp = g;
+        }
+
+        // ==========================================
+        // 6D. LOADED SLIPS (sql/GATE_DISPATCH_SLIP_WEIGHT_MIGRATION.sql)
+        // ==========================================
+        /* Choosing the Dharam Kanta Slip No. reads the ERP packing slips loaded on that tempo in this trip
+           (gate_dk_loaded: Tempo No. = the slip's vehicle, saved after the slip and before the vehicle's next
+           Dharam Kanta slip — packing.html's Tempo-Bill rule) and shows them under the Auto-Generated Slip card:
+           slip no., party, Dispatch To, qualities, packs, pcs, weight, and the Grand Total. With the Gross typed,
+           the box also shows Net Wt − Grand Total. That DIFFERENCE (either way) picks the Approval Rules band
+           (dispWtBasis), not the Net Wt; no packing slip data (offline, no migration, the packing tables cannot be
+           read) = the Net Wt as before, said so in the box. The server works the Grand Total out again in its
+           trigger (gate_disp_request_trg_), so the approval never depends on what the phone saw. */
+        var DISP_LOAD = { slip: '', state: '', data: null, err: '', seq: 0 };   // state '' / loading / ok / nopk / nomig / error
+        async function dispLoadFor(slipId) {
+            const seq = ++DISP_LOAD.seq;
+            DISP_LOAD = { slip: slipId || '', state: slipId ? 'loading' : '', data: null, err: '', seq };
+            dispLoadPaint(); dispApPaint();
+            if (!slipId) return;
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) { DISP_LOAD.state = 'error'; DISP_LOAD.err = 'offline'; dispLoadPaint(); dispApPaint(); return; }
+            const r = await gateRpc('gate_dk_loaded', { p_slip: slipId });
+            if (seq !== DISP_LOAD.seq) return;
+            if (r.ok) { DISP_LOAD.data = r.data; DISP_LOAD.state = r.data.available === false ? 'nopk' : 'ok'; }
+            else { DISP_LOAD.state = r.error === 'NO_MIGRATION' ? 'nomig' : 'error'; DISP_LOAD.err = r.detail || r.error || ''; }
+            dispLoadPaint(); dispApPaint();
+        }
+        // What the approval band reads: DIFF = |Net − Grand Total| when the loaded slips are known, else NET
+        function dispWtBasis(net) {
+            const n = Number(net) || 0, d = DISP_LOAD.state === 'ok' ? DISP_LOAD.data : null;
+            if (!d) return { kind: 'NET', basis: n, loaded: null, diff: null, slips: null };
+            const loaded = +(Number(d.weight) || 0).toFixed(2), diff = +(n - loaded).toFixed(2);
+            return { kind: 'DIFF', basis: Math.abs(diff), loaded, diff, slips: (d.slips || []).map(x => x.slipNo) };
+        }
+        function dispWtWhy(wb, net) {
+            if (wb.kind === 'DIFF') return 'Difference ' + (wb.diff > 0 ? '+' : '') + esc(wb.diff.toFixed(2)) + ' Kg (Net ' + esc(Number(net).toFixed(2)) + ' − Slips ' + esc(wb.loaded.toFixed(2)) + ' Kg)';
+            return 'Net Wt ' + esc(Number(net).toFixed(2)) + ' Kg (no packing slip data, so the Net Wt is used)';
+        }
+        function dispLoadPaint() {
+            const box = document.getElementById('dispSlipSum'); if (!box) return;
+            const st = DISP_LOAD.state, d = DISP_LOAD.data;
+            if (!st) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+            box.classList.remove('hidden');
+            const wrap = (cls, inner) => '<div class="rounded-2xl border ' + cls + ' px-3.5 py-3">' + inner + '</div>';
+            const again = '<button type="button" onclick="dispLoadFor(DISP_LOAD.slip)" class="ios-btn mt-2 px-3 py-1.5 rounded-xl bg-white border border-gray-200 text-[11px] font-extrabold text-gray-700">Try again</button>';
+            const title = '<p class="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wide mb-1.5">Auto-Generated · Packing slips on ' + esc(DISP_LOAD.slip) + '</p>';
+            if (st === 'loading') { box.innerHTML = wrap('border-indigo-100 bg-indigo-50/50', title + '<p class="text-[11px] font-semibold text-gray-500">Reading the ERP packing slips of this tempo…</p>'); return; }
+            if (st === 'nomig') { box.innerHTML = wrap('border-amber-200 bg-amber-50', title + '<p class="text-[11px] font-bold text-amber-800">Not set up on the server yet: the Admin must run GATE_DISPATCH_SLIP_WEIGHT_MIGRATION.sql. The approval uses the Net Wt until then.</p>'); return; }
+            if (st === 'error') { box.innerHTML = wrap('border-red-200 bg-red-50', title + '<p class="text-[11px] font-bold text-red-700">' + (DISP_LOAD.err === 'offline' ? 'No internet: the packing slips cannot be read now.' : 'The packing slips could not be read: ' + esc(DISP_LOAD.err)) + ' The approval uses the Net Wt for now (the server checks the slips again).</p>' + again); return; }
+            if (st === 'nopk') { box.innerHTML = wrap('border-amber-200 bg-amber-50', title + '<p class="text-[11px] font-bold text-amber-800">The ERP packing slips cannot be read here (' + esc(d && d.error || '') + '): the approval uses the Net Wt.</p>'); return; }
+            const rows = d.slips || [];
+            const net = parseFloat(document.getElementById('dispNetWeight').value);
+            const kg = n => esc((Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
+            let h = title;
+            if (!rows.length) h += '<p class="text-[11px] font-bold text-red-700">No ERP packing slip is saved on ' + esc(d.vehicle || 'this tempo') + ' since this Dharam Kanta slip. The whole Net Wt counts as the difference.</p>';
+            else {
+                h += '<div class="overflow-x-auto -mx-1"><table class="w-full text-[11px] min-w-[420px]"><thead><tr class="text-[9.5px] uppercase text-gray-500 font-extrabold">'
+                    + '<th class="text-left px-1 py-1">Slip No.</th><th class="text-left px-1 py-1">Party</th><th class="text-left px-1 py-1">Dispatch To</th>'
+                    + '<th class="text-right px-1 py-1">Packs</th><th class="text-right px-1 py-1">Pcs</th><th class="text-right px-1 py-1">Weight</th></tr></thead><tbody>'
+                    + rows.map(x => '<tr class="border-t border-indigo-100 align-top"><td class="px-1 py-1 font-mono font-extrabold text-gray-900 whitespace-nowrap">' + esc(x.slipNo) + '</td>'
+                        + '<td class="px-1 py-1 font-bold text-gray-800">' + esc(x.party || '-') + (x.qualities ? '<span class="block text-[10px] font-semibold text-gray-500">' + esc(x.qualities) + '</span>' : '') + '</td>'
+                        + '<td class="px-1 py-1 font-semibold text-gray-700">' + esc(x.dispatchTo || '-') + '</td>'
+                        + '<td class="px-1 py-1 text-right font-bold">' + kg(x.packs) + '</td><td class="px-1 py-1 text-right font-bold">' + kg(x.pcs) + '</td>'
+                        + '<td class="px-1 py-1 text-right font-extrabold whitespace-nowrap">' + kg(x.weight) + ' Kg</td></tr>').join('')
+                    + '<tr class="border-t-2 border-indigo-300 bg-white/70"><td class="px-1 py-1.5 font-extrabold text-gray-900" colspan="3">Grand Total · ' + rows.length + ' slip(s)</td>'
+                    + '<td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.packs) + '</td><td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.pcs) + '</td>'
+                    + '<td class="px-1 py-1.5 text-right font-extrabold text-indigo-700 whitespace-nowrap">' + kg(d.weight) + ' Kg</td></tr></tbody></table></div>';
+            }
+            if (isFinite(net)) {
+                const diff = net - (Number(d.weight) || 0);
+                h += '<div class="grid grid-cols-3 gap-2 mt-2.5">'
+                    + '<div class="rounded-xl bg-white border border-gray-200 px-2 py-1.5"><span class="block text-[9.5px] font-bold text-gray-500 uppercase">Net Wt</span><span class="text-xs font-extrabold text-gray-900">' + kg(net) + ' Kg</span></div>'
+                    + '<div class="rounded-xl bg-white border border-gray-200 px-2 py-1.5"><span class="block text-[9.5px] font-bold text-gray-500 uppercase">Grand Total</span><span class="text-xs font-extrabold text-gray-900">' + kg(d.weight) + ' Kg</span></div>'
+                    + '<div class="rounded-xl bg-white border border-indigo-300 px-2 py-1.5"><span class="block text-[9.5px] font-bold text-indigo-600 uppercase">Difference</span><span class="text-xs font-extrabold text-indigo-800">' + (diff > 0 ? '+' : '') + kg(diff) + ' Kg</span></div>'
+                    + '</div><p class="text-[10px] font-semibold text-gray-500 mt-1.5">The Approval Rules band follows this difference (heavier or lighter), not the Net Wt.</p>';
+            } else h += '<p class="text-[10px] font-semibold text-gray-500 mt-1.5">Enter the Gross Wt: the difference Net Wt − Grand Total decides the approval.</p>';
+            box.innerHTML = wrap('border-indigo-200 bg-indigo-50/50', h);
         }
 
         // ── Pending Approval ──
@@ -4165,7 +4253,7 @@
                     <div class="min-w-0">
                         <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
                         <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.outwardNo || '')} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</p>
-                        <p class="text-[11px] font-bold text-gray-700 truncate">Net ${esc(Number(e.netWeight || 0).toFixed(2))} Kg · ${esc(DISP_GROUPS[e.apGroup] || e.apGroup || '-')}${e.approver ? ' · ' + esc(e.approver) : ''}</p>
+                        <p class="text-[11px] font-bold text-gray-700 truncate">${e.wtDiff != null ? 'Diff ' + (e.wtDiff > 0 ? '+' : '') + esc(Number(e.wtDiff).toFixed(2)) + ' Kg · ' : ''}Net ${esc(Number(e.netWeight || 0).toFixed(2))} Kg${e.slipTotalWt != null ? ' · Slips ' + esc(Number(e.slipTotalWt).toFixed(2)) + ' Kg' : ''} · ${esc(DISP_GROUPS[e.apGroup] || e.apGroup || '-')}${e.approver ? ' · ' + esc(e.approver) : ''}</p>
                         <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
                     </div>
                     <div class="flex gap-2">${acts}</div>
@@ -4845,7 +4933,7 @@
            per field), the rest on the entry: stdTare, tareDiff, tareCheck {desc, remarks, photos}. A vehicle without a
            Standard Tare saves as before (a note says so). The list comes from gate_vehicle_tares (kept on the phone for
            offline use, refreshed every 10 minutes); before the migration there is no list and no check. */
-        const DK_TARE_TOL = 15, DK_TARE_KEY = 'gate1_veh_tare_v1', DK_ITEM_MAX = 4;
+        const DK_TARE_TOL = 25, DK_TARE_KEY = 'gate1_veh_tare_v1', DK_ITEM_MAX = 4;
         let DK_TARES = readLS(DK_TARE_KEY, null) || { map: {}, at: 0 }, dkTareBusy = null, DK_TARE_NOMIG = false, DK_ITEM_PHOTOS = [];
         function dkTareLoad(force) {
             if (!force && Date.now() - (DK_TARES.at || 0) < 10 * 60000) return Promise.resolve(DK_TARES);

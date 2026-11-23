@@ -335,6 +335,30 @@
         /* ── Vehicle Freight (showFreightPanel) + Settings › Freight Rates ── */
         #freight-panel { display: none; }
         .fr-filters { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+        /* Tempo-Bill (TEMPO BILL) */
+        .tb-trip { background: #fff; border: 1px solid var(--border); border-radius: 12px; padding: 12px; margin-top: 12px; break-inside: avoid; }
+        .tb-day { background: #f8fafc; border: 1.5px solid #cbd5e1; border-radius: 14px; padding: 12px; margin-top: 14px; }
+        .tb-day > .tb-head { border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; }
+        .tb-day .tb-trip { margin-top: 10px; }
+        .tb-no { display: inline-block; font-family: ui-monospace, Consolas, monospace; font-weight: 800; font-size: 14px; color: #065f46; background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 8px; padding: 3px 9px; }
+        .tb-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; margin-bottom: 8px; }
+        .tb-head .veh { font-size: 16px; font-weight: 800; color: #0f172a; font-family: ui-monospace, Consolas, monospace; }
+        .tb-head .sub { font-size: 12px; color: #475569; font-weight: 600; line-height: 1.5; }
+        .tb-wrap { overflow-x: auto; }
+        .tb-table { width: 100%; min-width: 760px; border-collapse: collapse; font-size: 12.5px; }
+        .tb-table th { background: #0f172a; color: #fff; font-weight: 700; padding: 6px 7px; text-align: left; white-space: nowrap; }
+        .tb-table td { border-bottom: 1px solid #e2e8f0; padding: 5px 7px; vertical-align: top; }
+        .tb-table td.n, .tb-table th.n { text-align: right; white-space: nowrap; }
+        .tb-table tr.tot td { background: #f1f5f9; font-weight: 800; border-top: 2px solid #0f172a; }
+        .tb-table .muted { color: #94a3b8; font-size: 11px; }
+        .tb-wt { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; margin-top: 10px; }
+        .tb-wt > div { border: 1px solid #e2e8f0; border-radius: 10px; padding: 7px 9px; background: #f8fafc; }
+        .tb-wt .l { font-size: 10.5px; font-weight: 700; color: #64748b; text-transform: uppercase; }
+        .tb-wt .v { font-size: 15px; font-weight: 800; color: #0f172a; }
+        .tb-wt .ok { background: #f0fdf4; border-color: #86efac; } .tb-wt .ok .v { color: #15803d; }
+        .tb-wt .bad { background: #fffbeb; border-color: #fcd34d; } .tb-wt .bad .v { color: #b45309; }
+        .tb-sum { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+        .tb-sum span { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 700; color: #334155; }
         .fr-filters .form-group { margin-bottom: 0; flex: 1; min-width: 130px; }
         .fr-filters .fr-grow { flex: 2; min-width: 170px; }
         .fr-filters input, .fr-filters select { width: 100%; box-sizing: border-box; }
@@ -759,6 +783,7 @@
             <button id="repairPdfNavBtn" type="button" onclick="showPdfRepairPanel()" style="display:none;">Fix PDFs</button>
             <button id="reportsNavBtn" type="button" onclick="showReportsPanel()" style="display:none;">Reports</button>
             <button id="freightNavBtn" type="button" onclick="showFreightPanel()" style="display:none;">Freight</button>
+            <button id="tempoBillNavBtn" type="button" onclick="showTempoBillPanel()" style="display:none;">Tempo-Bill</button>
             <button id="labourNavBtn" type="button" onclick="showLabourPanel()" style="display:none;">Labour</button>
             <button id="dfuNavBtn" type="button" onclick="showDfuPanel()" style="display:none;">Dispatch Follow-Up</button>
             <button id="settingsNavBtn" type="button" onclick="showSettingsPanel()" style="display:none;">Settings</button>
@@ -890,6 +915,8 @@
                 oninput="this.value=this.value.toUpperCase();"
                 onchange="onTempoChange(this)"
                 style="font-weight:600;">
+            <!-- The vehicle's Dharam Kanta slip from the gate (PACKING DK SLIP, pkDkPaint); no slip = the Tempo No. is refused -->
+            <div id="tempo-dk-box" style="display:none;margin-top:8px;"></div>
         </div>
         <div class="form-group">
             <label>Driver Name <span class="required-star">*</span></label>
@@ -1412,6 +1439,28 @@
         <div id="fr-banner"></div>
     </div>
     <div id="fr-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and press Generate Report.</p></div>
+</div>
+
+<!-- Tempo-Bill Panel (Admin / MD / Packing Incharge; TEMPO BILL section, sql/PACKING_TEMPO_BILL_MIGRATION.sql):
+     one bill per Dharam Kanta trip of a tempo = the packing slips loaded between the gate's Tare
+     weighing and its Dispatch Packing entry, priced with Settings › Freight Rates; under it Tare +
+     loaded weight vs the Gross weighed at the gate. Read only; computed in the page. -->
+<div class="container" id="tempo-bill-panel">
+    <div class="card">
+        <div class="card-title">Tempo-Bill · Dharam Kanta trip-wise</div>
+        <div class="fr-filters">
+            <div class="form-group"><label>From</label><input type="date" id="tb-from"></div>
+            <div class="form-group"><label>To</label><input type="date" id="tb-to"></div>
+            <div class="form-group fr-grow"><label>Tempo No (empty = all)</label><input type="text" id="tb-tempo" list="dl-tempo" autocomplete="off" placeholder="All tempos" oninput="this.value=this.value.toUpperCase();"></div>
+        </div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn" id="tb-run-btn" onclick="tbRun()">Generate Tempo-Bill</button>
+            <button type="button" class="fr-btn ghost" onclick="tbPrint()">Print / PDF</button>
+            <button type="button" class="fr-btn ghost" onclick="tbCsv()">CSV</button>
+        </div>
+        <div id="tb-banner"></div>
+    </div>
+    <div id="tb-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates (and a tempo) and press Generate Tempo-Bill.</p></div>
 </div>
 
 <!-- Party Master Panel — packing.party_master (sql/PACKING_PARTY_MASTER_MIGRATION.sql
@@ -5166,15 +5215,198 @@ function setDriverNameOptions(vehicleDriver, selected, openList) {
     }
 }
 
+// ══════════════════════════════════════════════════════
+// PACKING DK SLIP  (sql/PACKING_DK_SLIP_LINK_MIGRATION.sql)
+//   A Tempo No. of the New Packing Slip needs the vehicle's Dharam Kanta slip
+//   from the gate (gate_2.html / gate_1.html › Dharam Kanta: the EMPTY vehicle's
+//   Tare). Choosing the tempo reads it (pk_dk_slip_for_vehicle: the newest slip
+//   with a Tare still waiting for its dispatch at the gate) and shows it under
+//   the box: slip no., gate, time, Tare / Standard Tare / difference, Gross /
+//   Net when weighed, vehicle photo. When the Tare is PK_DK_TOL (25) Kg or more
+//   off the vehicle's Standard Tare (heavier or lighter) the gate's Item
+//   Description, Remarks and Item Photos are shown too.
+//   No such slip = the Tempo No. is cleared with the reason (Try again after
+//   the gate saves it). SELF needs none. Finish checks it again on the server,
+//   so a slip used up meanwhile is caught. Could not check (network) = Finish
+//   waits for a successful check; no migration yet = allowed with a note.
+//   Only the New Packing Slip form; an edited slip is not checked.
+// ══════════════════════════════════════════════════════
+var PK_DK_TOL = 25;
+var PK_DK = { tempo: '', state: '', slip: null, older: 0, err: '', seq: 0 };   // state '' / loading / ok / none / error / nomig / self
+function pkDkToken_() { try { return localStorage.getItem(SARV_SSO_KEY) || ''; } catch (e) { return ''; } }
+async function pkDkCheck(tempo) {
+    tempo = String(tempo || '').toUpperCase().trim();
+    var seq = ++PK_DK.seq;
+    PK_DK.tempo = tempo; PK_DK.slip = null; PK_DK.older = 0; PK_DK.err = ''; PK_DK.prevFor = null; PK_DK.prev = null; PK_DK.prevErr = '';
+    if (!tempo) { PK_DK.state = ''; pkDkPaint(); return PK_DK; }
+    if (vehCleanTempo(tempo) === VEH_SELF) { PK_DK.state = 'self'; pkDkPaint(); return PK_DK; }
+    PK_DK.state = 'loading'; pkDkPaint();
+    try {
+        var r = await sarvPublic().rpc('pk_dk_slip_for_vehicle', { p_token: pkDkToken_(), p_vehicle: tempo });
+        if (seq !== PK_DK.seq) return PK_DK;     // another tempo chosen meanwhile
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) throw new Error(d.error || 'FAILED');
+        PK_DK.slip = d.slip || null; PK_DK.older = d.older || 0;
+        PK_DK.state = d.slip ? 'ok' : 'none';
+    } catch (e) {
+        if (seq !== PK_DK.seq) return PK_DK;
+        var m = String((e && (e.message || e.details)) || e);
+        if (/pk_dk_slip_for_vehicle|schema cache|PGRST202|42883|Could not find the function/i.test(m)) PK_DK.state = 'nomig';
+        else { PK_DK.state = 'error'; PK_DK.err = m; }
+    }
+    pkDkPaint();
+    if (PK_DK.state === 'none') pkDkRefuse_();
+    return PK_DK;
+}
+// No Dharam Kanta slip: the tempo cannot stay in the box (driver fields go with it)
+function pkDkRefuse_() {
+    var inp = document.getElementById('tempo-no');
+    if (inp && vehCleanTempo(inp.value) === vehCleanTempo(PK_DK.tempo)) {
+        inp.value = '';
+        setDriverNameOptions('', '', false);
+        var mob = document.getElementById('driver-mobile'); if (mob) mob.value = '';
+    }
+    showToast('Tempo ' + PK_DK.tempo + ' has no Dharam Kanta Tare slip at the gate. Weigh the empty vehicle at the gate Dharam Kanta first, then choose it again.');
+}
+function pkDkFmt_(iso) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function pkDkKg_(v) { var n = Number(v); return isFinite(n) && v !== null && v !== '' ? (Math.round(n * 100) / 100) + ' Kg' : '-'; }
+function pkDkPaint() {
+    var box = document.getElementById('tempo-dk-box'); if (!box) return;
+    var st = PK_DK.state, S = PK_DK.slip, e = escapeHtmlJs;
+    var card = function (bg, bd, inner) { return '<div style="background:' + bg + ';border:1px solid ' + bd + ';border-radius:12px;padding:10px 12px;font-size:12.5px;line-height:1.45;">' + inner + '</div>'; };
+    var again = '<button type="button" onclick="pkDkCheck(PK_DK.tempo)" style="margin-top:6px;padding:5px 12px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;font-weight:700;font-size:12px;cursor:pointer;">Try again</button>';
+    if (!st || st === 'self') { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.style.display = '';
+    if (st === 'loading') { box.innerHTML = card('#f8fafc', '#e2e8f0', '<span style="color:#64748b;">Reading the Dharam Kanta slip of ' + e(PK_DK.tempo) + ' from the gate…</span>'); return; }
+    if (st === 'nomig') { box.innerHTML = card('#fffbeb', '#fcd34d', '<b style="color:#92400e;">Dharam Kanta check is not set up yet.</b> <span style="color:#78350f;">Run sql/PACKING_DK_SLIP_LINK_MIGRATION.sql (Admin). Until then the tempo is not checked.</span>'); return; }
+    if (st === 'error') { box.innerHTML = card('#fef2f2', '#fca5a5', '<b style="color:#b91c1c;">The Dharam Kanta slip could not be checked.</b> <span style="color:#7f1d1d;">' + e(PK_DK.err) + '</span><br><span style="color:#7f1d1d;">The slip cannot be finished until the check works.</span><br>' + again); return; }
+    if (st === 'none') { box.innerHTML = card('#fef2f2', '#fca5a5', '<b style="color:#b91c1c;">No Dharam Kanta Tare slip for ' + e(PK_DK.tempo) + '.</b><br><span style="color:#7f1d1d;">The empty vehicle must be weighed at the gate Dharam Kanta first (Tare Weight). Then choose the Tempo No. again.</span><br>' + again); return; }
+    // ok
+    var diff = (S.diff === null || S.diff === undefined || S.diff === '') ? null : Number(S.diff);
+    var off = diff !== null && Math.abs(diff) >= PK_DK_TOL;
+    var diffTxt = diff === null ? '<span style="color:#64748b;">no Standard Tare set</span>'
+        : '<b style="color:' + (off ? '#b45309' : '#15803d') + ';">' + (diff > 0 ? '+' : '') + (Math.round(diff * 100) / 100) + ' Kg</b>'
+          + (off ? ' <span style="color:#b45309;">(' + PK_DK_TOL + ' Kg or more off the Standard Tare)</span>' : ' <span style="color:#15803d;">(within ' + PK_DK_TOL + ' Kg)</span>');
+    var cell = function (l, v) { return '<div><div style="font-size:10.5px;color:#64748b;font-weight:700;text-transform:uppercase;">' + l + '</div><div style="font-weight:800;color:#0f172a;">' + v + '</div></div>'; };
+    var thumb = function (src, label) { return src ? '<button type="button" onclick="pkDkPhoto(\'' + label + '\')" title="' + e(label) + ' (tap to view)" style="padding:0;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;background:#fff;cursor:zoom-in;width:84px;height:84px;display:inline-flex;align-items:center;justify-content:center;"><img src="' + src + '" alt="" style="max-width:100%;max-height:100%;object-fit:contain;display:block;"></button>' : ''; };
+    var h = '<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:6px;">'
+        + '<b style="color:#0f172a;">Dharam Kanta · Slip ' + e(S.slipNo) + '</b>'
+        + '<span style="color:#475569;font-size:11.5px;font-weight:700;">' + e(S.gate === 'G1' ? 'Gate-1' : 'Gate-2') + ' · ' + e(pkDkFmt_(S.inTime)) + (S.guard ? ' · ' + e(S.guard) : '') + '</span></div>'
+        + '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:6px 12px;">'
+        + cell('Tare Wt', pkDkKg_(S.tare)) + cell('Standard Tare', S.stdTare === null || S.stdTare === undefined ? '-' : pkDkKg_(S.stdTare))
+        + (Number(S.gross) > 0 ? cell('Gross Wt', pkDkKg_(S.gross)) + cell('Net Wt', pkDkKg_(S.net)) : '')
+        + '</div>'
+        + '<div style="margin-top:6px;">Difference: ' + diffTxt + '</div>';
+    if (off) {
+        h += '<div style="margin-top:8px;padding-top:8px;border-top:1px dashed #fcd34d;">'
+            + '<div><span style="color:#92400e;font-weight:700;">Item Description:</span> ' + (S.desc ? e(S.desc) : '<span style="color:#94a3b8;">not written at the gate</span>') + '</div>'
+            + '<div><span style="color:#92400e;font-weight:700;">Remarks:</span> ' + (S.remarks ? e(S.remarks) : '<span style="color:#94a3b8;">not written at the gate</span>') + '</div>'
+            + '<div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-start;">'
+            + (S.itemPhoto ? '<div style="text-align:center;font-size:10.5px;color:#64748b;font-weight:700;">' + thumb(S.itemPhoto, 'Item Photos') + '<div>Item Photos</div></div>' : '<span style="color:#94a3b8;">No item photo saved at the gate.</span>')
+            + (S.vehiclePhoto ? '<div style="text-align:center;font-size:10.5px;color:#64748b;font-weight:700;">' + thumb(S.vehiclePhoto, 'Vehicle Photo') + '<div>Vehicle Photo</div></div>' : '')
+            + '</div></div>';
+    } else if (S.vehiclePhoto) {
+        h += '<div style="margin-top:6px;font-size:10.5px;color:#64748b;font-weight:700;display:inline-block;text-align:center;">' + thumb(S.vehiclePhoto, 'Vehicle Photo') + '<div>Vehicle Photo</div></div>';
+    }
+    if (PK_DK.older) h += '<div style="margin-top:6px;font-size:11.5px;color:#92400e;">' + PK_DK.older + ' older slip(s) of this vehicle are also waiting at the gate; the newest is used.</div>';
+    h += '<div id="tempo-dk-prev" style="margin-top:8px;padding-top:8px;border-top:1px dashed #cbd5e1;">' + pkDkPrevHtml_() + '</div>';
+    box.innerHTML = card(off ? '#fffbeb' : '#f0fdf4', off ? '#fcd34d' : '#86efac', h);
+    if (PK_DK.prevFor !== S.slipNo) pkDkPrevLoad_(S);
+}
+/* The packing slips ALREADY SAVED on this tempo since its Dharam Kanta slip
+   (the same trip rule as the Tempo-Bill: tempo matched without spaces /
+   dashes, saved after the slip's time), so the user sees what is already
+   loaded: slip no., party, Dispatch To, packs, weight, saved time, and the
+   weight so far (Tare + loaded = expected Gross so far). Read once per slip;
+   a save of this form adds the new slip the next time the tempo is chosen. */
+async function pkDkPrevLoad_(S) {
+    var seq = PK_DK.seq;
+    PK_DK.prevFor = S.slipNo; PK_DK.prev = null; PK_DK.prevErr = '';
+    try {
+        var k = vehCleanTempo(S.vehicle || PK_DK.tempo), list = [];
+        for (var off = 0; ; off += 1000) {
+            var { data, error } = await supabaseClient.from('packing_slips').select('id, slip_no, slip_date, party_name, dispatch_to, tempo_no, created_at')
+                .gte('created_at', new Date(Date.parse(S.inTime) || 0).toISOString()).order('created_at').range(off, off + 999);
+            if (error) throw error;
+            list = list.concat((data || []).filter(function (x) { return vehCleanTempo(x.tempo_no) === k; }));
+            if (!data || data.length < 1000) break;
+        }
+        var items = list.length ? await pkSelectIn('packing_slip_items', 'slip_id, weight', 'slip_id', list.map(function (x) { return x.id; })) : [];
+        var by = {};
+        items.forEach(function (it) { var g = by[it.slip_id] || (by[it.slip_id] = { packs: 0, weight: 0 }); g.packs += 1; g.weight += Number(it.weight) || 0; });
+        list.forEach(function (x) { var g = by[x.id] || { packs: 0, weight: 0 }; x._packs = g.packs; x._weight = Math.round(g.weight * 1000) / 1000; });
+        if (seq !== PK_DK.seq) return;
+        PK_DK.prev = list;
+    } catch (e) {
+        if (seq !== PK_DK.seq) return;
+        PK_DK.prevErr = String((e && e.message) || e);
+    }
+    var el = document.getElementById('tempo-dk-prev'); if (el) el.innerHTML = pkDkPrevHtml_();
+}
+function pkDkPrevHtml_() {
+    var e = escapeHtmlJs, S = PK_DK.slip;
+    var head = '<div style="font-size:11px;font-weight:800;color:#334155;text-transform:uppercase;letter-spacing:.03em;margin-bottom:4px;">Packing slips already on this tempo (this Dharam Kanta trip)</div>';
+    if (PK_DK.prevErr) return head + '<div style="color:#b91c1c;font-size:12px;">Could not be read: ' + e(PK_DK.prevErr) + '</div>';
+    if (!PK_DK.prev) return head + '<div style="color:#64748b;font-size:12px;">Reading…</div>';
+    if (!PK_DK.prev.length) return head + '<div style="color:#64748b;font-size:12px;">None yet: this is the first packing slip on this trip.</div>';
+    var tw = 0, tp = 0;
+    var rows = PK_DK.prev.map(function (x) {
+        tw += x._weight; tp += x._packs;
+        return '<tr><td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;"><b>' + e(x.slip_no) + '</b></td>'
+            + '<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;">' + e(x.party_name || '') + '</td>'
+            + '<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;">' + e(x.dispatch_to || '-') + '</td>'
+            + '<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;text-align:right;">' + x._packs + '</td>'
+            + '<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap;">' + pkDkKg_(x._weight) + '</td>'
+            + '<td style="padding:3px 6px;border-bottom:1px solid #e2e8f0;white-space:nowrap;color:#64748b;">' + e(pkDkFmt_(x.created_at)) + '</td></tr>';
+    }).join('');
+    tw = Math.round(tw * 1000) / 1000;
+    var th = function (t, r) { return '<th style="padding:3px 6px;text-align:' + (r ? 'right' : 'left') + ';font-size:10.5px;color:#475569;border-bottom:1px solid #cbd5e1;">' + t + '</th>'; };
+    return head + '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:12px;min-width:460px;"><thead><tr>'
+        + th('Slip No.') + th('Party') + th('Dispatch To') + th('Packs', 1) + th('Weight', 1) + th('Saved') + '</tr></thead><tbody>' + rows
+        + '<tr style="font-weight:800;background:#f1f5f9;"><td style="padding:4px 6px;" colspan="3">' + PK_DK.prev.length + ' slip(s) loaded</td><td style="padding:4px 6px;text-align:right;">' + tp + '</td><td style="padding:4px 6px;text-align:right;white-space:nowrap;">' + pkDkKg_(tw) + '</td><td></td></tr>'
+        + '</tbody></table></div>'
+        + '<div style="margin-top:5px;font-size:12px;color:#334155;">Tare ' + pkDkKg_(S && S.tare) + ' + loaded ' + pkDkKg_(tw) + ' = <b>expected Gross so far ' + pkDkKg_((Number(S && S.tare) || 0) + tw) + '</b> (before this slip)</div>';
+}
+// Full-screen photo with a Close button (Esc / a tap outside closes too)
+function pkDkPhoto(which) {
+    var S = PK_DK.slip; if (!S) return;
+    var src = which === 'Item Photos' ? S.itemPhoto : S.vehiclePhoto; if (!src) return;
+    var ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;z-index:10050;background:rgba(2,6,23,.92);display:flex;align-items:center;justify-content:center;padding:56px 12px 12px;';
+    ov.innerHTML = '<div style="position:absolute;top:14px;left:16px;right:120px;color:#e2e8f0;font-weight:700;font-size:13px;">' + escapeHtmlJs(which + ' · Slip ' + S.slipNo) + '</div>'
+        + '<button type="button" data-x style="position:absolute;top:10px;right:12px;height:36px;padding:0 16px;border:0;border-radius:18px;background:#dc2626;color:#fff;font-weight:800;cursor:pointer;">✕ Close</button>'
+        + '<img alt="" style="max-width:100%;max-height:100%;object-fit:contain;border-radius:8px;background:#fff;">';
+    ov.querySelector('img').src = src;
+    var close = function () { document.removeEventListener('keydown', key, true); ov.remove(); };
+    var key = function (ev) { if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); close(); } };
+    document.addEventListener('keydown', key, true);
+    ov.addEventListener('click', function (ev) { if (ev.target === ov || ev.target.hasAttribute('data-x')) close(); });
+    document.body.appendChild(ov);
+}
+// Finish: the tempo's slip is checked again now (true = may save)
+var pkDkChecking = false;
+async function pkDkReady_(tempoEl) {
+    var t = String((tempoEl && tempoEl.value) || '').toUpperCase().trim();
+    if (!t || vehCleanTempo(t) === VEH_SELF) return true;
+    await pkDkCheck(t);
+    if (PK_DK.state === 'ok' || PK_DK.state === 'nomig') return true;
+    if (PK_DK.state === 'none') alert('Tempo ' + t + ' has no Dharam Kanta Tare slip at the gate.\n\nWeigh the empty vehicle at the gate Dharam Kanta first, then choose the Tempo No. again.');
+    else alert('The Dharam Kanta slip of ' + t + ' could not be checked:\n' + (PK_DK.err || 'unknown error') + '\n\nCheck the connection and press Finish again.');
+    if (tempoEl) tempoEl.focus();
+    return false;
+}
+
 function onTempoChange(tempoInput) {
     // List spelling for a match typed with other spaces / dashes
     var listed = tempoFromList_(tempoInput.value);
     if (listed && tempoInput.value !== listed) tempoInput.value = listed;
     const tempoNo = tempoInput.value.toUpperCase().trim();
-    if (!tempoNo) return;
+    if (!tempoNo) { pkDkCheck(''); return; }
 
     const vehicle = vehicleMap.get(tempoNo);
-    if (!vehicle) return;   // not in list — leave driver fields as-is
+    if (!vehicle) { if (vehCleanTempo(tempoNo) !== VEH_SELF) pkDkCheck(''); else pkDkCheck(tempoNo); return; }   // not in list — leave driver fields as-is
+    pkDkCheck(tempoNo);   // the gate's Dharam Kanta slip of this vehicle (PACKING DK SLIP); none = the tempo is cleared again
 
     const driverNameEl   = document.getElementById('driver-name');
     const driverMobileEl = document.getElementById('driver-mobile');
@@ -6299,6 +6531,12 @@ async function handleFinish() {
         tempoEl.focus();
         return;
     }
+    // ...and it needs its Dharam Kanta Tare slip from the gate (PACKING DK SLIP), read again now
+    if (pkDkChecking) return;
+    pkDkChecking = true;
+    var dkOk = false;
+    try { dkOk = await pkDkReady_(tempoEl); } finally { pkDkChecking = false; }
+    if (!dkOk) return;
 
     // HTML5 required field validation
     if (!form.checkValidity()) {
@@ -6484,6 +6722,7 @@ function clearFormCompletely() {
         document.getElementById('third-party-name').value = '';
         document.getElementById('contractor-name').value = '';
         document.getElementById('tempo-no').value = '';
+        pkDkCheck('');   // the Dharam Kanta panel goes with it
         setDriverNameOptions('', '');
         document.getElementById('driver-mobile').value = '';
         document.getElementById('supervisor-name').value = '';
@@ -6941,6 +7180,7 @@ function populateFormFromDraft(data, draftId, draftType) {
     // Dispatch fields
     var d = data.dispatch || {};
     document.getElementById('tempo-no').value        = d.tempoNo        || '';
+    if (d.tempoNo) pkDkCheck(d.tempoNo);   // a draft's tempo still needs its Dharam Kanta slip (PACKING DK SLIP)
     var _dv = (typeof vehicleMap !== 'undefined' && d.tempoNo) ? vehicleMap.get(String(d.tempoNo).toUpperCase().trim()) : null;
     setDriverNameOptions(_dv ? _dv.driverName : '', d.driverName || '');
     document.getElementById('driver-mobile').value   = d.driverMobile   || '';
@@ -13704,6 +13944,400 @@ async function skDeleteCount(id) {
 
 
 // ══════════════════════════════════════════════════════════════════════
+// TEMPO BILL — Tempo-Bill tab (Admin / MD / Packing Incharge, like Freight).
+// SQL: PACKING_TEMPO_BILL_MIGRATION.sql (pk_tempo_trips).
+//
+// One bill per Dharam Kanta TRIP of a tempo: the gate weighs the empty
+// vehicle (Tare, Dharam Kanta slip), the packing slips are made and loaded,
+// the gate makes its Dispatch Packing entry and weighs the loaded vehicle
+// (Gross). A packing slip belongs to the trip of its tempo (spaces / dashes /
+// case ignored) when it was SAVED (created_at) after the trip's Dharam Kanta
+// slip and before the trip ended = the Dispatch Packing entry + TB_GRACE_MIN
+// (a slip saved just after the guard's entry), never after the vehicle's next
+// Dharam Kanta slip; a trip not dispatched yet runs until now (or that next slip).
+// Rows: slip × Quality × Item Type, Date = slip date, Shift To = the slip's
+// Dispatch To, Qty = packs (Sr. rows), Pcs / Weight = their totals, Rate =
+// Settings › Freight Rates by Dispatch To + Item Type (frLoadRates, the
+// Freight tab's): PACK = rate × packs, ROUND = the rate once per trip +
+// Dispatch To + item type (the Freight tab rounds once per vehicle + date +
+// Dispatch To + item type; inside one trip that is the same). No rate row = '-'.
+// Under it: Tare (the trip's Dharam Kanta slip) + loaded weight = Expected
+// Gross vs the Kanta Gross of the Dispatch Packing entry; within TB_TOL Kg =
+// green. Packing slips of the range that fall in no trip are listed at the end,
+// so none disappears. Nothing here writes anything.
+// ══════════════════════════════════════════════════════════════════════
+var TB_GRACE_MIN = 30, TB_TOL = 25;
+var _tb = { report: null };
+function tbToken_() { try { return localStorage.getItem(SARV_SSO_KEY) || ''; } catch (e) { return ''; } }
+function tbWhen_(iso) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function tbKg_(n) { return n === null || n === undefined || !isFinite(Number(n)) ? '-' : frNum(n) + ' Kg'; }
+async function showTempoBillPanel() {
+    var r = session ? session.role : '';
+    if (['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(r) < 0) { alert('Tempo-Bill: Admin / MD / Packing Incharge only'); return; }
+    hideAllPanels();
+    document.getElementById('tempo-bill-panel').style.display = 'block';
+    updateNavButtons('tempo-bill-panel');
+    if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
+    stopAutoSaveDraft();
+    var f = document.getElementById('tb-from'), t = document.getElementById('tb-to');
+    if (!t.value) t.value = frDateInput(new Date());
+    if (!f.value) { var d = new Date(); d.setDate(d.getDate() - 6); f.value = frDateInput(d); }
+}
+// The trips of the range (server: the gate register)
+async function tbTrips_(from, to, tempo) {
+    var r = await sarvPublic().rpc('pk_tempo_trips', { p_token: tbToken_(), p_from: from, p_to: to, p_vehicle: tempo || null });
+    if (r.error) throw r.error;
+    var d = r.data || {};
+    if (d.success === false) throw new Error(d.error || 'FAILED');
+    return d.trips || [];
+}
+// Packing slips saved between two moments (paged) + those dated in the range
+async function tbSlips_(fromIso, toIso, from, to) {
+    var cols = 'id, slip_no, packing_type, slip_date, party_name, dispatch_to, tempo_no, driver_name, created_at';
+    var byId = {};
+    var pull = async function (build) {
+        for (var off = 0; ; off += 1000) {
+            var { data, error } = await build().range(off, off + 999);
+            if (error) throw error;
+            (data || []).forEach(function (x) { byId[x.id] = x; });
+            if (!data || data.length < 1000) break;
+        }
+    };
+    if (fromIso) await pull(function () { return supabaseClient.from('packing_slips').select(cols).gte('created_at', fromIso).lt('created_at', toIso).order('created_at'); });
+    await pull(function () { return supabaseClient.from('packing_slips').select(cols).gte('slip_date', from).lte('slip_date', to).order('slip_date'); });
+    return Object.keys(byId).map(function (k) { return byId[k]; });
+}
+async function tbRun() {
+    var from = document.getElementById('tb-from').value, to = document.getElementById('tb-to').value;
+    var tempo = String(document.getElementById('tb-tempo').value || '').trim().toUpperCase();
+    var out = document.getElementById('tb-out'), btn = document.getElementById('tb-run-btn'), ban = document.getElementById('tb-banner');
+    if (!from || !to) { alert('Choose both dates.'); return; }
+    if (from > to) { var tmp = from; from = to; to = tmp; document.getElementById('tb-from').value = from; document.getElementById('tb-to').value = to; }
+    btn.disabled = true; btn.textContent = 'Generating...'; ban.innerHTML = '';
+    out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Reading the Dharam Kanta trips and packing slips...</p>';
+    try {
+        var trips;
+        try { trips = await tbTrips_(from, to, tempo); }
+        catch (e) {
+            var m = String((e && (e.message || e.details)) || e);
+            if (/pk_tempo_trips|schema cache|PGRST202|42883|Could not find the function/i.test(m))
+                throw new Error('The Tempo-Bill needs sql/PACKING_TEMPO_BILL_MIGRATION.sql (Admin, in the Supabase SQL Editor).');
+            throw e;
+        }
+        await frLoadRates();
+        var now = Date.now(), minT = null, maxT = null;
+        trips.forEach(function (t) {
+            var st = Date.parse(t.inTime) || 0, nx = t.nextAt ? Date.parse(t.nextAt) : null;
+            var end = t.dispatch && t.dispatch.at ? Date.parse(t.dispatch.at) + TB_GRACE_MIN * 60000 : now;
+            if (nx !== null && nx < end) end = nx;
+            t._k = frVehKey(t.vehicle); t._start = st; t._end = end;
+            if (minT === null || st < minT) minT = st;
+            if (maxT === null || end > maxT) maxT = end;
+        });
+        var slips = await tbSlips_(minT ? new Date(minT).toISOString() : null, maxT ? new Date(maxT + 1000).toISOString() : null, from, to);
+        var items = slips.length ? await pkSelectIn('packing_slip_items', 'id, slip_id, quality, item_type, pcs, weight', 'slip_id', slips.map(function (x) { return x.id; })) : [];
+        _tb.report = tbCompute(trips, slips, items, _fr.rates, { from: from, to: to, tempo: tempo });
+        _tb.report.meta = { from: from, to: to, tempo: tempo, at: new Date(), by: (session && (session.fullName || session.username)) || '', ratesFromDb: _fr.ratesFromDb };
+        await tbLoadSaved_();   // the Tempo Bill Nos. already saved in the range
+        if (!_fr.ratesFromDb) ban.innerHTML = '<div class="fr-note warn">Freight Rates are not set up on the server (run PACKING_FREIGHT_RATES_MIGRATION.sql): the built-in rates are used.</div>';
+        out.innerHTML = tbHtml(_tb.report);
+    } catch (e) {
+        console.error('[Tempo-Bill]', e);
+        out.innerHTML = '<div class="fr-note bad">The Tempo-Bill could not be made: ' + escapeHtmlJs(e.message || String(e)) + '</div>';
+    }
+    btn.disabled = false; btn.textContent = 'Generate Tempo-Bill';
+}
+// Pure: trips + slips + slip rows + rates → one bill per trip (+ the slips on no trip)
+function tbCompute(trips, slips, items, rates, opt) {
+    var rateMap = {};
+    (rates || []).forEach(function (r) { rateMap[frName(r.dispatch_to) + '|' + frName(r.item_type)] = r; });
+    var rowsOf = {};   // slip id → [{quality, item_type, packs, pcs, weight}] in Sr. order
+    (items || []).slice().sort(function (a, b) { return (Number(a.id) || 0) - (Number(b.id) || 0); }).forEach(function (it) {
+        var list = rowsOf[it.slip_id] || (rowsOf[it.slip_id] = []);
+        var q = frName(it.quality), t = frName(it.item_type);
+        var g = list.find(function (x) { return x.quality === q && x.itemType === t; });
+        if (!g) list.push(g = { quality: q, itemType: t, packs: 0, pcs: 0, weight: 0 });
+        g.packs += 1; g.pcs += Number(it.pcs) || 0; g.weight += Number(it.weight) || 0;
+    });
+    var used = {};
+    var bills = (trips || []).slice().sort(function (a, b) { return a._start - b._start; }).map(function (t) {
+        var mine = slips.filter(function (x) {
+            if (used[x.id] || frVehKey(x.tempo_no) !== t._k) return false;
+            var c = Date.parse(x.created_at) || 0;
+            return c >= t._start && c < t._end;
+        }).sort(function (a, b) { return (Date.parse(a.created_at) || 0) - (Date.parse(b.created_at) || 0); });
+        mine.forEach(function (x) { used[x.id] = true; });
+        var lines = [], rounds = {}, tot = { packs: 0, pcs: 0, weight: 0, freight: 0 }, drivers = {};
+        mine.forEach(function (x) {
+            if (x.driver_name) drivers[frName(x.driver_name)] = true;
+            var dt = frName(x.dispatch_to);
+            (rowsOf[x.id] || []).forEach(function (g) {
+                var r = rateMap[dt + '|' + g.itemType], rate = r ? Number(r.rate) || 0 : null, amt = 0, note = '';
+                if (r && r.basis === 'ROUND') {
+                    var rk = dt + '|' + g.itemType;
+                    if (rounds[rk]) note = 'same round as ' + rounds[rk]; else { rounds[rk] = x.slip_no; amt = rate; note = 'per round'; }
+                } else if (r) amt = Math.round(rate * g.packs * 100) / 100;
+                else note = 'no freight rate';
+                lines.push({ date: String(x.slip_date || '').slice(0, 10), slipNo: x.slip_no, slipId: x.id, party: x.party_name || '', ptype: x.packing_type || '',
+                             shiftTo: dt, quality: g.quality, itemType: g.itemType, packs: g.packs, pcs: g.pcs,
+                             weight: Math.round(g.weight * 1000) / 1000, rate: rate, basis: r ? r.basis : '', freight: amt, note: note });
+                tot.packs += g.packs; tot.pcs += g.pcs; tot.weight += g.weight; tot.freight += amt;
+            });
+        });
+        tot.weight = Math.round(tot.weight * 1000) / 1000; tot.freight = Math.round(tot.freight * 100) / 100;
+        var tare = Number(t.tare) || 0, expected = Math.round((tare + tot.weight) * 100) / 100;
+        var kanta = t.dispatch && Number(t.dispatch.gross) > 0 ? Number(t.dispatch.gross) : null;
+        var diff = kanta === null ? null : Math.round((kanta - expected) * 100) / 100;
+        return { trip: t, slips: mine, lines: lines, tot: tot, drivers: Object.keys(drivers), tare: tare, expected: expected, kanta: kanta, diff: diff };
+    }).reverse();   // newest trip first on screen
+    var loose = slips.filter(function (x) {
+        if (used[x.id]) return false;
+        var d = String(x.slip_date || '').slice(0, 10);
+        if (d < opt.from || d > opt.to) return false;
+        return !opt.tempo || frVehKey(x.tempo_no) === frVehKey(opt.tempo);
+    }).sort(function (a, b) { return String(a.slip_date).localeCompare(String(b.slip_date)) || String(a.slip_no).localeCompare(String(b.slip_no)); });
+    var sum = { trips: bills.length, slips: 0, weight: 0, freight: 0 };
+    bills.forEach(function (b) { sum.slips += b.slips.length; sum.weight += b.tot.weight; sum.freight += b.tot.freight; });
+    sum.weight = Math.round(sum.weight * 1000) / 1000; sum.freight = Math.round(sum.freight * 100) / 100;
+    return { bills: bills, days: tbDays_(bills), loose: loose, sum: sum };   // days = the Tempo-Bills (tempo + date)
+}
+function tbTripHtml_(b) {
+    var t = b.trip, e = escapeHtmlJs, d = t.dispatch;
+    var h = '<div class="tb-trip"><div class="tb-head"><div><div class="veh">' + e(t.vehicle || '-') + '</div>'
+        + '<div class="sub">' + (b.drivers.length ? 'Driver ' + e(b.drivers.join(', ')) + ' · ' : '') + b.slips.length + ' packing slip' + (b.slips.length === 1 ? '' : 's') + '</div></div>'
+        + '<div class="sub" style="text-align:right;">Dharam Kanta <b>' + e(t.slipNo) + '</b> · ' + e(t.gate === 'G1' ? 'Gate-1' : 'Gate-2') + ' · ' + e(tbWhen_(t.inTime)) + '<br>'
+        + (d ? 'Dispatch <b>' + e(d.id) + '</b> · ' + e(tbWhen_(d.at)) + (d.status === 'OUT' ? ' · Out' : '') : '<span style="color:#b45309;">Dispatch pending at the gate</span>') + '</div></div>';
+    h += '<div class="tb-wrap"><table class="tb-table"><thead><tr><th>Date</th><th>Packing Slip No.</th><th>Shift To</th><th>Quality</th><th>Item Type</th>'
+        + '<th class="n">Qty</th><th class="n">Pcs</th><th class="n">Weight</th><th class="n">Rate</th><th class="n">Freight</th></tr></thead><tbody>';
+    if (!b.lines.length) h += '<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:12px;">No packing slip of this tempo in this trip yet.</td></tr>';
+    b.lines.forEach(function (l) {
+        h += '<tr><td>' + e(frDmy(l.date)) + '</td><td><b>' + e(l.slipNo) + '</b><div class="muted">' + e(l.party) + '</div></td><td>' + e(l.shiftTo || '-') + '</td>'
+            + '<td>' + e(l.quality || '-') + '</td><td>' + e(l.itemType || '-') + '</td>'
+            + '<td class="n">' + frNum(l.packs) + '</td><td class="n">' + frNum(l.pcs) + '</td><td class="n">' + frNum(l.weight) + '</td>'
+            + '<td class="n">' + (l.rate === null ? '-' : frNum(l.rate) + (l.basis === 'ROUND' ? '<div class="muted">per round</div>' : '')) + '</td>'
+            + '<td class="n">' + (l.rate === null ? '<span class="muted">' + e(l.note) + '</span>' : frMoney(l.freight) + (l.note && l.basis === 'ROUND' && !l.freight ? '<div class="muted">' + e(l.note) + '</div>' : '')) + '</td></tr>';
+    });
+    h += '<tr class="tot"><td colspan="5">TOTAL</td><td class="n">' + frNum(b.tot.packs) + '</td><td class="n">' + frNum(b.tot.pcs) + '</td><td class="n">' + frNum(b.tot.weight) + '</td><td></td><td class="n">' + frMoney(b.tot.freight) + '</td></tr></tbody></table></div>';
+    var cls = b.diff === null ? '' : (Math.abs(b.diff) <= TB_TOL ? 'ok' : 'bad');
+    h += '<div class="tb-wt">'
+        + '<div><div class="l">Tare Wt (Dharam Kanta)</div><div class="v">' + tbKg_(b.tare) + '</div></div>'
+        + '<div><div class="l">Loaded Wt (slips)</div><div class="v">' + tbKg_(b.tot.weight) + '</div></div>'
+        + '<div><div class="l">Expected Gross</div><div class="v">' + tbKg_(b.expected) + '</div></div>'
+        + '<div><div class="l">Actual Gross (Kanta)</div><div class="v">' + (b.kanta === null ? '<span style="font-size:12px;color:#b45309;">not weighed yet</span>' : tbKg_(b.kanta)) + '</div></div>'
+        + '<div class="' + cls + '"><div class="l">Difference</div><div class="v">' + (b.diff === null ? '-' : (b.diff > 0 ? '+' : '') + tbKg_(b.diff)) + '</div>'
+        + (b.diff === null ? '' : '<div class="l" style="text-transform:none;">' + (Math.abs(b.diff) <= TB_TOL ? 'within ' + TB_TOL + ' Kg' : (b.diff > 0 ? 'Kanta heavier' : 'Kanta lighter') + ' than the slips') + '</div>') + '</div>'
+        + '</div></div>';
+    return h;
+}
+/* TEMPO BILL No. (sql/PACKING_TEMPO_BILL_MIGRATION.sql, second part). The
+   trips of ONE tempo on ONE day (each trip's Dharam Kanta date, IST) make one
+   Tempo-Bill; "Save Tempo-Bill No." stores it ONCE (packing.save_tempo_bill:
+   number SIHF-TB-<financial year>-0001, a series per financial year, one bill
+   per tempo + date, never changed or deleted afterwards). The bill keeps a
+   snapshot of what was saved (trips, rows, totals, weights), so "Print saved"
+   always prints the saved bill; the live view shows a note when the slips have
+   changed since. Saving waits until every trip of that day has its Kanta Gross
+   at the gate (a trip still loading would be left out). Saved bills of the
+   range that the view does not show (another tempo filter, trips changed) are
+   listed at the end. Admin / MD / Packing Incharge (the server checks it). */
+function tbIstDate_(iso) {
+    try { return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); } catch (e) { return String(iso || '').slice(0, 10); }
+}
+function tbDays_(bills) {
+    var map = {}, list = [];
+    bills.forEach(function (b) {
+        var d = tbIstDate_(b.trip.inTime), k = b.trip._k + '|' + d, g = map[k];
+        if (!g) { g = map[k] = { key: k, vehKey: b.trip._k, vehicle: String(b.trip.vehicle || '').toUpperCase(), date: d, bills: [] }; list.push(g); }
+        g.bills.push(b);
+    });
+    list.forEach(function (g) { g.bills.sort(function (a, b) { return a.trip._start - b.trip._start; }); g.tot = tbDayTotals_(g.bills); });
+    return list.sort(function (a, b) { return b.date.localeCompare(a.date) || a.vehicle.localeCompare(b.vehicle); });
+}
+function tbDayTotals_(bills) {
+    var r2 = function (n) { return Math.round(n * 100) / 100; };
+    var t = { trips: bills.length, packs: 0, pcs: 0, weight: 0, freight: 0, tare: 0, expected: 0, kanta: null, diff: null, allWeighed: true, dkSlips: [], slipIds: [] };
+    bills.forEach(function (b) {
+        t.packs += b.tot.packs; t.pcs += b.tot.pcs; t.weight += b.tot.weight; t.freight += b.tot.freight;
+        t.tare += b.tare; t.expected += b.expected;
+        if (b.kanta === null || b.kanta === undefined) t.allWeighed = false; else t.kanta = (t.kanta || 0) + b.kanta;
+        t.dkSlips.push(b.trip.slipNo);
+        (b.slips || []).forEach(function (x) { t.slipIds.push(String(x.id)); });
+    });
+    t.weight = Math.round(t.weight * 1000) / 1000; t.freight = r2(t.freight); t.tare = r2(t.tare); t.expected = r2(t.expected);
+    if (t.kanta !== null) t.kanta = r2(t.kanta);
+    if (t.allWeighed && t.kanta !== null) t.diff = r2(t.kanta - t.expected);
+    return t;
+}
+// What is saved: the day's trips as shown, without the page's working fields
+function tbSnapshot_(g) {
+    return { v: 1, vehicle: g.vehicle, date: g.date, tot: g.tot,
+        madeBy: (session && (session.fullName || session.username)) || '', madeAt: new Date().toISOString(),
+        bills: g.bills.map(function (b) {
+            var t = b.trip;
+            return { trip: { slipNo: t.slipNo, gate: t.gate, vehicle: t.vehicle, inTime: t.inTime, tare: t.tare, stdTare: t.stdTare, diff: t.diff, guard: t.guard, dispatch: t.dispatch || null },
+                     slips: (b.slips || []).map(function (x) { return { id: x.id, slip_no: x.slip_no, party_name: x.party_name || '' }; }),
+                     lines: b.lines, tot: b.tot, drivers: b.drivers, tare: b.tare, expected: b.expected, kanta: b.kanta, diff: b.diff };
+        }) };
+}
+async function tbLoadSaved_() {
+    var rep = _tb.report; if (!rep) return;
+    rep.saved = {}; rep.savedOk = true; rep.savedErr = '';
+    try {
+        var r = await supabaseClient.rpc('list_tempo_bills', { p_from: rep.meta.from, p_to: rep.meta.to });
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) throw new Error(d.error || 'FAILED');
+        (d.rows || []).forEach(function (x) { rep.saved[x.vehicle_key + '|' + String(x.bill_date).slice(0, 10)] = x; });
+    } catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        rep.savedOk = /list_tempo_bills|schema cache|PGRST202|42883|Could not find the function/i.test(m) ? false : 'error';
+        rep.savedErr = m;
+    }
+}
+function tbRepaint_() { var out = document.getElementById('tb-out'); if (out && _tb.report) out.innerHTML = tbHtml(_tb.report); }
+var tbSaving = {};
+async function tbSaveDay(key) {
+    var rep = _tb.report, g = rep && (rep.days || []).find(function (x) { return x.key === key; });
+    if (!g || tbSaving[key]) return;
+    var sv = rep.saved && rep.saved[key];
+    if (sv) { alert('This Tempo-Bill is already saved as ' + sv.bill_no + '.'); return; }
+    if (rep.savedOk === false) { alert('Saving a Tempo-Bill No. needs sql/PACKING_TEMPO_BILL_MIGRATION.sql to be run again (Admin, Supabase SQL Editor).'); return; }
+    var pend = g.bills.filter(function (b) { return !b.trip.dispatch || b.kanta === null || b.kanta === undefined; });
+    if (pend.length) { alert('Trip ' + pend.map(function (b) { return b.trip.slipNo; }).join(', ') + ' of ' + g.vehicle + ' has no Kanta Gross at the gate yet.\n\nSave the Tempo-Bill once every trip of ' + frDmy(g.date) + ' is dispatched and weighed.'); return; }
+    if (!g.tot.slipIds.length) { alert('There is no packing slip on ' + g.vehicle + ' for ' + frDmy(g.date) + '.'); return; }
+    var today = g.date === frDateInput(new Date());
+    if (!confirm('Save the Tempo-Bill of ' + g.vehicle + ' · ' + frDmy(g.date) + '?\n\n' + g.tot.trips + ' trip(s) · ' + g.tot.slipIds.length + ' packing slip(s) · Freight ' + frMoney(g.tot.freight) + ' · Loaded ' + tbKg_(g.tot.weight)
+        + '\n\nIt gets its Tempo Bill No. now and cannot be changed later.' + (today ? '\nA trip this tempo makes later today will NOT be on this bill.' : ''))) return;
+    tbSaving[key] = true; tbRepaint_();
+    try {
+        var r = await supabaseClient.rpc('save_tempo_bill', { p_vehicle: g.vehicle, p_date: g.date, p_snapshot: tbSnapshot_(g), p_totals: g.tot });
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) {
+            if (d.error === 'ALREADY_SAVED') alert('This tempo-day was already saved as ' + d.billNo + (d.by ? ' by ' + d.by : '') + '.');
+            else throw new Error(d.error || 'FAILED');
+        } else showToast('Tempo-Bill ' + d.billNo + ' saved');
+        await tbLoadSaved_();
+    } catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        alert('The Tempo-Bill was not saved:\n' + (/save_tempo_bill|schema cache|PGRST202|42883|Could not find the function/i.test(m) ? 'run sql/PACKING_TEMPO_BILL_MIGRATION.sql again (Admin).' : m));
+    } finally { delete tbSaving[key]; tbRepaint_(); }
+}
+// The live day differs from its saved bill (a slip edited / added / removed since)
+function tbChangedSince_(g, sv) {
+    var live = g.tot.slipIds.slice().sort().join(','), was = (sv.slip_ids || []).map(String).sort().join(',');
+    var out = [];
+    if (live !== was) out.push('packing slips ' + (sv.slip_ids || []).length + ' → ' + g.tot.slipIds.length);
+    if (Math.abs((Number(sv.freight) || 0) - g.tot.freight) > 0.009) out.push('freight ' + frMoney(sv.freight) + ' → ' + frMoney(g.tot.freight));
+    if (Math.abs((Number(sv.weight) || 0) - g.tot.weight) > 0.0009) out.push('loaded ' + tbKg_(sv.weight) + ' → ' + tbKg_(g.tot.weight));
+    return out;
+}
+function tbDayTotHtml_(t) {
+    return '<div class="tb-sum" style="margin-top:8px;"><span>Day total · ' + t.trips + ' trip(s)</span><span>Qty ' + frNum(t.packs) + '</span><span>Pcs ' + frNum(t.pcs) + '</span>'
+        + '<span>Loaded ' + tbKg_(t.weight) + '</span><span>Freight ' + frMoney(t.freight) + '</span><span>Tare ' + tbKg_(t.tare) + '</span><span>Expected Gross ' + tbKg_(t.expected) + '</span>'
+        + '<span>Kanta Gross ' + (t.kanta === null ? '-' : tbKg_(t.kanta)) + (t.allWeighed ? '' : ' (not all weighed)') + '</span>'
+        + (t.diff === null ? '' : '<span style="' + (Math.abs(t.diff) <= TB_TOL * t.trips ? 'color:#15803d;' : 'color:#b45309;') + '">Difference ' + (t.diff > 0 ? '+' : '') + tbKg_(t.diff) + '</span>') + '</div>';
+}
+function tbDayHtml_(g, rep) {
+    var e = escapeHtmlJs, sv = rep.saved && rep.saved[g.key], busy = !!tbSaving[g.key];
+    var right;
+    if (sv) right = '<div style="text-align:right;"><span class="tb-no">' + e(sv.bill_no) + '</span><div class="sub">Saved ' + e(tbWhen_(sv.created_at)) + (sv.created_by ? ' by ' + e(sv.created_by) : '') + '</div>'
+        + '<button type="button" class="fr-btn ghost" style="margin-top:4px;padding:5px 10px;font-size:12px;" onclick="tbPrintSaved(\'' + e(g.key) + '\')">Print saved bill</button></div>';
+    else if (rep.savedOk === false) right = '<div class="sub" style="text-align:right;color:#b45309;">Tempo Bill No.: run PACKING_TEMPO_BILL_MIGRATION.sql again</div>';
+    else {
+        var pend = g.bills.some(function (b) { return !b.trip.dispatch || b.kanta === null || b.kanta === undefined; });
+        right = '<div style="text-align:right;"><button type="button" class="fr-btn" ' + (busy ? 'disabled' : '') + ' onclick="tbSaveDay(\'' + e(g.key) + '\')">' + (busy ? 'Saving...' : 'Save Tempo-Bill No.') + '</button>'
+            + '<div class="sub" style="color:' + (pend ? '#b45309' : '#64748b') + ';">' + (pend ? 'Wait: a trip has no Kanta Gross yet' : 'Not saved yet · saved once, then fixed') + '</div></div>';
+    }
+    var h = '<div class="tb-day"><div class="tb-head"><div><div class="veh">' + e(g.vehicle) + ' · ' + e(frDmy(g.date)) + '</div>'
+        + '<div class="sub">' + g.tot.trips + ' trip(s) · ' + g.tot.slipIds.length + ' packing slip(s) · Freight ' + frMoney(g.tot.freight) + '</div></div>' + right + '</div>';
+    if (sv) {
+        var ch = tbChangedSince_(g, sv);
+        if (ch.length) h += '<div class="fr-note warn" style="margin-top:0;">Changed since this bill was saved: ' + e(ch.join(' · ')) + '. The saved bill keeps what was saved (Print saved bill).</div>';
+    }
+    g.bills.forEach(function (b) { h += tbTripHtml_(b); });
+    if (g.bills.length > 1) h += tbDayTotHtml_(g.tot);
+    return h + '</div>';
+}
+function tbHtml(rep) {
+    var e = escapeHtmlJs, m = rep.meta || {}, days = rep.days || [];
+    var nSaved = days.filter(function (g) { return rep.saved && rep.saved[g.key]; }).length;
+    var h = '<div class="card"><div class="card-title">TEMPO-BILL ' + e(frDmy(m.from)) + ' TO ' + e(frDmy(m.to)) + (m.tempo ? ' · ' + e(m.tempo) : '') + '</div>'
+        + '<div class="tb-sum"><span>' + days.length + ' tempo-day bill(s)</span><span>' + nSaved + ' saved</span><span>' + rep.sum.trips + ' trip(s)</span><span>' + rep.sum.slips + ' packing slip(s)</span><span>Loaded ' + tbKg_(rep.sum.weight) + '</span><span>Freight ' + frMoney(rep.sum.freight) + '</span></div>'
+        + (rep.savedOk === 'error' ? '<div class="fr-note bad">The saved Tempo-Bills could not be read: ' + e(rep.savedErr) + '</div>' : '')
+        + (m.at ? '<div class="muted" style="font-size:11px;color:#94a3b8;margin-top:6px;">Made ' + e(tbWhen_(m.at)) + (m.by ? ' by ' + e(m.by) : '') + '</div>' : '') + '</div>';
+    if (!days.length) h += '<div class="fr-note info">No Dharam Kanta trip in this range' + (m.tempo ? ' for ' + e(m.tempo) : '') + '.</div>';
+    days.forEach(function (g) { h += tbDayHtml_(g, rep); });
+    // saved bills of the range the view does not show
+    var shown = {}; days.forEach(function (g) { shown[g.key] = true; });
+    var other = Object.keys(rep.saved || {}).filter(function (k) { return !shown[k] && (!m.tempo || rep.saved[k].vehicle_key === frVehKey(m.tempo)); }).map(function (k) { return rep.saved[k]; });
+    if (other.length) {
+        h += '<div class="tb-day"><div class="tb-head"><div><div class="veh" style="font-family:inherit;font-size:14px;">Saved Tempo-Bills not in the view above</div>'
+            + '<div class="sub">Saved earlier; their trips are not found now (changed at the gate) or not in this filter.</div></div></div>'
+            + '<div class="tb-wrap"><table class="tb-table"><thead><tr><th>Tempo Bill No.</th><th>Tempo</th><th>Date</th><th class="n">Trips</th><th class="n">Slips</th><th class="n">Loaded</th><th class="n">Freight</th><th></th></tr></thead><tbody>'
+            + other.map(function (x) { var k = x.vehicle_key + '|' + String(x.bill_date).slice(0, 10);
+                return '<tr><td><b>' + e(x.bill_no) + '</b></td><td>' + e(x.vehicle) + '</td><td>' + e(frDmy(x.bill_date)) + '</td><td class="n">' + e(x.trips) + '</td><td class="n">' + (x.slip_ids || []).length + '</td>'
+                    + '<td class="n">' + tbKg_(x.weight) + '</td><td class="n">' + frMoney(x.freight) + '</td><td><button type="button" class="fr-btn ghost" style="padding:4px 9px;font-size:12px;" onclick="tbPrintSaved(\'' + e(k) + '\')">Print</button></td></tr>'; }).join('')
+            + '</tbody></table></div></div>';
+    }
+    if (rep.loose.length) {
+        h += '<div class="tb-trip"><div class="tb-head"><div><div class="veh" style="font-family:inherit;font-size:14px;">Packing slips on no Dharam Kanta trip</div>'
+            + '<div class="sub">Dated in the range, but their tempo had no Dharam Kanta slip before them (SELF, an old slip, or one saved before the gate weighed the vehicle).</div></div></div>'
+            + '<div class="tb-wrap"><table class="tb-table"><thead><tr><th>Date</th><th>Packing Slip No.</th><th>Tempo</th><th>Party</th><th>Shift To</th><th>Saved</th></tr></thead><tbody>'
+            + rep.loose.map(function (x) { return '<tr><td>' + e(frDmy(x.slip_date)) + '</td><td><b>' + e(x.slip_no) + '</b></td><td>' + e(x.tempo_no || '-') + '</td><td>' + e(x.party_name || '') + '</td><td>' + e(x.dispatch_to || '-') + '</td><td>' + e(tbWhen_(x.created_at)) + '</td></tr>'; }).join('')
+            + '</tbody></table></div></div>';
+    }
+    return h;
+}
+function tbPrintWin_(title, body) {
+    var w = window.open('', '_blank');
+    if (!w) { alert('Allow pop-ups to print the Tempo-Bill.'); return; }
+    var css = Array.from(document.querySelectorAll('style')).map(function (x) { return x.textContent; }).join('\n');
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>' + escapeHtmlJs(title) + '</title><style>' + css
+        + ' html,body{background:#fff;margin:0;padding:0;} .tb-table{min-width:0;font-size:11px;} .tb-trip,.tb-day{border-color:#94a3b8;page-break-inside:avoid;break-inside:avoid;} .fr-btn{display:none!important;}'
+        + ' @page{size:A4 portrait;margin:8mm;} *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}</style></head><body>' + body + '</body></html>');
+    w.document.close();
+    setTimeout(function () { w.focus(); w.print(); }, 400);
+}
+function tbPrint() {
+    if (!_tb.report) { alert('Generate the Tempo-Bill first.'); return; }
+    tbPrintWin_('Tempo-Bill ' + frDmy(_tb.report.meta.from) + ' to ' + frDmy(_tb.report.meta.to), tbHtml(_tb.report));
+}
+// The saved bill exactly as it was saved (its snapshot)
+function tbPrintSaved(key) {
+    var sv = _tb.report && _tb.report.saved && _tb.report.saved[key];
+    if (!sv || !sv.snapshot) { alert('The saved bill was not found. Generate the Tempo-Bill again.'); return; }
+    var e = escapeHtmlJs, sn = sv.snapshot, bills = sn.bills || [];
+    var h = '<div class="tb-day"><div class="tb-head"><div><div class="veh">TEMPO-BILL · ' + e(sv.vehicle) + ' · ' + e(frDmy(sv.bill_date)) + '</div>'
+        + '<div class="sub">' + bills.length + ' trip(s) · ' + (sv.slip_ids || []).length + ' packing slip(s)</div></div>'
+        + '<div style="text-align:right;"><span class="tb-no">' + e(sv.bill_no) + '</span><div class="sub">Saved ' + e(tbWhen_(sv.created_at)) + (sv.created_by ? ' by ' + e(sv.created_by) : '') + '</div></div></div>';
+    bills.forEach(function (b) { h += tbTripHtml_(b); });
+    if (sn.tot) h += tbDayTotHtml_(sn.tot);
+    tbPrintWin_(sv.bill_no, h + '</div>');
+}
+function tbCsv() {
+    var rep = _tb.report; if (!rep) { alert('Generate the Tempo-Bill first.'); return; }
+    var rows = [['Tempo Bill No', 'Tempo', 'Bill Date', 'Dharam Kanta Slip', 'DK Time', 'Dispatch No', 'Date', 'Packing Slip No', 'Party', 'Shift To', 'Quality', 'Item Type', 'Qty', 'Pcs', 'Weight', 'Rate', 'Freight',
+                 'Tare Wt', 'Loaded Wt', 'Expected Gross', 'Kanta Gross', 'Difference']];
+    (rep.days || []).forEach(function (g) {
+        var no = rep.saved && rep.saved[g.key] ? rep.saved[g.key].bill_no : '';
+        g.bills.forEach(function (b) {
+            var t = b.trip, dno = t.dispatch ? t.dispatch.id : '';
+            b.lines.forEach(function (l) { rows.push([no, t.vehicle, frDmy(g.date), t.slipNo, tbWhen_(t.inTime), dno, frDmy(l.date), l.slipNo, l.party, l.shiftTo, l.quality, l.itemType, l.packs, l.pcs, l.weight, l.rate === null ? '' : l.rate, l.freight, '', '', '', '', '']); });
+            rows.push([no, t.vehicle, frDmy(g.date), t.slipNo, tbWhen_(t.inTime), dno, '', 'TRIP TOTAL', '', '', '', '', b.tot.packs, b.tot.pcs, b.tot.weight, '', b.tot.freight,
+                       b.tare, b.tot.weight, b.expected, b.kanta === null ? '' : b.kanta, b.diff === null ? '' : b.diff]);
+        });
+        var d = g.tot;
+        rows.push([no, g.vehicle, frDmy(g.date), '', '', '', '', 'DAY TOTAL', '', '', '', '', d.packs, d.pcs, d.weight, '', d.freight, d.tare, d.weight, d.expected, d.kanta === null ? '' : d.kanta, d.diff === null ? '' : d.diff]);
+    });
+    var csv = '﻿' + rows.map(function (r) { return r.map(frCsvCell).join(','); }).join('\r\n');
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'Tempo_Bill_' + rep.meta.from + '_to_' + rep.meta.to + (rep.meta.tempo ? '_' + frVehKey(rep.meta.tempo) : '') + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // VEHICLE FREIGHT — Freight tab (TEMPU PAYMENT report) + Settings ›
 // Freight Rates / Freight Vehicles. SQL: PACKING_FREIGHT_RATES_MIGRATION.sql
 //
@@ -15838,7 +16472,7 @@ async function dfuSaveSettings() {
 function hideAllPanels() {
     ['packing-slip-form','verification-panel','order-panel',
      'vehicle-panel','pack-orders-panel','pdf-repair-panel','reports-panel','settings-panel',
-     'party-master-panel','shifting-panel','freight-panel','labour-panel','dfu-panel'
+     'party-master-panel','shifting-panel','freight-panel','labour-panel','dfu-panel','tempo-bill-panel'
     ].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -15865,6 +16499,7 @@ function updateNavButtons(activePanel) {
         'repairPdfNavBtn':  (isAdmin || isMD) && activePanel !== 'pdf-repair-panel',
         'reportsNavBtn':    canVerify && activePanel !== 'reports-panel',
         'freightNavBtn':    canVerify && activePanel !== 'freight-panel',
+        'tempoBillNavBtn':  canVerify && activePanel !== 'tempo-bill-panel',
         'labourNavBtn':     canVerify && activePanel !== 'labour-panel',
         'dfuNavBtn':        canVerify && activePanel !== 'dfu-panel',
         'settingsNavBtn':   isAdmin && activePanel !== 'settings-panel'

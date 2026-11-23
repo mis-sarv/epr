@@ -7463,12 +7463,20 @@ async function ofGenerateLot(orderNo,line,btn){
     let rs={saved:true};
     try{ rs=ofReqState_(await ofLoadTrimsReq_([orderNo]),orderNo,line); }catch(_){}
     if(!rs.saved) toast('Product #'+line+': material requirement not saved yet. Save it later in PROCUREMENT (TRIMS MANAGER)');
+    /* Each product photo carries its Design Master SKU / Design No (designSkus,
+       matched by url), so the lot card names the design instead of COLOR 1, 2 …;
+       a photo uploaded by hand has neither. */
+    const skuBy=new Map((Array.isArray(p.designSkus)?p.designSkus:[]).map(s=>[s&&s.url,s||{}]));
     const images=[
-      ...(p.photoUrls||[]).map(url=>({url,tag:'PRODUCT'})),
+      ...(p.photoUrls||[]).map(url=>{ const s=skuBy.get(url)||{}; return {url,tag:'PRODUCT',sku:String(s.sku||'').trim(),designNo:String(s.designNo||'').trim()}; }),
       ...(p.embossPhotoUrls||[]).map(url=>({url,tag:'EMBOSS'}))
     ].filter(x=>/^https?:/i.test(String(x.url||'')));
+    const cnt=ofDesignCounts_(p);
     /* The hand-off has a single shape (v:1). printing-lot.html's prlRunHandoff_
-       reads it; to add a field, change both sides and bump the version. */
+       reads it; to add a field, change both sides and bump the version.
+       designCount / matchingCount and images[].sku / designNo are optional
+       (0 / '' = not known): an older Printing Lot page simply does not read
+       them, so v stays 1. */
     ofHandoff({
       v:1, kind:'NEW_LOT_FROM_ORDER', at:Date.now(),
       order:{orderNo:fo.orderNo||orderNo, orderType:ofTypeOf(orderNo), orderDate:fo.orderDate||'', buyerName:fo.buyerName||'',
@@ -7476,11 +7484,34 @@ async function ofGenerateLot(orderNo,line,btn){
       product:{itemCode:p.itemCode||'', fabric:p.fabric||'', category:p.category||'', weight:p.weight||'', size:p.size||'',
                dbsb:p.dbsb||'', ply:p.ply||'', sattan:p.sattan||'', sattanType:p.sattanType||'', sattanSize:p.sattanSize||'',
                emboss:p.emboss||'', moq:p.moq||'', design:p.design||'', qty:p.qty||'', packs:p.packs||'', packPcs:p.packPcs||'',
-               packType:p.packType||'', remarks:p.remarks||'', labelTagComment:p.labelTagComment||''},
+               packType:p.packType||'', remarks:p.remarks||'', labelTagComment:p.labelTagComment||'',
+               designCount:cnt.designs, matchingCount:cnt.matchings},
       images
     });
   }catch(e){ toast(''+(e.message||e)); }
   finally{ if(btn){ btn.disabled=false; btn.textContent='Generate Lot Card'; } }
+}
+/* No. of designs and No. of matchings / colours of a saved product, for the
+   Printing Lot card's Total Designs / Total Colors. The order has no number
+   boxes for them, so:
+     1. the Design Master photos attached to the product (designSkus, one
+        entry per matching photo): designs = different Design Nos (else SKUs),
+        matchings = the photos;
+     2. else the Packing Assortment text: "5 New Designs" → 5 designs;
+        "3 Matching" / "4 Colours" → 3 / 4, per design when the text says
+        each / per or with "Single Matching" (= 1 per design), else in all.
+   0 = not known (the card then counts its own designs as before). */
+function ofDesignCounts_(p){
+  const skus=(Array.isArray(p&&p.designSkus)?p.designSkus:[]).filter(s=>s&&(s.designNo||s.sku));
+  let designs=new Set(skus.map(s=>String(s.designNo||s.sku).trim().toUpperCase())).size, matchings=skus.length;
+  const t=String((p&&p.design)||'');
+  if(!designs){ const m=/(\d+)\s*(?:new\s+)?designs?\b/i.exec(t); if(m) designs=parseInt(m[1],10)||0; }
+  if(!matchings){
+    const m=/(\d+)\s*(?:matchings?|colou?rs?|shades?)\b/i.exec(t), single=/\bsingle\s+(?:matching|colou?r|shade)/i.test(t);
+    const per=m?parseInt(m[1],10)||0:(single?1:0), each=single||/\b(?:each|per)\s+design/i.test(t);
+    matchings=per?(each&&designs?per*designs:per):0;
+  }
+  return {designs, matchings};
 }
 function ofTrackLot(lotId){ ofHandoff({v:1, kind:'TRACK_LOT', at:Date.now(), lotId}); }
 /* PROCUREMENT (TRIMS MANAGER): opens this product's material requirement sheet.

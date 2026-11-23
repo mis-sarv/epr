@@ -14917,6 +14917,10 @@ const SARV_DROPDOWNS=[
   {key:'erp_prlBlanketPly',label:'Blanket Ply',hint:'Printing Lot Card › Blanket Ply',def:['Single Ply','Double Ply','Three Ply']},
   {key:'erp_prlSatinQuality',label:'Satin Quality',hint:'Printing Lot Card › Satin Quality. Har quality ke codes: Printing Lot › Masters › Satin Codes',def:['4 INCH NORMAL','5 INCH PREMIUM','6 INCH PREMIUM']},
   {key:'erp_prlStenterTimes',label:'Stenter Times',hint:'Printing Lot Card › Stenter = YES par',def:['SINGLE TIME','TWO TIME']},
+  /* printing-lot.html reads these two straight from sales_dropdowns (DD print_chem / wash_chem there, chemDefsOf_);
+     WASHING SILICON keeps its "Name + Qty compulsory" rule from the page's CALC_RULES by its name. */
+  {key:'erp_prlPrintChem',label:'Printing Chemical',hint:'Printing Lot Card › side panel › Printing Chemical: the chemical types ticked on the card (the name of each is then picked from the Item Master). One taken off the list leaves older lot cards too while it is unticked and empty.',def:['GUM','HYBRID THICKNER','SYNTHETIC THICKNER']},
+  {key:'erp_prlWashChem',label:'Washing Chemical',hint:'Printing Lot Card › side panel › Washing Chemical: the washing chemical types ticked on the card (several names each, picked from the Item Master). WASHING SILICON needs Name + Qty when ticked.',def:['WASHING SILICON']},
 
   /* complaint.html reads this key straight from sales_dropdowns (rows if
      any, else these defaults; PM_TASK_DEFAULTS there keeps the same list). */
