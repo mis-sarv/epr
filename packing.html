@@ -470,6 +470,24 @@
         #shifting-panel { display: none; }
         #shifting-panel .form-group select,
         #shifting-panel .form-group input { width: 100%; }
+        /* Shifting quality rows (shAddRow): one per quality, like the New Order form's .quality-row */
+        .sh-row { display:grid; grid-template-columns:2fr 1.4fr 1.3fr 90px 90px 100px 36px 36px; gap:6px; align-items:end; margin-bottom:6px; background:#f0fdf4; border:1px solid #86efac; border-radius:8px; padding:8px 10px; }
+        .sh-row label { font-size:10px; font-weight:600; color:#166534; display:block; margin-bottom:2px; }
+        .sh-row input, .sh-row select { padding:7px 8px; border:1.5px solid #86efac; border-radius:6px; font-size:13px; font-weight:600; background:#fff; width:100%; box-sizing:border-box; }
+        .sh-row .shr-amt { padding:7px 8px; border-radius:6px; background:#ecfdf5; border:1px solid #a7f3d0; font-size:13px; font-weight:800; color:#065f46; text-align:right; white-space:nowrap; }
+        .sh-row .shr-add { background:#059669; color:#fff; border:none; border-radius:6px; padding:8px 10px; font-size:16px; font-weight:800; cursor:pointer; line-height:1; }
+        .sh-row .shr-del { background:#ef4444; color:#fff; border:none; border-radius:6px; padding:8px 10px; font-size:14px; cursor:pointer; line-height:1; }
+        .sh-row .shr-add:focus, .sh-row .shr-del:focus { outline:3px solid #fbbf24; outline-offset:2px; }
+        .sh-row.shr-bad { background:#fef2f2; border-color:#fca5a5; }
+        .sh-row .shr-err { grid-column:1/-1; font-size:11px; font-weight:700; color:#b91c1c; }
+        #sh-form-card.editing .shr-add, #sh-form-card.editing .shr-del, #sh-form-card.editing #sh-add-row-btn { display:none; }
+        #sh-total { margin-top:6px; padding:8px 12px; background:#fef3c7; border:2px solid #f59e0b; border-radius:8px; font-size:13px; font-weight:800; color:#b45309; }
+        @media (max-width: 760px) {
+            .sh-row { grid-template-columns: 1fr 1fr 1fr 38px 38px; gap:5px; }
+            .sh-row > div:nth-child(1) { grid-column: 1 / -1; }   /* Quality */
+            .sh-row > div:nth-child(2) { grid-column: 1 / 3; }    /* Item Type */
+            .sh-row > div:nth-child(3) { grid-column: 3 / -1; }   /* Lot No. */
+        }
         #sh-form-card { border: 2px solid #0d9488; }
         #sh-form-card.editing { border-color: #7c3aed; background: #faf5ff; }
         .sh-amount { font-size: 15px; font-weight: 800; color: #0f766e; padding: 8px 0 0; }
@@ -1050,6 +1068,12 @@
                     <input type="text" id="veh-other" placeholder="Transport details" oninput="this.value=this.value.toUpperCase();">
                 </div>
                 <div class="form-group">
+                    <!-- packing.vehicle_list.standard_tare (PACKING_VEHICLE_STD_TARE_MIGRATION.sql); read by the gates' Dharam Kanta slip -->
+                    <label>Standard Tare Wt (Kg)</label>
+                    <input type="number" id="veh-tare" min="0" step="0.01" placeholder="Empty vehicle weight" inputmode="decimal" autocomplete="off">
+                    <div class="veh-hint" id="veh-tare-hint">Weight of the EMPTY vehicle. At the gate, a Dharam Kanta Tare 15 kg or more above / below it needs Item Description, Remarks and Item Photos.</div>
+                </div>
+                <div class="form-group">
                     <label>Insurance Validity Date <span class="required-star veh-req-c">*</span></label>
                     <input type="date" id="veh-ins-date" onchange="vehShowInsState()">
                     <div class="veh-hint" id="veh-ins-hint">Date the insurance is valid till</div>
@@ -1484,38 +1508,24 @@
                 <select id="sh-to"><option value="">— Select Shift To —</option></select>
             </div>
             <div class="form-group">
-                <label>Lot No. <span class="required-star">*</span></label>
-                <input type="text" id="sh-lot" placeholder="Lot No." oninput="convertToUpperCase(this)" autocomplete="off" maxlength="150">
-            </div>
-            <div class="form-group">
-                <label>Item Type <span class="required-star">*</span></label>
-                <select id="sh-item-type"><option value="">— Select Item Type —</option></select>
-            </div>
-            <div class="form-group">
-                <label>Quality <span class="required-star">*</span></label>
-                <input type="text" id="sh-quality" list="dl-so-quality" placeholder="Type to search quality..." autocomplete="off" maxlength="150"
-                    onfocus="this.select()" oninput="this.value=this.value.toUpperCase();this.style.background='';"
-                    onchange="shCheckQuality(this)">
-            </div>
-            <div class="form-group">
                 <label>Shifting By <span class="required-star">*</span></label>
                 <select id="sh-by"><option value="">— Select Shifting By —</option></select>
             </div>
-            <div class="form-group">
-                <label>Quantity <span class="required-star">*</span></label>
-                <input type="number" id="sh-qty" placeholder="0" step="any" min="0" inputmode="decimal" oninput="shShowAmount()">
-            </div>
-            <div class="form-group">
-                <label>Labour Rate (₹)</label>
-                <input type="number" id="sh-rate" placeholder="0.00" step="0.01" min="0" inputmode="decimal" oninput="shShowAmount()">
-            </div>
             <div class="form-group full-width">
-                <label>Remarks</label>
+                <label>Remarks <span class="pm-sub-hint">(saved on every quality of this entry)</span></label>
                 <input type="text" id="sh-remarks" placeholder="Remarks (optional)" oninput="convertToUpperCase(this)" autocomplete="off" maxlength="500">
             </div>
-            <div class="form-group full-width">
-                <div class="sh-amount">Amount: <span id="sh-amount">₹0.00</span> <span class="pm-sub-hint">(Quantity × Labour Rate)</span></div>
-            </div>
+        </div>
+        <!-- Quality rows (shAddRow): one per quality; each is saved as its own shifting entry with the fields above -->
+        <div style="margin-bottom:8px;">
+            <div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:6px;">Quality Details <span class="required-star">*</span>
+                <span class="pm-sub-hint" style="font-weight:600;">Lot No., Item Type, Quantity and Labour Rate per quality · + adds a row below (same Item Type and Rate)</span></div>
+            <div id="sh-rows"></div>
+            <button type="button" id="sh-add-row-btn" onclick="shAddRowFromLast()"
+                style="width:100%;background:#f0fdf4;color:#166534;border:1.5px dashed #86efac;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;margin-top:4px;">
+                ＋ Add Another Quality
+            </button>
+            <div id="sh-total">Qualities: <span id="sh-total-n">0</span> · Total Qty: <span id="sh-total-qty">0</span> · Total Amount: <span id="sh-amount">₹0.00</span></div>
         </div>
         <div class="order-form-btns">
             <button type="button" class="btn-save-order" id="sh-save-btn" onclick="shSave()">Save Entry</button>
@@ -1883,7 +1893,7 @@ function applyPkDropdowns() {
     pkRefillSelect(document.getElementById('sh-type'), SHIFT_TYPES);
     pkRefillSelect(document.getElementById('sh-from'), SHIFT_FROM_OPTIONS);
     pkRefillSelect(document.getElementById('sh-to'), SHIFT_TO_OPTIONS);
-    pkRefillSelect(document.getElementById('sh-item-type'), SHIFT_ITEM_TYPES);
+    document.querySelectorAll('select.shr-item').forEach(function(s) { pkRefillSelect(s, SHIFT_ITEM_TYPES); });
     pkRefillSelect(document.getElementById('sh-by'), SHIFTING_BY_OPTIONS);
     document.querySelectorAll('select.item-type').forEach(function(s) { pkRefillSelect(s, PACK_ITEM_TYPES); });
     document.querySelectorAll('select.qr-item').forEach(function(s) { pkRefillSelect(s, PACK_ITEM_TYPES); });
@@ -2549,13 +2559,18 @@ async function dispatchPost(payload) {
             var vRow = { tempo_no: payload.tempoNo, driver_name: payload.driverName,
                          driver_mobile: payload.driverMobile, other_details: payload.otherDetails };
             if (payload.logisticType) vRow.logistic_type = payload.logisticType;
+            if ('standardTare' in payload) vRow.standard_tare = payload.standardTare;
             var ins = await supabaseClient.from('vehicle_list').insert(vRow).select('id').single();
-            var typeMissing = false;
-            if (ins.error && /logistic_type/i.test(ins.error.message || '')) {
-                delete vRow.logistic_type; typeMissing = true;
+            var typeMissing = false, tareMissing = false;
+            // a column the database does not have yet: saved again without it (at most both, one at a time)
+            for (var tryN = 0; tryN < 2 && ins.error; tryN++) {
+                var em = ins.error.message || '';
+                if (/standard_tare/i.test(em) && 'standard_tare' in vRow) { delete vRow.standard_tare; tareMissing = true; }
+                else if (/logistic_type/i.test(em) && 'logistic_type' in vRow) { delete vRow.logistic_type; typeMissing = true; }
+                else break;
                 ins = await supabaseClient.from('vehicle_list').insert(vRow).select('id').single();
             }
-            return ins.error ? { success: false, error: ins.error.message } : { success: true, id: ins.data && ins.data.id, typeMissing: typeMissing };
+            return ins.error ? { success: false, error: ins.error.message } : { success: true, id: ins.data && ins.data.id, typeMissing: typeMissing, tareMissing: tareMissing };
         }
 
         case 'updateVehicle': {
@@ -2563,14 +2578,32 @@ async function dispatchPost(payload) {
                          driver_mobile: payload.driverMobile, other_details: payload.otherDetails,
                          updated_at: new Date().toISOString() };
             if (payload.logisticType) uRow.logistic_type = payload.logisticType;
+            if ('standardTare' in payload) uRow.standard_tare = payload.standardTare;
             var up = await supabaseClient.from('vehicle_list').update(uRow).eq('tempo_no', payload.origTempoNo).select('id');
-            var typeMissing2 = false;
-            if (up.error && /logistic_type/i.test(up.error.message || '')) {
-                delete uRow.logistic_type; typeMissing2 = true;
+            var typeMissing2 = false, tareMissing2 = false;
+            for (var tryU = 0; tryU < 2 && up.error; tryU++) {
+                var emU = up.error.message || '';
+                if (/standard_tare/i.test(emU) && 'standard_tare' in uRow) { delete uRow.standard_tare; tareMissing2 = true; }
+                else if (/logistic_type/i.test(emU) && 'logistic_type' in uRow) { delete uRow.logistic_type; typeMissing2 = true; }
+                else break;
                 up = await supabaseClient.from('vehicle_list').update(uRow).eq('tempo_no', payload.origTempoNo).select('id');
             }
             return up.error ? { success: false, error: up.error.message }
-                : { success: true, id: up.data && up.data[0] && up.data[0].id, typeMissing: typeMissing2 };
+                : { success: true, id: up.data && up.data[0] && up.data[0].id, typeMissing: typeMissing2, tareMissing: tareMissing2 };
+        }
+
+        // PACKING_VEHICLE_ACTIVE_MIGRATION.sql: the trigger refuses anyone but Admin / MD / Packing Incharge
+        case 'setVehicleActive': {
+            var ac = await supabaseClient.from('vehicle_list').update({ is_active: !!payload.isActive, active_changed_by: await getCurrentFullName() })
+                .eq('tempo_no', payload.tempoNo).select('id');
+            if (ac.error) {
+                var am = ac.error.message || '';
+                if (/is_active|active_changed/i.test(am) && /column|schema cache/i.test(am)) return { success: false, error: 'Activate / Deactivate is not set up yet: run PACKING_VEHICLE_ACTIVE_MIGRATION.sql in Supabase.' };
+                if (/VEHICLE_ACTIVE_NOT_ALLOWED/.test(am)) return { success: false, error: 'Only Admin, MD or Packing Incharge can activate / deactivate a vehicle.' };
+                return { success: false, error: am };
+            }
+            if (!ac.data || !ac.data.length) return { success: false, error: 'Vehicle not found (refresh the list).' };
+            return { success: true };
         }
 
         case 'deleteVehicle': {
@@ -2739,7 +2772,8 @@ async function dispatchGet(params) {
                 role: await getCurrentRole(), fullName: await getCurrentFullName(), username: await getCurrentUsername(),
                 brands: (items||[]).map(function(i){ return { name: i.quality, stdPcs: i.std_pcs }; }),
                 // Map snake_case DB columns → camelCase (buildVehicleDatalist/buildDraftDropdown expect camelCase)
-                vehicles: (vehicles||[]).map(function(v){
+                // an INACTIVE vehicle (Vehicles › Deactivate) is not offered for a new slip
+                vehicles: (vehicles||[]).filter(function(v){ return v.is_active !== false; }).map(function(v){
                     return { tempoNo: v.tempo_no || '', driverName: v.driver_name || '', driverMobile: v.driver_mobile || '', otherDetails: v.other_details || '' };
                 }),
                 drafts: (drafts||[]).map(function(d){
@@ -3047,7 +3081,7 @@ async function dispatchGet(params) {
 
         case 'listVehicles': {
             var { data } = await supabaseClient.from('vehicle_list').select('*');
-            return { success: true, vehicles: (data||[]).map(function(v){ return { id: v.id, tempoNo: v.tempo_no, driverName: v.driver_name, driverMobile: v.driver_mobile, otherDetails: v.other_details, logisticType: v.logistic_type || '' }; }) };
+            return { success: true, vehicles: (data||[]).map(function(v){ return { id: v.id, tempoNo: v.tempo_no, driverName: v.driver_name, driverMobile: v.driver_mobile, otherDetails: v.other_details, logisticType: v.logistic_type || '', standardTare: v.standard_tare == null ? null : Number(v.standard_tare), isActive: v.is_active !== false, activeChangedBy: v.active_changed_by || '', activeChangedAt: v.active_changed_at || '' }; }) };
         }
 
         case 'listAllQuickPackDrafts': {
@@ -11077,7 +11111,7 @@ async function fetchVehicleList() {
         if (data.vehicles) {
             vehicleList = data.vehicles;
             renderVehicleList();
-            buildVehicleDatalist(vehicleList);
+            buildVehicleDatalist(vehicleList.filter(function(v) { return v.isActive !== false; }));
         } else {
             document.getElementById('veh-list-container').innerHTML = '<p style="text-align:center;color:var(--text-muted);">No vehicles found.</p>';
         }
@@ -11141,7 +11175,7 @@ function renderVehicleList() {
         return;
     }
     var shown = !words.length ? vehicleList : vehicleList.filter(function(v) {
-        var hay = [v.tempoNo, v.driverName, v.driverMobile, v.otherDetails, VEH_TYPES[v.logisticType] || ''].map(vehLoose).join('|');
+        var hay = [v.tempoNo, v.driverName, v.driverMobile, v.otherDetails, VEH_TYPES[v.logisticType] || '', v.isActive === false ? 'INACTIVE' : 'ACTIVE'].map(vehLoose).join('|');
         return words.every(function(w) { return hay.indexOf(w) >= 0; });
     });
     if (cnt) cnt.textContent = words.length ? shown.length + ' of ' + vehicleList.length : vehicleList.length + ' vehicles';
@@ -11151,7 +11185,7 @@ function renderVehicleList() {
     }
     container.innerHTML =
         '<table class="veh-table"><thead><tr>' +
-        '<th>Tempo No</th><th>Type</th><th>Driver Name</th><th>Mobile</th><th>Documents</th><th>Other Details</th><th style="width:90px;">Actions</th>' +
+        '<th>Tempo No</th><th>Type</th><th>Std Tare (Kg)</th><th>Driver Name</th><th>Mobile</th><th>Documents</th><th>Other Details</th><th style="width:150px;">Actions</th>' +
         '</tr></thead><tbody>' +
         shown.map(function(v) {
             // Documents: for a Contractor what is still missing; insurance expiry for everyone
@@ -11168,20 +11202,48 @@ function renderVehicleList() {
             if (d && d.insurance_valid_till && String(d.insurance_valid_till).slice(0, 10) < frDateInput(new Date())) {
                 docTxt += ' <span class="veh-badge bad">Insurance expired</span>';
             }
-            return '<tr>' +
-                '<td style="font-weight:700;color:var(--primary);">' + vehMark(v.tempoNo, words) + '</td>' +
+            var off = v.isActive === false;
+            return '<tr' + (off ? ' style="opacity:.55;background:#f8fafc;"' : '') + '>' +
+                '<td style="font-weight:700;color:var(--primary);">' + vehMark(v.tempoNo, words) +
+                    (off ? ' <span class="veh-badge bad" title="' + escapeHtmlJs('Not offered for new slips' + (v.activeChangedBy ? ' · by ' + v.activeChangedBy : '')) + '">Inactive</span>' : '') + '</td>' +
                 '<td>' + (v.logisticType ? escapeHtmlJs(VEH_TYPES[v.logisticType] || v.logisticType)
                                          : '<span class="veh-badge bad" title="Open with Edit and choose the Logistic Type">Not set</span>') + '</td>' +
+                '<td style="white-space:nowrap;">' + (v.standardTare != null ? escapeHtmlJs(Number(v.standardTare).toFixed(2)) : '<span class="veh-badge na" title="Open with Edit to set the empty vehicle weight">-</span>') + '</td>' +
                 '<td>' + vehMark(v.driverName, words) + '</td>' +
                 '<td>' + vehMark(v.driverMobile || '-', words) + '</td>' +
                 '<td style="white-space:nowrap;">' + docTxt + '</td>' +
                 '<td>' + vehMark(v.otherDetails || '-', words) + '</td>' +
                 '<td style="white-space:nowrap;">' +
+                    (vehCanActivate()
+                        ? '<button onclick="toggleVehicleActive(\'' + escapeHtmlJs(v.tempoNo) + '\')" title="' + (off ? 'Offer this vehicle for new slips again' : 'Stop offering this vehicle for new slips (nothing is deleted)') + '" style="background:' + (off ? '#16a34a' : '#f59e0b') + ';color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;">' + (off ? 'Activate' : 'Deactivate') + '</button>'
+                        : '') +
                     '<button onclick="editVehicle(\'' + escapeHtmlJs(v.tempoNo) + '\')" style="background:#2563eb;color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;margin-right:4px;">Edit</button>' +
                     '<button onclick="handleDeleteVehicle(\'' + escapeHtmlJs(v.tempoNo) + '\')" style="background:#ef4444;color:#fff;border:none;border-radius:4px;padding:4px 8px;font-size:10px;cursor:pointer;">Delete</button>' +
                 '</td></tr>';
         }).join('') +
         '</tbody></table>';
+}
+
+/* Activate / Deactivate (PACKING_VEHICLE_ACTIVE_MIGRATION.sql): Admin, MD and Packing Incharge only, here and
+   on the server (trigger vehicle_list_active_guard, which also logs every switch). An inactive vehicle stays
+   in this list but is not offered for a new Packing Slip (buildVehicleDatalist gets active ones only). */
+function vehCanActivate() { var r = String(session && session.role || '').toUpperCase(); return r === 'ADMIN' || r === 'MD' || r === 'PACKING_INCHARGE'; }
+async function toggleVehicleActive(tempoNo) {
+    if (!vehCanActivate()) { alert('Only Admin, MD or Packing Incharge can activate / deactivate a vehicle.'); return; }
+    var v = vehicleList.find(function(x) { return x.tempoNo === tempoNo; });
+    if (!v) return;
+    var on = v.isActive === false;
+    if (!confirm((on ? 'Activate ' : 'Deactivate ') + tempoNo + '?\n\n' + (on
+        ? 'It is offered again in the Packing Slip\'s Tempo No list.'
+        : 'It stays in the Vehicle List with its documents, but is no longer offered for new Packing Slips. Activate it again any time.'))) return;
+    setOrderSavingStage('saving', on ? 'Activating Vehicle' : 'Deactivating Vehicle');
+    try {
+        var result = await gasPost(withAuthPayload({ action: 'setVehicleActive', tempoNo: tempoNo, isActive: on }));
+        if (handleAuthFailure(result)) { hideOrderSavingOverlay(); return; }
+        if (!result.success) { hideOrderSavingOverlay(); alert(result.error || 'Not saved.'); return; }
+        setOrderSavingStage('done', on ? 'Vehicle Activated' : 'Vehicle Deactivated');
+        setTimeout(function() { hideOrderSavingOverlay(); fetchVehicleList(); }, 700);
+    } catch (e) { hideOrderSavingOverlay(); alert('Not saved: ' + (e.message || e)); }
 }
 
 function editVehicle(tempoNo) {
@@ -11194,6 +11256,7 @@ function editVehicle(tempoNo) {
     document.getElementById('veh-mobile').value = vehCleanMobile(v.driverMobile || '');
     document.getElementById('veh-other').value  = v.otherDetails || '';
     document.getElementById('veh-type').value   = v.logisticType || '';
+    document.getElementById('veh-tare').value   = v.standardTare != null ? v.standardTare : '';
     document.getElementById('veh-edit-orig').value = v.tempoNo;
     document.getElementById('veh-save-btn').textContent = 'Update Tempo';
     document.getElementById('veh-cancel-btn').style.display = '';
@@ -11214,6 +11277,7 @@ function cancelVehicleEdit() {
     document.getElementById('veh-mobile').value = '';
     document.getElementById('veh-other').value = '';
     document.getElementById('veh-type').value = '';
+    document.getElementById('veh-tare').value = '';
     document.getElementById('veh-edit-orig').value = '';
     document.getElementById('veh-save-btn').textContent = '＋ Add Tempo';
     document.getElementById('veh-cancel-btn').style.display = 'none';
@@ -11645,6 +11709,11 @@ async function handleSaveVehicle() {
         return;
     }
 
+    // Standard Tare Wt: empty = not set, else a weight of 0 or more
+    var tareRaw = String(document.getElementById('veh-tare').value || '').trim();
+    var standardTare = tareRaw === '' ? null : Math.round(Number(tareRaw) * 100) / 100;
+    if (standardTare != null && !(isFinite(standardTare) && standardTare >= 0)) { alert('Standard Tare Wt must be a weight in Kg (0 or more), or empty.'); document.getElementById('veh-tare').focus(); return; }
+
     var origTempoNo = document.getElementById('veh-edit-orig').value.trim();
     var isEdit = !!origTempoNo;
     // Same tempo already saved (any old spelling with dashes / spaces counts)
@@ -11666,6 +11735,7 @@ async function handleSaveVehicle() {
         driverMobile: mEl.value,
         otherDetails: document.getElementById('veh-other').value.trim(),
         logisticType: logisticType,
+        standardTare: standardTare,
         origTempoNo:  origTempoNo
     });
 
@@ -11677,6 +11747,7 @@ async function handleSaveVehicle() {
             // vehicle has neither yet): say so instead of losing them silently.
             var docWarn = '';
             if (result.typeMissing) docWarn = 'Logistic Type was not saved (run PACKING_VEHICLE_DOCS_MIGRATION.sql).';
+            if (result.tareMissing) docWarn = (docWarn ? docWarn + '\n' : '') + 'Standard Tare Wt was not saved (run PACKING_VEHICLE_STD_TARE_MIGRATION.sql).';
             if (docsTouched || logisticType === 'CONTRACTOR') {
                 if (!result.id) docWarn = 'The vehicle is saved' + (result.queued ? ' offline' : '') + ', but the documents were NOT saved. Open it again with Edit when online and save the documents.';
                 else {
@@ -11766,8 +11837,10 @@ var _repairRows    = [];     // last scan result, each row tagged with _state/_w
 var _repairRunning = false;  // true while a batch run is in flight
 var _repairStop    = false;  // set by the Stop button; checked between slips
 
+// Fix PDFs: Admin and MD (pdfRepairAllowed; the nav button follows the same rule in updateNavButtons)
+function pdfRepairAllowed() { var r = session ? String(session.role || '').toUpperCase() : ''; return r === 'ADMIN' || r === 'MD'; }
 function showPdfRepairPanel() {
-    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    if (!pdfRepairAllowed()) { alert('Admin / MD only!'); return; }
     hideAllPanels();
     document.getElementById('pdf-repair-panel').style.display = 'block';
     updateNavButtons('pdf-repair-panel');
@@ -11786,7 +11859,7 @@ function rpStateLabel(st) {
 }
 
 async function scanMissingPdfs() {
-    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    if (!pdfRepairAllowed()) { alert('Admin / MD only!'); return; }
 
     var btn     = document.getElementById('rp-scan-btn');
     var summary = document.getElementById('rp-summary');
@@ -11967,7 +12040,7 @@ async function repairSlipPdf(slipRow) {
 }
 
 async function repairOneRow(i) {
-    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    if (!pdfRepairAllowed()) { alert('Admin / MD only!'); return; }
     if (_repairRunning) { alert('A batch repair is already running. Let it finish first or press Stop.'); return; }
     var s = _repairRows[i];
     if (!s) return;
@@ -11987,7 +12060,7 @@ async function repairOneRow(i) {
 }
 
 async function repairAllMissingPdfs() {
-    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    if (!pdfRepairAllowed()) { alert('Admin / MD only!'); return; }
 
     var todo = _repairRows.filter(function(s) { return s._state !== 'ok'; });
     if (!todo.length) { alert('There is nothing to repair.'); return; }
@@ -12870,8 +12943,16 @@ function pmExportCsv() {
 // users). Add = anyone with a Packing account; edit / delete = the person who
 // added it, or Admin / MD / Packing Incharge (the server decides; the buttons
 // here only follow the same rule).
-// After a save the Date, Type, From, To, Item Type, Shifting By and Rate stay
-// filled, so the next lot of the same shifting is quick to enter.
+// MANY QUALITIES IN ONE SAVE (like the New Order form): Date, Type, Shift From,
+// Shift To, Shifting By and Remarks are on top, once; below them one row per
+// quality (shAddRow: Quality, Item Type, Lot No., Quantity, Labour Rate, its
+// Amount; + adds a row below with the same Item Type and Rate, × removes it).
+// Every row is checked first (shValidate_, "Row n: ..."), then each is saved as
+// its own entry through the same sh_save, one after another. A row the server
+// refuses stays in the form, red, with the reason; the saved ones leave it. An
+// EDIT is one entry, so it shows one row and no + / ×.
+// After a save the Date, Type, From, To, Shifting By stay filled and a fresh row
+// keeps the last Item Type and Rate, so the next lots are quick to enter.
 // ══════════════════════════════════════════════════════════════════════
 var _sh = { rows: [], editId: null, uid: null, qualLoaded: false, busy: false, loadSeq: 0, error: '' };
 
@@ -12918,7 +12999,8 @@ async function showShiftingPanel() {
     if (!shVal_('sh-date')) document.getElementById('sh-date').value = t;
     if (!shVal_('sh-f-from')) document.getElementById('sh-f-from').value = t;
     if (!shVal_('sh-f-to')) document.getElementById('sh-f-to').value = t;
-    shShowAmount();
+    if (!document.querySelector('#sh-rows .sh-row')) shRowsReset();
+    shRowsTotals();
 
     // Who am I (for the edit / delete buttons on my own entries)
     try {
@@ -12958,26 +13040,106 @@ function shCheckQuality(el) {
     else el.style.background = '#fee2e2';
 }
 
-function shShowAmount() {
-    var amt = shNum_(shVal_('sh-qty')) * shNum_(shVal_('sh-rate'));
-    var el = document.getElementById('sh-amount');
-    if (el) el.textContent = formatInr(Math.round(amt * 100) / 100);
+// ── Quality rows ──
+var _shRowSeq = 0;
+// v = {quality, itemType, lotNo, quantity, labourRate}; after = the row to put it under (else at the end)
+function shAddRow(v, after) {
+    v = v || {};
+    var div = document.createElement('div');
+    div.className = 'sh-row';
+    div.id = 'shr-' + (++_shRowSeq);
+    var num = function(x) { return x == null || x === '' ? '' : escapeHtmlAttr(String(x)); };
+    div.innerHTML =
+        '<div><label>Quality *</label>' +
+            '<input type="text" class="shr-quality" list="dl-so-quality" placeholder="Type to search quality..." autocomplete="off" maxlength="150" value="' + escapeHtmlAttr(v.quality || '') + '" ' +
+            'onfocus="this.select()" oninput="this.value=this.value.toUpperCase();this.style.background=\'\';shRowClearErr(this)" onchange="shCheckQuality(this)"></div>' +
+        '<div><label>Item Type *</label><select class="shr-item" onchange="shRowClearErr(this)"><option value="">Select</option>' + pkOptionsHtml(SHIFT_ITEM_TYPES, v.itemType || '') + '</select></div>' +
+        '<div><label>Lot No. *</label><input type="text" class="shr-lot" placeholder="Lot No." autocomplete="off" maxlength="150" value="' + escapeHtmlAttr(v.lotNo || '') + '" oninput="convertToUpperCase(this);shRowClearErr(this)"></div>' +
+        '<div><label>Qty *</label><input type="number" class="shr-qty" placeholder="0" step="any" min="0" inputmode="decimal" value="' + num(v.quantity) + '" oninput="shRowsTotals();shRowClearErr(this)"></div>' +
+        '<div><label>Rate (₹)</label><input type="number" class="shr-rate" placeholder="0.00" step="0.01" min="0" inputmode="decimal" value="' + num(v.labourRate) + '" oninput="shRowsTotals()" ' +
+            'onkeydown="if(event.key===\'Enter\'){event.preventDefault();shRowAfter(this);}" title="Enter = another quality below"></div>' +
+        '<div><label>Amount</label><div class="shr-amt">₹0.00</div></div>' +
+        '<button type="button" class="shr-add" onclick="shRowAfter(this)" title="Add another quality below (same Item Type and Rate)">+</button>' +
+        '<button type="button" class="shr-del" onclick="shRowRemove(this)" title="Remove this quality">×</button>';
+    var box = document.getElementById('sh-rows');
+    if (after && after.parentNode === box) box.insertBefore(div, after.nextSibling); else box.appendChild(div);
+    shRowsTotals();
+    return div;
+}
+// (+) / Enter in Rate: a new row under this one, cursor in its Quality
+function shRowAfter(el) {
+    if (_sh.editId) return;   // an edit is one entry
+    var row = el.closest('.sh-row');
+    var n = shAddRow({ itemType: row.querySelector('.shr-item').value, labourRate: row.querySelector('.shr-rate').value }, row);
+    n.querySelector('.shr-quality').focus();
+}
+function shAddRowFromLast() {
+    if (_sh.editId) return;
+    var rows = document.querySelectorAll('#sh-rows .sh-row'), last = rows[rows.length - 1];
+    var n = shAddRow(last ? { itemType: last.querySelector('.shr-item').value, labourRate: last.querySelector('.shr-rate').value } : {});
+    n.querySelector('.shr-quality').focus();
+}
+// (×): the last row left is only emptied
+function shRowRemove(el) {
+    var row = el.closest('.sh-row');
+    if (document.querySelectorAll('#sh-rows .sh-row').length <= 1) {
+        ['.shr-quality', '.shr-lot', '.shr-qty'].forEach(function(c) { var x = row.querySelector(c); x.value = ''; x.style.background = ''; });
+        shRowClearErr(row);
+    } else row.remove();
+    shRowsTotals();
+}
+function shRowClearErr(el) {
+    var row = el.classList && el.classList.contains('sh-row') ? el : el.closest('.sh-row');
+    if (!row) return;
+    row.classList.remove('shr-bad');
+    var e = row.querySelector('.shr-err'); if (e) e.remove();
+}
+function shRowSetErr(row, msg) {
+    shRowClearErr(row);
+    row.classList.add('shr-bad');
+    var e = document.createElement('div'); e.className = 'shr-err'; e.textContent = msg;
+    row.appendChild(e);
+}
+// start over with one row (keep = {itemType, labourRate} for it)
+function shRowsReset(keep) {
+    document.getElementById('sh-rows').innerHTML = '';
+    shAddRow(keep || {});
+}
+// each row's Amount + the total line
+function shRowsTotals() {
+    var n = 0, qty = 0, amt = 0;
+    document.querySelectorAll('#sh-rows .sh-row').forEach(function(row) {
+        var q = shNum_(row.querySelector('.shr-qty').value), r = shNum_(row.querySelector('.shr-rate').value), a = Math.round(q * r * 100) / 100;
+        row.querySelector('.shr-amt').textContent = formatInr(a);
+        if (String(row.querySelector('.shr-quality').value || '').trim() || q) n++;
+        qty += q; amt += a;
+    });
+    var set = function(id, v) { var el = document.getElementById(id); if (el) el.textContent = v; };
+    set('sh-total-n', n); set('sh-total-qty', shQty_(qty)); set('sh-amount', formatInr(Math.round(amt * 100) / 100));
 }
 
+// The fields on top, once for the whole save
 function shReadForm_() {
     return {
         date:       shVal_('sh-date'),
         type:       shVal_('sh-type'),
         shiftFrom:  shVal_('sh-from'),
         shiftTo:    shVal_('sh-to'),
-        lotNo:      shVal_('sh-lot').toUpperCase(),
-        itemType:   shVal_('sh-item-type'),
-        quality:    shVal_('sh-quality').toUpperCase(),
         shiftingBy: shVal_('sh-by'),
-        quantity:   shVal_('sh-qty'),
-        labourRate: shVal_('sh-rate'),
         remarks:    shVal_('sh-remarks')
     };
+}
+// One entry per filled row (a row with nothing typed is left out): [{row, e}]
+function shReadRows_() {
+    var head = shReadForm_(), out = [];
+    document.querySelectorAll('#sh-rows .sh-row').forEach(function(row) {
+        var g = function(c) { return String(row.querySelector(c).value || '').trim(); };
+        var r = { quality: g('.shr-quality').toUpperCase(), itemType: g('.shr-item'), lotNo: g('.shr-lot').toUpperCase(), quantity: g('.shr-qty'), labourRate: g('.shr-rate') };
+        if (!r.quality && !r.lotNo && !r.quantity) return;
+        if (_sh.qualLoaded && r.quality) r.quality = subOrderQualityCanonical(r.quality) || r.quality;
+        out.push({ row: row, e: Object.assign({}, head, r) });
+    });
+    return out;
 }
 
 // Same rules as sh_save, so most mistakes are caught before the round trip
@@ -13000,55 +13162,82 @@ function shValidate_(e) {
 
 async function shSave() {
     if (_sh.busy) return;
-    var e = shReadForm_();
-    if (_sh.qualLoaded && e.quality) e.quality = subOrderQualityCanonical(e.quality) || e.quality;
-    var bad = shValidate_(e);
-    if (bad) { alert(bad); return; }
+    var list = shReadRows_();
+    document.querySelectorAll('#sh-rows .sh-row').forEach(shRowClearErr);
+    if (!list.length) { alert('Add at least one quality (Quality, Item Type, Lot No. and Quantity).'); var q0 = document.querySelector('#sh-rows .shr-quality'); if (q0) q0.focus(); return; }
+    // the fields on top first (same for every row), then each row
+    var head = shValidate_(Object.assign({}, list[0].e, { quality: 'X', lotNo: 'X', itemType: 'X', quantity: '1', labourRate: '' }));
+    if (head && !/^Quality|^Lot No|^Select the Item Type|^Quantity/.test(head)) { alert(head); return; }
+    var bad = [];
+    list.forEach(function(x, i) {
+        var m = shValidate_(x.e);
+        if (m) { bad.push('Row ' + (i + 1) + ': ' + m); shRowSetErr(x.row, m); }
+    });
+    if (bad.length) { alert(bad.join('\n')); return; }
+    // the same Lot + Quality + Item Type twice in one save is usually a slip of the finger
+    var seen = {}, dup = [];
+    list.forEach(function(x) { var k = [x.e.lotNo, x.e.quality, x.e.itemType].join('|'); if (seen[k]) dup.push(x.e.quality + ' · Lot ' + x.e.lotNo); seen[k] = 1; });
+    if (dup.length && !confirm('These are entered twice:\n• ' + dup.join('\n• ') + '\n\nSave them anyway?')) return;
 
     var editing = _sh.editId;
+    if (editing && list.length > 1) { alert('An edit changes one entry: keep one quality row.'); return; }
     var btn = document.getElementById('sh-save-btn');
-    _sh.busy = true; btn.disabled = true; btn.textContent = 'Saving...';
+    _sh.busy = true; btn.disabled = true;
+    var ok = 0, failed = [], date = list[0].e.date, keep = null;
     try {
-        var { data, error } = await supabaseClient.rpc('sh_save', { p_id: editing, p_entry: e });
-        if (error) throw new Error(shIsMissing_(error.message) ? SH_MISSING_MSG : error.message);
-        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
-
-        showToast(editing ? 'Shifting entry updated' : 'Shifting entry saved');
-        _sh.error = ''; shRenderBanner_();
-        _sk.at = 0;   // a production entry changes the Balance Stock
-
-        // Make sure the saved entry is inside the date range shown below
-        var f = document.getElementById('sh-f-from'), t = document.getElementById('sh-f-to');
-        if (!f.value || e.date < f.value) f.value = e.date;
-        if (!t.value || e.date > t.value) t.value = e.date;
-
-        shResetForm(false);
-        shLoad();
-    } catch (err) {
-        alert('Save failed: ' + (err.message || err));
+        for (var i = 0; i < list.length; i++) {
+            btn.textContent = list.length > 1 ? 'Saving ' + (i + 1) + ' of ' + list.length + '...' : 'Saving...';
+            var x = list[i];
+            try {
+                var { data, error } = await supabaseClient.rpc('sh_save', { p_id: editing, p_entry: x.e });
+                if (error) throw new Error(shIsMissing_(error.message) ? SH_MISSING_MSG : error.message);
+                if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+                ok++; keep = { itemType: x.e.itemType, labourRate: x.e.labourRate };
+                x.row.remove();   // saved: off the form
+            } catch (err) {
+                var why = err.message || String(err);
+                failed.push('Row ' + (i + 1) + ' (' + x.e.quality + ' · Lot ' + x.e.lotNo + '): ' + why);
+                shRowSetErr(x.row, why);
+                if (why === SH_MISSING_MSG) break;   // nothing else can be saved either
+            }
+        }
+        if (ok) {
+            showToast(editing ? 'Shifting entry updated' : (ok === 1 ? 'Shifting entry saved' : ok + ' shifting entries saved'));
+            _sh.error = ''; shRenderBanner_();
+            _sk.at = 0;   // a production entry changes the Balance Stock
+            // Make sure the saved entries are inside the date range shown below
+            var f = document.getElementById('sh-f-from'), t = document.getElementById('sh-f-to');
+            if (!f.value || date < f.value) f.value = date;
+            if (!t.value || date > t.value) t.value = date;
+            shLoad();
+        }
+        if (!failed.length) shResetForm(false, keep);
+        else {
+            if (editing && ok) shResetForm(false, keep);
+            shRowsTotals();
+            alert((ok ? ok + ' saved. ' : '') + failed.length + ' not saved (still in the form, in red):\n\n' + failed.join('\n'));
+        }
     } finally {
         _sh.busy = false; btn.disabled = false;
         btn.textContent = _sh.editId ? 'Update Entry' : 'Save Entry';
     }
 }
 
-// full = also clear Date / Type / From / To / Item Type / Shifting By / Rate
-function shResetForm(full) {
+// full = also clear Date / Type / From / To / Shifting By; keep = {itemType, labourRate} for the fresh row
+function shResetForm(full, keep) {
     _sh.editId = null;
     document.getElementById('sh-form-title').textContent = 'New Shifting Entry';
     document.getElementById('sh-form-card').classList.remove('editing');
     document.getElementById('sh-save-btn').textContent = 'Save Entry';
     document.getElementById('sh-cancel-btn').textContent = 'Clear';
-    ['sh-lot', 'sh-quality', 'sh-qty', 'sh-remarks'].forEach(function(id) {
-        var el = document.getElementById(id); el.value = ''; el.style.background = '';
-    });
+    document.getElementById('sh-remarks').value = '';
     if (full) {
-        ['sh-type', 'sh-from', 'sh-to', 'sh-item-type', 'sh-by', 'sh-rate'].forEach(function(id) { document.getElementById(id).value = ''; });
+        ['sh-type', 'sh-from', 'sh-to', 'sh-by'].forEach(function(id) { document.getElementById(id).value = ''; });
         document.getElementById('sh-date').value = shToday_();
     }
-    shShowAmount();
+    shRowsReset(full ? null : keep);
     shRenderList();
-    var lot = document.getElementById('sh-lot'); if (lot && !full) lot.focus();
+    if (!full) { var q = document.querySelector('#sh-rows .shr-quality'); if (q) q.focus(); }
 }
 
 function shEdit(id) {
@@ -13060,19 +13249,18 @@ function shEdit(id) {
     pkSetSelect(document.getElementById('sh-type'), row.shift_type);
     pkSetSelect(document.getElementById('sh-from'), row.shift_from);
     pkSetSelect(document.getElementById('sh-to'), row.shift_to);
-    pkSetSelect(document.getElementById('sh-item-type'), row.item_type);
     pkSetSelect(document.getElementById('sh-by'), row.shifting_by);
-    document.getElementById('sh-lot').value = row.lot_no || '';
-    document.getElementById('sh-quality').value = row.quality || '';
-    document.getElementById('sh-quality').style.background = '';
-    document.getElementById('sh-qty').value = row.quantity == null ? '' : Number(row.quantity);
-    document.getElementById('sh-rate').value = row.labour_rate == null ? '' : Number(row.labour_rate);
     document.getElementById('sh-remarks').value = row.remarks || '';
+    // an edit is ONE entry: one row, no + / ×
+    document.getElementById('sh-rows').innerHTML = '';
+    var er = shAddRow({ quality: row.quality || '', lotNo: row.lot_no || '', quantity: row.quantity == null ? '' : Number(row.quantity),
+                        labourRate: row.labour_rate == null ? '' : Number(row.labour_rate) });
+    pkSetSelect(er.querySelector('.shr-item'), row.item_type);
     document.getElementById('sh-form-title').textContent = 'Edit Shifting Entry (' + shDmy_(row.entry_date) + ', Lot ' + (row.lot_no || '') + ')';
     document.getElementById('sh-form-card').classList.add('editing');
     document.getElementById('sh-save-btn').textContent = 'Update Entry';
     document.getElementById('sh-cancel-btn').textContent = 'Cancel Edit';
-    shShowAmount();
+    shRowsTotals();
     shRenderList();
     document.getElementById('sh-form-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -15674,7 +15862,7 @@ function updateNavButtons(activePanel) {
         'vehicleNavBtn':    activePanel !== 'vehicle-panel',
         'shiftNavBtn':      activePanel !== 'shifting-panel',
         'packOrdersNavBtn': canPack && activePanel !== 'pack-orders-panel',
-        'repairPdfNavBtn':  isAdmin && activePanel !== 'pdf-repair-panel',
+        'repairPdfNavBtn':  (isAdmin || isMD) && activePanel !== 'pdf-repair-panel',
         'reportsNavBtn':    canVerify && activePanel !== 'reports-panel',
         'freightNavBtn':    canVerify && activePanel !== 'freight-panel',
         'labourNavBtn':     canVerify && activePanel !== 'labour-panel',

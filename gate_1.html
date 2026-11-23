@@ -550,17 +550,17 @@
                                     <input type="number" step="0.01" id="inDkGross" oninput="calcInwardNetWeight()" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
                                 </div>
                                 <div>
-                                    <!-- LOCKED: 3 taps + the user's own PIN unlock it (PIN_LOCKS, section 5); else the Tare is taken at Out -->
+                                    <!-- FULLY LOCKED (PIN_LOCKS, section 5): a tap shows where it is entered; the Tare is taken at Out -->
                                     <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tare Wt (Kg) <i id="inDkTareLockIcon" class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
                                     <input type="number" step="0.01" id="inDkTare" oninput="calcInwardNetWeight()" onclick="pinLockTap('inDkTare')" readonly placeholder="At Out" class="w-full px-2.5 py-2.5 bg-gray-200/80 border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-not-allowed">
-                                    <p id="inDkTareHint" class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Tap 3 times to unlock (PIN)</p>
+                                    <p id="inDkTareHint" class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Locked · entered at Out</p>
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
                                     <input type="number" step="0.01" id="inDkNet" readonly tabindex="-1" placeholder="Auto" class="w-full px-2.5 py-2.5 bg-cyan-100/90 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed select-none focus:outline-none">
                                 </div>
                             </div>
-                            <p class="text-[10px] font-semibold text-cyan-800/80 -mt-1">The loaded vehicle is weighed now (Gross). Tare is locked (tap it 3 times + your PIN to enter it now); otherwise the empty vehicle is weighed after unloading and the Tare is entered at Existing Inward › Out, where it can also be changed.</p>
+                            <p class="text-[10px] font-semibold text-cyan-800/80 -mt-1">The loaded vehicle is weighed now (Gross). The Tare is locked here: the empty vehicle is weighed after unloading and its Tare is entered at Existing Inward › Out.</p>
 
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle Photo (Weighbridge)</label>
@@ -1165,25 +1165,57 @@
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No *</label>
-                            <input type="text" id="dkVehicleNo" list="gateVehicleList" autocomplete="off" required oninput="dkVehicleCheck()" placeholder="HR20AB1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <input type="text" id="dkVehicleNo" list="gateVehicleList" autocomplete="off" required oninput="dkVehicleCheck(); dkTareCheck()" onchange="dkTareCheck()" placeholder="HR20AB1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
                         </div>
                     </div>
 
                     <!-- Gross Weight, Tare Weight & LOCKED Auto-Calculated Net Weight -->
                     <div class="grid grid-cols-3 gap-2.5">
                         <div>
-                            <!-- LOCKED: 3 taps + the user's own PIN unlock it (PIN_LOCKS, section 5) -->
+                            <!-- FULLY LOCKED (PIN_LOCKS, section 5): a tap shows where it is entered; the Gross is taken on the Dispatch Packing slip -->
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gross Wt (Kg) <i id="dkGrossWeightLockIcon" class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
-                            <input type="number" step="0.01" min="0" id="dkGrossWeight" oninput="calculateNetWeight()" onclick="pinLockTap('dkGrossWeight')" readonly placeholder="Locked" class="w-full px-3 py-3 bg-gray-200/80 border border-gray-300/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-not-allowed">
-                            <p id="dkGrossWeightHint" class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Tap 3 times to unlock (PIN)</p>
+                            <input type="number" step="0.01" min="0" id="dkGrossWeight" oninput="calculateNetWeight()" onclick="pinLockTap('dkGrossWeight')" readonly placeholder="At Out" class="w-full px-3 py-3 bg-gray-200/80 border border-gray-300/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-not-allowed">
+                            <p id="dkGrossWeightHint" class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Locked · entered at Out</p>
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Tare Wt (Kg) *</label>
-                            <input type="number" step="0.01" id="dkTareWeight" oninput="calculateNetWeight()" required placeholder="0.00" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <input type="number" step="0.01" id="dkTareWeight" oninput="calculateNetWeight(); dkTareCheck()" required placeholder="0.00" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-cyan-600 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
                             <input type="number" step="0.01" id="dkNetWeight" readonly tabindex="-1" placeholder="Auto" class="w-full px-3 py-3 bg-cyan-100/80 border border-cyan-300 rounded-xl text-sm font-extrabold text-cyan-900 cursor-not-allowed select-none focus:outline-none">
+                        </div>
+                    </div>
+
+                    <!-- DK STANDARD TARE (section 8): the vehicle's Standard Tare Wt from Packing › Vehicles; 15 kg or more off (either way) = the 3 inputs below are compulsory -->
+                    <p id="dkStdTareInfo" class="hidden text-[10.5px] font-semibold -mt-1.5"></p>
+                    <div id="dkTareExtra" class="hidden p-3.5 bg-amber-50/70 border border-amber-300 rounded-2xl space-y-3">
+                        <p id="dkTareExtraWhy" class="text-[11px] font-extrabold text-amber-800"></p>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1">Item Description *</label>
+                            <input type="text" id="dkItemDesc" maxlength="200" autocomplete="off" placeholder="What is in / missing from the vehicle" class="w-full px-3.5 py-3 bg-white border border-amber-200 rounded-xl text-sm font-bold focus:outline-none focus:ring-2 focus:ring-amber-400">
+                        </div>
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1">Remarks *</label>
+                            <textarea id="dkTareRemarks" rows="2" maxlength="300" placeholder="Why the Tare is off the Standard Tare" class="w-full px-3.5 py-3 bg-white border border-amber-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-400"></textarea>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="block text-[11px] font-bold text-gray-500 uppercase">Item Photos *</label>
+                                <span id="dkItemPhCount" class="text-[10px] font-bold text-amber-700"></span>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <label class="ios-btn flex items-center justify-center gap-1.5 p-2.5 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer text-[11px] font-bold text-amber-800">
+                                    <i class="fa-solid fa-camera"></i> Take Photo
+                                    <input type="file" data-up="gate-dk-items" accept="image/*" capture="environment" class="hidden" onchange="dkItemPhotosAdd(this)">
+                                </label>
+                                <label class="ios-btn flex items-center justify-center gap-1.5 p-2.5 bg-white border-2 border-dashed border-amber-300 rounded-xl cursor-pointer text-[11px] font-bold text-amber-800">
+                                    <i class="fa-solid fa-images"></i> Gallery
+                                    <input type="file" data-up="gate-dk-items" accept="image/*" multiple class="hidden" onchange="dkItemPhotosAdd(this)">
+                                </label>
+                            </div>
+                            <div id="dkItemPhGrid" class="grid grid-cols-4 gap-1.5 mt-2"></div>
+                            <p class="text-[10px] font-semibold text-gray-400 mt-1">1 to 4 photos of the items; they are saved together as the slip's Item Photo.</p>
                         </div>
                     </div>
 
@@ -2303,6 +2335,7 @@
                 GATE_SOURCES.forEach(s => { m[s.key] = Array.isArray(d[s.key]) ? d[s.key] : []; });
                 GATE_MASTERS = m; GATE_OFFLINE = false;
                 inwApLoad(true);   // the Inward Whom to Approve list (ERP Dropdown Master) with the other lists
+                gateLoadInactiveVehicles();   // Packing › Vehicles › Deactivate: out of the vehicle lists
                 writeLS(GATE_MASTERS_KEY, m);
                 GATE_SYNC = { state: 'ok', err: '' };
                 if (manual) showIosBanner(m.errors.length ? 'ERP lists refreshed (could not read: ' + m.errors.join(', ') + ')' : 'ERP lists refreshed', m.errors.length ? 'info' : 'success');
@@ -2347,16 +2380,32 @@
             });
             return out.sort((a, b) => a.localeCompare(b));
         }
-        // ERP vehicles, then any number a guard already typed in this register
+        /* INACTIVE VEHICLES (sql/PACKING_VEHICLE_ACTIVE_MIGRATION.sql): a vehicle deactivated in Packing › Vehicles is
+           left out of every vehicle list here (allVehicles feeds the type-ahead list and the Inward vehicle box) and a
+           Dharam Kanta slip refuses it. The list (gate_vehicles_inactive) is read with the ERP lists and kept on the
+           phone for offline use; before the migration it is empty, so nothing changes. */
+        const VEH_OFF_KEY = 'gate1_veh_inactive_v1';
+        let VEH_OFF = new Set((readLS(VEH_OFF_KEY, []) || []).map(vehKey).filter(Boolean));
+        const isVehInactive = v => { const k = vehKey(v); return !!k && VEH_OFF.has(k); };
+        async function gateLoadInactiveVehicles() {
+            const r = await gateRpc('gate_vehicles_inactive');
+            if (!r.ok) return;
+            const list = (r.data.rows || []).map(x => String(x || '').trim()).filter(Boolean);
+            const next = new Set(list.map(vehKey).filter(Boolean));
+            const changed = next.size !== VEH_OFF.size || [...next].some(k => !VEH_OFF.has(k));
+            VEH_OFF = next; writeLS(VEH_OFF_KEY, list);
+            if (changed) refreshMasterDropdowns();
+        }
+        // ERP vehicles, then any number a guard already typed in this register (inactive ones left out)
         function allVehicles() {
             const seen = new Set(), out = [];
             (GATE_MASTERS.vehicles || []).forEach(v => {
                 const k = vehKey(v.no);
-                if (k && !seen.has(k)) { seen.add(k); out.push({ no: String(v.no).trim(), note: [v.driver, v.type].filter(Boolean).join(' · ') }); }
+                if (k && !seen.has(k) && !VEH_OFF.has(k)) { seen.add(k); out.push({ no: String(v.no).trim(), note: [v.driver, v.type].filter(Boolean).join(' · ') }); }
             });
             gateEntries.forEach(e => {
                 const v = String(e.vehicle || '').trim(), k = vehKey(v);
-                if (k && v !== 'N/A' && v !== 'HYDRA-CRANE' && !seen.has(k)) { seen.add(k); out.push({ no: v.toUpperCase(), note: 'seen at the gate' }); }
+                if (k && v !== 'N/A' && v !== 'HYDRA-CRANE' && !seen.has(k) && !VEH_OFF.has(k)) { seen.add(k); out.push({ no: v.toUpperCase(), note: 'seen at the gate' }); }
             });
             return out.sort((a, b) => a.no.localeCompare(b.no));
         }
@@ -3197,6 +3246,7 @@
 
             if (viewId === 'dharamKantaForm') {
                 if (!pinLockAuth('dkGrossWeight')) pinLock('dkGrossWeight');   // locked again unless this form was unlocked and not saved yet
+                dkTareCheck(); dkTareLoad(false).then(() => dkTareCheck());   // the vehicles' Standard Tare (DK STANDARD TARE)
                 gateFillNo('DK', 'dkSlipNo', 'dkSlipNoHint');
                 renderDkPending();
                 dkVehicleCheck();
@@ -3278,17 +3328,20 @@
                 document.getElementById('autoStoreNo').textContent = generatedStoreNo;
             });
         }
-        /* ── PIN-LOCKED WEIGHT BOXES ──
-           A box listed here is read-only: 3 taps within 1.5 s + the logged-in user's own PIN (gatePinAsk: ERP PIN,
-           offline the phone's Delete PIN) open it for that one entry; its form's Save locks it again (leaving the form
-           unsaved keeps it open for that entry). Who opened it (auth {by, empCode, via, at}) is saved on the entry.
-             dkGrossWeight  Dharam Kanta slip › Gross Wt (grossAuth); the Dispatch Packing form takes it from the slip, editable
-             inDkTare       Inward › Dharam Kanta › Tare Wt (dk.tareAuth); left locked = the Tare is weighed and typed at Out,
-                            where it can also be changed (openVisitorOut)
+        /* ── LOCKED WEIGHT BOXES ──
+           A box listed here is read-only. One with a `msg` is FULLY locked: a tap only shows that message (the weight
+           belongs to a later step). One without would open after 3 taps within 1.5 s + the logged-in user's own PIN
+           (gatePinAsk), for that one entry, with who opened it (auth) saved on the entry; none uses that now.
+             dkGrossWeight  Dharam Kanta slip › Gross Wt: always empty here; the guard types it on the Dispatch Packing
+                            slip (Out From Dispatch), where the loaded vehicle is weighed
+             inDkTare       Inward › Dharam Kanta › Tare Wt: always empty here; typed at Existing Inward › Out after
+                            unloading (openVisitorOut)
            Box ids: <id>, icon <id>LockIcon, hint <id>Hint. A new locked box = one entry here + those two elements. */
         const PIN_LOCKS = {
-            dkGrossWeight: { title: 'Gross Wt', what: 'unlock the Gross Weight of this Dharam Kanta slip', calc: () => calculateNetWeight(), placeholder: 'Locked' },
-            inDkTare: { title: 'Tare Wt', what: 'unlock the Tare Weight of this Inward weighbridge slip', calc: () => calcInwardNetWeight(), placeholder: 'At Out' }
+            dkGrossWeight: { title: 'Gross Wt', what: 'unlock the Gross Weight of this Dharam Kanta slip', calc: () => calculateNetWeight(), placeholder: 'At Out',
+                msg: 'Vehicle ka Gross Weight Goods Load karne ke baad Out karte time save karna hai !' },
+            inDkTare: { title: 'Tare Wt', what: 'unlock the Tare Weight of this Inward weighbridge slip', calc: () => calcInwardNetWeight(), placeholder: 'At Out',
+                msg: 'Vehicle ka Tare Weight Goods Unload karne ke baad Out karte time save karna hai !' }
         };
         const PIN_LOCK_TAPS = 3, PIN_LOCK_TAP_MS = 1500;
         const pinLockAuth = id => (PIN_LOCKS[id] && PIN_LOCKS[id].auth) || null;
@@ -3299,7 +3352,7 @@
             inp.classList.add('bg-gray-200/80', 'cursor-not-allowed'); inp.classList.remove('bg-white');
             document.getElementById(id + 'LockIcon').className = 'fa-solid fa-lock text-[9px] ml-0.5';
             const h = document.getElementById(id + 'Hint');
-            h.textContent = 'Tap 3 times to unlock (PIN)'; h.className = 'text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight';
+            h.textContent = L.msg ? 'Locked · entered at Out' : 'Tap 3 times to unlock (PIN)'; h.className = 'text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight';
             L.calc();
         }
         function pinUnlock(id, auth) {
@@ -3315,6 +3368,7 @@
         }
         function pinLockTap(id) {
             const L = PIN_LOCKS[id]; if (!L || L.auth) return;   // already open
+            if (L.msg) { showIosBanner(L.msg, 'info'); return; }   // fully locked: only says where it is entered
             const now = Date.now();
             L.taps = (L.taps || []).filter(t => now - t < PIN_LOCK_TAP_MS).concat(now);
             const left = PIN_LOCK_TAPS - L.taps.length;
@@ -4775,6 +4829,109 @@
             }
         }
 
+        /* ── DK STANDARD TARE (sql/PACKING_VEHICLE_STD_TARE_MIGRATION.sql) ──
+           Packing › Vehicles keeps each vehicle's Standard Tare Wt (the empty vehicle). When the Tare weighed here differs
+           from it by DK_TARE_TOL kg or more, heavier OR lighter, the slip also needs Item Description, Remarks and Item
+           Photos (1-4). The photos are saved together as ONE picture in the slip's itemPhoto (the register keeps one photo
+           per field), the rest on the entry: stdTare, tareDiff, tareCheck {desc, remarks, photos}. A vehicle without a
+           Standard Tare saves as before (a note says so). The list comes from gate_vehicle_tares (kept on the phone for
+           offline use, refreshed every 10 minutes); before the migration there is no list and no check. */
+        const DK_TARE_TOL = 15, DK_TARE_KEY = 'gate1_veh_tare_v1', DK_ITEM_MAX = 4;
+        let DK_TARES = readLS(DK_TARE_KEY, null) || { map: {}, at: 0 }, dkTareBusy = null, DK_TARE_NOMIG = false, DK_ITEM_PHOTOS = [];
+        function dkTareLoad(force) {
+            if (!force && Date.now() - (DK_TARES.at || 0) < 10 * 60000) return Promise.resolve(DK_TARES);
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) return Promise.resolve(DK_TARES);
+            if (dkTareBusy) return dkTareBusy;
+            dkTareBusy = gateRpc('gate_vehicle_tares').then(r => {
+                dkTareBusy = null;
+                if (r.ok) {
+                    const map = {};
+                    (r.data.rows || []).forEach(x => { const k = dkVehKey(x.vehicle); if (k && x.tare != null && isFinite(+x.tare)) map[k] = +x.tare; });
+                    DK_TARES = { map, at: Date.now() }; DK_TARE_NOMIG = false; writeLS(DK_TARE_KEY, DK_TARES);
+                } else if (r.error === 'NO_MIGRATION') DK_TARE_NOMIG = true;
+                return DK_TARES;
+            });
+            return dkTareBusy;
+        }
+        const dkStdTareOf = veh => { const k = dkVehKey(veh); return k && DK_TARES.map[k] != null ? DK_TARES.map[k] : null; };
+        // {std, tare, diff, need}: need = the 3 inputs are compulsory for this slip
+        function dkTareState() {
+            const veh = document.getElementById('dkVehicleNo').value.trim();
+            const tare = parseFloat(document.getElementById('dkTareWeight').value);
+            const std = dkStdTareOf(veh);
+            const diff = std != null && isFinite(tare) && tare > 0 ? +(tare - std).toFixed(2) : null;
+            return { veh, std, tare, diff, need: diff != null && Math.abs(diff) >= DK_TARE_TOL };
+        }
+        function dkTareCheck() {
+            const st = dkTareState(), info = document.getElementById('dkStdTareInfo'), box = document.getElementById('dkTareExtra');
+            if (!info || !box) return st;
+            if (!st.veh || DK_TARE_NOMIG) { info.classList.add('hidden'); box.classList.add('hidden'); return st; }
+            info.classList.remove('hidden');
+            if (st.std == null) {
+                info.className = 'text-[10.5px] font-semibold text-gray-400 -mt-1.5';
+                info.textContent = 'No Standard Tare saved for this vehicle (Packing › Vehicles): no Tare check.';
+            } else {
+                const off = st.diff == null ? '' : st.diff === 0 ? ' · same' : ' · ' + (st.diff > 0 ? '+' : '') + st.diff + ' Kg';
+                info.className = 'text-[10.5px] ' + (st.need ? 'font-extrabold text-amber-700' : 'font-semibold text-emerald-700') + ' -mt-1.5';
+                info.textContent = 'Standard Tare: ' + st.std + ' Kg' + off + (st.need ? ' (' + DK_TARE_TOL + ' Kg or more off)' : '');
+            }
+            box.classList.toggle('hidden', !st.need);
+            if (st.need) document.getElementById('dkTareExtraWhy').textContent = 'Tare ' + st.tare + ' Kg is ' + Math.abs(st.diff) + ' Kg ' + (st.diff > 0 ? 'MORE' : 'LESS') + " than this vehicle's Standard Tare (" + st.std + ' Kg): Item Description, Remarks and Item Photos are compulsory.';
+            return st;
+        }
+        async function dkItemPhotosAdd(inp) {
+            const files = [...(inp.files || [])].filter(f => /^image\//.test(f.type));
+            inp.value = '';
+            if (!files.length) return;
+            const room = DK_ITEM_MAX - DK_ITEM_PHOTOS.length;
+            if (room <= 0) { showIosBanner('At most ' + DK_ITEM_MAX + ' item photos', 'error'); return; }
+            for (const f of files.slice(0, room)) {
+                try { DK_ITEM_PHOTOS.push(await compressImageFile(f)); } catch (e) { showIosBanner('Could not process image', 'error'); }
+            }
+            if (files.length > room) showIosBanner('Only ' + DK_ITEM_MAX + ' item photos are kept', 'info');
+            dkItemPhotosRender();
+        }
+        function dkItemPhotoRemove(i) { DK_ITEM_PHOTOS.splice(i, 1); dkItemPhotosRender(); }
+        function dkItemPhotosRender() {
+            const g = document.getElementById('dkItemPhGrid'); if (!g) return;
+            g.innerHTML = DK_ITEM_PHOTOS.map((src, i) => '<div class="relative aspect-square rounded-lg overflow-hidden border border-amber-200 bg-white">'
+                + '<img src="' + src + '" class="w-full h-full object-cover" alt="Item photo ' + (i + 1) + '">'
+                + '<button type="button" onclick="dkItemPhotoRemove(' + i + ')" class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white text-[10px]">✕</button></div>').join('');
+            document.getElementById('dkItemPhCount').textContent = DK_ITEM_PHOTOS.length ? DK_ITEM_PHOTOS.length + ' / ' + DK_ITEM_MAX : '';
+        }
+        function dkTareExtraReset() {
+            DK_ITEM_PHOTOS = []; dkItemPhotosRender();
+            ['dkItemDesc', 'dkTareRemarks'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            dkTareCheck();
+        }
+        // The item photos as ONE JPEG (1 = as it is, 2 = side by side, 3-4 = a 2 x 2 grid), small enough for the register (< 900 KB)
+        function dkItemCollage(list) {
+            return new Promise(resolve => {
+                if (!list.length) return resolve(null);
+                if (list.length === 1) return resolve(list[0]);
+                Promise.all(list.map(src => new Promise(r => { const im = new Image(); im.onload = () => r(im); im.onerror = () => r(null); im.src = src; }))).then(imgs => {
+                    imgs = imgs.filter(Boolean);
+                    if (!imgs.length) return resolve(list[0]);
+                    const cols = 2, rows = imgs.length > 2 ? 2 : 1, cw = 800, ch = 600, gap = 8;
+                    let scale = 1, q = 0.8, out = '';
+                    for (let t = 0; t < 6; t++) {
+                        const c = document.createElement('canvas');
+                        c.width = Math.round((cols * cw + gap) * scale); c.height = Math.round((rows * ch + (rows - 1) * gap) * scale);
+                        const cx = c.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, c.width, c.height);
+                        imgs.forEach((im, i) => {
+                            const x0 = (i % cols) * (cw + gap) * scale, y0 = Math.floor(i / cols) * (ch + gap) * scale, w = cw * scale, h = ch * scale;
+                            const k = Math.min(w / im.naturalWidth, h / im.naturalHeight), dw = im.naturalWidth * k, dh = im.naturalHeight * k;
+                            cx.drawImage(im, x0 + (w - dw) / 2, y0 + (h - dh) / 2, dw, dh);
+                        });
+                        out = c.toDataURL('image/jpeg', q);
+                        if (out.length <= 880000) break;
+                        if (q > 0.55) q -= 0.1; else scale *= 0.8;
+                    }
+                    resolve(out);
+                });
+            });
+        }
+
         // ── One open Dharam Kanta slip per vehicle ──
         // A saved slip keeps its vehicle "in the loop" until the vehicle is Out: a Dispatch Packing entry made from it
         // (host "DK: <slip>") is Out. A Dharam Kanta slip itself has no Mark Out any more (dkNoMarkOut); slips marked Out
@@ -4867,6 +5024,11 @@
             }
 
             const vehicleNo = document.getElementById('dkVehicleNo').value.trim().toUpperCase();
+            if (isVehInactive(vehicleNo)) {
+                showIosBanner('Vehicle ' + vehicleNo + ' is deactivated in Packing › Vehicles: it cannot get a Dharam Kanta slip. Ask the Packing Incharge / Admin to activate it.', 'error');
+                document.getElementById('dkVehicleNo').focus();
+                return;
+            }
             const netVal = grossVal > 0 ? Math.max(0, grossVal - tareVal).toFixed(2) : '0.00';
             const dkOpen = dkPendingFor(vehicleNo);
             if (dkOpen) {
@@ -4877,6 +5039,17 @@
             if (!tempPhotos.dkVehicle) {
                 showIosBanner('Please capture the Vehicle Photo!', 'error');
                 return;
+            }
+            // DK STANDARD TARE: 15 kg or more off this vehicle's Standard Tare = Item Description, Remarks, Item Photos
+            const tc = dkTareCheck();
+            let tareCheck = null, itemPhoto = null;
+            if (tc.need) {
+                const desc = document.getElementById('dkItemDesc').value.trim(), rem = document.getElementById('dkTareRemarks').value.trim();
+                if (!desc) { showIosBanner('Write the Item Description (Tare is ' + Math.abs(tc.diff) + ' Kg off the Standard Tare)', 'error'); document.getElementById('dkItemDesc').focus(); return; }
+                if (!rem) { showIosBanner('Write the Remarks (Tare is ' + Math.abs(tc.diff) + ' Kg off the Standard Tare)', 'error'); document.getElementById('dkTareRemarks').focus(); return; }
+                if (!DK_ITEM_PHOTOS.length) { showIosBanner('Add at least one Item Photo (Tare is ' + Math.abs(tc.diff) + ' Kg off the Standard Tare)', 'error'); return; }
+                itemPhoto = await dkItemCollage(DK_ITEM_PHOTOS.slice());
+                tareCheck = { desc, remarks: rem, photos: DK_ITEM_PHOTOS.length };
             }
             // Everything checked: now TAKE the Slip No. from the series (never typed)
             gateSaving.DK = true;
@@ -4894,7 +5067,10 @@
                 tareWeight: tareVal,
                 netWeight: parseFloat(netVal),
                 host: grossVal > 0 ? `Gross: ${grossVal.toFixed(2)} Kg | Tare: ${tareVal.toFixed(2)} Kg` : `Tare: ${tareVal.toFixed(2)} Kg`,
-                purpose: grossVal > 0 ? `Net Weight: ${netVal} Kg • Vehicle Photo ✓` : `Tare Weight noted • Vehicle Photo ✓`,
+                purpose: (grossVal > 0 ? `Net Weight: ${netVal} Kg • Vehicle Photo ✓` : `Tare Weight noted • Vehicle Photo ✓`)
+                    + (tareCheck ? ` • Tare ${tc.diff > 0 ? '+' : ''}${tc.diff} Kg vs Standard ${tc.std} Kg: ${tareCheck.desc}` : ''),
+                stdTare: tc.std, tareDiff: tc.diff, tareCheck: tareCheck,
+                itemPhoto: itemPhoto,
                 vehiclePhoto: tempPhotos.dkVehicle,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
@@ -4905,6 +5081,7 @@
             commitEntry(newDkEntry);
             this.reset();
             pinLock('dkGrossWeight');   // the next slip starts locked again
+            dkTareExtraReset();
             dkVehicleCheck();
             tempPhotos.dkVehicle = null;
             document.getElementById('dkVehicleLabel').textContent = 'Capture / Upload Vehicle Photo';
