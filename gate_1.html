@@ -154,7 +154,7 @@
 <script src="ios-dropdown.js?v=20261120a" defer></script>
 <script src="ios-dialog.js?v=20261120a"></script>
 <!-- QR scanner (Scan QR at the bottom of the menu): reads the slips / store copies / gate passes, see sarv-qr.js -->
-<script src="sarv-qr.js?v=20261120a"></script>
+<script src="sarv-qr.js?v=20261123a"></script>
 </head>
 <body class="text-gray-900 antialiased select-none">
 
@@ -6558,7 +6558,7 @@
             const caps = track && track.getCapabilities ? track.getCapabilities() : {};
             document.getElementById('scanTorchBtn').classList.toggle('hidden', !caps.torch);
             document.getElementById('scanTorchGap').classList.toggle('hidden', !!caps.torch);
-            scanMsg(okDec ? 'Point the camera at the QR of a Packing Slip, a Store copy or a Gate pass' : 'Scanner library not loaded (no internet?): use Type No.', !okDec);
+            scanMsg(okDec ? 'Point the camera at the QR / barcode of a Packing Slip, a Store bill or a Gate pass' : 'Scanner library not loaded (no internet?): use Type No.', !okDec);
             SCAN.cv = SCAN.cv || document.createElement('canvas');
             const tick = async () => {
                 if (SCAN.done || !SCAN.stream) return;
@@ -6596,13 +6596,13 @@
                 let text = '';
                 try { text = await SarvQR.decode(img); } catch (e) { }
                 URL.revokeObjectURL(url);
-                if (text) scanFound(text); else scanMsg('No QR found in that photo. Take it closer and straight.', true);
+                if (text) scanFound(text); else scanMsg('No QR / barcode found in that photo. Take it closer and straight.', true);
             };
             img.onerror = () => { URL.revokeObjectURL(url); scanMsg('That photo could not be opened.', true); };
             img.src = url;
         }
         async function scanTypeIn() {
-            const t = window.IosDialog && IosDialog.prompt ? await IosDialog.prompt('Type the Gate pass no. (VIS- / IN- / DK- ...) or the Store Outward no.', '') : window.prompt('Type the number', '');
+            const t = window.IosDialog && IosDialog.prompt ? await IosDialog.prompt('Type the Gate pass no. (VIS- / IN- / DK- ...) or the Store Inward / Outward bill no.', '') : window.prompt('Type the number', '');
             if (t != null && String(t).trim()) scanFound(String(t).trim());
         }
         function scanFound(text) {
@@ -6620,6 +6620,7 @@
             if (o.t === 'OUT') return gateScanStoreOut(o);
             if (o.t === 'IN') return gateScanInward(o);
             if (o.t === 'GATE') return gateScanGateEntry(o.id);
+            if (o.t === 'DOC') return gateScanStoreDoc(o.no);   // a Store bill's barcode: the number only
             // typed / unknown text: a gate entry no., a gate outward no., else a store outward no.
             const k = normKey(o.text);
             const ge = gateEntries.find(e => normKey(e.id) === k || normKey(e.outwardNo) === k || normKey(e.erpSlipNo) === k);
@@ -6628,7 +6629,38 @@
                 const p = (GATE_MASTERS.passes || []).find(x => normKey(x.no) === k);
                 return gateScanStoreOut({ t: 'OUT', no: p ? p.no : o.text });
             }
+            // a typed Store bill number (Inward / Outward): the server knows it
+            if (/\//.test(o.text) && await gateScanStoreDoc(o.text, true)) return;
             showIosBanner(`Nothing found for "${o.text}" on this phone. Sync and try again.`, 'error');
+        }
+
+        /* A Store bill's BARCODE (sarv-qr.js: the bill number only, ERP › PDF Settings › Gate code): today's Outward is
+           taken from this phone's ERP list; anything else is read from the server (gate_store_doc,
+           sql/STORE_BARCODE_MIGRATION.sql), which answers with the same keys as the bill's QR, so the step after it is
+           exactly the QR's (gateScanInward / gateScanStoreOut). Offline: the small QR is the way.
+           typed = a number typed in Scan › Type No.: false when the server has no such bill (the caller says so). */
+        async function gateScanStoreDoc(no, typed) {
+            no = String(no || '').trim();
+            if (!no) return false;
+            const k = normKey(no);
+            const p = (GATE_MASTERS.passes || []).find(x => normKey(x.no) === k);
+            if (p) { gateScanStoreOut({ t: 'OUT', no: p.no, st: p.store, d: p.date, p: p.party, nat: p.nature, rcv: p.receiver, it: p.item, q: p.qty }); return true; }
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) {
+                showIosBanner(`Barcode ${no}: no internet to read its details. Scan its small QR instead (it works offline).`, 'error');
+                return true;
+            }
+            showIosBanner(`Reading ${no}...`, 'info');
+            const r = await gateRpc('gate_store_doc', { p_no: no });
+            if (!r.ok) {
+                if (typed && r.error === 'NOT_FOUND') return false;
+                showIosBanner(r.error === 'NO_MIGRATION' ? 'The server needs STORE_BARCODE_MIGRATION.sql (Admin). Scan the QR of the bill instead.'
+                    : r.error === 'NOT_FOUND' ? `No Store Inward / Outward ${no} was found.`
+                    : `Could not read ${no}: ${r.detail || r.error}`, 'error');
+                return true;
+            }
+            const o = r.data.doc || {};
+            if (o.t === 'OUT') gateScanStoreOut(o); else gateScanInward(o);
+            return true;
         }
 
         // A Gate-2 pass: the next step of that entry
