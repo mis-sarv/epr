@@ -136,6 +136,15 @@
         .scan-frame .scan-line { position: absolute; left: 10%; right: 10%; height: 2px; top: 12%; background: #34d399; box-shadow: 0 0 12px #34d399; border-radius: 2px; animation: scanMove 2.2s ease-in-out infinite alternate; }
         @keyframes scanMove { from { top: 12%; } to { top: 86%; } }
         .scan-frame.hit span { border-color: #34d399; }
+        /* Uploaded-photo previews take the photo's OWN shape: a portrait photo makes a tall box, a landscape one a
+           wide box (img.gp-fit: full width, height from the picture, at most 60 % of the screen). The box around it
+           drops its fixed h-20 / h-28 / h-32 once the photo is shown (:has; gpFitBox in the script does the same on
+           an older phone browser); before that it keeps its size for the "No photo" text. */
+        img.gp-fit { display: block; width: 100%; height: auto !important; max-height: 60vh; object-fit: contain; }
+        img.gp-fit.hidden { display: none; }
+        img.gp-pass { max-height: 15rem; margin: 0 auto; }
+        :has(> img.gp-fit:not(.hidden)) { height: auto !important; }
+        img.gp-fit:not(.hidden) ~ span { display: none; }   /* the "No ... Photo" text once the photo is in */
         /* Inward NB form (section 5, inwSetType): maroon-red throughout, so an NB entry is never mistaken for a normal Inward.
            id + class beats the Tailwind utility classes on these elements. */
         .inw-nb-band { background: linear-gradient(135deg, #5f0f1c 0%, #8b1e2d 50%, #b4233c 100%); box-shadow: 0 8px 20px rgba(95,15,28,0.28); }
@@ -513,11 +522,11 @@
                     <!-- Inward Live Photo Thumbnails Preview -->
                     <div id="inwardPreviewRow" class="hidden grid grid-cols-2 gap-3">
                         <div class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
-                            <img id="inBillPreview" class="w-full h-full object-cover hidden" alt="Bill">
+                            <img id="inBillPreview" class="gp-fit hidden" alt="Bill">
                             <span class="text-[10px] text-gray-400 font-medium">No Bill Photo</span>
                         </div>
                         <div class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
-                            <img id="inItemPreview" class="w-full h-full object-cover hidden" alt="Item">
+                            <img id="inItemPreview" class="gp-fit hidden" alt="Item">
                             <span class="text-[10px] text-gray-400 font-medium">No Item Photo</span>
                         </div>
                     </div>
@@ -570,7 +579,7 @@
                                     <input type="file" id="inDkVehiclePhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'inDkPhotoLabel', 'inDkPreviewImg', 'inDkVehicle', 'inDkPhotoBox')">
                                 </label>
                                 <div id="inDkPhotoBox" class="hidden mt-2 rounded-xl overflow-hidden border border-cyan-200 h-20 bg-white">
-                                    <img id="inDkPreviewImg" class="w-full h-full object-cover" alt="Inward Weighbridge Vehicle">
+                                    <img id="inDkPreviewImg" class="gp-fit" alt="Inward Weighbridge Vehicle">
                                 </div>
                             </div>
                         </div>
@@ -751,7 +760,7 @@
                             <button type="button" id="storeBillRetry" onclick="storeBillRetry()" class="hidden ios-btn text-[11px] font-bold text-orange-600"><i class="fa-solid fa-rotate"></i> Try again</button>
                         </div>
                         <button type="button" id="storeBillThumbBtn" onclick="storeBillView()" class="hidden ios-btn block w-full rounded-xl overflow-hidden border border-orange-200 bg-white">
-                            <img id="storeBillThumb" class="w-full h-44 object-cover object-top" alt="Store Bill">
+                            <img id="storeBillThumb" class="gp-fit bg-white" alt="Store Bill">
                         </button>
                         <p id="storeBillState" class="text-[11px] font-semibold text-gray-600 leading-snug"></p>
                     </div>
@@ -794,7 +803,7 @@
                     <!-- Outward Live Thumbnails Preview -->
                     <div id="outwardPreviewRow" class="hidden grid grid-cols-1 gap-3">
                         <div class="relative rounded-xl overflow-hidden border border-orange-200 bg-gray-50 h-20 flex items-center justify-center">
-                            <img id="outItemPreview" class="w-full h-full object-cover hidden" alt="Outward Item">
+                            <img id="outItemPreview" class="gp-fit hidden" alt="Outward Item">
                             <span class="text-[10px] text-gray-400 font-medium">No Item Photo</span>
                         </div>
                     </div>
@@ -890,7 +899,7 @@
 
                         <!-- Live Camera Photo Preview -->
                         <div id="dispVehiclePreviewBox" class="hidden mt-2.5 relative rounded-2xl overflow-hidden border border-indigo-200 bg-gray-50 h-32">
-                            <img id="dispVehiclePreviewImg" class="w-full h-full object-cover" alt="Loaded Vehicle Preview">
+                            <img id="dispVehiclePreviewImg" class="gp-fit" alt="Loaded Vehicle Preview">
                             <span class="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
                                 <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Loaded Vehicle Captured
                             </span>
@@ -1132,11 +1141,11 @@
                     <!-- Live Photo Thumbnails Preview -->
                     <div id="visitorPreviewRow" class="hidden grid grid-cols-2 gap-3 pt-1">
                         <div class="relative rounded-xl overflow-hidden border border-emerald-200 bg-gray-50 h-20 flex items-center justify-center">
-                            <img id="visPersonPreview" class="w-full h-full object-cover hidden" alt="Visitor">
+                            <img id="visPersonPreview" class="gp-fit hidden" alt="Visitor">
                             <span class="text-[10px] text-gray-400 font-medium">No Visitor Photo</span>
                         </div>
                         <div class="relative rounded-xl overflow-hidden border border-emerald-200 bg-gray-50 h-20 flex items-center justify-center">
-                            <img id="visVehiclePreview" class="w-full h-full object-cover hidden" alt="Vehicle">
+                            <img id="visVehiclePreview" class="gp-fit hidden" alt="Vehicle">
                             <span class="text-[10px] text-gray-400 font-medium">No Vehicle Photo</span>
                         </div>
                     </div>
@@ -1228,7 +1237,7 @@
                             <input type="file" id="dkVehiclePhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'dkVehicleLabel', 'dkVehiclePreview', 'dkVehicle', 'dkPreviewBox')">
                         </label>
                         <div id="dkPreviewBox" class="hidden mt-2.5 rounded-xl overflow-hidden border border-cyan-200 h-28 bg-gray-50">
-                            <img id="dkVehiclePreview" class="w-full h-full object-cover" alt="Vehicle Preview">
+                            <img id="dkVehiclePreview" class="gp-fit" alt="Vehicle Preview">
                         </div>
                     </div>
 
@@ -1359,10 +1368,10 @@
                         </div>
                         <div id="smpPreviewRow" class="hidden grid grid-cols-2 gap-3">
                             <div class="rounded-xl overflow-hidden border border-rose-200 bg-gray-50 h-20 flex items-center justify-center">
-                                <img id="smpBillPreview" class="w-full h-full object-cover hidden" alt="Bill">
+                                <img id="smpBillPreview" class="gp-fit hidden" alt="Bill">
                             </div>
                             <div class="rounded-xl overflow-hidden border border-rose-200 bg-gray-50 h-20 flex items-center justify-center">
-                                <img id="smpItemPreview" class="w-full h-full object-cover hidden" alt="Item">
+                                <img id="smpItemPreview" class="gp-fit hidden" alt="Item">
                             </div>
                         </div>
 
@@ -1560,7 +1569,7 @@
                             <input type="file" id="hydraInPhotoInput" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'hydraInPhotoLabel', 'hydraInPreviewImg', 'hydraIn', 'hydraInPreviewBox')">
                         </label>
                         <div id="hydraInPreviewBox" class="hidden mt-2.5 relative rounded-2xl overflow-hidden border border-amber-200 bg-gray-50 h-28">
-                            <img id="hydraInPreviewImg" class="w-full h-full object-cover" alt="Hydra Inward Photo">
+                            <img id="hydraInPreviewImg" class="gp-fit" alt="Hydra Inward Photo">
                             <span class="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
                                 <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Inward Photo Ready
                             </span>
@@ -1653,7 +1662,7 @@
                 </div>
 
                 <!-- Dynamic Photo Gallery inside Pass Modal -->
-                <div id="modalPhotosBox" class="hidden grid grid-cols-2 gap-2.5 pt-1"></div>
+                <div id="modalPhotosBox" class="hidden grid grid-cols-2 gap-2.5 pt-1 items-start"></div>
             </div>
 
             <div class="p-4 bg-gray-50 flex gap-2.5 no-print shrink-0 border-t border-gray-100">
@@ -1735,7 +1744,7 @@
                         <input type="file" id="visOutPhoto" data-up="gate-visitor-out" accept="image/*" capture="user" class="hidden" onchange="handleCompressedUpload(this, 'visOutPhotoLabel', 'visOutPreviewImg', 'visOut', 'visOutPreviewBox')">
                     </label>
                     <div id="visOutPreviewBox" class="hidden mt-2.5 rounded-2xl overflow-hidden border border-blue-200 bg-gray-50 h-32">
-                        <img id="visOutPreviewImg" class="w-full h-full object-cover" alt="Visitor at out">
+                        <img id="visOutPreviewImg" class="gp-fit" alt="Visitor at out">
                     </div>
                 </div>
                 <div>
@@ -1771,7 +1780,7 @@
                         <input type="file" id="smpRetPhoto" data-up="gate-sample-return" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'smpRetPhotoLabel', 'smpRetPreviewImg', 'smpRet', 'smpRetPreviewBox')">
                     </label>
                     <div id="smpRetPreviewBox" class="hidden mt-2.5 rounded-2xl overflow-hidden border border-blue-200 bg-gray-50 h-32">
-                        <img id="smpRetPreviewImg" class="w-full h-full object-cover" alt="Item at return">
+                        <img id="smpRetPreviewImg" class="gp-fit" alt="Item at return">
                     </div>
                 </div>
                 <div>
@@ -5570,7 +5579,7 @@
                                 <input type="file" data-up="gate-hydra-stop" accept="image/*" capture="environment" class="hidden" onchange="handleHydraStopPhoto(this, '${id}')">
                             </label>
                             <div id="hydraStopPreviewBox_${id}" class="${stopImg ? '' : 'hidden '}mt-2 rounded-xl overflow-hidden border border-amber-200 h-24 bg-white">
-                                <img id="hydraStopPreviewImg_${id}" ${stopImg ? `src="${stopImg}"` : ''} class="w-full h-full object-cover" alt="Work Complete">
+                                <img id="hydraStopPreviewImg_${id}" ${stopImg ? `src="${stopImg}"` : ''} class="gp-fit" alt="Work Complete">
                             </div>
                         </div>
 
@@ -6369,7 +6378,47 @@
             document.getElementById('passModal').classList.remove('hidden');
         }
 
+        // Old phone browsers have no CSS :has: once a .gp-fit photo has loaded, its box drops its fixed height here
+        (function gpFitBox() {
+            let has = false; try { has = CSS.supports('selector(:has(> img))'); } catch (e) { }
+            if (has) return;
+            document.addEventListener('load', e => {
+                const im = e.target;
+                if (im && im.tagName === 'IMG' && im.classList.contains('gp-fit') && im.parentElement) im.parentElement.style.height = 'auto';
+            }, true);
+        })();
         let GATE_OPEN_PASS = null;
+        let GATE_PASS_PHOTOS = [];   // [{label, src}] of the pass on screen (renderPassPhotos)
+        /* A photo of the pass full screen: the whole picture, its label, n of N; ‹ › / swipe / ← → move,
+           ✕ Close, Esc or a tap outside closes. Above the pass sheet. */
+        function gatePhotoView(start) {
+            const list = GATE_PASS_PHOTOS || []; if (!list.length) return;
+            let i = Math.max(0, Math.min(list.length - 1, start | 0));
+            const ov = document.createElement('div');
+            ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(2,6,23,.94);display:flex;align-items:center;justify-content:center;';
+            ov.innerHTML = '<div data-cap style="position:absolute;top:calc(12px + env(safe-area-inset-top));left:14px;right:96px;color:#e2e8f0;font-size:13px;font-weight:700;"></div>'
+                + '<button type="button" data-x style="position:absolute;top:calc(8px + env(safe-area-inset-top));right:12px;height:36px;padding:0 14px;border:0;border-radius:18px;background:#dc2626;color:#fff;font-weight:800;">&#10005; Close</button>'
+                + '<img data-img alt="" style="max-width:94vw;max-height:82vh;object-fit:contain;border-radius:8px;background:#fff;">'
+                + '<button type="button" data-p style="position:absolute;left:8px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px;">&#8249;</button>'
+                + '<button type="button" data-n style="position:absolute;right:8px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:22px;">&#8250;</button>';
+            document.body.appendChild(ov);
+            const img = ov.querySelector('[data-img]'), cap = ov.querySelector('[data-cap]');
+            const show = () => {
+                img.src = list[i].src; cap.textContent = (i + 1) + ' of ' + list.length + ' · ' + list[i].label;
+                ov.querySelector('[data-p]').style.visibility = i > 0 ? 'visible' : 'hidden';
+                ov.querySelector('[data-n]').style.visibility = i < list.length - 1 ? 'visible' : 'hidden';
+            };
+            const go = d => { const j = i + d; if (j >= 0 && j < list.length) { i = j; show(); } };
+            const close = () => { document.removeEventListener('keydown', key, true); ov.remove(); };
+            const key = e => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } else if (e.key === 'ArrowLeft') go(-1); else if (e.key === 'ArrowRight') go(1); };
+            document.addEventListener('keydown', key, true);
+            ov.addEventListener('click', e => { if (e.target === ov) close(); });
+            ov.querySelector('[data-x]').onclick = close; ov.querySelector('[data-p]').onclick = () => go(-1); ov.querySelector('[data-n]').onclick = () => go(1);
+            let x0 = null;
+            ov.addEventListener('touchstart', e => { x0 = e.touches[0].clientX; }, { passive: true });
+            ov.addEventListener('touchend', e => { if (x0 == null) return; const dx = e.changedTouches[0].clientX - x0; x0 = null; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); });
+            show();
+        }
         function renderPassPhotos(entry) {
             renderPassApproval(entry);
             const photoList = [];
@@ -6379,12 +6428,14 @@
             add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', isHydra(entry) ? 'Hydra at Out' : isSample(entry) ? 'Item at Return' : 'Visitor at Out');
 
             const photosBox = document.getElementById('modalPhotosBox');
+            GATE_PASS_PHOTOS = photoList;
             if (photoList.length > 0) {
                 photosBox.classList.remove('hidden');
-                photosBox.innerHTML = photoList.map(p => `
+                // the whole photo fits its box (object-contain); a tap opens it full screen (gatePhotoView)
+                photosBox.innerHTML = photoList.map((p, i) => `
                     <div class="text-center">
-                        <img src="${p.src}" class="w-full h-24 object-cover rounded-xl border border-gray-200" alt="${p.label}">
-                        <span class="text-[10px] font-bold text-gray-500 uppercase mt-1 block">${p.label}</span>
+                        <img src="${p.src}" onclick="gatePhotoView(${i})" class="gp-fit gp-pass bg-gray-50 rounded-xl border border-gray-200 cursor-zoom-in" alt="${esc(p.label)}">
+                        <span class="text-[10px] font-bold text-gray-500 uppercase mt-1 block">${esc(p.label)}</span>
                     </div>
                 `).join('');
             } else {

@@ -27,7 +27,7 @@
          screen, or at once when a PDF is first needed (window.mobLoadPdfLibs, awaited before every PDF is built in mobile-core.js). -->
 
     <!-- Build stamp: see the note on mobile-core.js at the end of the page. -->
-    <link rel="stylesheet" href="mobile.css?v=20261031d">
+    <link rel="stylesheet" href="mobile.css?v=20261123b">
     <!-- iOS look, motion and phone / tablet / desktop fit. Loaded after mobile.css; only overrides it. -->
     <link rel="stylesheet" href="mobile-ios.css?v=20261118b">
     <link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
@@ -400,6 +400,8 @@
             <div class="mode-note" id="modalModeNote" style="display:none;"></div>
 
             <div id="approvalSection">
+            <!-- PR / PO PREVIEW (mobile-core.js, like bill-check.html): every page of the document(s) must be seen in the viewer before Approve -->
+            <div id="mpvCard" class="mpv-card" style="display:none;"></div>
             <div class="form-group" id="deliveryDateGroup" style="display:none;">
                 <label>Delivery Date <span style="color:#dc3545;">*</span></label>
                 <input type="date" id="deliveryDateInput" class="form-select">
@@ -949,12 +951,25 @@
     </div>
 </div>
 
+<!-- PR / PO preview viewer (mpvOpenViewer): full screen, every page drawn by pdf.js; a page counts as seen once it is mostly on screen -->
+<div id="mpvViewer" class="mpv-viewer" style="display:none;" role="dialog" aria-modal="true" aria-label="Preview">
+    <div class="mpv-top">
+        <div class="mpv-title"><b id="mpvTitle">Preview</b><span id="mpvSeenTxt"></span></div>
+        <button type="button" class="mpv-btn" onclick="mpvZoom(-1)" aria-label="Zoom out">&minus;</button>
+        <button type="button" class="mpv-btn" onclick="mpvZoom(1)" aria-label="Zoom in">+</button>
+        <!-- Close: always shown, labelled (also the bottom bar's Close and the Esc key) -->
+        <button type="button" class="mpv-close" onclick="mpvCloseViewer()" aria-label="Close the preview">&#10005; Close</button>
+    </div>
+    <div id="mpvScroll" class="mpv-scroll"><div id="mpvPages" class="mpv-pages"></div></div>
+    <div id="mpvBottom" class="mpv-bottom"></div>
+</div>
+
 <!-- ?v= is the build stamp. A phone browser keeps its own copy of these two
      files, so without a new address after an update one phone can go on
      running the OLD calculation code and show a different PO amount from the
      next. Change the stamp (here and on mobile.css above) whenever
      mobile-core.js or mobile.css changes. -->
-<script src="mobile-core.js?v=20261120c"></script>
+<script src="mobile-core.js?v=20261123b"></script>
 <!-- Sliding tabs, sheet animations, swipe to close, pull to refresh, lazy PDF libraries. Optional: the app works without it. -->
 <script src="mobile-ios.js?v=20261118b"></script>
 <!-- Every <select> / datalist list opens as an iOS-style popover (sheet on a phone). See ios-dropdown.js. -->

@@ -176,6 +176,25 @@
         .tm-home-btn:active { transform: scale(0.97) !important; }
         #taskListContainer > *, #dashSummary > * { content-visibility: auto; contain-intrinsic-size: auto 110px; }
         @media (prefers-reduced-motion: reduce) { #screen-home .tm-home-btn { animation: none !important; } }
+        /* Employee Directory › Employee Tasks (etRender) */
+        .et-tab { color: #475569; transition: background-color .15s, color .15s; }
+        .et-tab.on { background: #fff; color: #0f172a; box-shadow: 0 1px 2px rgba(15,23,42,.12); }
+        .et-nav { width: 40px; height: 40px; flex: none; display: inline-flex; align-items: center; justify-content: center; border-radius: 12px; border: 1px solid #cbd5e1; background: #fff; color: #334155; }
+        .et-nav:hover:not(:disabled) { border-color: #38bdf8; color: #0369a1; }
+        .et-nav:disabled { opacity: .35; cursor: not-allowed; }
+        .et-tgl { display: inline-flex; align-items: center; gap: 6px; border-radius: 12px; border: 1px solid #cbd5e1; background: #fff; color: #475569; padding: 8px 12px; font-size: 13px; font-weight: 800; }
+        .et-tgl .dot { width: 26px; height: 15px; border-radius: 8px; background: #cbd5e1; position: relative; transition: background-color .15s; }
+        .et-tgl .dot::after { content: ''; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: #fff; transition: transform .15s; }
+        .et-tgl[aria-pressed="true"] { border-color: #a5b4fc; color: #3730a3; background: #eef2ff; }
+        .et-tgl[aria-pressed="true"] .dot { background: #4f46e5; }
+        .et-tgl[aria-pressed="true"] .dot::after { transform: translateX(11px); }
+        .et-opt { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 12px; }
+        .et-opt.hi { background: #f0f9ff; }
+        .et-opt.cur { box-shadow: inset 3px 0 0 #0284c7; }
+        #etBody td { border-top: 1px solid #e2e8f0; vertical-align: top; }
+        #etBody td.et-hr { vertical-align: middle; background: #f8fafc; border-right: 1px solid #e2e8f0; }
+        #etBody tr.et-free td { color: #94a3b8; }
+        @media (prefers-reduced-motion: reduce) { .et-tgl .dot, .et-tgl .dot::after, .et-tab { transition: none; } }
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
@@ -552,7 +571,7 @@
             </button>
             <button data-tm="TM_DIRECTORY" onclick="openScreen('employee-list')" class="tm-home-btn bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-sky-400 hover:-translate-y-1 transition-all text-left group">
                 <div class="w-14 h-14 bg-sky-50 text-sky-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-sky-100"><i class="ph-fill ph-users-three text-3xl"></i></div>
-                <h3 class="text-lg font-extrabold text-slate-800 mb-1">5. Employee Directory</h3><p class="text-sm font-medium text-slate-500">Manage, edit, or remove employees.</p>
+                <h3 class="text-lg font-extrabold text-slate-800 mb-1">5. Employee Directory</h3><p class="text-sm font-medium text-slate-500">Employee-wise task list by the hour, PDF, manage employees.</p>
             </button>
             <button data-tm="TM_CHART" onclick="openScreen('completion-chart')" class="tm-home-btn bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-rose-400 hover:-translate-y-1 transition-all text-left group">
                 <div class="w-14 h-14 bg-rose-50 text-rose-600 rounded-xl flex items-center justify-center mb-4 group-hover:scale-110 transition-transform shadow-inner border border-rose-100"><i class="ph-fill ph-files text-3xl"></i></div>
@@ -1313,7 +1332,58 @@
                     </div>
                     <button onclick="navigate('home')" class="text-slate-400 hover:text-slate-800 transition-colors bg-white p-2 rounded-xl border shadow-sm"><i class="ph-bold ph-x text-xl"></i></button>
                 </div>
-                <div class="p-6 overflow-x-auto">
+                <!-- Two views: one employee's task list by the hour (EMPLOYEE TASKS, etRender) and the old directory table. -->
+                <div class="px-6 pt-5">
+                    <div class="inline-flex bg-slate-100 border border-slate-200 rounded-xl p-1 gap-1" role="tablist">
+                        <button type="button" id="etTabTasks" role="tab" onclick="etTab('tasks')" class="et-tab px-4 py-2 rounded-lg text-sm font-extrabold"><i class="ph-bold ph-clock-countdown mr-1"></i>Employee Tasks</button>
+                        <button type="button" id="etTabList" role="tab" onclick="etTab('list')" class="et-tab px-4 py-2 rounded-lg text-sm font-extrabold"><i class="ph-bold ph-list-bullets mr-1"></i>Directory</button>
+                    </div>
+                </div>
+                <div id="etPaneTasks" class="p-6">
+                    <!-- Toolbar: ‹ employee picker › · EA Tasks show / hide · free hours · PDF -->
+                    <div class="flex flex-wrap items-center gap-2 mb-4">
+                        <button type="button" id="etPrev" onclick="etStep(-1)" title="Previous employee (←)" aria-label="Previous employee" class="et-nav"><i class="ph-bold ph-caret-left text-lg"></i></button>
+                        <div class="relative flex-grow md:flex-grow-0 md:w-96 min-w-0" id="etPickWrap">
+                            <button type="button" id="etPick" onclick="etPickOpen()" aria-haspopup="listbox" aria-expanded="false" class="w-full flex items-center gap-2 bg-white border border-slate-300 hover:border-sky-400 rounded-xl px-3 py-2 text-left focus:outline-none focus:ring-2 focus:ring-sky-500">
+                                <i class="ph-bold ph-user text-sky-600 shrink-0"></i>
+                                <span class="min-w-0 flex-grow"><span id="etPickName" class="block font-extrabold text-sm text-slate-800 truncate">Choose an employee</span><span id="etPickSub" class="block text-[11px] font-bold text-slate-500 truncate"></span></span>
+                                <i class="ph-bold ph-caret-down text-slate-400 shrink-0"></i>
+                            </button>
+                            <div id="etPop" class="hidden absolute z-40 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                                <div class="p-2 border-b border-slate-100">
+                                    <div class="relative">
+                                        <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400"><i class="ph-bold ph-magnifying-glass"></i></div>
+                                        <input type="text" id="etQ" autocomplete="off" placeholder="Search name, code, dept" oninput="etPickList(true)" onkeydown="etPickKey(event)" aria-label="Search employee" class="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-sky-500 font-bold text-sm">
+                                    </div>
+                                    <div id="etQCount" class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mt-1.5 px-1"></div>
+                                </div>
+                                <div id="etList" role="listbox" class="max-h-72 overflow-y-auto py-1"></div>
+                            </div>
+                        </div>
+                        <button type="button" id="etNext" onclick="etStep(1)" title="Next employee (→)" aria-label="Next employee" class="et-nav"><i class="ph-bold ph-caret-right text-lg"></i></button>
+                        <span id="etPos" class="text-xs font-extrabold text-slate-500 px-1"></span>
+                        <div class="flex flex-wrap items-center gap-2 md:ml-auto">
+                            <button type="button" id="etEaBtn" onclick="etToggleEa()" aria-pressed="true" class="et-tgl"></button>
+                            <button type="button" id="etFreeBtn" onclick="etToggleFree()" aria-pressed="false" title="Also list the hours between the first and the last task that have no task" class="et-tgl"></button>
+                            <button type="button" id="etPdfBtn" onclick="etPdf()" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-black text-white rounded-xl px-3.5 py-2 text-sm font-extrabold"><i class="ph-bold ph-file-pdf text-base"></i>Download PDF</button>
+                        </div>
+                    </div>
+                    <div id="etHead" class="mb-4"></div>
+                    <div class="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
+                        <table class="w-full min-w-[620px] text-left border-collapse">
+                            <thead>
+                                <tr class="bg-slate-900 text-white text-sm">
+                                    <th class="p-3.5 font-extrabold w-40">Full day Hours</th>
+                                    <th class="p-3.5 font-extrabold w-32">Target Time <i class="ph-bold ph-sort-ascending text-slate-400" title="Sorted earliest first"></i></th>
+                                    <th class="p-3.5 font-extrabold">Tasks</th>
+                                    <th class="p-3.5 font-extrabold w-48">Frequency</th>
+                                </tr>
+                            </thead>
+                            <tbody id="etBody" class="bg-white"></tbody>
+                        </table>
+                    </div>
+                </div>
+                <div id="etPaneList" class="p-6 overflow-x-auto hidden">
                     <!-- Google-style search over the directory (tmApplySearch). -->
                     <div class="flex flex-wrap items-center gap-2 mb-5">
                         <div class="relative w-full md:w-96">
@@ -3246,7 +3316,7 @@
         };
 
         // --- Directory / Delete Flow ---
-        function renderEmployeeList() { const b=document.getElementById('employeeListBody'); if(!appState.employees.length){b.innerHTML='<tr><td colspan="5" class="p-8 text-center font-bold text-slate-400 bg-white">Directory is empty.</td></tr>';tmApplySearch('dir');return;} b.innerHTML = appState.employees.map(e=>`<tr data-hay="${esc(tmEmpHay(e, true))}" class="hover:bg-slate-50 transition-colors"><td class="p-5 font-extrabold text-slate-800">${esc(e.empName)}</td><td class="p-5"><span class="bg-slate-100 text-slate-600 font-mono text-xs px-2.5 py-1.5 rounded-lg font-bold border border-slate-200 shadow-inner">${esc(e.empCode)}</span></td><td class="p-5"><div class="text-xs font-extrabold text-indigo-700">${esc(e.dept||'-')}</div><div class="text-[10px] text-slate-500 font-bold uppercase mt-0.5 tracking-wider">${esc(e.desig||'-')}</div></td><td class="p-5 text-center font-extrabold text-emerald-600 text-lg">${e.tasks.filter(t=>t.active!==false).length}</td><td class="p-5 text-center"><button onclick="viewEmployeeTasksFromDirectory('${esc(e.empCode)}')" class="text-indigo-600 bg-white hover:bg-indigo-50 p-2.5 rounded-xl transition-all mr-2 border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-calendar-check text-lg"></i></button><button onclick="deleteEmployee('${esc(e.empCode)}')" class="text-red-500 bg-white hover:bg-red-50 p-2.5 rounded-xl transition-all border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td></tr>`).join(''); tmApplySearch('dir'); }
+        function renderEmployeeList() { etRender(); const b=document.getElementById('employeeListBody'); if(!appState.employees.length){b.innerHTML='<tr><td colspan="5" class="p-8 text-center font-bold text-slate-400 bg-white">Directory is empty.</td></tr>';tmApplySearch('dir');return;} b.innerHTML = appState.employees.map(e=>`<tr data-hay="${esc(tmEmpHay(e, true))}" class="hover:bg-slate-50 transition-colors"><td class="p-5 font-extrabold text-slate-800">${esc(e.empName)}</td><td class="p-5"><span class="bg-slate-100 text-slate-600 font-mono text-xs px-2.5 py-1.5 rounded-lg font-bold border border-slate-200 shadow-inner">${esc(e.empCode)}</span></td><td class="p-5"><div class="text-xs font-extrabold text-indigo-700">${esc(e.dept||'-')}</div><div class="text-[10px] text-slate-500 font-bold uppercase mt-0.5 tracking-wider">${esc(e.desig||'-')}</div></td><td class="p-5 text-center font-extrabold text-emerald-600 text-lg">${e.tasks.filter(t=>t.active!==false).length}</td><td class="p-5 text-center"><button onclick="viewEmployeeTasksFromDirectory('${esc(e.empCode)}')" class="text-indigo-600 bg-white hover:bg-indigo-50 p-2.5 rounded-xl transition-all mr-2 border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-calendar-check text-lg"></i></button><button onclick="deleteEmployee('${esc(e.empCode)}')" class="text-red-500 bg-white hover:bg-red-50 p-2.5 rounded-xl transition-all border border-slate-200 shadow-sm active:scale-95"><i class="ph-bold ph-trash text-lg"></i></button></td></tr>`).join(''); tmApplySearch('dir'); }
 
         window.deleteEmployee = function(c) {
             pendingDeleteEmpCode = c;
@@ -3271,6 +3341,236 @@
             renderEmployeeSheet(e,true);
             if (scroll) setTimeout(() => document.getElementById('mdSheetContainer').scrollIntoView({ behavior: 'smooth' }), 100);
         }
+        /* ═══ EMPLOYEE TASKS (Employee Directory, first tab) ═══════════════════
+           One employee's task list as a day plan: every active task in the
+           order of its target time (earliest first, "all day" tasks last),
+           grouped by the hour of the day it falls in (Full day Hours). The
+           employee is picked from a search list (name / Emp Code / dept /
+           designation, tmSearchMatch) or stepped with ‹ › (also ← → while no
+           box has the cursor), in A-Z order of name. EA Tasks at the top:
+           shown = the EA tasks still open or planned for today onwards (a done
+           EA of an earlier day is history, not part of the plan; same "done"
+           test as the due EA list). Personal (self) and switched-off tasks are
+           never listed. Read only: it works on appState.employees as loaded,
+           so a save elsewhere shows here after the usual refresh. The view
+           choices (tab, EA, free hours, last employee) are kept per device in
+           localStorage 'tm_et_v1'. Download PDF = the same rows on A4, jsPDF +
+           autotable loaded on first use. */
+        const ET = { tab: 'tasks', code: '', ea: true, free: false, hi: 0, opts: [] };
+        try { const v = JSON.parse(localStorage.getItem('tm_et_v1') || '{}'); if (v.tab === 'list') ET.tab = 'list'; if (v.ea === false) ET.ea = false; if (v.free === true) ET.free = true; if (v.code) ET.code = String(v.code); } catch (e) {}
+        function etKeep() { try { localStorage.setItem('tm_et_v1', JSON.stringify({ tab: ET.tab, code: ET.code, ea: ET.ea, free: ET.free })); } catch (e) {} }
+        function etEmps() { return appState.employees.slice().sort((a, b) => String(a.empName || '').localeCompare(String(b.empName || ''), 'en', { sensitivity: 'base' }) || String(a.empCode).localeCompare(String(b.empCode))); }
+        // The chosen one; else the logged-in user's own sheet; else the first by name.
+        function etCur(all) { all = all || etEmps(); const me = appState.currentLoggedInEmp; return all.find(e => e.empCode === ET.code) || (me && all.find(e => e.empCode === me.empCode)) || all[0] || null; }
+        const ET_FREQ_ORDER = { daily: 0, weekly: 1, monthly: 2, yearly: 3, ea: 4 };
+        const etDmy = v => String(v || '').replace(/(\d{4})-(\d{2})-(\d{2})/g, '$3/$2/$1');
+        function etFreq(t) { return etDmy(getFrequencyText(t)); }
+        function etHour12(h) { const x = ((h % 24) + 24) % 24; return (x % 12 || 12) + ' ' + (x >= 12 ? 'PM' : 'AM'); }
+        function etHourLabel(h, sep) { return h == null ? 'All day' : etHour12(h) + (sep || ' – ') + etHour12(h + 1); }
+        function etFreqCls(t) {
+            if (t.live) return 'bg-violet-50 text-violet-700 border-violet-200';
+            return ({ daily: 'bg-emerald-50 text-emerald-700 border-emerald-200', weekly: 'bg-sky-50 text-sky-700 border-sky-200', monthly: 'bg-amber-50 text-amber-700 border-amber-200', yearly: 'bg-rose-50 text-rose-700 border-rose-200', ea: 'bg-indigo-50 text-indigo-700 border-indigo-200' })[t.frequency || 'daily'] || 'bg-slate-50 text-slate-600 border-slate-200';
+        }
+        // The rows, sorted by target time; eaOpen = the open EA tasks (counted even while hidden, for the button).
+        function etRows(emp) {
+            const today = todayStr(), recs = emp.records || {};
+            let eaOpen = 0;
+            const list = (emp.tasks || []).filter(t => t.active !== false && !t.isSelfTask && t.frequency !== 'self').filter(t => {
+                if (t.frequency !== 'ea') return true;
+                const r = recs[t.freqValue] && recs[t.freqValue][t.id];
+                const open = String(t.freqValue || '') >= today || !(r && r.checked);
+                if (open) eaOpen++;
+                return open && ET.ea;
+            }).map(t => { const p = parse12h(t.time); return { t, min: p ? p.h * 60 + p.m : null, h: p ? p.h : null }; });
+            const fo = t => { const v = ET_FREQ_ORDER[t.frequency || 'daily']; return v == null ? 9 : v; };
+            list.sort((a, b) => (a.min == null) - (b.min == null) || (a.min || 0) - (b.min || 0) || fo(a.t) - fo(b.t)
+                || String(a.t.freqValue || '').localeCompare(String(b.t.freqValue || '')) || String(a.t.desc || '').localeCompare(String(b.t.desc || ''), 'en', { sensitivity: 'base' }));
+            return { list, eaOpen };
+        }
+        // Hour bands from the first task's hour to the last one's (free hours in between only when asked), then All day.
+        function etGroups(list) {
+            const g = new Map();
+            list.forEach(x => { const k = x.h == null ? 'all' : x.h; if (!g.has(k)) g.set(k, []); g.get(k).push(x); });
+            const hrs = list.filter(x => x.h != null).map(x => x.h), out = [];
+            if (hrs.length) { const lo = Math.min(...hrs), hi = Math.max(...hrs); for (let h = lo; h <= hi; h++) if (g.has(h) || ET.free) out.push({ h, rows: g.get(h) || [] }); }
+            if (g.has('all')) out.push({ h: null, rows: g.get('all') });
+            return out;
+        }
+        function etCounts(list) {
+            const c = { Daily: 0, 'Live photo': 0, Weekly: 0, Monthly: 0, Yearly: 0, EA: 0 };
+            list.forEach(x => { const f = x.t.frequency || 'daily'; if (x.t.live) c['Live photo']++; else if (f === 'daily') c.Daily++; else if (f === 'weekly') c.Weekly++; else if (f === 'monthly') c.Monthly++; else if (f === 'yearly') c.Yearly++; else if (f === 'ea') c.EA++; });
+            const timed = list.filter(x => x.min != null);
+            return { c, first: timed.length ? timed[0].t.time : '', last: timed.length ? timed[timed.length - 1].t.time : '', hours: new Set(timed.map(x => x.h)).size };
+        }
+        function etTabPaint() {
+            const p1 = document.getElementById('etPaneTasks'), p2 = document.getElementById('etPaneList'); if (!p1 || !p2) return;
+            p1.classList.toggle('hidden', ET.tab !== 'tasks'); p2.classList.toggle('hidden', ET.tab !== 'list');
+            [['etTabTasks', 'tasks'], ['etTabList', 'list']].forEach(([id, k]) => { const b = document.getElementById(id); if (!b) return; b.classList.toggle('on', ET.tab === k); b.setAttribute('aria-selected', ET.tab === k ? 'true' : 'false'); });
+        }
+        window.etTab = function(k) { ET.tab = k === 'list' ? 'list' : 'tasks'; etKeep(); etTabPaint(); if (ET.tab === 'tasks') etRender(); };
+        function etRender() {
+            etTabPaint();
+            const body = document.getElementById('etBody'); if (!body) return;
+            const all = etEmps(), emp = etCur(all), i = emp ? all.indexOf(emp) : -1;
+            if (emp) ET.code = emp.empCode;
+            document.getElementById('etPickName').textContent = emp ? emp.empName : 'No employee yet';
+            document.getElementById('etPickSub').textContent = emp ? [emp.empCode, emp.dept, emp.desig].filter(Boolean).join(' · ') : '';
+            document.getElementById('etPrev').disabled = i <= 0;
+            document.getElementById('etNext').disabled = i < 0 || i >= all.length - 1;
+            document.getElementById('etPos').textContent = emp ? (i + 1) + ' of ' + all.length : '';
+            document.getElementById('etPdfBtn').disabled = !emp;
+            const r = emp ? etRows(emp) : { list: [], eaOpen: 0 };
+            const eaBtn = document.getElementById('etEaBtn');
+            eaBtn.setAttribute('aria-pressed', ET.ea ? 'true' : 'false');
+            eaBtn.title = (ET.ea ? 'Hide' : 'Show') + ' the EA tasks (open ones and those planned from today)';
+            eaBtn.innerHTML = '<span class="dot"></span>EA Tasks: ' + (ET.ea ? 'Shown' : 'Hidden') + (r.eaOpen ? ' <span class="text-[11px] font-extrabold opacity-70">(' + r.eaOpen + ')</span>' : '');
+            const fBtn = document.getElementById('etFreeBtn');
+            fBtn.setAttribute('aria-pressed', ET.free ? 'true' : 'false');
+            fBtn.innerHTML = '<span class="dot"></span>Free hours';
+            const head = document.getElementById('etHead');
+            if (!emp) { head.innerHTML = ''; body.innerHTML = '<tr><td colspan="4" class="p-8 text-center font-bold text-slate-400">The directory is empty. Add a task list first.</td></tr>'; return; }
+            const k = etCounts(r.list), chip = (t, cls) => '<span class="px-2 py-1 rounded-lg border text-[11px] font-extrabold ' + cls + '">' + t + '</span>';
+            head.innerHTML = '<div class="flex flex-wrap items-center gap-x-4 gap-y-2 bg-sky-50/60 border border-sky-100 rounded-2xl px-4 py-3">'
+                + '<div class="min-w-0"><div class="text-lg font-extrabold text-slate-800 leading-tight">' + esc(emp.empName) + '</div><div class="text-xs font-bold text-slate-500 mt-0.5">' + esc([emp.empCode, emp.dept, emp.desig].filter(Boolean).join(' · ')) + '</div></div>'
+                + '<div class="flex flex-wrap gap-1.5 md:ml-auto">'
+                + chip(r.list.length + (r.list.length === 1 ? ' task' : ' tasks'), 'bg-slate-900 text-white border-slate-900')
+                + Object.keys(k.c).filter(n => k.c[n]).map(n => chip(esc(n) + ' ' + k.c[n], 'bg-white text-slate-600 border-slate-200')).join('')
+                + (!ET.ea && r.eaOpen ? chip('EA hidden ' + r.eaOpen, 'bg-white text-slate-400 border-dashed border-slate-300') : '')
+                + (k.first ? chip('Day ' + esc(k.first) + (k.last !== k.first ? ' – ' + esc(k.last) : ''), 'bg-sky-100 text-sky-800 border-sky-200') : '')
+                + '</div></div>';
+            const groups = etGroups(r.list);
+            if (!groups.length) {
+                body.innerHTML = '<tr><td colspan="4" class="p-8 text-center"><div class="font-bold text-slate-400">No active task for ' + esc(emp.empName) + '.</div>'
+                    + (!ET.ea && r.eaOpen ? '<button type="button" onclick="etToggleEa()" class="mt-3 text-sm font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2">Show ' + r.eaOpen + ' EA task' + (r.eaOpen > 1 ? 's' : '') + '</button>' : '')
+                    + '</td></tr>';
+                return;
+            }
+            let n = 0;
+            body.innerHTML = groups.map(g => {
+                const hr = '<td class="et-hr p-3.5" rowspan="' + Math.max(1, g.rows.length) + '"><div class="text-sm font-extrabold ' + (g.h == null ? 'text-slate-500' : 'text-slate-800') + ' whitespace-nowrap">' + etHourLabel(g.h) + '</div>'
+                    + (g.rows.length ? '<div class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mt-0.5">' + g.rows.length + (g.rows.length > 1 ? ' tasks' : ' task') + '</div>' : '') + '</td>';
+                if (!g.rows.length) return '<tr class="et-free">' + hr + '<td colspan="3" class="p-3.5 text-xs font-bold italic">No task in this hour</td></tr>';
+                return g.rows.map((x, j) => { n++; const t = x.t;
+                    return '<tr class="hover:bg-slate-50">' + (j === 0 ? hr : '')
+                        + '<td class="p-3.5 whitespace-nowrap"><span class="font-mono text-sm font-extrabold ' + (t.time ? 'text-slate-800' : 'text-slate-400') + '">' + esc(t.time || 'All day') + '</span></td>'
+                        + '<td class="p-3.5"><div class="text-sm font-bold text-slate-800 leading-snug"><span class="text-slate-400 font-extrabold mr-1">' + n + '.</span>' + esc(t.desc) + '</div></td>'
+                        + '<td class="p-3.5"><span class="inline-block px-2 py-1 rounded-lg border text-[11px] font-extrabold ' + etFreqCls(t) + '">' + esc(etFreq(t)) + '</span></td></tr>';
+                }).join('');
+            }).join('');
+        }
+        window.etToggleEa = function() { ET.ea = !ET.ea; etKeep(); etRender(); };
+        window.etToggleFree = function() { ET.free = !ET.free; etKeep(); etRender(); };
+        window.etStep = function(d) {
+            const all = etEmps(), cur = etCur(all), j = all.indexOf(cur) + d;
+            if (!cur || j < 0 || j >= all.length) return;
+            ET.code = all[j].empCode; etKeep(); etPickClose(); etRender();
+        };
+        // ── the employee search list ──
+        window.etPickOpen = function() {
+            const pop = document.getElementById('etPop');
+            if (!pop.classList.contains('hidden')) return etPickClose(true);
+            pop.classList.remove('hidden'); document.getElementById('etPick').setAttribute('aria-expanded', 'true');
+            const q = document.getElementById('etQ'); q.value = ''; ET.hi = -1; etPickList(); setTimeout(() => q.focus(), 0);
+        };
+        function etPickClose(focusBtn) {
+            const pop = document.getElementById('etPop'); if (!pop || pop.classList.contains('hidden')) return;
+            pop.classList.add('hidden'); document.getElementById('etPick').setAttribute('aria-expanded', 'false');
+            if (focusBtn) document.getElementById('etPick').focus();
+        }
+        window.etPickList = function(ev) {
+            const q = document.getElementById('etQ').value, all = etEmps();
+            ET.opts = all.filter(e => tmSearchMatch([e.empName, e.empCode, e.dept, e.desig], q));
+            if (ev || ET.hi < 0) ET.hi = q.trim() ? 0 : Math.max(0, ET.opts.findIndex(e => e.empCode === ET.code));
+            ET.hi = Math.min(ET.hi, ET.opts.length - 1);
+            document.getElementById('etQCount').textContent = q.trim() ? ET.opts.length + ' of ' + all.length + ' employees' : all.length + ' employees · A to Z';
+            const ini = nm => String(nm || '?').trim().split(/\s+/).slice(0, 2).map(w => w[0]).join('').toUpperCase();
+            const box = document.getElementById('etList');
+            box.innerHTML = ET.opts.length ? ET.opts.map((e, i) => {
+                const nt = (e.tasks || []).filter(t => t.active !== false && !t.isSelfTask && t.frequency !== 'self').length;
+                return '<button type="button" role="option" aria-selected="' + (i === ET.hi ? 'true' : 'false') + '" data-i="' + i + '" onclick="etPickSet(' + i + ')" onmousemove="etPickHi(' + i + ')" class="et-opt' + (i === ET.hi ? ' hi' : '') + (e.empCode === ET.code ? ' cur' : '') + '">'
+                    + '<span class="w-8 h-8 shrink-0 rounded-full bg-sky-100 text-sky-700 text-[11px] font-extrabold flex items-center justify-center">' + esc(ini(e.empName)) + '</span>'
+                    + '<span class="min-w-0 flex-grow"><span class="block text-sm font-extrabold text-slate-800 truncate">' + esc(e.empName) + '</span><span class="block text-[11px] font-bold text-slate-500 truncate">' + esc([e.empCode, e.dept, e.desig].filter(Boolean).join(' · ')) + '</span></span>'
+                    + '<span class="text-[11px] font-extrabold text-slate-400 shrink-0">' + nt + ' tasks</span></button>';
+            }).join('') : '<div class="px-4 py-6 text-center text-sm font-bold text-slate-400">No employee matches the search.</div>';
+            const hi = box.querySelector('.et-opt.hi'); if (hi) hi.scrollIntoView({ block: 'nearest' });
+        };
+        window.etPickHi = function(i) { if (ET.hi === i) return; ET.hi = i; document.querySelectorAll('#etList .et-opt').forEach(b => { const on = +b.dataset.i === i; b.classList.toggle('hi', on); b.setAttribute('aria-selected', on ? 'true' : 'false'); }); };
+        window.etPickSet = function(i) { const e = ET.opts[i]; if (!e) return; ET.code = e.empCode; etKeep(); etPickClose(true); etRender(); };
+        window.etPickKey = function(ev) {
+            const n = ET.opts.length;
+            if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') { ev.preventDefault(); if (!n) return; etPickHi((ET.hi + (ev.key === 'ArrowDown' ? 1 : -1) + n) % n); const b = document.querySelector('#etList .et-opt.hi'); if (b) b.scrollIntoView({ block: 'nearest' }); }
+            else if (ev.key === 'Enter') { ev.preventDefault(); if (n) etPickSet(Math.max(0, ET.hi)); }
+            else if (ev.key === 'Escape') { ev.preventDefault(); ev.stopPropagation(); etPickClose(true); }
+            else if (ev.key === 'Tab') etPickClose();
+        };
+        document.addEventListener('pointerdown', e => { const w = document.getElementById('etPickWrap'); if (w && !w.contains(e.target)) etPickClose(); }, true);
+        // ← → step the employee while the Employee Tasks tab is open and no box / button of another screen has the cursor.
+        document.addEventListener('keydown', e => {
+            if ((e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+            if (appState.currentScreen !== 'employee-list' || ET.tab !== 'tasks') return;
+            const a = document.activeElement, pane = document.getElementById('etPaneTasks');
+            if (a && a !== document.body && !(pane && pane.contains(a))) return;
+            if (a && (/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) || a.isContentEditable)) return;
+            e.preventDefault(); etStep(e.key === 'ArrowLeft' ? -1 : 1);
+        });
+        // ── PDF ──
+        let etPdfLibP = null;
+        function etLoadPdf() {
+            if (window.jspdf && window.jspdf.jsPDF && window.jspdf.jsPDF.API.autoTable) return Promise.resolve();
+            return etPdfLibP || (etPdfLibP = clLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js', () => window.jspdf)
+                .then(() => clLoadScript('https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js', () => window.jspdf.jsPDF.API.autoTable))
+                .catch(() => { etPdfLibP = null; throw new Error('The PDF maker could not be loaded. Check the internet connection and try again.'); }));
+        }
+        window.etPdf = async function() {
+            const emp = etCur(); if (!emp) return showCustomModal('No employee', 'Choose an employee first.', true);
+            const btn = document.getElementById('etPdfBtn'); if (btn.dataset.busy) return;
+            const old = btn.innerHTML; btn.dataset.busy = '1'; btn.disabled = true; btn.innerHTML = '<i class="ph-bold ph-spinner animate-spin text-base"></i>Making PDF…';
+            try {
+                await etLoadPdf();
+                // the standard PDF fonts have no – · › … : plain signs instead
+                const P = v => String(v == null ? '' : v).replace(/[–—]/g, '-').replace(/[·•]/g, '|').replace(/[‹›]/g, '').replace(/…/g, '...');
+                const r = etRows(emp), k = etCounts(r.list), groups = etGroups(r.list);
+                const { jsPDF } = window.jspdf, doc = new jsPDF({ unit: 'mm', format: 'a4', orientation: 'portrait', compress: true });
+                const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 12;
+                const now = new Date(), p2 = x => String(x).padStart(2, '0');
+                const stamp = p2(now.getDate()) + '/' + p2(now.getMonth() + 1) + '/' + now.getFullYear() + ' ' + fmtClock(now.toISOString());
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139);
+                doc.text('SARV INDIA  |  TASK MANAGER  |  EMPLOYEE TASK LIST', M, 13);
+                doc.text('Printed ' + stamp + (appState.me && appState.me.name ? '  |  ' + P(appState.me.name) : ''), W - M, 13, { align: 'right' });
+                doc.setFontSize(16); doc.setTextColor(15, 23, 42); doc.text(P(emp.empName), M, 21);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(9.5); doc.setTextColor(71, 85, 105);
+                doc.text(P([emp.empCode, emp.dept, emp.desig].filter(Boolean).join('  |  ')), M, 26.5);
+                const sum = [r.list.length + (r.list.length === 1 ? ' task' : ' tasks')].concat(Object.keys(k.c).filter(n => k.c[n]).map(n => n + ' ' + k.c[n]))
+                    .concat(k.first ? ['Day ' + k.first + (k.last !== k.first ? ' - ' + k.last : '')] : [])
+                    .concat([ET.ea ? 'EA tasks shown (open / from today)' : 'EA tasks hidden' + (r.eaOpen ? ' (' + r.eaOpen + ')' : '')]);
+                doc.setFontSize(8.5); doc.text(doc.splitTextToSize(P(sum.join('   |   ')), W - 2 * M), M, 31.5);
+                const body = []; let n = 0;
+                groups.forEach(g => {
+                    const hr = { content: P(etHourLabel(g.h, ' - ')) + (g.rows.length ? '\n' + g.rows.length + (g.rows.length > 1 ? ' tasks' : ' task') : ''), rowSpan: Math.max(1, g.rows.length), styles: { valign: 'middle', fontStyle: 'bold', fillColor: [241, 245, 249] } };
+                    if (!g.rows.length) { body.push([hr, { content: 'No task in this hour', colSpan: 3, styles: { textColor: [148, 163, 184], fontStyle: 'italic' } }]); return; }
+                    g.rows.forEach((x, j) => { n++; const row = [x.t.time || 'All day', n + '. ' + P(x.t.desc), P(etFreq(x.t))]; body.push(j === 0 ? [hr].concat(row) : row); });
+                });
+                if (!body.length) body.push([{ content: 'No active task.', colSpan: 4, styles: { halign: 'center', textColor: [148, 163, 184] } }]);
+                doc.autoTable({
+                    startY: 36, head: [['Full day Hours', 'Target Time', 'Tasks', 'Frequency']], body, theme: 'grid',
+                    margin: { left: M, right: M, top: 18, bottom: 14 },
+                    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.2, lineColor: [203, 213, 225], lineWidth: 0.2, textColor: [30, 41, 59], overflow: 'linebreak', valign: 'top' },
+                    headStyles: { fillColor: [15, 23, 42], textColor: 255, fontStyle: 'bold' },
+                    columnStyles: { 0: { cellWidth: 32 }, 1: { cellWidth: 23, fontStyle: 'bold' }, 3: { cellWidth: 44 } },
+                    didDrawPage: d => { if (d.pageNumber > 1) { doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(100, 116, 139); doc.text(P(emp.empName + '  |  ' + emp.empCode) + '  |  Employee Task List (continued)', M, 12); } }
+                });
+                const pages = doc.internal.getNumberOfPages();
+                for (let i = 1; i <= pages; i++) {
+                    doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(148, 163, 184);
+                    doc.text(P(emp.empName + '  |  ' + emp.empCode), M, H - 7);
+                    doc.text('Page ' + i + ' of ' + pages, W - M, H - 7, { align: 'right' });
+                }
+                const url = URL.createObjectURL(doc.output('blob')), a = document.createElement('a');
+                a.href = url; a.download = ('Tasks_' + emp.empCode + '_' + emp.empName).replace(/[^\w.-]+/g, '_').replace(/_+/g, '_') + '.pdf';
+                document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 60000);
+            } catch (e) { showCustomModal('PDF not made', esc(e && e.message || e), true); }
+            finally { delete btn.dataset.busy; btn.disabled = false; btn.innerHTML = old; }
+        };
         window.viewEmployeeTasksFromDirectory = function(c) { const e=appState.employees.find(x=>x.empCode===c); if(!e)return; navigate('md-view'); showMdSheet(e, true); }
 
         /* ════════════════════════════════════════════════════════════════
