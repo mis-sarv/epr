@@ -66,16 +66,15 @@
            stretched in the PDF. background-size:cover it does draw. */
         .cm-photo { background-size: cover; background-position: center; background-repeat: no-repeat; }
 
-        #preview-wrapper {
-            /* Scale down A4 to fit in the preview window nicely */
-            transform: scale(0.45);
-            transform-origin: top center;
-            height: 140mm;
-        }
-        
-        @media (min-width: 1536px) {
-            #preview-wrapper { transform: scale(0.6); height: 180mm; }
-        }
+        /* Live preview zoom (PREVIEW ZOOM in the script): #preview-wrapper is sized to the
+           zoomed page, so the scroll box knows its real size and scrolls both ways at any
+           zoom; the A4 page inside is scaled from its top-left corner. */
+        #preview-wrapper { margin: 0 auto; position: relative; }
+        #preview-wrapper > #live-preview { transform-origin: 0 0; margin: 0; transition: none; }
+        .cm-zoom-bar button { width: 30px; height: 30px; border-radius: 8px; font-weight: 800; color: #374151; }
+        .cm-zoom-bar button:hover { background: #eef2ff; color: #4338ca; }
+        .cm-q-opt { border: 1.5px solid #e5e7eb; border-radius: 10px; padding: 8px 10px; cursor: pointer; text-align: left; }
+        .cm-q-opt.on { border-color: #16a34a; background: #f0fdf4; }
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
@@ -95,6 +94,32 @@
             <input id="custom-modal-input" type="text" maxlength="120" class="hidden w-full border border-gray-300 rounded p-2 mb-5 focus:ring-2 focus:ring-indigo-500 outline-none">
             <div class="flex justify-center gap-3" id="custom-modal-buttons">
                 <!-- Buttons injected dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Export to PDF: resolution / quality before the file is made (PDF EXPORT SETTINGS in the script) -->
+    <div id="pdf-q-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
+        <div class="bg-white rounded-xl p-5 max-w-md w-full mx-4 shadow-xl">
+            <div class="flex items-center justify-between mb-3">
+                <h3 class="text-base font-bold text-gray-900"><i class="fas fa-file-pdf text-green-600"></i> Export to PDF</h3>
+                <button type="button" onclick="pdfQClose()" class="w-7 h-7 rounded-full bg-gray-100 text-gray-500 text-xs" title="Close">✕</button>
+            </div>
+            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">Resolution</label>
+            <div id="pdf-q-res" class="grid grid-cols-2 gap-2 mb-3"></div>
+            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1.5">Picture format</label>
+            <div id="pdf-q-fmt" class="grid grid-cols-2 gap-2 mb-3"></div>
+            <div id="pdf-q-jpg" class="mb-3">
+                <div class="flex justify-between mb-1"><label class="text-[11px] font-bold text-gray-500 uppercase">JPEG quality</label><span id="pdf-q-qval" class="text-[11px] font-bold text-green-700 bg-green-50 px-1.5 rounded">90%</span></div>
+                <input type="range" id="pdf-q-q" min="50" max="100" step="5" value="90" oninput="pdfQSet('quality', this.value)" class="w-full accent-green-600">
+                <p class="text-[10px] text-gray-400">Lower = smaller file, softer pictures. 85-92 % looks the same as 100 % on screen.</p>
+            </div>
+            <label class="block text-[11px] font-bold text-gray-500 uppercase mb-1">File name</label>
+            <input id="pdf-q-name" type="text" maxlength="120" class="w-full border border-gray-300 rounded-lg p-2 mb-2 text-sm focus:ring-2 focus:ring-green-500 outline-none" data-no-caps>
+            <p id="pdf-q-est" class="text-[11px] font-semibold text-gray-500 mb-4"></p>
+            <div class="flex justify-end gap-2">
+                <button type="button" onclick="pdfQClose()" class="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg shadow-sm hover:bg-gray-300 transition text-sm">Cancel</button>
+                <button type="button" onclick="pdfQGo()" class="px-4 py-2 bg-green-600 text-white rounded-lg shadow-sm hover:bg-green-700 transition text-sm font-semibold"><i class="fas fa-download"></i> Make &amp; Download</button>
             </div>
         </div>
     </div>
@@ -754,11 +779,22 @@
             </section>
 
             <!-- Right: Live Preview -->
-            <section class="flex-1 bg-gray-200 overflow-y-auto flex items-start justify-center pt-8 pb-20">
-                <div id="preview-wrapper">
-                    <div id="live-preview" class="a4-page mx-auto bg-white transition-all duration-300">
-                        <!-- Preview injected dynamically -->
+            <section class="flex-1 bg-gray-200 relative overflow-hidden">
+                <!-- The scroll box; mouse wheel over it zooms the page (PREVIEW ZOOM), Shift + wheel / the bars scroll -->
+                <div id="preview-scroll" class="absolute inset-0 overflow-auto pt-8 pb-20 px-6">
+                    <div id="preview-wrapper">
+                        <div id="live-preview" class="a4-page bg-white">
+                            <!-- Preview injected dynamically -->
+                        </div>
                     </div>
+                </div>
+                <div class="cm-zoom-bar absolute bottom-4 right-4 z-20 flex items-center gap-1 bg-white/95 border border-gray-200 rounded-xl shadow-md px-1.5 py-1 text-xs">
+                    <button type="button" onclick="cmZoomBy(1 / 1.15)" title="Zoom out (mouse wheel down)">&minus;</button>
+                    <button type="button" id="cm-zoom-val" onclick="cmZoomSet('fit')" title="Fit the whole page" style="width:auto;padding:0 8px;">Fit</button>
+                    <button type="button" onclick="cmZoomBy(1.15)" title="Zoom in (mouse wheel up)">+</button>
+                    <span class="w-px h-5 bg-gray-200 mx-0.5"></span>
+                    <button type="button" onclick="cmZoomSet('width')" title="Fit the page width" style="width:auto;padding:0 8px;">Width</button>
+                    <button type="button" onclick="cmZoomSet(1)" title="Actual size" style="width:auto;padding:0 8px;">100%</button>
                 </div>
             </section>
         </div>
@@ -3044,6 +3080,81 @@
             }
         }
 
+        /* ── PREVIEW ZOOM ───────────────────────────────────────────────────
+           The page is drawn at real A4 size (210 × 297 mm) and scaled: 'fit' = the whole
+           page in view (the default), 'width' = the page width, or a number (0.2 - 3,
+           1 = actual size). Mouse wheel over the preview zooms around the pointer; over a
+           cover shape the wheel still zooms that shape's picture (its handler runs first and
+           claims the event). Shift + wheel scrolls; dragging the empty grey area (or the page,
+           away from a shape) pans. #preview-wrapper is sized to the zoomed page, so the
+           scroll box scrolls both ways at any zoom. Kept in this browser (cm_preview_zoom). */
+        const CM_ZOOM_KEY = 'cm_preview_zoom', CM_ZOOM_MIN = 0.2, CM_ZOOM_MAX = 3;
+        const cmZoomClamp = z => Math.min(CM_ZOOM_MAX, Math.max(CM_ZOOM_MIN, z));
+        let cmZoomMode = (() => {
+            try { const v = localStorage.getItem(CM_ZOOM_KEY); return v === 'fit' || v === 'width' ? v : (isFinite(+v) && +v > 0 ? cmZoomClamp(+v) : 'fit'); }
+            catch (e) { return 'fit'; }
+        })();
+        let cmZoom = 0.5;
+        function cmZoomFor(mode) {
+            const sc = document.getElementById('preview-scroll'), pg = document.getElementById('live-preview');
+            const w = pg.offsetWidth || 794, h = pg.offsetHeight || 1123;   // offset sizes ignore the transform: the real A4 px
+            const aw = Math.max(120, sc.clientWidth - 48), ah = Math.max(120, sc.clientHeight - 112);   // px-6 / pt-8 + pb-20
+            if (mode === 'width') return aw / w;
+            if (mode === 'fit') return Math.min(aw / w, ah / h);
+            return mode;
+        }
+        // anchor {x, y} = the screen point that stays under the pointer
+        function cmZoomApply(anchor) {
+            const sc = document.getElementById('preview-scroll'), wrap = document.getElementById('preview-wrapper'), pg = document.getElementById('live-preview');
+            if (!sc || !wrap || !pg) return;
+            const before = anchor ? wrap.getBoundingClientRect() : null;
+            cmZoom = cmZoomClamp(cmZoomFor(cmZoomMode));
+            pg.style.transform = 'scale(' + cmZoom + ')';
+            wrap.style.width = (pg.offsetWidth * cmZoom) + 'px';
+            wrap.style.height = (pg.offsetHeight * cmZoom) + 'px';
+            const lbl = document.getElementById('cm-zoom-val');
+            if (lbl) lbl.textContent = (cmZoomMode === 'fit' ? 'Fit · ' : cmZoomMode === 'width' ? 'Width · ' : '') + Math.round(cmZoom * 100) + '%';
+            if (anchor && before && before.width) {
+                const fx = (anchor.x - before.left) / before.width, fy = (anchor.y - before.top) / before.height, r2 = wrap.getBoundingClientRect();
+                sc.scrollLeft += r2.left + fx * r2.width - anchor.x;
+                sc.scrollTop += r2.top + fy * r2.height - anchor.y;
+            }
+        }
+        function cmZoomSet(mode, anchor) {
+            cmZoomMode = typeof mode === 'number' ? cmZoomClamp(mode) : mode;
+            try { localStorage.setItem(CM_ZOOM_KEY, String(cmZoomMode)); } catch (e) { }
+            cmZoomApply(anchor);
+        }
+        function cmZoomBy(f, anchor) { cmZoomSet(cmZoomClamp(cmZoom * f), anchor); }
+        (function cmZoomInit() {
+            const sc = document.getElementById('preview-scroll'); if (!sc) return;
+            sc.addEventListener('wheel', e => {
+                if (e.defaultPrevented || e.shiftKey) return;   // a shape's picture zoom / a sideways scroll
+                e.preventDefault();
+                // a trackpad sends many small steps: zoom by how far it moved, a mouse notch = about 10 %
+                const step = Math.max(-3, Math.min(3, -e.deltaY / (e.deltaMode === 1 ? 3 : 100)));
+                cmZoomBy(Math.pow(1.1, step), { x: e.clientX, y: e.clientY });
+            }, { passive: false });
+            // pan: drag with the left button away from a shape (the shape drag claims its own pointerdown)
+            let pan = null;
+            sc.addEventListener('pointerdown', e => {
+                if (e.defaultPrevented || e.button !== 0 || (e.target.closest && e.target.closest('button,input,select,textarea,a,[data-shape-id]'))) return;
+                pan = { x: e.clientX, y: e.clientY, l: sc.scrollLeft, t: sc.scrollTop, id: e.pointerId, moved: false };
+            });
+            sc.addEventListener('pointermove', e => {
+                if (!pan || e.pointerId !== pan.id) return;
+                const dx = e.clientX - pan.x, dy = e.clientY - pan.y;
+                if (!pan.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
+                if (!pan.moved) { pan.moved = true; try { sc.setPointerCapture(e.pointerId); } catch (x) { } sc.style.cursor = 'grabbing'; }
+                sc.scrollLeft = pan.l - dx; sc.scrollTop = pan.t - dy;
+            });
+            const end = () => { if (pan && pan.moved) sc.style.cursor = ''; pan = null; };
+            sc.addEventListener('pointerup', end); sc.addEventListener('pointercancel', end);
+            window.addEventListener('resize', () => { if (typeof cmZoomMode === 'string') cmZoomApply(); });
+            cmZoomApply();
+            requestAnimationFrame(() => cmZoomApply());   // once the layout has its real size
+        })();
+
         // Every <img> inside `root` loaded (or failed), so nothing is captured half-drawn.
         function waitForImages(root) {
             return Promise.all([...root.querySelectorAll('img')].map(img =>
@@ -3060,9 +3171,12 @@
            own PDF page, so every page lines up exactly.
            The cover's waves are turned into a PNG first (wavesPng), and the
            export waits for fonts and pictures before capturing.
-           buildPdf(ordered pages, progress) → the jsPDF document; used by the
-           editor's Export button AND by render mode (Design Master). */
-        async function buildPdf(ordered, onProgress) {
+           buildPdf(ordered pages, progress, q) → the jsPDF document; used by the
+           editor's Export button AND by render mode (Design Master).
+           q = the Export settings {scale, format, quality} (PDF EXPORT SETTINGS); render
+           mode passes none and gets the old fixed look: scale 2, JPEG 90 %. */
+        async function buildPdf(ordered, onProgress, q) {
+            const Q = Object.assign({ scale: 2, format: 'JPEG', quality: 90 }, q || {});
             const exportContainer = document.getElementById('pdf-export-container');
             exportContainer.innerHTML = '';
             exportContainer.style.display = 'block';
@@ -3099,7 +3213,7 @@
                 if (document.fonts && document.fonts.ready) await document.fonts.ready;
                 await waitForImages(exportContainer);
 
-                const H2C = { scale: 2, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, logging: false };
+                const H2C = { scale: Q.scale, useCORS: true, backgroundColor: '#ffffff', scrollX: 0, scrollY: 0, logging: false };
                 const JSPDF = { unit: 'mm', format: 'a4', orientation: 'portrait' };
 
                 /* The jsPDF document. jsPDF is inside the html2pdf bundle but not
@@ -3121,7 +3235,8 @@
                         .from(pages[i]).toCanvas().get('canvas');
                     if (i > 0) pdf.addPage('a4', 'portrait');
                     pdf.setPage(i + 1);
-                    pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+                    if (Q.format === 'PNG') pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+                    else pdf.addImage(canvas.toDataURL('image/jpeg', Math.min(1, Math.max(0.5, Q.quality / 100))), 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
                     /* The page is a picture, so links are added on top of it: every
                        element with data-pdf-link (the back cover's QR cards) becomes a
                        clickable area at the same place, px → mm by the page's width. */
@@ -3139,7 +3254,74 @@
             }
         }
 
-        async function generatePDF() {
+        /* ── PDF EXPORT SETTINGS ────────────────────────────────────────────
+           Export to PDF first asks how the file is made: Resolution = the html2canvas
+           scale (1x ≈ 96 dpi … 4x ≈ 384 dpi; 2x was the only one before), Picture format
+           JPEG (quality 50-100 %) or PNG (lossless, much larger), and the file name.
+           The rough size line is only a guide (photos compress differently). The last
+           choice is kept in this browser (cm_pdf_quality). */
+        const PDF_Q_KEY = 'cm_pdf_quality';
+        const PDF_RES = [
+            { k: 1, l: 'Draft', d: '≈ 96 dpi · smallest, WhatsApp' },
+            { k: 2, l: 'Standard', d: '≈ 192 dpi · screen / email' },
+            { k: 3, l: 'High', d: '≈ 288 dpi · sharp when zoomed' },
+            { k: 4, l: 'Print', d: '≈ 384 dpi · printing, large file' }
+        ];
+        const PDF_FMT = [{ k: 'JPEG', l: 'JPEG', d: 'small file, quality below' }, { k: 'PNG', l: 'PNG', d: 'lossless, much larger' }];
+        let PDF_Q = (() => {
+            const d = { scale: 2, format: 'JPEG', quality: 90 };
+            try { const v = JSON.parse(localStorage.getItem(PDF_Q_KEY) || 'null'); if (v && typeof v === 'object') Object.assign(d, v); } catch (e) { }
+            d.scale = PDF_RES.some(r => r.k === +d.scale) ? +d.scale : 2;
+            d.format = d.format === 'PNG' ? 'PNG' : 'JPEG';
+            d.quality = Math.min(100, Math.max(50, Math.round(+d.quality || 90)));
+            return d;
+        })();
+        // Cover first, product pages, then the album page(s), the back page last
+        function pdfOrderedPages() {
+            const coverPage = catalogData.find(p => p.pageType === 'cover');
+            const productPages = productPagesOf(catalogData);
+            const album = catalogData.find(p => p.pageType === 'album') || ALBUM_DEFAULT;
+            const back = catalogData.find(p => p.pageType === 'back') || BACK_DEFAULT;
+            return (coverPage ? [coverPage] : []).concat(productPages, albumPagesFor(album, catalogData), [back]);
+        }
+        function pdfQPaint() {
+            const opt = (list, cur, key) => list.map(o => '<button type="button" class="cm-q-opt' + (o.k === cur ? ' on' : '') + '" data-k="' + key + '" data-v="' + o.k + '">'
+                + '<span class="block text-sm font-bold text-gray-900">' + o.l + (key === 'scale' ? ' · ' + o.k + 'x' : '') + '</span>'
+                + '<span class="block text-[10.5px] text-gray-500">' + o.d + '</span></button>').join('');
+            document.getElementById('pdf-q-res').innerHTML = opt(PDF_RES, PDF_Q.scale, 'scale');
+            document.getElementById('pdf-q-fmt').innerHTML = opt(PDF_FMT, PDF_Q.format, 'format');
+            document.querySelectorAll('#pdf-q-modal .cm-q-opt').forEach(b => { b.onclick = () => pdfQSet(b.dataset.k, b.dataset.v); });
+            document.getElementById('pdf-q-jpg').classList.toggle('hidden', PDF_Q.format !== 'JPEG');
+            document.getElementById('pdf-q-q').value = PDF_Q.quality;
+            document.getElementById('pdf-q-qval').textContent = PDF_Q.quality + '%';
+            // rough size: an A4 page is 794 × 1123 px at 1x; bytes per pixel from the format / quality
+            const n = pdfOrderedPages().length, px = 794 * 1123 * PDF_Q.scale * PDF_Q.scale;
+            const bpp = PDF_Q.format === 'PNG' ? 1.8 : 0.08 + (PDF_Q.quality - 50) / 50 * 0.32;
+            const mb = n * px * bpp / 1048576;
+            document.getElementById('pdf-q-est').textContent = n + ' page(s) · ' + Math.round(794 * PDF_Q.scale) + ' × ' + Math.round(1123 * PDF_Q.scale)
+                + ' px each · about ' + (mb < 1 ? mb.toFixed(1) : Math.round(mb)) + ' MB (rough)' + (PDF_Q.scale >= 4 ? ' · slower to make' : '');
+        }
+        function pdfQSet(k, v) {
+            if (k === 'scale') PDF_Q.scale = +v;
+            else if (k === 'format') PDF_Q.format = v === 'PNG' ? 'PNG' : 'JPEG';
+            else if (k === 'quality') PDF_Q.quality = Math.min(100, Math.max(50, Math.round(+v)));
+            pdfQPaint();
+        }
+        function pdfQClose() { document.getElementById('pdf-q-modal').classList.add('hidden'); }
+        function pdfQGo() {
+            const nm = (document.getElementById('pdf-q-name').value || '').trim().replace(/.pdf$/i, '').replace(/[\/:*?"<>|]+/g, '_');
+            try { localStorage.setItem(PDF_Q_KEY, JSON.stringify(PDF_Q)); } catch (e) { }
+            pdfQClose();
+            runPdfExport(Object.assign({}, PDF_Q), (nm || 'Touchwood_Catalog') + '.pdf');
+        }
+        function generatePDF() {
+            if (pdfBusy) return;
+            document.getElementById('pdf-q-name').value = cloud.name ? cloud.name.replace(/[^A-Za-z0-9]+/g, '_') : 'Touchwood_Catalog';
+            pdfQPaint();
+            document.getElementById('pdf-q-modal').classList.remove('hidden');
+        }
+
+        async function runPdfExport(q, fileName) {
             if (pdfBusy) return;
             pdfBusy = true;
             const btn = document.querySelector('button[onclick="generatePDF()"]');
@@ -3147,16 +3329,10 @@
             btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Generating PDF...';
             btn.disabled = true;
             try {
-                // Cover first, product pages, then the album page(s) last.
-                const coverPage = catalogData.find(p => p.pageType === 'cover');
-                const productPages = productPagesOf(catalogData);
-                const album = catalogData.find(p => p.pageType === 'album') || ALBUM_DEFAULT;
-                const back = catalogData.find(p => p.pageType === 'back') || BACK_DEFAULT;
-                const ordered = (coverPage ? [coverPage] : []).concat(productPages, albumPagesFor(album, catalogData), [back]);
-                const pdf = await buildPdf(ordered, (i, n) => {
+                const pdf = await buildPdf(pdfOrderedPages(), (i, n) => {
                     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Page ' + i + ' of ' + n + '...';
-                });
-                pdf.save((cloud.name ? cloud.name.replace(/[^A-Za-z0-9]+/g, '_') : 'Touchwood_Catalog') + '.pdf');
+                }, q);
+                pdf.save(fileName);
             } catch (err) {
                 console.error("PDF Generation Error: ", err);
                 showModal("An error occurred while generating the PDF" + (err && err.message ? ": " + err.message : "."));
