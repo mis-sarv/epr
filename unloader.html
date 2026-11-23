@@ -28,10 +28,22 @@
   Looks like mobile.html on purpose (same mobile.css): the same people use
   both on the same phones. Rates and amounts are not shown: the supervisor
   verifies what physically arrived, not the price.
+
+  GATE INWARD tab (sql/GATE_INWARD_UNLOADER_MIGRATION.sql): the gate's Inward
+  approver (launcher › Gate Approvals) assigns ONE Unloader when approving.
+  That Unloader opens it here, sees the gate's bill / item / vehicle photos,
+  takes the Photos / Original Invoice (1-15) and confirms with their own PIN
+  (gate_ul_upload; again = the new set replaces the old one, until the Store
+  books it). The ERP Inward shows them in its Photos / Original Invoice box as
+  soon as that Gate Entry No. is picked, and then does NOT send the entry to
+  the To Verify list any more. Without the migration the tab stays empty.
 -->
 <link rel="stylesheet" href="mobile.css?v=20261023a">
 <style>
   .stage-tabs.two { grid-template-columns: repeat(2, 1fr); }
+  .stage-tabs.three { grid-template-columns: repeat(3, 1fr); }
+  .ul-photo.view { cursor: zoom-in; }
+  .ul-photo .cap { position: absolute; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.55); color: #fff; font-size: 0.62rem; font-weight: 700; padding: 2px 5px; }
   .hdr-btn { font-size: 0.72rem; font-weight: 700; background: rgba(255,255,255,0.18); padding: 5px 10px; border-radius: 20px; cursor: pointer; border: none; color: #fff; }
   header { background-color: #c2410c; }
   .stage-tab.active { background: #c2410c; border-color: #c2410c; }
@@ -80,9 +92,12 @@
     </span>
   </header>
 
-  <nav class="stage-tabs two" id="stageTabs">
+  <nav class="stage-tabs three" id="stageTabs">
     <div class="stage-tab" data-tab="PENDING" onclick="setTab('PENDING')">
       <span class="st-lbl">To Verify</span><span class="st-count zero" id="cnt-PENDING">0</span>
+    </div>
+    <div class="stage-tab" data-tab="GATE" onclick="setTab('GATE')">
+      <span class="st-lbl">Gate Inward</span><span class="st-count zero" id="cnt-GATE">0</span>
     </div>
     <div class="stage-tab" data-tab="DONE" onclick="setTab('DONE')">
       <span class="st-lbl">Verified / Rejected</span><span class="st-count zero" id="cnt-DONE">0</span>
@@ -145,6 +160,32 @@
     </div>
   </div>
 
+  <!-- Gate Inward: the Photos / Original Invoice of a gate entry assigned to this Unloader (GATE INWARD TAB in the script). -->
+  <div class="modal-overlay" id="gModal">
+    <div class="modal-content">
+      <div class="modal-title"><span id="gTitle">Gate Inward</span><button class="close-btn" onclick="closeGate()">×</button></div>
+      <div class="req-meta-info" id="gMeta"></div>
+      <div id="gState"></div>
+      <div class="ul-sec"><span>Photos at the gate</span></div>
+      <div class="ul-photos" id="gGatePh"></div>
+      <div id="gDone"></div>
+      <div id="gAct">
+        <div class="ul-sec"><span>Photos / Original Invoice <span style="color:#dc3545;">*</span></span><span id="gPhCount" style="font-size:0.75rem;color:#c2410c;"></span></div>
+        <div class="ul-pick">
+          <label>Take Photo<input type="file" data-up="ul-gate-invoice" accept="image/*" capture="environment" onchange="addGatePhotos(this)"></label>
+          <label>Choose Photos<input type="file" data-up="ul-gate-invoice" accept="image/*" multiple onchange="addGatePhotos(this)"></label>
+        </div>
+        <div class="ul-photos" id="gPhGrid"></div>
+        <div class="ul-hint">The original invoice / bill and the unloaded material: 1 to 15 photos. The Store sees them on the ERP Inward form when it picks this Gate Entry No., and each one becomes a page of the Original Invoice PDF.</div>
+        <div class="form-group" style="margin-top:12px;">
+          <label>Remarks <small style="font-weight:500;color:#6b7280;">optional</small></label>
+          <textarea id="gRemarks" rows="2" placeholder="Shortage, damage, wet bags, anything to note..."></textarea>
+        </div>
+        <button class="btn" id="gUpBtn" onclick="askGatePin()">Upload with my PIN</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Saved photos of a decided request. -->
   <div class="modal-overlay" id="ulViewer">
     <div class="modal-content">
@@ -173,7 +214,10 @@ function stamp(v){
 }
 function dmy(v){ const m = String(v || '').match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? m[3] + '/' + m[2] + '/' + m[1] : (v || ''); }
 
-let TAB = 'PENDING', ROWS = { PENDING: [], DONE: [] }, ME = {}, OPEN = null, PHOTOS = [], ACTION = '';
+let TAB = 'PENDING', ROWS = { PENDING: [], GATE: [], DONE: [] }, ME = {}, OPEN = null, PHOTOS = [], ACTION = '';
+// Gate Inward tab: the open gate entry, its detail (gate photos + uploaded ones) and the new photo set
+let GOPEN = null, GDET = null, GPHOTOS = [], GEDIT = false, GATE_ON = true;
+const GATE_PHOTO_MAX = 15;
 
 /* ── Server calls: one door for every ul_* RPC ───────────────────────── */
 const SESSION_ERR = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
@@ -191,7 +235,8 @@ const ERR_TEXT = {
   ALREADY_CANCELLED: 'The store has replaced this entry with a corrected one. Refresh the list.',
   NOT_FOUND: 'This entry was not found. Refresh the list.',
   // The store moved it to another supervisor while it was open here.
-  NOT_ASSIGNED: 'The store has sent this entry to a different supervisor. It is no longer in your list.'
+  NOT_ASSIGNED: 'This entry has been sent to a different Unloader. It is no longer in your list.',
+  ALREADY_BOOKED: 'The Store has already booked this gate entry in the ERP, so its photos cannot be changed any more.'
 };
 async function rpc(fn, args){
   let r;
@@ -206,7 +251,10 @@ async function rpc(fn, args){
   if (!r.ok) {
     const code = d && d.code;
     if (code === 'PGRST202' || code === '42883' || code === '42P01') {
-      throw new Error('The Unloader approval is not set up on the server yet. Admin: run UNLOADER_APPROVAL_MIGRATION.sql in the Supabase SQL Editor.');
+      const e = new Error(/^gate_ul_/.test(fn)
+        ? 'The Gate Inward step is not set up on the server yet. Admin: run GATE_INWARD_UNLOADER_MIGRATION.sql in the Supabase SQL Editor.'
+        : 'The Unloader approval is not set up on the server yet. Admin: run UNLOADER_APPROVAL_MIGRATION.sql in the Supabase SQL Editor.');
+      e.code = 'NO_MIGRATION'; throw e;
     }
     throw new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status));
   }
@@ -226,8 +274,12 @@ function busy(on, text){ $('busyOverlay').style.display = on ? 'flex' : 'none'; 
 /* ── List ──────────────────────────────────────────────────────────── */
 async function load(manual){
   try {
-    const [p, d] = await Promise.all([rpc('ul_list', { p_scope: 'PENDING' }), rpc('ul_list', { p_scope: 'DONE' })]);
+    // the Gate Inward list on its own: a server without its migration only empties that tab
+    const gateP = rpc('gate_ul_list').then(g => { GATE_ON = true; return g.rows || []; })
+      .catch(e => { if (e.code === 'NO_MIGRATION') GATE_ON = false; else console.warn('[UL] Gate Inward not read:', e.message || e); return null; });
+    const [p, d, g] = await Promise.all([rpc('ul_list', { p_scope: 'PENDING' }), rpc('ul_list', { p_scope: 'DONE' }), gateP]);
     ROWS.PENDING = p.rows || []; ROWS.DONE = d.rows || []; ME = p.me || {};
+    if (g) ROWS.GATE = g; else if (!GATE_ON) ROWS.GATE = [];
     $('meBadge').textContent = (ME.name || '-') + ' · Log out';
     // Warned up front, not at the PIN: an approval without these is refused.
     $('profileNote').innerHTML = (!ME.emp_code || !ME.contact_no)
@@ -240,9 +292,10 @@ async function load(manual){
   }
 }
 function renderTabs(){
-  ['PENDING', 'DONE'].forEach(k => {
-    const n = ROWS[k].length, c = $('cnt-' + k);
-    c.textContent = n; c.classList.toggle('zero', !n); c.classList.toggle('alert', k === 'PENDING' && n > 0);
+  ['PENDING', 'GATE', 'DONE'].forEach(k => {
+    // Gate Inward counts only what still waits for this Unloader's photos
+    const n = k === 'GATE' ? gateWaiting().length : ROWS[k].length, c = $('cnt-' + k);
+    c.textContent = n; c.classList.toggle('zero', !n); c.classList.toggle('alert', (k === 'PENDING' || k === 'GATE') && n > 0);
   });
   document.querySelectorAll('.stage-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === TAB));
 }
@@ -250,6 +303,7 @@ function setTab(k){ TAB = k; try { sessionStorage.setItem('ul_tab', k); } catch 
 const items = r => (r && r.payload && Array.isArray(r.payload.items)) ? r.payload.items : [];
 function renderList(){
   const q = ($('q').value || '').trim().toUpperCase();
+  if (TAB === 'GATE') return renderGateList(q);
   const list = ROWS[TAB].filter(r => !q || [r.request_no, r.supplier_name, r.invoice_no, r.po_numbers, r.req_numbers, r.requested_by]
     .some(v => String(v || '').toUpperCase().indexOf(q) >= 0));
   if (!list.length) {
@@ -391,6 +445,7 @@ function askPin(action){
 }
 function closePin(){ $('pinModal').style.display = 'none'; }
 async function submitDecision(){
+  if (ACTION === 'GATE_UPLOAD') return submitGateUpload();
   const pin = $('pinIn').value.trim();
   const showErr = m => { $('pinErr').textContent = m; $('pinErr').style.display = 'block'; };
   if (!/^\d{4,8}$/.test(pin)) return showErr('Enter your 4 to 8 digit PIN.');
@@ -408,11 +463,166 @@ async function submitDecision(){
   } finally { b.disabled = false; b.textContent = old; busy(false); }
 }
 
+/* ── GATE INWARD TAB (sql/GATE_INWARD_UNLOADER_MIGRATION.sql) ──────────
+   Rows = gate Inward entries whose approver assigned them to this Unloader
+   (gate_ul_list: still waiting, or uploaded in the last 3 days; an Admin sees
+   everybody's). One = the gate's photos + the Photos / Original Invoice,
+   uploaded with the Unloader's own PIN (gate_ul_upload). An uploaded set can be
+   replaced until the Store books the entry in the ERP (bookedBy). */
+const gateWaiting = () => (ROWS.GATE || []).filter(r => r.status === 'ASSIGNED' && r.mine);
+const gateRef = r => r.refNo ? (r.refType || 'Ref') + ' ' + r.refNo : 'Without PO / PR';
+const gateName = g => g === 'G1' ? 'Gate-1 (Unit-1)' : 'Gate-2 (Unit-2)';
+function renderGateList(q){
+  if (!GATE_ON) {
+    $('list').innerHTML = '<div class="ul-note warn" style="margin:0;">The Gate Inward step is not set up on the server yet. Admin: run GATE_INWARD_UNLOADER_MIGRATION.sql in the Supabase SQL Editor.</div>';
+    return;
+  }
+  const list = (ROWS.GATE || []).filter(r => !q || [r.entryId, r.party, r.vehicle, r.refNo, r.storeRef, r.approvedBy, r.to, r.bookedBy, r.inEntryType]
+    .some(v => String(v || '').toUpperCase().indexOf(q) >= 0));
+  if (!list.length) {
+    $('list').innerHTML = '<p class="empty-msg">' + (q ? 'Nothing matches the search.' : 'Nothing assigned to you. A gate Inward appears here as soon as its approver approves it and chooses you as the Unloader.') + '</p>';
+    return;
+  }
+  $('list').innerHTML = list.map(r => {
+    let act;
+    if (r.bookedBy) act = '<div class="card-action done">✔ ' + esc(r.photoCount || 0) + ' photo(s) · booked by the Store as Inward ' + esc(r.bookedBy) + '</div>';
+    else if (r.status === 'DONE') act = '<div class="card-action done">✔ ' + esc(r.photoCount || 0) + ' photo(s) uploaded by ' + esc(r.doneBy || '-') + ' · ' + esc(stamp(r.doneAt)) + ' · waiting for the Store</div>';
+    else act = '<div class="card-action act">Tap to upload the Photos / Original Invoice</div>';
+    return '<div class="card" onclick="openGate(\'' + esc(r.uid) + '\')">'
+      + '<div class="card-header"><span>' + esc(r.entryId || '-') + '</span><span style="font-size:0.75rem;color:#64748b;">'
+      + esc(r.inEntryType === 'INWARD NB' ? 'INWARD NB' : 'INWARD') + ' · ' + esc(gateName(r.gate)) + '</span></div>'
+      + '<div class="card-detail">Party: <b>' + esc(r.party || '-') + '</b></div>'
+      + '<div class="card-detail">' + esc(gateRef(r)) + (r.vehicle && r.vehicle !== 'N/A' ? ' · Vehicle <b>' + esc(r.vehicle) + '</b>' : '') + '</div>'
+      + '<div class="card-detail" style="font-size:0.75rem;">Approved by ' + esc(r.approvedBy || '-') + ' · ' + esc(stamp(r.approvedAt))
+      + (!r.mine ? ' · for ' + esc(r.to || '-') : '') + '</div>'
+      + act + '</div>';
+  }).join('');
+}
+async function openGate(uid){
+  const r = (ROWS.GATE || []).find(x => x.uid === uid); if (!r) return;
+  GOPEN = r; GDET = null; GPHOTOS = []; GEDIT = false;
+  $('gTitle').textContent = r.entryId + ' · ' + (r.inEntryType === 'INWARD NB' ? 'Inward NB' : 'Inward');
+  $('gMeta').innerHTML = '<b>' + esc(r.party || '-') + '</b><br>'
+    + esc(gateName(r.gate)) + ' · ' + esc(gateRef(r)) + '<br>'
+    + (r.vehicle && r.vehicle !== 'N/A' ? 'Vehicle: <b>' + esc(r.vehicle) + '</b><br>' : '')
+    + (r.storeRef ? 'Store Ref: <b>' + esc(r.storeRef) + '</b><br>' : '')
+    + 'At the gate: ' + esc(stamp(r.inTime)) + (r.guard ? ' · ' + esc(r.guard) : '') + '<br>'
+    + '<span style="font-size:0.75rem;color:#64748b;">Approved by ' + esc(r.approvedBy || '-') + ' · ' + esc(stamp(r.approvedAt))
+    + ' · assigned by ' + esc(r.by || '-') + '</span>';
+  $('gGatePh').innerHTML = '<p class="empty-msg" style="grid-column:1/-1;">Loading…</p>';
+  $('gDone').innerHTML = ''; $('gRemarks').value = r.remarks || '';
+  gatePaint();
+  $('gModal').style.display = 'flex';
+  try {
+    const d = await rpc('gate_ul_detail', { p_uid: uid });
+    if (!GOPEN || GOPEN.uid !== uid) return;
+    GDET = d; GOPEN = Object.assign({}, r, d.row || {});
+  } catch (e) {
+    if (!GOPEN || GOPEN.uid !== uid) return;
+    GDET = { gatePhotos: {}, photos: [] };
+    $('gGatePh').innerHTML = '<div class="ul-note bad" style="margin:0;grid-column:1/-1;">' + esc(e.message || e) + '</div>';
+    if (e.code === 'NOT_ASSIGNED' || e.code === 'NOT_FOUND') { alert(e.message); closeGate(true); load(); }
+    return;
+  }
+  gatePaint();
+}
+// The sheet in its state: waiting (pickers on) / uploaded (photos + Replace) / booked (view only)
+function gatePaint(){
+  const r = GOPEN; if (!r) return;
+  const booked = !!r.bookedBy, done = r.status === 'DONE';
+  const gp = (GDET && GDET.gatePhotos) || {};
+  if (GDET) {
+    const tiles = [['billPhoto', 'Bill'], ['itemPhoto', 'Item'], ['vehiclePhoto', 'Vehicle']].filter(([k]) => gp[k])
+      .map(([k, l]) => '<div class="ul-photo view" onclick="zoomImgs([\'' + k + '\'])"><img src="' + gp[k] + '" alt="' + l + '"><span class="cap">' + l + '</span></div>');
+    $('gGatePh').innerHTML = tiles.join('') || '<p class="empty-msg" style="grid-column:1/-1;">No photo saved at the gate.</p>';
+  }
+  const up = (GDET && GDET.photos) || [];
+  $('gState').innerHTML = booked
+    ? '<div class="ul-decided ok">✔ Booked by the Store as Inward <b>' + esc(r.bookedBy) + '</b>. The photos can no longer be changed.</div>'
+    : done ? '<div class="ul-decided ok">✔ ' + esc(r.photoCount || up.length) + ' photo(s) uploaded by <b>' + esc(r.doneBy || '-') + '</b> · ' + esc(stamp(r.doneAt))
+      + '<br>The Store sees them when it picks ' + esc(r.entryId) + ' on the ERP Inward form.' + (r.remarks ? '<br>Remarks: ' + esc(r.remarks) : '') + '</div>'
+    : (!r.mine ? '<div class="ul-note warn" style="margin:0 0 10px;">Assigned to ' + esc(r.to || '-') + '. As Admin you can upload on their behalf.</div>' : '');
+  $('gDone').innerHTML = done && !GEDIT && up.length
+    ? '<div class="ul-sec"><span>Uploaded Photos / Original Invoice</span><span style="font-size:0.75rem;color:#c2410c;">' + up.length + '</span></div>'
+      + '<div class="ul-photos">' + up.map((src, i) => '<div class="ul-photo view" onclick="zoomUploaded(' + i + ')"><img src="' + src + '" alt="Photo ' + (i + 1) + '"></div>').join('') + '</div>'
+      + (booked ? '' : '<button class="clear-btn" style="margin:4px 0 8px;" onclick="gateReplace()">Replace these photos</button>')
+    : '';
+  $('gAct').style.display = !booked && (!done || GEDIT) ? '' : 'none';
+  renderGatePhotos();
+}
+function gateReplace(){
+  if (!confirm('Take a new set of photos? It replaces the ' + ((GDET && GDET.photos) || []).length + ' uploaded photo(s) once you upload it with your PIN.')) return;
+  GEDIT = true; GPHOTOS = []; gatePaint();
+}
+function closeGate(force){
+  if (!force && GPHOTOS.length && !confirm('Discard the ' + GPHOTOS.length + ' photo(s) taken for this gate entry?')) return;
+  $('gModal').style.display = 'none'; GOPEN = null; GDET = null; GPHOTOS = []; GEDIT = false;
+}
+async function addGatePhotos(inp){
+  const files = [...(inp.files || [])].filter(f => /^image\//.test(f.type));
+  inp.value = '';
+  if (!files.length) return;
+  const room = GATE_PHOTO_MAX - GPHOTOS.length;
+  if (room <= 0) return flash('At most ' + GATE_PHOTO_MAX + ' photos.');
+  busy(true, 'Processing photo(s)…');
+  try {
+    for (const f of files.slice(0, room)) { const d = await compress(f); if (d) GPHOTOS.push(d); }
+  } finally { busy(false); }
+  if (files.length > room) flash('Only ' + GATE_PHOTO_MAX + ' photos can be attached; the rest were left out.');
+  renderGatePhotos();
+}
+function removeGatePhoto(i){ GPHOTOS.splice(i, 1); renderGatePhotos(); }
+function renderGatePhotos(){
+  $('gPhGrid').innerHTML = GPHOTOS.map((d, i) => '<div class="ul-photo"><img src="' + d + '" alt="Photo ' + (i + 1) + '"><button onclick="removeGatePhoto(' + i + ')" title="Remove">✕</button></div>').join('');
+  $('gPhCount').textContent = GPHOTOS.length ? GPHOTOS.length + ' / ' + GATE_PHOTO_MAX : '';
+}
+function zoomImgs(keys){
+  const gp = (GDET && GDET.gatePhotos) || {};
+  $('viewerBody').innerHTML = keys.map(k => gp[k] ? '<img src="' + gp[k] + '" alt="">' : '').join('');
+  $('ulViewer').style.display = 'flex';
+}
+function zoomUploaded(i){
+  const up = (GDET && GDET.photos) || [];
+  // the tapped one first, then the rest in order
+  $('viewerBody').innerHTML = up.slice(i).concat(up.slice(0, i)).map(src => '<img src="' + src + '" alt="">').join('');
+  $('ulViewer').style.display = 'flex';
+}
+function askGatePin(){
+  if (!GOPEN) return;
+  if (!ME.emp_code || !ME.contact_no) return alert(ERR_TEXT.PROFILE_INCOMPLETE);
+  if (!GPHOTOS.length) return alert('Add at least one photo of the original invoice / material.');
+  ACTION = 'GATE_UPLOAD';
+  $('pinTitle').textContent = 'Upload · ' + (GOPEN.entryId || '');
+  $('pinBtn').textContent = '✔ Upload ' + GPHOTOS.length + ' photo(s)';
+  $('pinBtn').style.background = '';
+  $('pinIn').value = ''; $('pinErr').style.display = 'none';
+  $('pinModal').style.display = 'flex'; setTimeout(() => $('pinIn').focus(), 50);
+}
+async function submitGateUpload(){
+  const pin = $('pinIn').value.trim();
+  const showErr = m => { $('pinErr').textContent = m; $('pinErr').style.display = 'block'; };
+  if (!/^\d{4,8}$/.test(pin)) return showErr('Enter your 4 to 8 digit PIN.');
+  if (!GOPEN) return closePin();
+  const b = $('pinBtn'), old = b.textContent; b.disabled = true; b.textContent = 'Uploading…';
+  busy(true, 'Uploading ' + GPHOTOS.length + ' photo(s)…');
+  try {
+    await rpc('gate_ul_upload', { p_pin: pin, p_uid: GOPEN.uid, p_photos: GPHOTOS, p_remarks: $('gRemarks').value.trim() });
+    const no = GOPEN.entryId;
+    closePin(); closeGate(true);
+    flash('Photos of ' + no + ' uploaded. The Store sees them on the Inward form.');
+    await load();
+  } catch (e) {
+    if (e.code === 'PIN_INVALID' || e.code === 'TOO_MANY_ATTEMPTS') { $('pinIn').value = ''; showErr(e.message); }
+    else { closePin(); alert(e.message || e); if (/^ALREADY_|^NOT_ASSIGNED$|^NOT_FOUND$/.test(e.code || '')) { closeGate(true); load(); } }
+  } finally { b.disabled = false; b.textContent = old; busy(false); }
+}
+
 /* Log out ends the session in EVERY app (one login for all), so it is asked
    first; photos taken for an open entry are lost too, and the question says so. */
 function askLogout(){
   const lose = PHOTOS.length && OPEN && OPEN.status === 'Pending'
-    ? '\n\nThe ' + PHOTOS.length + ' photo(s) taken for ' + (OPEN.request_no || 'this entry') + ' will be lost.' : '';
+    ? '\n\nThe ' + PHOTOS.length + ' photo(s) taken for ' + (OPEN.request_no || 'this entry') + ' will be lost.'
+    : GPHOTOS.length && GOPEN ? '\n\nThe ' + GPHOTOS.length + ' photo(s) taken for ' + (GOPEN.entryId || 'this gate entry') + ' will be lost.' : '';
   if (!confirm('Do you want to Log out?' + lose)) return;
   SARV_GATE.logout({ url: SUPABASE_URL, key: SUPABASE_ANON });
 }
@@ -424,19 +634,19 @@ function flash(msg){
   if (!t) { t = document.createElement('div'); t.id = 'ulFlash'; t.style.cssText = 'position:absolute;left:50%;bottom:18px;transform:translateX(-50%);background:#1f2937;color:#fff;padding:9px 14px;border-radius:20px;font-size:0.8rem;font-weight:700;z-index:3000;max-width:90%;text-align:center;'; document.querySelector('.app-container').appendChild(t); }
   t.textContent = msg; t.style.display = 'block'; clearTimeout(flashT); flashT = setTimeout(() => { t.style.display = 'none'; }, 2600);
 }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ($('pinModal').style.display === 'flex') closePin(); else if ($('ulModal').style.display === 'flex') closeModal(); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ($('pinModal').style.display === 'flex') closePin(); else if ($('ulModal').style.display === 'flex') closeModal(); else if ($('gModal').style.display === 'flex') closeGate(); } });
 
 /* ── Boot ──────────────────────────────────────────────────────────── */
 (async function boot(){
   // Resolves only when the user may enter; otherwise the gate shows the reason.
   await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Unloader Supervisor' });
-  try { TAB = sessionStorage.getItem('ul_tab') === 'DONE' ? 'DONE' : 'PENDING'; } catch (e) {}
+  try { const t = sessionStorage.getItem('ul_tab'); TAB = t === 'DONE' || t === 'GATE' ? t : 'PENDING'; } catch (e) {}
   try { await load(); }
   finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
   // New submissions show up on their own; never while a request is open, so
   // photos being taken are not disturbed.
-  setInterval(() => { if (!OPEN && document.visibilityState === 'visible') load(); }, 30000);
-  document.addEventListener('visibilitychange', () => { if (!OPEN && document.visibilityState === 'visible') load(); });
+  setInterval(() => { if (!OPEN && !GOPEN && document.visibilityState === 'visible') load(); }, 30000);
+  document.addEventListener('visibilitychange', () => { if (!OPEN && !GOPEN && document.visibilityState === 'visible') load(); });
 })();
 </script>
 <!-- Floating "← Apps" button (hidden without a session). -->

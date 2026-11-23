@@ -136,6 +136,15 @@
         .scan-frame .scan-line { position: absolute; left: 10%; right: 10%; height: 2px; top: 12%; background: #34d399; box-shadow: 0 0 12px #34d399; border-radius: 2px; animation: scanMove 2.2s ease-in-out infinite alternate; }
         @keyframes scanMove { from { top: 12%; } to { top: 86%; } }
         .scan-frame.hit span { border-color: #34d399; }
+        /* Inward NB form (section 5, inwSetType): maroon-red throughout, so an NB entry is never mistaken for a normal Inward.
+           id + class beats the Tailwind utility classes on these elements. */
+        .inw-nb-band { background: linear-gradient(135deg, #5f0f1c 0%, #8b1e2d 50%, #b4233c 100%); box-shadow: 0 8px 20px rgba(95,15,28,0.28); }
+        #view-inwardForm.inw-nb { background: linear-gradient(165deg, #fff6f6 0%, #fcebed 45%, #f5d6db 100%); border: 1px solid rgba(139,30,45,0.18); box-shadow: 0 8px 30px rgba(95,15,28,0.16); }
+        #view-inwardForm.inw-nb #inwFormHead { border-bottom-color: rgba(139,30,45,0.22); }
+        #view-inwardForm.inw-nb #inwFormTitle { color: #6b1220; }
+        #view-inwardForm.inw-nb #inwFormBack { color: #9f1239; }
+        #view-inwardForm.inw-nb #inwSubmitBtn { background: linear-gradient(135deg, #5f0f1c 0%, #8b1e2d 50%, #b4233c 100%); box-shadow: 0 10px 22px rgba(95,15,28,0.32); }
+        #view-inwardForm.inw-nb :focus { --tw-ring-color: rgba(159,18,57,0.5) !important; }
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
 <link rel="stylesheet" href="ios-ui.css?v=20261118a">
@@ -327,11 +336,11 @@
                     <span class="w-10"></span>
                 </div>
                 <div class="space-y-3">
-                    <button onclick="showView('inwardForm')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
+                    <button onclick="inwOpenNew()" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
                         <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-box-open"></i></div>
                         <div class="min-w-0 flex-1">
                             <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">New Inward Entry</span>
-                            <span class="block text-[11px] font-semibold text-blue-700/80">Approval request: party, PO / PR, bill + item photo, approver</span>
+                            <span class="block text-[11px] font-semibold text-blue-700/80">Inward / Inward NB: party, PO / PR, bill + item photo, approver</span>
                         </div>
                         <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
                     </button>
@@ -387,15 +396,25 @@
             </div>
 
             <div id="view-inwardForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
-                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
-                    <button onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                <div id="inwFormHead" class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button id="inwFormBack" onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
-                    <h2 class="text-[16px] font-bold text-gray-900">Inward Material Entry</h2>
+                    <h2 id="inwFormTitle" class="text-[16px] font-bold text-gray-900">Inward Material Entry</h2>
                     <span class="w-10"></span>
                 </div>
 
                 <form id="formInward" class="space-y-4">
+                    <!-- The In Entry Type is chosen on New Inward Entry (inwTypeModal), not in the form: an INWARD NB form
+                         (after the PIN) shows this band and turns maroon (.inw-nb, inwSetType) -->
+                    <div id="inwNbBand" class="hidden inw-nb-band rounded-2xl px-4 py-3 text-white flex items-center gap-3">
+                        <div class="w-9 h-9 rounded-xl bg-white/15 flex items-center justify-center shrink-0"><i class="fa-solid fa-lock-open"></i></div>
+                        <div class="min-w-0">
+                            <p class="text-[13px] font-extrabold uppercase tracking-wide">Inward NB Entry</p>
+                            <p id="inwNbBy" class="text-[11px] font-semibold text-white/80 truncate">PIN verified</p>
+                        </div>
+                    </div>
+
                     <!-- Inward No Input -->
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -518,24 +537,30 @@
                         <!-- Expandable Dharam Kanta Fields for Inward (Net Weight Locked & Auto-Calculated) -->
                         <div id="inwardDkFields" class="hidden mt-2.5 p-3.5 bg-cyan-50/60 border border-cyan-200/80 rounded-2xl space-y-3 ios-spring">
                             <div>
-                                <label class="block text-[11px] font-bold text-cyan-800 uppercase mb-1">Dharam Kanta Slip No *</label>
-                                <input type="text" id="inDkSlipNo" placeholder="e.g. DK-4501" class="w-full px-3.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-[11px] font-bold text-cyan-800 uppercase">Dharam Kanta Slip No *</label>
+                                    <span id="inDkSlipNoHint" class="text-[10px] font-semibold text-cyan-600">Auto · next serial</span>
+                                </div>
+                                <input type="text" id="inDkSlipNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-2.5 bg-gray-100 border border-cyan-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none focus:outline-none">
                             </div>
 
                             <div class="grid grid-cols-3 gap-2">
                                 <div>
-                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gross Wt (Kg)</label>
+                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gross Wt (Kg) *</label>
                                     <input type="number" step="0.01" id="inDkGross" oninput="calcInwardNetWeight()" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
                                 </div>
                                 <div>
-                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tare Wt (Kg)</label>
-                                    <input type="number" step="0.01" id="inDkTare" oninput="calcInwardNetWeight()" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                    <!-- LOCKED: 3 taps + the user's own PIN unlock it (PIN_LOCKS, section 5); else the Tare is taken at Out -->
+                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tare Wt (Kg) <i id="inDkTareLockIcon" class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                                    <input type="number" step="0.01" id="inDkTare" oninput="calcInwardNetWeight()" onclick="pinLockTap('inDkTare')" readonly placeholder="At Out" class="w-full px-2.5 py-2.5 bg-gray-200/80 border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-not-allowed">
+                                    <p id="inDkTareHint" class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Tap 3 times to unlock (PIN)</p>
                                 </div>
                                 <div>
                                     <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
                                     <input type="number" step="0.01" id="inDkNet" readonly tabindex="-1" placeholder="Auto" class="w-full px-2.5 py-2.5 bg-cyan-100/90 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed select-none focus:outline-none">
                                 </div>
                             </div>
+                            <p class="text-[10px] font-semibold text-cyan-800/80 -mt-1">The loaded vehicle is weighed now (Gross). Tare is locked (tap it 3 times + your PIN to enter it now); otherwise the empty vehicle is weighed after unloading and the Tare is entered at Existing Inward › Out, where it can also be changed.</p>
 
                             <div>
                                 <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle Photo (Weighbridge)</label>
@@ -572,7 +597,7 @@
                         <span id="autoStoreNo" class="font-mono text-sm font-extrabold bg-white text-blue-700 px-3 py-1.5 rounded-xl shadow-sm border border-blue-100">STR-IN-0000</span>
                     </div>
 
-                    <button type="submit" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
+                    <button type="submit" id="inwSubmitBtn" class="ios-btn w-full bg-blue-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 text-sm">
                         <i class="fa-solid fa-paper-plane"></i> Send for Approval
                     </button>
                 </form>
@@ -604,17 +629,17 @@
                     </button>
 
                     <!-- OUT FROM DISPATCH -->
-                    <button onclick="showView('outwardDispatchForm')" class="ios-btn w-full p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-between">
+                    <button onclick="showView('dispatchMenu')" class="ios-btn w-full p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl flex items-center justify-between">
                         <div class="flex items-center gap-3.5">
                             <div class="w-11 h-11 rounded-xl bg-indigo-600 text-white flex items-center justify-center text-lg shadow-sm">
                                 <i class="fa-solid fa-truck-ramp-box"></i>
                             </div>
                             <div class="text-left">
                                 <h3 class="text-sm font-extrabold text-gray-900">OUT FROM DISPATCH</h3>
-                                <p class="text-[11px] text-gray-500">Generate Packing Slip & Weighment</p>
+                                <p class="text-[11px] text-gray-500">Packing Slip & Weighment · Approvals</p>
                             </div>
                         </div>
-                        <i class="fa-solid fa-chevron-right text-indigo-600"></i>
+                        <span class="flex items-center gap-2"><span id="dspOutBadge" class="hidden min-w-[22px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center"></span><i class="fa-solid fa-chevron-right text-indigo-600"></i></span>
                     </button>
 
                     <!-- SAMPLE / OTHER RETURN (the returnable Sample & Other entries waiting to go back) -->
@@ -783,7 +808,7 @@
             <!-- VIEW 4B: OUT FROM DISPATCH (PACKING SLIP FORM) -->
             <div id="view-outwardDispatchForm" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
                 <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
-                    <button onclick="showView('outwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                    <button onclick="showView('dispatchMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
                     <h2 class="text-[16px] font-bold text-gray-900">Dispatch Packing Slip</h2>
@@ -848,6 +873,9 @@
                         </div>
                     </div>
 
+                    <!-- Approval by the Net Wt (Approval Rules, section 6C): none, or one person of the rule's group -->
+                    <div id="dispApBox" class="hidden rounded-2xl border px-3.5 py-3 space-y-2"></div>
+
                     <!-- Loaded Vehicle Live Camera Capture -->
                     <div>
                         <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Loaded Vehicle Photo (Live Camera) *</label>
@@ -874,6 +902,76 @@
                         <i class="fa-solid fa-circle-check"></i> Verify and Submit
                     </button>
                 </form>
+            </div>
+
+            <!-- VIEW 4C: OUT FROM DISPATCH MENU (section 6C): the slip form, its approvals, and the rules (Admin) -->
+            <div id="view-dispatchMenu" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-4 border-b border-gray-100">
+                    <button onclick="showView('outwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Out From Dispatch</h2>
+                    <span class="w-10"></span>
+                </div>
+                <div class="space-y-3">
+                    <button onclick="showView('outwardDispatchForm')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md shadow-indigo-500/30 shrink-0"><i class="fa-solid fa-truck-ramp-box"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-indigo-800 uppercase tracking-wide">Dispatch Packing Slip</span>
+                            <span class="block text-[11px] font-semibold text-indigo-700/80">Dharam Kanta slip, Gross / Net Wt, loaded vehicle photo</span>
+                        </div>
+                        <i class="fa-solid fa-chevron-right text-indigo-500 text-xs"></i>
+                    </button>
+                    <button onclick="showView('dispatchPending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-orange-500/10 border border-orange-500/25 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl shadow-md shadow-orange-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-orange-800 uppercase tracking-wide">Pending Approval</span>
+                            <span id="dspPendSub" class="block text-[11px] font-semibold text-orange-700/80">Slips sent for approval · Done with your PIN</span>
+                        </div>
+                        <span id="dspPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-orange-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-orange-500 text-xs"></i>
+                    </button>
+                    <button id="dspRulesBtn" onclick="showView('dispatchRules')" class="hidden ios-btn w-full flex items-center gap-3.5 p-4 bg-gray-100/80 border border-gray-200 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-gray-700 text-white flex items-center justify-center text-xl shadow-md shrink-0"><i class="fa-solid fa-sliders"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-gray-800 uppercase tracking-wide">Approval Rules</span>
+                            <span id="dspRulesSub" class="block text-[11px] font-semibold text-gray-600">Admin: who approves at which Net Wt</span>
+                        </div>
+                        <i class="fa-solid fa-lock text-gray-500 text-xs"></i>
+                    </button>
+                </div>
+            </div>
+
+            <!-- VIEW 4D: DISPATCH PENDING APPROVAL (waiting / approved -> Done with PIN / rejected -> Close with PIN) -->
+            <div id="view-dispatchPending" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('dispatchMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Dispatch Pending Approval</h2>
+                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="dspPollIcon" class="fa-solid fa-rotate"></i></button>
+                </div>
+                <p id="dspPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
+                <div id="dspPendList" class="space-y-2.5"></div>
+            </div>
+
+            <!-- VIEW 4E: DISPATCH APPROVAL RULES (Admin only; saved on the server with the Admin's PIN) -->
+            <div id="view-dispatchRules" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
+                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
+                    <button onclick="showView('dispatchMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
+                        <i class="fa-solid fa-chevron-left"></i> Back
+                    </button>
+                    <h2 class="text-[16px] font-bold text-gray-900">Approval Rules</h2>
+                    <span class="w-10"></span>
+                </div>
+                <p class="text-[11px] font-semibold text-gray-500 mb-3">A Dispatch Packing Slip needs approval by its <b>Net Wt (Kg)</b>. Each band runs from its From up to (not including) its To; the last band has no To (= and above). The guard picks one person of the band's group; that person approves on the launcher with their PIN. The same rules work for both gates.</p>
+                <div id="dspRulesList" class="space-y-2"></div>
+                <div class="flex gap-2 mt-3">
+                    <button type="button" onclick="dispRulesAdd()" class="ios-btn flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-extrabold"><i class="fa-solid fa-plus"></i> Add band</button>
+                    <button type="button" onclick="dispRulesReset()" class="ios-btn flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-extrabold"><i class="fa-solid fa-rotate-left"></i> Default</button>
+                </div>
+                <p id="dspRulesMsg" class="text-[11px] font-bold mt-3"></p>
+                <button type="button" onclick="dispRulesSave()" class="ios-btn w-full mt-3 bg-gray-800 text-white font-bold py-3.5 rounded-2xl shadow-lg flex items-center justify-center gap-2 text-sm"><i class="fa-solid fa-floppy-disk"></i> Save rules (PIN)</button>
             </div>
 
             <!-- VIEW 5A: VISITOR MENU (New entry -> host approves on the launcher -> Done -> Existing -> Out) -->
@@ -1074,8 +1172,10 @@
                     <!-- Gross Weight, Tare Weight & LOCKED Auto-Calculated Net Weight -->
                     <div class="grid grid-cols-3 gap-2.5">
                         <div>
-                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gross Wt (Kg) <span class="normal-case font-semibold text-gray-400">(optional)</span></label>
-                            <input type="number" step="0.01" min="0" id="dkGrossWeight" oninput="calculateNetWeight()" placeholder="Optional" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <!-- LOCKED: 3 taps + the user's own PIN unlock it (PIN_LOCKS, section 5) -->
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Gross Wt (Kg) <i id="dkGrossWeightLockIcon" class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                            <input type="number" step="0.01" min="0" id="dkGrossWeight" oninput="calculateNetWeight()" onclick="pinLockTap('dkGrossWeight')" readonly placeholder="Locked" class="w-full px-3 py-3 bg-gray-200/80 border border-gray-300/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-not-allowed">
+                            <p id="dkGrossWeightHint" class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Tap 3 times to unlock (PIN)</p>
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Tare Wt (Kg) *</label>
@@ -1536,6 +1636,36 @@
         </div>
     </div>
 
+    <!-- New Inward Entry: the entry type is chosen first (INWARD / INWARD NB; NB asks the user's own PIN, inwPickType) -->
+    <div id="inwTypeModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="inwCloseTypeModal()"></div>
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 border-b border-gray-100 shrink-0 flex items-center justify-between gap-3">
+                <h3 class="text-base font-bold text-gray-900">New Inward Entry</h3>
+                <button type="button" onclick="inwCloseTypeModal()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 space-y-3">
+                <p class="text-[11px] font-bold text-gray-400 uppercase">Choose the entry type</p>
+                <button type="button" onclick="inwPickType('INWARD')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
+                    <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-box-open"></i></div>
+                    <div class="min-w-0 flex-1">
+                        <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">Inward</span>
+                        <span id="inwTypeInSub" class="block text-[11px] font-semibold text-blue-700/80">Series IN-0001</span>
+                    </div>
+                    <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
+                </button>
+                <button type="button" onclick="inwPickType('INWARD NB')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-[20px] text-left">
+                    <div class="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center text-xl shadow-md shadow-indigo-500/30 shrink-0"><i class="fa-solid fa-file-circle-minus"></i></div>
+                    <div class="min-w-0 flex-1">
+                        <span class="block text-[13px] font-extrabold text-indigo-800 uppercase tracking-wide">Inward NB</span>
+                        <span id="inwTypeNbSub" class="block text-[11px] font-semibold text-indigo-700/80">Series IN-NB-0001 · your PIN is required</span>
+                    </div>
+                    <i class="fa-solid fa-lock text-indigo-500 text-xs"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Visitor / Hydra Out: out photo (camera) + remarks, both compulsory (texts set by openVisitorOut for a Hydra) -->
     <div id="visOutModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeVisitorOut()"></div>
@@ -1546,6 +1676,25 @@
             </div>
             <div class="p-5 overflow-y-auto space-y-3.5">
                 <div id="visOutWho" class="flex items-center gap-3"></div>
+                <!-- Inward with a Dharam Kanta slip (Gross weighed): the empty vehicle's Tare is compulsory here; one weighed at In comes pre-filled and can be changed -->
+                <div id="visOutDkBox" class="hidden p-3.5 bg-cyan-50/60 border border-cyan-200/80 rounded-2xl space-y-2">
+                    <p class="text-[11px] font-bold text-cyan-800 uppercase">Dharam Kanta · Slip <span id="visOutDkSlip"></span></p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div>
+                            <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Gross Wt (Kg) <i class="fa-solid fa-lock text-[9px]"></i></label>
+                            <input type="number" id="visOutDkGross" readonly tabindex="-1" class="w-full px-2.5 py-2.5 bg-cyan-100/90 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed focus:outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tare Wt (Kg) *</label>
+                            <input type="number" step="0.01" id="visOutDkTare" oninput="visOutDkCalc()" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                        </div>
+                        <div>
+                            <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px]"></i></label>
+                            <input type="number" id="visOutDkNet" readonly tabindex="-1" placeholder="Auto" class="w-full px-2.5 py-2.5 bg-cyan-100/90 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed focus:outline-none">
+                        </div>
+                    </div>
+                    <p id="visOutDkHint" class="text-[10px] font-semibold text-cyan-800/80"></p>
+                </div>
                 <div>
                     <label id="visOutPhotoTitle" class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Photo at Out *</label>
                     <label class="ios-btn flex flex-col items-center justify-center p-4 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
@@ -1900,7 +2049,9 @@
 
         // Gate numbers: never two rows with the same id (the old random 4 digits could repeat)
         const cleanGateId = v => String(v || '').toUpperCase().replace(/[^A-Z0-9\-_\/.]/g, '').slice(0, 30);
-        const gateIdTaken = id => gateEntries.some(e => e.id === id || e.outwardNo === id);
+        // an Inward's own Dharam Kanta slip (dk.auto = numbered from the DK series) counts as taken too
+        const gateDkSlipOf = e => (e.dk && e.dk.auto && e.dk.slip) || null;
+        const gateIdTaken = id => gateEntries.some(e => e.id === id || e.outwardNo === id || gateDkSlipOf(e) === id);
         /* ── WHICH GATE (sql/GATE1_UNIT1_MIGRATION.sql) ──
            gate_2.html = GATE-2 (Unit-2, Store 2); gate_1.html is a COPY of this file for GATE-1 (Unit-1, Store 1),
            made with GATE_ID 'G1', its own app key, its own phone storage keys and the G1- number prefix. Both share one
@@ -1935,14 +2086,16 @@
            continues from the highest number in its own copy of the register (newest
            synced data + its own entries). Visitor / Hydra numbers are not a typed series
            and stay as they were (genGateId). Keep GATE_SERIES = gate_series_prefix_(). */
-        const GATE_SERIES = { IN: GATE_PFX + 'IN-', OUT: GATE_PFX + 'OUT-', PKG: GATE_PFX + 'PKG-', DK: GATE_PFX + 'DK-' };
+        // INNB = the Inward NB No. (IN-NB-0001), its own series beside IN (sql/GATE_INWARD_NB_SERIES_MIGRATION.sql)
+        const GATE_SERIES = { IN: GATE_PFX + 'IN-', INNB: GATE_PFX + 'IN-NB-', OUT: GATE_PFX + 'OUT-', PKG: GATE_PFX + 'PKG-', DK: GATE_PFX + 'DK-' };
         // the server's series name (= gate_series_prefix_): Gate-2 IN / OUT ..., Gate-1 G1IN / G1OUT ...
         const gateSeriesName = s => (GATE_ID === 'G1' ? 'G1' : '') + s;
         let gateSeriesOn = null;   // false = the server has no gate_next_no yet
+        const gateSeriesBad = {};  // series the server does not know yet (BAD_SERIES: its migration not run): numbered on the phone
         const gateSeriesFmt = (s, n) => GATE_SERIES[s] + String(n).padStart(4, '0');
         function gateSeriesLocalMax(s) {
             const re = new RegExp('^' + GATE_SERIES[s] + '(\\d{1,15})$'); let mx = 0;
-            gateEntries.forEach(e => [e.id, s === 'OUT' ? e.outwardNo : null].forEach(v => { const m = re.exec(String(v || '')); if (m) mx = Math.max(mx, +m[1]); }));
+            gateEntries.forEach(e => [e.id, s === 'OUT' ? e.outwardNo : null, s === 'DK' ? gateDkSlipOf(e) : null].forEach(v => { const m = re.exec(String(v || '')); if (m) mx = Math.max(mx, +m[1]); }));
             return mx;
         }
         async function gateNextNo(s, reserve) {
@@ -1954,6 +2107,7 @@
                     gateSeriesOn = true;
                     if (!gateIdTaken(r.data.no)) return { no: r.data.no, server: true };
                 } else if (r.error === 'NO_MIGRATION') gateSeriesOn = false;
+                else if (r.error === 'BAD_SERIES') gateSeriesBad[s] = true;
             }
             let n = localNext; while (gateIdTaken(gateSeriesFmt(s, n))) n++;
             return { no: gateSeriesFmt(s, n), server: false };
@@ -1964,7 +2118,7 @@
             box.value = ''; const r = await gateNextNo(s, false);
             box.value = r.no;
             const h = document.getElementById(hintId);
-            if (h) h.textContent = r.server ? 'Auto · next serial' : (gateSeriesOn === false ? 'Auto · this phone (server series not set up)' : 'Auto · offline, from this phone');
+            if (h) h.textContent = r.server ? 'Auto · next serial' : (gateSeriesOn === false || gateSeriesBad[s] ? 'Auto · this phone (server series not set up)' : 'Auto · offline, from this phone');
             if (after) after(r.no);
         }
         // Save pressed: TAKE the number. Returns it, or '' when none could be made.
@@ -2590,7 +2744,7 @@
         const gsLink = (fn, a) => () => { if (window.GateLink && GateLink[fn]) GateLink[fn](a); else showIosBanner('Internet / page still loading: try again in a moment', 'info'); };
         // [id, icon, colour, Hinglish title, Hindi line, where, meanings, extra words, run]
         const GS_TASKS = [
-            ['inw_new', 'fa-box-open', 'blue', () => 'Naya maal aaya · Inward entry', 'नया माल आया – इनवर्ड एंट्री भरें', 'Inward › New Inward Entry', 'IN MATERIAL NEW VEHICLE', 'inward bill po pr party', gsGo('inwardForm')],
+            ['inw_new', 'fa-box-open', 'blue', () => 'Naya maal aaya · Inward entry', 'नया माल आया – इनवर्ड एंट्री भरें', 'Inward › New Inward Entry', 'IN MATERIAL NEW VEHICLE', 'inward bill po pr party nb', () => { showView('inwardMenu'); inwOpenNew(); }],
             ['inw_pend', 'fa-user-clock', 'orange', () => 'Inward approval pending', 'इनवर्ड मंजूरी बाकी – देखें / अनलोडिंग दें', 'Inward › Approval Pending', 'IN MATERIAL PENDING', 'unloading allow', gsGo('inwardPending')],
             ['inw_out', 'fa-truck-ramp-box', 'emerald', () => 'Inward gaadi bahar karna (khali gaadi)', 'माल उतारने के बाद गाड़ी बाहर करें', 'Inward › Existing Inward', 'IN MATERIAL VEHICLE OUT EXISTING', 'unload khali empty', gsGo('inwardExisting')],
             ['out_store', 'fa-warehouse', 'orange', () => 'Store se maal bahar · Out From Store', 'स्टोर से माल बाहर – गेट पास से', 'Outward › Out From Store', 'OUT MATERIAL STORE', 'gate pass outward bill', gsGo('outwardStoreForm')],
@@ -2978,6 +3132,9 @@
                 'view-outwardMenu',
                 'view-outwardStoreForm',
                 'view-outwardDispatchForm',
+                'view-dispatchMenu',
+                'view-dispatchPending',
+                'view-dispatchRules',
                 'view-visitorMenu',
                 'view-visitorPending',
                 'view-visitorExisting',
@@ -3008,12 +3165,13 @@
                 // the approver chosen last time on this phone (most days the same person)
                 const lastAp = readLS(INW_APPROVER_KEY, '');
                 if (lastAp && GATE_COMBOS.inApprover && !document.getElementById('inApprover').value) GATE_COMBOS.inApprover.set(lastAp, true);
-                // Store ref follows the Inward No.'s digits (STR-IN-0007 for IN-0007); set again on Save from the number taken.
-                gateFillNo('IN', 'inwardNo', 'inwardNoHint', no => {
-                    generatedStoreNo = 'STR-IN-' + no.slice(GATE_SERIES.IN.length);
-                    document.getElementById('autoStoreNo').textContent = generatedStoreNo;
-                });
+                // Inward No. of the chosen In Entry Type (an NB never without its PIN); the Store ref follows its digits
+                if (INW_ENTRY_TYPE === 'INWARD NB' && !INW_NB_AUTH) INW_ENTRY_TYPE = 'INWARD';
+                inwSetType(INW_ENTRY_TYPE);
+                if (isInwardDkActive) gateFillNo('DK', 'inDkSlipNo', 'inDkSlipNoHint');
+                if (!pinLockAuth('inDkTare')) pinLock('inDkTare');   // the weighbridge Tare stays locked unless opened with a PIN
             }
+            if (viewId === 'inwardMenu') inwResetType();   // left the form: the next entry asks its type (and NB PIN) again
 
             if (viewId === 'inwardPending') renderInwardPending();
             if (viewId === 'inwardExisting') renderInwardExisting();
@@ -3038,6 +3196,7 @@
             }
 
             if (viewId === 'dharamKantaForm') {
+                if (!pinLockAuth('dkGrossWeight')) pinLock('dkGrossWeight');   // locked again unless this form was unlocked and not saved yet
                 gateFillNo('DK', 'dkSlipNo', 'dkSlipNoHint');
                 renderDkPending();
                 dkVehicleCheck();
@@ -3049,6 +3208,10 @@
 
             // Approval Pending is checked every few seconds while it is open (the host may approve any moment)
             visPollStop();
+            // 6C DISPATCH APPROVAL: the menu (Rules for the Admin only), the pending list (polled like the others), the rules editor
+            if (viewId === 'dispatchMenu') { dispCfgLoad(false).then(dspRefreshUi); dspRefreshUi(); }
+            if (viewId === 'dispatchPending') { renderDispatchPending(); visPollStart(); }
+            if (viewId === 'dispatchRules') { if (!gateIsAdmin()) { showView('dispatchMenu'); showIosBanner('Approval Rules: Admin only', 'error'); return; } dispRulesOpen(); }
             if (viewId === 'visitorPending') { renderVisitorPending(); visPollStart(); }
             if (viewId === 'visitorExisting') renderVisitorExisting();
             if (viewId === 'visitorMenu') visRefreshUi();
@@ -3071,22 +3234,160 @@
         // ==========================================
         // 5. INWARD ENTRY & INWARD DHARAM KANTA
         // ==========================================
+        /* In Entry Type (`inEntryType` on the entry): INWARD runs on the Inward No. series IN (IN-0001), INWARD NB on its
+           own series INNB (IN-NB-0001). New Inward Entry first asks the type (inwTypeModal); INWARD NB opens only after the
+           logged-in user's own ERP PIN (gate_pin_check, like Delete; offline this phone's Delete PIN, logged as LOCAL_PIN).
+           The form itself has no type box: an NB form shows the maroon theme + band instead (inwSetType). The PIN holds for
+           this one form; a save or going back to the menu drops it (inwResetType). Kept as `nbAuth` {by, empCode, via, at}. */
+        const INW_SERIES = { 'INWARD': 'IN', 'INWARD NB': 'INNB' };
+        let INW_ENTRY_TYPE = 'INWARD', INW_NB_AUTH = null;
+        const inwEntryTypeOf = e => e.inEntryType || (String(e.id || '').indexOf(GATE_SERIES.INNB) === 0 ? 'INWARD NB' : 'INWARD');
+        const inwTypeTag = e => inwEntryTypeOf(e) === 'INWARD NB'
+            ? '<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[9px] font-extrabold uppercase">Inward NB</span>' : '';
+        // STR-IN-0007 for IN-0007 / G1-IN-0007, STR-IN-NB-0007 for IN-NB-0007
+        const inwStoreRefOf = no => 'STR-' + String(no || '').slice(GATE_PFX.length);
+        function inwResetType() { INW_ENTRY_TYPE = 'INWARD'; INW_NB_AUTH = null; }
+
+        function inwOpenNew() {
+            document.getElementById('inwTypeInSub').textContent = 'Series ' + GATE_SERIES.IN + '0001 · against PO / PR';
+            document.getElementById('inwTypeNbSub').textContent = 'Series ' + GATE_SERIES.INNB + '0001 · your PIN is required';
+            document.getElementById('inwTypeModal').classList.remove('hidden');
+        }
+        function inwCloseTypeModal() { document.getElementById('inwTypeModal').classList.add('hidden'); }
+        function inwPickType(t) {
+            inwCloseTypeModal();
+            inwResetType();
+            const go = type => { INW_ENTRY_TYPE = type; showView('inwardForm'); };
+            if (t === 'INWARD NB') inwNbAskPin(() => go('INWARD NB'));
+            else go('INWARD');
+        }
+        // shows the type (NB = maroon theme + band with who gave the PIN) and the next number of its series in the Inward No. box
+        function inwSetType(t) {
+            INW_ENTRY_TYPE = t === 'INWARD NB' ? 'INWARD NB' : 'INWARD';
+            const nb = INW_ENTRY_TYPE === 'INWARD NB';
+            document.getElementById('view-inwardForm').classList.toggle('inw-nb', nb);
+            document.getElementById('inwNbBand').classList.toggle('hidden', !nb);
+            document.getElementById('inwFormTitle').textContent = nb ? 'Inward NB Entry' : 'Inward Material Entry';
+            document.getElementById('inwNbBy').textContent = nb && INW_NB_AUTH
+                ? 'PIN verified · ' + (INW_NB_AUTH.by || '-') + ' · ' + formatDateTimeShort(INW_NB_AUTH.at) + (INW_NB_AUTH.via === 'LOCAL_PIN' ? ' (offline PIN)' : '')
+                : 'PIN verified';
+            const s = INW_SERIES[INW_ENTRY_TYPE];
+            gateFillNo(s, 'inwardNo', 'inwardNoHint', no => {
+                if (INW_SERIES[INW_ENTRY_TYPE] !== s) { inwSetType(INW_ENTRY_TYPE); return; }   // switched meanwhile: the late answer is not this type's
+                generatedStoreNo = inwStoreRefOf(no);
+                document.getElementById('autoStoreNo').textContent = generatedStoreNo;
+            });
+        }
+        /* ── PIN-LOCKED WEIGHT BOXES ──
+           A box listed here is read-only: 3 taps within 1.5 s + the logged-in user's own PIN (gatePinAsk: ERP PIN,
+           offline the phone's Delete PIN) open it for that one entry; its form's Save locks it again (leaving the form
+           unsaved keeps it open for that entry). Who opened it (auth {by, empCode, via, at}) is saved on the entry.
+             dkGrossWeight  Dharam Kanta slip › Gross Wt (grossAuth); the Dispatch Packing form takes it from the slip, editable
+             inDkTare       Inward › Dharam Kanta › Tare Wt (dk.tareAuth); left locked = the Tare is weighed and typed at Out,
+                            where it can also be changed (openVisitorOut)
+           Box ids: <id>, icon <id>LockIcon, hint <id>Hint. A new locked box = one entry here + those two elements. */
+        const PIN_LOCKS = {
+            dkGrossWeight: { title: 'Gross Wt', what: 'unlock the Gross Weight of this Dharam Kanta slip', calc: () => calculateNetWeight(), placeholder: 'Locked' },
+            inDkTare: { title: 'Tare Wt', what: 'unlock the Tare Weight of this Inward weighbridge slip', calc: () => calcInwardNetWeight(), placeholder: 'At Out' }
+        };
+        const PIN_LOCK_TAPS = 3, PIN_LOCK_TAP_MS = 1500;
+        const pinLockAuth = id => (PIN_LOCKS[id] && PIN_LOCKS[id].auth) || null;
+        function pinLock(id) {
+            const L = PIN_LOCKS[id], inp = document.getElementById(id); if (!L || !inp) return;
+            L.auth = null; L.taps = [];
+            inp.readOnly = true; inp.value = ''; inp.placeholder = L.placeholder;
+            inp.classList.add('bg-gray-200/80', 'cursor-not-allowed'); inp.classList.remove('bg-white');
+            document.getElementById(id + 'LockIcon').className = 'fa-solid fa-lock text-[9px] ml-0.5';
+            const h = document.getElementById(id + 'Hint');
+            h.textContent = 'Tap 3 times to unlock (PIN)'; h.className = 'text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight';
+            L.calc();
+        }
+        function pinUnlock(id, auth) {
+            const L = PIN_LOCKS[id], inp = document.getElementById(id); if (!L || !inp) return;
+            L.auth = auth; L.taps = [];
+            inp.readOnly = false; inp.placeholder = '0.00';
+            inp.classList.remove('bg-gray-200/80', 'cursor-not-allowed'); inp.classList.add('bg-white');
+            document.getElementById(id + 'LockIcon').className = 'fa-solid fa-lock-open text-[9px] ml-0.5 text-emerald-600';
+            const h = document.getElementById(id + 'Hint');
+            h.textContent = 'Unlocked · ' + (auth.by || '-') + (auth.via === 'LOCAL_PIN' ? ' (offline PIN)' : '');
+            h.className = 'text-[9.5px] font-bold text-emerald-700 mt-1 leading-tight truncate';
+            setTimeout(() => inp.focus(), 50);
+        }
+        function pinLockTap(id) {
+            const L = PIN_LOCKS[id]; if (!L || L.auth) return;   // already open
+            const now = Date.now();
+            L.taps = (L.taps || []).filter(t => now - t < PIN_LOCK_TAP_MS).concat(now);
+            const left = PIN_LOCK_TAPS - L.taps.length;
+            if (left > 0) { document.getElementById(id + 'Hint').textContent = `Locked · ${left} more tap${left > 1 ? 's' : ''} to unlock`; return; }
+            L.taps = [];
+            gatePinAsk(L.title + ' · PIN Required', L.what, auth => pinUnlock(id, auth));
+        }
+
+        function inwNbAskPin(onOk) {
+            gatePinAsk('Inward NB · PIN Required', 'make an Inward NB entry', auth => { INW_NB_AUTH = auth; onOk(); });
+        }
+        /* The logged-in ERP user's own PIN for a guarded step (Inward NB, unlocking the Dharam Kanta Gross Wt):
+           checked by the server (gate_pin_check, like Delete); offline this phone's Delete PIN, logged as LOCAL_PIN.
+           onOk(auth, pin) gets {by, empCode, via, at} (+ the PIN, only for a server call); Cancel calls nothing. */
+        let GATE_PIN_NEXT = null;
+        function gatePinAsk(title, what, onOk) {
+            const online = GATE_USER && !GATE_OFFLINE && navigator.onLine !== false;
+            GATE_PIN_NEXT = onOk;
+            document.getElementById('iosAlertTitle').textContent = title;
+            document.getElementById('iosAlertMsg').textContent = online
+                ? `Enter your ERP login PIN to ${what}:`
+                : `No internet: enter this phone's Delete PIN to ${what}. It is logged as an offline PIN.`;
+            document.getElementById('iosAlertPinBox').classList.remove('hidden');
+            const pinInput = document.getElementById('deletePinInput');
+            pinInput.value = '';
+            document.getElementById('iosAlertButtons').innerHTML = `
+                <button onclick="GATE_PIN_NEXT = null; closeIosAlert()" class="flex-1 py-3 text-[15px] font-medium text-blue-600 border-r border-gray-300/60 active:bg-gray-200/60">Cancel</button>
+                <button id="gatePinOk" onclick="gatePinCheck()" class="flex-1 py-3 text-[15px] font-bold text-indigo-600 active:bg-gray-200/60">Continue</button>
+            `;
+            document.getElementById('iosAlertModal').classList.remove('hidden');
+            setTimeout(() => pinInput.focus(), 100);
+        }
+        async function gatePinCheck() {
+            const pin = document.getElementById('deletePinInput').value.trim();
+            if (!pin) { showIosBanner('Enter the PIN', 'error'); return; }
+            const btn = document.getElementById('gatePinOk');
+            if (btn) { if (btn.disabled) return; btn.disabled = true; }
+            try {
+                let offline = !(GATE_USER && !GATE_OFFLINE && navigator.onLine !== false);
+                if (!offline) {
+                    // the server checks the PIN of the logged-in ERP user
+                    const r = await gateRpc('gate_pin_check', { p_pin: pin });
+                    if (!r.ok && r.error === 'WRONG_PIN') { showIosBanner('Incorrect PIN!', 'error'); return; }
+                    if (!r.ok && r.error === 'NO_MIGRATION') { showIosBanner('Server needs GATE2_REGISTER_MIGRATION.sql', 'error'); return; }
+                    if (!r.ok) offline = true;   // net dropped meanwhile: the phone's own PIN decides
+                }
+                if (offline && pin !== appSettings.adminPin) { showIosBanner('Incorrect Delete PIN!', 'error'); return; }
+                const auth = {
+                    by: (GATE_USER && GATE_USER.name) || appSettings.guardName || '', empCode: (GATE_USER && GATE_USER.emp_code) || '',
+                    via: offline ? 'LOCAL_PIN' : 'ERP_PIN', at: new Date().toISOString()
+                };
+                closeIosAlert();
+                const next = GATE_PIN_NEXT; GATE_PIN_NEXT = null;
+                if (next) next(auth, pin);   // the PIN too, for a step the server checks again (Approval Rules); never kept
+            } finally { if (btn) btn.disabled = false; }
+        }
+
         function toggleInwardDharamKanta() {
             isInwardDkActive = !isInwardDkActive;
             const box = document.getElementById('inwardDkFields');
             const badge = document.getElementById('inDkToggleBadge');
-            const slipInput = document.getElementById('inDkSlipNo');
-
             if (isInwardDkActive) {
                 box.classList.remove('hidden');
                 badge.textContent = '✓ Added';
                 badge.className = 'text-[10px] font-bold bg-emerald-500 text-white px-2.5 py-1 rounded-full';
-                slipInput.required = true;
+                // Slip No. = the Dharam Kanta series (DK, the same one as the Dharam Kanta form): shown now, taken on Save
+                gateFillNo('DK', 'inDkSlipNo', 'inDkSlipNoHint');
             } else {
                 box.classList.add('hidden');
                 badge.textContent = '+ Add Slip';
                 badge.className = 'text-[10px] font-bold bg-cyan-600 text-white px-2.5 py-1 rounded-full';
-                slipInput.required = false;
+                document.getElementById('inDkSlipNo').value = '';
+                pinLock('inDkTare');   // slip taken off: an unlocked Tare goes with it
             }
         }
 
@@ -3094,11 +3395,29 @@
             const gross = parseFloat(document.getElementById('inDkGross').value) || 0;
             const tare = parseFloat(document.getElementById('inDkTare').value) || 0;
             const netEl = document.getElementById('inDkNet');
-            if (gross > 0 || tare > 0) {
+            // Net only once both are weighed: with the Tare still to come (taken at Out) Gross alone is not a net weight
+            if (gross > 0 && tare > 0) {
                 netEl.value = Math.max(0, gross - tare).toFixed(2);
             } else {
                 netEl.value = '';
             }
+        }
+
+        /* The weighbridge of an Inward: Gross is weighed when the loaded vehicle comes in (compulsory), the Tare
+           may be left for the empty vehicle after unloading and is then compulsory at Out (openVisitorOut).
+           Kept on the entry as `dk` {slip, gross, tare, net}; entries from before only have it in the purpose text,
+           so that is read too (their Tare was saved as 0 when left empty). */
+        function inwDkOf(e) {
+            if (e && e.dk && e.dk.slip) return e.dk;
+            const m = /DK Slip:\s*([^\s(|]*)\s*\(G:\s*([\d.]+),\s*T:\s*([\d.]+)/.exec((e && e.purpose) || '');
+            if (!m) return null;
+            const g = parseFloat(m[2]) || 0, t = parseFloat(m[3]) || 0;
+            return { slip: m[1], gross: g, tare: t > 0 ? t : null, net: t > 0 ? Math.max(0, g - t) : null };
+        }
+        const inwDkNeedsTare = e => { const d = inwDkOf(e); return !!(d && d.gross > 0 && !(d.tare > 0)); };
+        function inwDkSummary(d) {
+            return d.tare > 0 ? ` | DK Slip: ${d.slip} (G:${d.gross}, T:${d.tare}, Net:${Number(d.net).toFixed(2)} Kg)`
+                : ` | DK Slip: ${d.slip} (G:${d.gross} Kg, Tare at Out)`;
         }
 
         document.getElementById('formInward').addEventListener('submit', async function(e) {
@@ -3117,40 +3436,56 @@
             const inAp = GATE_COMBOS.inApprover ? GATE_COMBOS.inApprover.match(document.getElementById('inApprover').value) : null;
             if (!inAp) { showIosBanner('Choose Whom to Approve from the list (an ERP user)', 'error'); document.getElementById('inApprover').focus(); return; }
             const inwardType = document.querySelector('input[name="inwardType"]:checked').value;
+            const inEntryType = INW_ENTRY_TYPE, nbAuth = inEntryType === 'INWARD NB' ? INW_NB_AUTH : null;
+            if (inEntryType === 'INWARD NB' && !nbAuth) { showView('inwardMenu'); showIosBanner('Inward NB needs your PIN: choose New Inward Entry › Inward NB again', 'error'); return; }
             const partyName = document.getElementById('inPartyName').value;
             const refType = document.getElementById('inRefType').value;
             const refNo = document.getElementById('inRefNo').value.trim();
             const vehicle = document.getElementById('inVehicle').value.trim().toUpperCase() || 'N/A';
 
-            let dkSummary = '';
+            let dkSummary = '', dk = null;
             if (isInwardDkActive) {
                 const grossVal = parseFloat(document.getElementById('inDkGross').value) || 0;
                 const tareVal = parseFloat(document.getElementById('inDkTare').value) || 0;
+                if (!(grossVal > 0)) {
+                    showIosBanner('Enter the Gross Weight of the Dharam Kanta slip', 'error');
+                    document.getElementById('inDkGross').focus();
+                    return;
+                }
                 if (tareVal > grossVal) {
                     showIosBanner('Tare Weight cannot exceed Gross Weight!', 'error');
                     return;
                 }
-                const dkSlip = document.getElementById('inDkSlipNo').value.trim().toUpperCase();
-                const dkNet = document.getElementById('inDkNet').value || '0.00';
-                dkSummary = ` | DK Slip: ${dkSlip} (G:${grossVal}, T:${tareVal}, Net:${dkNet} Kg)`;
+                dk = { slip: '', auto: true, gross: grossVal, tare: tareVal > 0 ? tareVal : null, net: tareVal > 0 ? +(grossVal - tareVal).toFixed(2) : null,
+                    tareAuth: tareVal > 0 ? pinLockAuth('inDkTare') : null };   // who unlocked the Tare with their PIN
             }
 
-            // Everything checked: now TAKE the Inward No. (the Store ref follows its digits)
+            // Everything checked: now TAKE the Inward No. of the type's series (the Store ref follows its digits) and the DK Slip No.
             gateSaving.IN = true;
             let customInwardNo;
-            try { customInwardNo = await gateTakeNo('IN', 'inwardNo'); } finally { gateSaving.IN = false; }
-            generatedStoreNo = 'STR-IN-' + customInwardNo.slice(GATE_SERIES.IN.length);
+            try {
+                customInwardNo = await gateTakeNo(INW_SERIES[inEntryType], 'inwardNo');
+                if (dk) {
+                    dk.slip = await gateTakeNo('DK', 'inDkSlipNo');
+                    if (!dk.slip) { showIosBanner('Could not get a Dharam Kanta Slip No. Try again.', 'error'); return; }
+                    dkSummary = inwDkSummary(dk);
+                }
+            } finally { gateSaving.IN = false; }
+            generatedStoreNo = inwStoreRefOf(customInwardNo);
             document.getElementById('autoStoreNo').textContent = generatedStoreNo;
 
             const newEntry = {
                 id: customInwardNo,
                 category: 'INWARD',
+                inEntryType: inEntryType, nbAuth: nbAuth,
                 name: partyName,
                 mobile: 'Store Inward',
                 vehicle: vehicle,
                 host: `${refType}: ${refNo} | ${generatedStoreNo}`,
                 refType: refType, refNo: refNo, storeRef: generatedStoreNo, inwardType: inwardType,   // read by the ERP Inward (gate_inward_list)
-                purpose: `${inwardType} • Bill & Item Photo Attached${dkSummary}`,
+                // the first part (before •) is what the launcher's approval card shows: the type goes there
+                purpose: `${inEntryType} · ${inwardType} • Bill & Item Photo Attached${dkSummary}`,
+                dk: dk,
                 billPhoto: tempPhotos.inBill,
                 itemPhoto: tempPhotos.inItem,
                 vehiclePhoto: isInwardDkActive ? tempPhotos.inDkVehicle : null,
@@ -3169,6 +3504,8 @@
 
             commitEntry(newEntry);
             this.reset();
+            inwResetType();   // the next entry asks its type (and the NB PIN) again
+            pinLock('inDkTare');   // and its weighbridge Tare starts locked
 
             tempPhotos.inBill = null;
             tempPhotos.inItem = null;
@@ -3184,7 +3521,7 @@
 
             writeLS(INW_APPROVER_KEY, inAp.value);
             showView('inwardPending');
-            showIosBanner(`Inward ${customInwardNo} (${generatedStoreNo}) sent to ${inAp.apName || inAp.value} for approval`, 'success');
+            showIosBanner(`${inEntryType === 'INWARD NB' ? 'Inward NB' : 'Inward'} ${customInwardNo} (${generatedStoreNo})${dk ? ' · DK Slip ' + dk.slip : ''} sent to ${inAp.apName || inAp.value} for approval`, 'success');
         });
 
         // ==========================================
@@ -3460,6 +3797,8 @@
             document.getElementById('dispVehicleNo').value = '';
             document.getElementById('dispTareWeight').value = '';
             document.getElementById('dispNetWeight').value = '';
+            dispApPaint();
+            dispCfgLoad(false).then(() => dispApPaint());   // fresh rules + approvers (kept on the phone for offline)
 
             const grossInput = document.getElementById('dispGrossWeight');
             grossInput.value = '';
@@ -3514,6 +3853,7 @@
                 grossInput.value = '';
                 grossInput.disabled = true;
                 netInput.value = '';
+                dispApPaint();
                 return;
             }
 
@@ -3524,13 +3864,16 @@
             if (found) {
                 matchedDispatchDkEntry = found;
                 const tareVal = parseTareFromDkEntry(found);
-                badge.innerHTML = `<i class="fa-solid fa-circle-check mr-0.5"></i> Tare filled (${tareVal} Kg)`;
+                // the Gross weighed on the slip (unlocked there with a PIN) comes in too; the guard may still change it
+                const slipGross = Number(found.grossWeight) || 0;
+                badge.innerHTML = `<i class="fa-solid fa-circle-check mr-0.5"></i> Tare filled (${esc(tareVal)} Kg)${slipGross ? ` · Gross from slip (${esc(slipGross)} Kg)` : ''}`;
                 badge.className = 'text-[10px] font-extrabold text-emerald-600';
 
                 vehicleInput.value = found.vehicle || 'N/A';
                 tareInput.value = tareVal.toFixed(2);
                 grossInput.disabled = false;
                 grossInput.placeholder = 'Enter Gross Wt';
+                grossInput.value = slipGross ? slipGross.toFixed(2) : '';
                 calcDispatchNetWeight();
             } else {
                 matchedDispatchDkEntry = null;
@@ -3542,6 +3885,7 @@
                 grossInput.disabled = true;
                 grossInput.placeholder = 'Enter Slip 1st';
                 netInput.value = '';
+                dispApPaint();
             }
         }
 
@@ -3555,6 +3899,7 @@
             } else {
                 netInput.value = '';
             }
+            dispApPaint();   // the approval band of this Net Wt (6C)
         }
 
         document.getElementById('formOutwardDispatch').addEventListener('submit', async function(e) {
@@ -3577,6 +3922,19 @@
                 return;
             }
 
+            // 6C DISPATCH APPROVAL: the band of this Net Wt; a group = one person of it (none in the group / offline list = the Admin decides)
+            const netNum = +Math.max(0, gross - tare).toFixed(2);
+            const apRule = dispRuleFor(netNum), apGroup = apRule.approver || 'NONE';
+            const needAp = apGroup !== 'NONE' && !DISP_NOMIG;
+            let apUser = null;
+            if (needAp) {
+                const list = dispMembers(apGroup), sel = document.getElementById('dispApprover');
+                if (list.length) {
+                    apUser = list.find(u => u.id === (sel ? sel.value : '')) || null;
+                    if (!apUser) { showIosBanner('Choose Whom to Approve (' + (DISP_GROUPS[apGroup] || apGroup) + ')', 'error'); if (sel) sel.focus(); return; }
+                }
+            }
+
             // Everything checked: now TAKE the Outward No. and the Packing Slip No.
             gateSaving.DISP = true;
             let customOutwardNo;
@@ -3596,9 +3954,15 @@
                 name: `Vehicle: ${vehicleNo}`,
                 mobile: `Outward: ${customOutwardNo}`,
                 vehicle: vehicleNo,
-                approvalStatus: 'APPROVAL PENDING',
+                grossWeight: +gross.toFixed(2), tareWeight: +tare.toFixed(2), netWeight: netNum,   // the server reads netWeight (approval rule)
+                approvalStatus: needAp ? 'APPROVAL PENDING' : 'NOT NEEDED',
+                needApproval: needAp,
+                apGroup: apGroup, apRule: { from: apRule.from, to: apRule.to == null ? null : apRule.to, approver: apGroup },
+                approver: apUser ? apUser.name : (needAp ? DISP_GROUPS[apGroup] || apGroup : ''),
+                hostUserId: apUser ? apUser.id : null, hostEmpCode: apUser ? (apUser.empCode || null) : null,
                 host: `Outward: ${customOutwardNo} | DK: ${dkSlipId} | Tare: ${tare.toFixed(2)} Kg`,
-                purpose: `Gross: ${gross.toFixed(2)} Kg • Net Wt: ${net} Kg • APPROVAL PENDING`,
+                // the first part (before •) is what the approver sees on the launcher
+                purpose: `Net Wt: ${net} Kg · Gross: ${gross.toFixed(2)} Kg · Tare: ${tare.toFixed(2)} Kg • ${needAp ? 'APPROVAL: ' + (DISP_GROUPS[apGroup] || apGroup) : 'No approval needed'}`,
                 vehiclePhoto: tempPhotos.dispVehicle,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
@@ -3614,15 +3978,252 @@
                 if (DISP_SCAN.p) newDispatchEntry.name = `${DISP_SCAN.p} · ${vehicleNo}`;
             }
             commitEntry(newDispatchEntry);
+            if (apUser) { const m = readLS(DISP_LAST_AP_KEY, {}) || {}; m[apGroup] = apUser.id; writeLS(DISP_LAST_AP_KEY, m); }
             this.reset();
             tempPhotos.dispVehicle = null;
             matchedDispatchDkEntry = null;
             dispScanSet(null);
+            dispApPaint();
 
-            showView('actionMenu');
-            showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) • Approval Pending`, 'info');
-            openPassModal(newDispatchEntry.id);
+            if (needAp) {
+                showView('dispatchPending');
+                showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) sent to ${apUser ? apUser.name : 'the Admin'} for approval`, 'info');
+            } else {
+                showView('dispatchMenu');
+                showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) saved · ${apGroup === 'NONE' ? 'no approval needed' : 'approval not set up on the server'}`, 'success');
+                openPassModal(newDispatchEntry.id);
+            }
         });
+
+        // ==========================================
+        // 6C. DISPATCH APPROVAL (sql/GATE_DISPATCH_APPROVAL_MIGRATION.sql)
+        // ==========================================
+        /* Out From Dispatch = three buttons: Dispatch Packing Slip (the form above), Pending Approval, Approval Rules (Admin).
+           A rule = a Net Wt band (from <= net < to; the last has no `to` = and above) + the approver group:
+             NONE · PACKING_INCHARGE (Packing app role) · MD (Emp Code MD-1 / MD-2) · ADMIN.
+           The form shows the band of its Net Wt; a band with a group asks for ONE person of it (the request goes to that
+           person's launcher, Gate Approvals, like an Inward). Rules + the group members come from gate_disp_cfg (kept on
+           the phone for offline use); before the migration the default rules apply and nothing is sent for approval.
+           The server decides again from the slip's netWeight (a trigger raises the request), so the phone cannot skip it.
+           Pending Approval: every slip sent for approval until the guard presses Done (approved) / Close (rejected) with
+           his own PIN (gatePinAsk); it then leaves the list (dispDoneAt). Mark Out waits for that.
+           Keep DISP_RULES_DEFAULT = gate_disp_rules_default_() and dispRuleFor = gate_disp_group_(). */
+        const DISP_RULES_DEFAULT = [{ from: 0, to: 15, approver: 'NONE' }, { from: 15, to: 30, approver: 'PACKING_INCHARGE' }, { from: 30, to: null, approver: 'MD' }];
+        const DISP_GROUPS = { NONE: 'No approval needed', PACKING_INCHARGE: 'Packing Incharge', MD: 'MD-1 / MD-2', ADMIN: 'Admin' };
+        const DISP_CFG_KEY = 'gate1_disp_cfg_v1', DISP_LAST_AP_KEY = 'gate1_disp_approver_v1';
+        let DISP_CFG = readLS(DISP_CFG_KEY, null) || { rules: DISP_RULES_DEFAULT, groups: {}, at: 0 };
+        let DISP_NOMIG = false, dispCfgBusy = null, DISP_RULES_DRAFT = null;
+        const isDispatch = e => !!e && e.category === 'DISPATCH PACKING';
+        // sent for approval and not Done yet (old slips without needApproval are never here)
+        const isDspPending = e => isDispatch(e) && !!e.needApproval && !e.dispDoneAt && !e.deleted_at;
+        async function dispCfgLoad(force) {
+            if (!force && DISP_CFG.server && Date.now() - (DISP_CFG.at || 0) < 5 * 60000) return DISP_CFG;
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) return DISP_CFG;
+            if (dispCfgBusy) return dispCfgBusy;
+            dispCfgBusy = gateRpc('gate_disp_cfg').then(r => {
+                dispCfgBusy = null;
+                if (r.ok) {
+                    DISP_NOMIG = false;
+                    DISP_CFG = { rules: Array.isArray(r.data.rules) && r.data.rules.length ? r.data.rules : DISP_RULES_DEFAULT, groups: r.data.groups || {},
+                        updatedAt: r.data.updatedAt || null, updatedBy: r.data.updatedBy || '', at: Date.now(), server: true };
+                    writeLS(DISP_CFG_KEY, DISP_CFG);
+                } else if (r.error === 'NO_MIGRATION') DISP_NOMIG = true;
+                return DISP_CFG;
+            });
+            return dispCfgBusy;
+        }
+        function dispRuleFor(net, rules) {
+            const n = Number(net);
+            if (!isFinite(n)) return { from: 0, to: null, approver: 'NONE' };
+            return (rules || DISP_CFG.rules || DISP_RULES_DEFAULT).find(r => n >= (Number(r.from) || 0) && (r.to == null || r.to === '' || n < Number(r.to)))
+                || { from: 0, to: null, approver: 'NONE' };
+        }
+        const dispBandText = r => (Number(r.from) || 0) + (r.to == null || r.to === '' ? ' kg & above' : ' to ' + r.to + ' kg');
+        const dispMembers = g => ((DISP_CFG.groups || {})[g] || []);
+
+        // The form's approval box, redrawn with the Net Wt (calcDispatchNetWeight); keeps the person picked while the group stays
+        function dispApPaint() {
+            const box = document.getElementById('dispApBox'); if (!box) return;
+            const net = parseFloat(document.getElementById('dispNetWeight').value);
+            if (!matchedDispatchDkEntry || !isFinite(net)) { box.classList.add('hidden'); box.dataset.grp = ''; return; }
+            const rule = dispRuleFor(net), g = rule.approver || 'NONE';
+            box.classList.remove('hidden');
+            if (g === 'NONE') {
+                box.className = 'rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-3 space-y-2';
+                box.innerHTML = `<p class="text-xs font-extrabold text-emerald-800"><i class="fa-solid fa-circle-check"></i> No approval needed</p>
+                    <p class="text-[10.5px] font-semibold text-emerald-700/80">Net Wt ${esc(net.toFixed(2))} Kg is in the band ${esc(dispBandText(rule))}.</p>`;
+                box.dataset.grp = g; return;
+            }
+            if (DISP_NOMIG) {
+                box.className = 'rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 space-y-2';
+                box.innerHTML = `<p class="text-[11px] font-bold text-amber-800">Approval (${esc(DISP_GROUPS[g] || g)}) is not set up on the server yet: the Admin must run GATE_DISPATCH_APPROVAL_MIGRATION.sql. This slip is saved without it.</p>`;
+                box.dataset.grp = g; return;
+            }
+            const cur = box.dataset.grp === g ? (document.getElementById('dispApprover') || {}).value || '' : '';
+            const list = dispMembers(g), last = (readLS(DISP_LAST_AP_KEY, {}) || {})[g] || '';
+            const pick = cur || (list.some(u => u.id === last) ? last : (list.length === 1 ? list[0].id : ''));
+            box.className = 'rounded-2xl border border-orange-200 bg-orange-50/70 px-3.5 py-3 space-y-2';
+            box.innerHTML = `<p class="text-xs font-extrabold text-orange-800"><i class="fa-solid fa-user-shield"></i> Approval needed: ${esc(DISP_GROUPS[g] || g)}</p>
+                <p class="text-[10.5px] font-semibold text-orange-700/80">Net Wt ${esc(net.toFixed(2))} Kg is in the band ${esc(dispBandText(rule))}.</p>`
+                + (list.length
+                    ? `<label class="block text-[10px] font-bold text-gray-500 uppercase">Whom to Approve *</label>
+                       <select id="dispApprover" class="w-full px-3.5 py-3 bg-white border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400">
+                         <option value="">Choose the ${esc(DISP_GROUPS[g] || g)}…</option>
+                         ${list.map(u => `<option value="${esc(u.id)}"${u.id === pick ? ' selected' : ''}>${esc(u.name)}${u.empCode ? ' (' + esc(u.empCode) + ')' : ''}${u.desig ? ' · ' + esc(u.desig) : ''}</option>`).join('')}
+                       </select>`
+                    : `<p class="text-[11px] font-bold text-amber-800">${DISP_CFG.server ? 'Nobody has this role yet' : 'The approver list is not loaded (offline)'}: the slip is sent for approval anyway and the Admin decides it on the launcher.</p>`);
+            box.dataset.grp = g;
+        }
+
+        // ── Pending Approval ──
+        function renderDispatchPending() {
+            const box = document.getElementById('dspPendList'), note = document.getElementById('dspPendNote');
+            if (!box) return;
+            const rows = gateEntries.filter(isDspPending).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const offline = !GATE_USER || GATE_OFFLINE || navigator.onLine === false;
+            const msg = VIS_NOMIG || DISP_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql and GATE_DISPATCH_APPROVAL_MIGRATION.sql (Admin). Until then Done works without an approval.'
+                : offline ? 'No internet: new slips are sent for approval as soon as the net is back.' : '';
+            note.textContent = msg; note.classList.toggle('hidden', !msg);
+            if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No Dispatch Packing Slip is waiting for approval.</p>'; return; }
+            box.innerHTML = rows.map(e => {
+                const a = visApr(e), st = a ? a.status : '';
+                let badge, line;
+                if (!e._syncedAt) { badge = visBadge('Waiting to send', 'bg-gray-200 text-gray-700'); line = 'On this phone only: it goes to ' + esc(e.approver || DISP_GROUPS[e.apGroup] || 'the approver') + ' with the next sync.'; }
+                else if (!a) { badge = visBadge(VIS_NOMIG || DISP_NOMIG ? 'No approval system' : 'Sending', 'bg-gray-200 text-gray-700'); line = VIS_NOMIG || DISP_NOMIG ? 'Server migration missing: Done is allowed.' : 'Request is being made on the server...'; }
+                else if (st === 'PENDING') { badge = visBadge('Approval Pending', 'bg-amber-100 text-amber-800'); line = a.hostFound ? 'Waiting for ' + esc(a.host || e.approver) + ' (PIN on the launcher)' : 'No approver chosen / no ERP login: the Admin approves it on the launcher.'; }
+                else if (st === 'APPROVED') { badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800'); line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : ''); }
+                else if (st === 'REJECTED') { badge = visBadge('Rejected', 'bg-red-100 text-red-700'); line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-'); }
+                else { badge = visBadge(st || '-', 'bg-gray-200 text-gray-700'); line = esc(a.remarks || ''); }
+                const canDone = st === 'APPROVED' || ((VIS_NOMIG || DISP_NOMIG) && !a);
+                const acts = `<button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>`
+                    + (canDone ? `<button onclick="dispDoneAsk('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-circle-check"></i> Done (PIN)</button>` : '')
+                    + (st === 'REJECTED' ? `<button onclick="dispDoneAsk('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-gray-700 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-xmark"></i> Close (PIN)</button>` : '');
+                return `<div class="rounded-2xl border ${st === 'APPROVED' ? 'border-emerald-300 bg-emerald-50/40' : st === 'REJECTED' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                    <div class="min-w-0">
+                        <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
+                        <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.outwardNo || '')} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</p>
+                        <p class="text-[11px] font-bold text-gray-700 truncate">Net ${esc(Number(e.netWeight || 0).toFixed(2))} Kg · ${esc(DISP_GROUPS[e.apGroup] || e.apGroup || '-')}${e.approver ? ' · ' + esc(e.approver) : ''}</p>
+                        <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
+                    </div>
+                    <div class="flex gap-2">${acts}</div>
+                </div>`;
+            }).join('');
+        }
+        function dispDoneAsk(id) {
+            const e = gateEntries.find(x => x.id === id); if (!e || !isDspPending(e)) return;
+            const st = visAprStatus(e);
+            gatePinAsk(st === 'REJECTED' ? 'Close · PIN Required' : 'Done · PIN Required',
+                st === 'REJECTED' ? 'close the rejected slip ' + id : 'mark the approved slip ' + id + ' Done', auth => dispDone(id, auth));
+        }
+        function dispDone(id, auth) {
+            const e = gateEntries.find(x => x.id === id); if (!e || !isDspPending(e)) return;
+            const st = visAprStatus(e) || 'NOT NEEDED';
+            e.dispDoneAt = new Date().toISOString();
+            e.dispDoneBy = auth;
+            e.approvalStatus = st === 'APPROVED' ? 'APPROVED' : st === 'REJECTED' ? 'REJECTED' : 'NO APPROVAL SYSTEM';
+            touchEntry(e);
+            renderDispatchPending(); dspRefreshUi();
+            showIosBanner(st === 'REJECTED' ? `Slip ${id} closed (rejected)` : `Slip ${id} Done: the vehicle can go out`, st === 'REJECTED' ? 'info' : 'success');
+        }
+        // badges of the Out From Dispatch button + the menu; the Rules button only for the Admin
+        function dspRefreshUi() {
+            const pend = gateEntries.filter(isDspPending), ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
+            const set = (bid, n, txt) => { const b = document.getElementById(bid); if (b) { b.textContent = txt || n; b.classList.toggle('hidden', !n); } };
+            set('dspPendBadge', pend.length); set('dspOutBadge', pend.length, ready ? ready + ' OK' : '');
+            const sub = document.getElementById('dspPendSub');
+            if (sub) sub.textContent = ready ? `${ready} approved: press Done with your PIN` : pend.length ? 'Waiting for the approver\'s PIN' : 'Slips sent for approval · Done with your PIN';
+            const rb = document.getElementById('dspRulesBtn'); if (rb) rb.classList.toggle('hidden', !gateIsAdmin());
+            const rs = document.getElementById('dspRulesSub');
+            if (rs) rs.textContent = (DISP_CFG.rules || DISP_RULES_DEFAULT).map(r => dispBandText(r) + ': ' + (DISP_GROUPS[r.approver] || r.approver)).join(' · ');
+            const v = document.getElementById('view-dispatchPending');
+            if (v && v.classList.contains('active')) renderDispatchPending();
+        }
+
+        // ── Approval Rules (Admin) ──
+        async function dispRulesOpen() {
+            DISP_RULES_DRAFT = JSON.parse(JSON.stringify(DISP_CFG.rules || DISP_RULES_DEFAULT));
+            dispRulesPaint();
+            await dispCfgLoad(true);
+            DISP_RULES_DRAFT = JSON.parse(JSON.stringify(DISP_CFG.rules || DISP_RULES_DEFAULT));
+            dispRulesPaint();
+        }
+        function dispRulesPaint() {
+            const list = document.getElementById('dspRulesList'); if (!list || !DISP_RULES_DRAFT) return;
+            const R = DISP_RULES_DRAFT;
+            list.innerHTML = R.map((r, i) => {
+                const last = i === R.length - 1;
+                const n = dispMembers(r.approver).length;
+                return `<div class="rounded-2xl border border-gray-200 bg-gray-50/70 p-3">
+                    <div class="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+                        <div><label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">From (Kg)</label>
+                            <input type="number" step="0.01" min="0" value="${esc(r.from)}" ${i === 0 ? 'readonly tabindex="-1"' : ''} onchange="dispRulesSet(${i}, 'from', this.value)" class="w-full px-3 py-2.5 ${i === 0 ? 'bg-gray-200' : 'bg-white'} border border-gray-200 rounded-xl text-sm font-bold"></div>
+                        <div><label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">To (Kg)</label>
+                            <input type="number" step="0.01" min="0" value="${last ? '' : esc(r.to)}" ${last ? 'readonly tabindex="-1" placeholder="& above"' : ''} onchange="dispRulesSet(${i}, 'to', this.value)" class="w-full px-3 py-2.5 ${last ? 'bg-gray-200' : 'bg-white'} border border-gray-200 rounded-xl text-sm font-bold"></div>
+                        <button type="button" onclick="dispRulesDel(${i})" ${R.length <= 1 ? 'disabled' : ''} class="ios-btn w-9 h-10 rounded-xl bg-red-50 text-red-500 text-xs disabled:opacity-40" title="Remove this band"><i class="fa-solid fa-trash"></i></button>
+                    </div>
+                    <label class="block text-[10px] font-bold text-gray-500 uppercase mt-2 mb-1">Approval</label>
+                    <select onchange="dispRulesSet(${i}, 'approver', this.value)" class="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-bold">
+                        ${Object.keys(DISP_GROUPS).map(k => `<option value="${k}"${r.approver === k ? ' selected' : ''}>${esc(DISP_GROUPS[k])}</option>`).join('')}
+                    </select>
+                    ${r.approver !== 'NONE' && DISP_CFG.server ? `<p class="text-[10px] font-semibold ${n ? 'text-gray-500' : 'text-red-600'} mt-1">${n ? n + ' person(s): ' + esc(dispMembers(r.approver).map(u => u.name).join(', ')) : 'Nobody has this role: such slips go to the Admin'}</p>` : ''}
+                </div>`;
+            }).join('');
+            const msg = document.getElementById('dspRulesMsg'), err = dispRulesCheck(R);
+            msg.textContent = err || ((DISP_CFG.updatedBy ? 'Last saved by ' + DISP_CFG.updatedBy + (DISP_CFG.updatedAt ? ' · ' + formatDateTimeShort(DISP_CFG.updatedAt) : '') + '. ' : '') + R.map(r => dispBandText(r) + ': ' + DISP_GROUPS[r.approver]).join(' · '));
+            msg.className = 'text-[11px] font-bold mt-3 ' + (err ? 'text-red-600' : 'text-gray-600');
+        }
+        // the next band starts where this one ends, so changing a To moves the next From with it
+        function dispRulesSet(i, k, v) {
+            const R = DISP_RULES_DRAFT; if (!R || !R[i]) return;
+            if (k === 'approver') R[i].approver = v;
+            else {
+                const n = v === '' ? null : Math.max(0, Number(v));
+                if (k === 'to') { R[i].to = n; if (R[i + 1]) R[i + 1].from = n == null ? R[i + 1].from : n; }
+                if (k === 'from' && i > 0) { R[i].from = n == null ? 0 : n; R[i - 1].to = R[i].from; }
+            }
+            dispRulesPaint();
+        }
+        function dispRulesAdd() {
+            const R = DISP_RULES_DRAFT; if (!R || R.length >= 10) return;
+            const last = R[R.length - 1], start = Number(last.from) || 0;
+            last.to = start + 15; R.push({ from: start + 15, to: null, approver: last.approver });
+            dispRulesPaint();
+        }
+        function dispRulesDel(i) {
+            const R = DISP_RULES_DRAFT; if (!R || R.length <= 1) return;
+            R.splice(i, 1);
+            R[0].from = 0; for (let j = 0; j < R.length - 1; j++) R[j].to = R[j + 1].from; R[R.length - 1].to = null;
+            dispRulesPaint();
+        }
+        function dispRulesReset() { DISP_RULES_DRAFT = JSON.parse(JSON.stringify(DISP_RULES_DEFAULT)); dispRulesPaint(); }
+        // = the checks of gate_disp_rules_save: from 0, each To = the next From and above it, the last open
+        function dispRulesCheck(R) {
+            if (!R.length) return 'Add at least one band.';
+            for (let i = 0; i < R.length; i++) {
+                const f = Number(R[i].from), t = R[i].to;
+                if (i === 0 && f !== 0) return 'The first band must start at 0 kg.';
+                if (i < R.length - 1 && (t == null || t === '' || Number(t) <= f)) return `Band ${i + 1}: To must be more than From.`;
+                if (i > 0 && f !== Number(R[i - 1].to)) return `Band ${i + 1}: From must be the To of band ${i}.`;
+            }
+            return '';
+        }
+        function dispRulesSave() {
+            const R = DISP_RULES_DRAFT, err = dispRulesCheck(R || []);
+            if (err) { showIosBanner(err, 'error'); return; }
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) { showIosBanner('No internet: the rules are saved on the server only', 'error'); return; }
+            gatePinAsk('Approval Rules · PIN Required', 'save the Dispatch approval rules', async (auth, pin) => {
+                const r = await gateRpc('gate_disp_rules_save', { p_rules: R.map(x => ({ from: Number(x.from) || 0, to: x.to == null || x.to === '' ? null : Number(x.to), approver: x.approver })), p_pin: pin });
+                if (!r.ok) {
+                    showIosBanner(r.error === 'NO_MIGRATION' ? 'The server needs GATE_DISPATCH_APPROVAL_MIGRATION.sql (Admin)'
+                        : r.error === 'NOT_ALLOWED' ? 'Only an Admin login can save the rules' : r.error === 'WRONG_PIN' ? 'Incorrect PIN!'
+                        : r.error === 'BAD_RULES' ? 'The bands are not valid: check From / To' : 'Not saved: ' + (r.detail || r.error), 'error');
+                    return;
+                }
+                await dispCfgLoad(true);
+                DISP_RULES_DRAFT = JSON.parse(JSON.stringify(DISP_CFG.rules)); dispRulesPaint(); dspRefreshUi();
+                showIosBanner('Approval rules saved', 'success');
+            });
+        }
 
         // ==========================================
         // 7. VISITOR PASS (STRICT 10-DIGIT NUMERIC MOBILE AUTO-LOOKUP)
@@ -3859,15 +4460,15 @@
         async function visPollNow(manual) {
             if (visPollBusy) return;
             // visitors and Hydra / JCB entries waiting for a decision (one call for both)
-            const uids = gateEntries.filter(e => (isVisPending(e) || isHydPending(e) || isSmpPending(e) || isInwPending(e)) && e._syncedAt && e.uid).map(e => e.uid);
+            const uids = gateEntries.filter(e => (isVisPending(e) || isHydPending(e) || isSmpPending(e) || isInwPending(e) || isDspPending(e)) && e._syncedAt && e.uid).map(e => e.uid);
             if (manual) gateSync(false);   // sends what is waiting (a new visitor / Hydra) and pulls the rest
-            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) { renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); } return; }
+            if (!uids.length || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) { if (manual && !uids.length) { renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); renderDispatchPending(); } return; }
             visPollBusy = true;
-            const icons = ['visPollIcon', 'hydPollIcon', 'smpPollIcon', 'inwPollIcon'].map(i => document.getElementById(i)).filter(Boolean);
+            const icons = ['visPollIcon', 'hydPollIcon', 'smpPollIcon', 'inwPollIcon', 'dspPollIcon'].map(i => document.getElementById(i)).filter(Boolean);
             icons.forEach(i => i.classList.add('fa-spin'));
             const r = await gateRpc('gate_vis_status', { p_uids: uids });
             visPollBusy = false; icons.forEach(i => i.classList.remove('fa-spin'));
-            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); } return; }
+            if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); renderDispatchPending(); } return; }
             VIS_NOMIG = false;
             let changed = false;
             const rows = r.data.rows || {};
@@ -3903,6 +4504,7 @@
             hydRefreshUi();
             smpRefreshUi();
             inwRefreshUi();
+            dspRefreshUi();
             // an open visitor / Hydra pass shows the decision / signature as soon as it arrives
             const pm = document.getElementById('passModal');
             const oe = pm && !pm.classList.contains('hidden') && GATE_OPEN_PASS ? gateEntries.find(x => x.id === GATE_OPEN_PASS) : null;
@@ -4054,6 +4656,16 @@
             document.getElementById('visOutPhotoLabel').textContent = hyd ? 'Tap to capture the Hydra / JCB' : inw ? 'Tap to capture the vehicle' : 'Tap to capture the visitor';
             document.getElementById('visOutPreviewBox').classList.add('hidden');
             document.getElementById('visOutRemarks').value = '';
+            // every Inward with a weighbridge Gross: the Tare here, compulsory; one weighed at In comes pre-filled and can be changed
+            const dk = inw ? inwDkOf(e) : null, dkOn = !!(dk && dk.gross > 0), had = dkOn && dk.tare > 0;
+            document.getElementById('visOutDkBox').classList.toggle('hidden', !dkOn);
+            document.getElementById('visOutDkSlip').textContent = dkOn ? dk.slip : '';
+            document.getElementById('visOutDkGross').value = dkOn ? dk.gross : '';
+            document.getElementById('visOutDkTare').value = had ? dk.tare : '';
+            document.getElementById('visOutDkHint').textContent = !dkOn ? '' : had
+                ? 'Tare weighed at In: ' + dk.tare + ' Kg' + (dk.tareAuth && dk.tareAuth.by ? ' (unlocked by ' + dk.tareAuth.by + ')' : '') + '. Change it if the empty vehicle was weighed again.'
+                : 'Weigh the empty vehicle after unloading and enter its Tare.';
+            visOutDkCalc();
             document.getElementById('visOutWho').innerHTML = inw ? `${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                 <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
                 <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(inwRef(e))}</p>
@@ -4070,13 +4682,34 @@
             document.getElementById('visOutModal').classList.remove('hidden');
         }
         function closeVisitorOut() { document.getElementById('visOutModal').classList.add('hidden'); VIS_OUT_ID = null; }
+        function visOutDkCalc() {
+            const g = parseFloat(document.getElementById('visOutDkGross').value) || 0;
+            const t = parseFloat(document.getElementById('visOutDkTare').value) || 0;
+            document.getElementById('visOutDkNet').value = g > 0 && t > 0 ? Math.max(0, g - t).toFixed(2) : '';
+        }
         function saveVisitorOut() {
             const e = gateEntries.find(x => x.id === VIS_OUT_ID);
             if (!e) { closeVisitorOut(); return; }
             const remarks = document.getElementById('visOutRemarks').value.trim();
             const hyd = isHydra(e), inw = isInward(e);
+            // Inward with a weighbridge Gross: the empty vehicle's Tare (compulsory, not above the Gross; a Tare from In may be changed)
+            const dk0 = inw ? inwDkOf(e) : null, dk = dk0 && dk0.gross > 0 ? dk0 : null;
+            let tare = 0;
+            if (dk) {
+                tare = parseFloat(document.getElementById('visOutDkTare').value) || 0;
+                if (!(tare > 0)) { showIosBanner('Enter the Tare Weight of the empty vehicle', 'error'); document.getElementById('visOutDkTare').focus(); return; }
+                if (tare > dk.gross) { showIosBanner('Tare Weight cannot exceed Gross Weight (' + dk.gross + ' Kg)!', 'error'); document.getElementById('visOutDkTare').focus(); return; }
+            }
             if (!tempPhotos.visOut) { showIosBanner(hyd ? 'Capture the Hydra / JCB photo at Out' : inw ? 'Capture the vehicle photo at Out' : 'Capture the visitor photo at Out', 'error'); return; }
             if (!remarks) { showIosBanner('Write the remarks', 'error'); document.getElementById('visOutRemarks').focus(); return; }
+            if (dk) {
+                const changed = !(dk.tare > 0) || Math.abs(dk.tare - tare) > 0.001;
+                e.dk = Object.assign({}, dk, { tare: tare, net: +(dk.gross - tare).toFixed(2) },
+                    changed ? { tareAt: new Date().toISOString(), tareBy: `${appSettings.guardName} (${appSettings.shiftName})`, tareAtOut: true,
+                                tareIn: dk.tare > 0 ? dk.tare : null } : {});
+                const sum = inwDkSummary(e.dk);
+                e.purpose = /\s*\|\s*DK Slip:[^|•]*/.test(e.purpose || '') ? e.purpose.replace(/\s*\|\s*DK Slip:[^|•]*/, sum) : (e.purpose || '') + sum;
+            }
             e.status = 'OUT';
             e.outTime = new Date().toISOString();
             e.outPhoto = tempPhotos.visOut;
@@ -4102,7 +4735,7 @@
             const a = needsApr(entry) ? visApr(entry) : null;
             if (!needsApr(entry)) { box.classList.add('hidden'); box.innerHTML = ''; return; }
             box.classList.remove('hidden');
-            const who = isHydra(entry) || isSample(entry) || isInward(entry) ? entry.approver : entry.host;
+            const who = isHydra(entry) || isSample(entry) || isInward(entry) || isDispatch(entry) ? entry.approver : entry.host;
             if (!a || a.status === 'PENDING') {
                 box.innerHTML = `<div class="rounded-xl border border-amber-300 bg-amber-50 p-3 text-center text-xs font-bold text-amber-800">Waiting for ${esc((a && a.host) || who)}'s approval: not valid until approved</div>`;
                 return;
@@ -4114,7 +4747,7 @@
             const sign = photoOf(entry, 'hostSign');
             box.innerHTML = `<div class="rounded-xl border border-emerald-300 bg-emerald-50/60 p-3 flex items-end justify-between gap-3">
                 <div class="min-w-0">
-                    <p class="text-[10px] font-bold text-emerald-700 uppercase">Approved by (${isHydra(entry) || isSample(entry) ? 'Approver' : 'Whom to Meet'})</p>
+                    <p class="text-[10px] font-bold text-emerald-700 uppercase">Approved by (${isHydra(entry) || isSample(entry) || isInward(entry) || isDispatch(entry) ? 'Approver' : 'Whom to Meet'})</p>
                     <p class="text-sm font-extrabold text-gray-900 break-words">${esc(a.decidedBy || a.host)}</p>
                     <p class="text-[11px] font-semibold text-gray-600">${esc([a.decidedDesig, a.decidedEmp].filter(Boolean).join(' · '))}</p>
                     <p class="text-[11px] font-semibold text-gray-600">${esc(formatDateTimeShort(a.decidedAt))} · PIN verified${a.via === 'ADMIN' ? ' (Admin for ' + esc(a.host || who) + ')' : ''}</p>
@@ -4257,6 +4890,7 @@
                 mobile: `Slip: ${formattedId}`,
                 vehicle: vehicleNo,
                 grossWeight: grossVal,
+                grossAuth: grossVal > 0 ? pinLockAuth('dkGrossWeight') : null,   // who unlocked the Gross with their PIN
                 tareWeight: tareVal,
                 netWeight: parseFloat(netVal),
                 host: grossVal > 0 ? `Gross: ${grossVal.toFixed(2)} Kg | Tare: ${tareVal.toFixed(2)} Kg` : `Tare: ${tareVal.toFixed(2)} Kg`,
@@ -4270,6 +4904,7 @@
 
             commitEntry(newDkEntry);
             this.reset();
+            pinLock('dkGrossWeight');   // the next slip starts locked again
             dkVehicleCheck();
             tempPhotos.dkVehicle = null;
             document.getElementById('dkVehicleLabel').textContent = 'Capture / Upload Vehicle Photo';
@@ -4395,7 +5030,8 @@
                     line = a.hostFound ? 'Waiting for ' + esc(a.host || e.approver) + ' (PIN on the launcher)' : esc(e.approver) + ' has no ERP login: the Admin can approve it.';
                 } else if (st === 'APPROVED') {
                     badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800');
-                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '')
+                        + (a.unloader ? '<br>Unloader: <b>' + esc(a.unloader.to || '-') + '</b>' : '');   // the approver's pick (GATE_INWARD_UNLOADER_MIGRATION.sql)
                 } else if (st === 'REJECTED') {
                     badge = visBadge('Rejected', 'bg-red-100 text-red-700');
                     line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-');
@@ -4412,7 +5048,7 @@
                         ${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
-                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</p>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate flex items-center gap-1.5">${inwTypeTag(e)}<span class="truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</span></p>
                             <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(inwRef(e))} · Approver: ${esc(e.approver || '-')}</p>
                             <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
                         </div>
@@ -4459,7 +5095,7 @@
             const list = document.getElementById('inwExistList');
             if (!list) return;
             const words = String((document.getElementById('inwExistSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
-            const hit = e => !words.length || words.every(w => [e.id, e.name, e.vehicle, e.approver, inwRef(e), e.storeRef, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
+            const hit = e => !words.length || words.every(w => [e.id, inwEntryTypeOf(e), e.name, e.vehicle, e.approver, inwRef(e), e.storeRef, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
             const inside = gateEntries.filter(isInwInside).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
             const out = gateEntries.filter(isInwRecentOut).sort((a, b) => new Date(b.outTime) - new Date(a.outTime));
             document.getElementById('inwTabInN').textContent = '(' + inside.length + ')';
@@ -4483,9 +5119,13 @@
                         ${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
-                            <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(e.storeRef || '')}</p>
+                            <p class="text-[11px] font-semibold text-gray-500 truncate flex items-center gap-1.5">${inwTypeTag(e)}<span class="truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(e.storeRef || '')}</span></p>
                             <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(inwRef(e))}${e.approver ? ' · Approved by ' + esc((a && a.decidedBy) || e.approver) : ''}</p>
+                            ${a && a.unloader ? `<p class="text-[11px] font-bold ${a.unloader.status === 'DONE' ? 'text-emerald-700' : 'text-orange-700'} truncate">Unloader: ${esc(a.unloader.to || '-')} · ${a.unloader.status === 'DONE' ? esc(a.unloader.photoCount || 0) + ' photo(s) uploaded' : 'photos not uploaded yet'}</p>` : ''}
                             <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${!inTab && e.outTime ? ' · Out ' + esc(formatDateTimeShort(e.outTime)) : ''}${!inTab && e.outRemarks ? ' · ' + esc(e.outRemarks) : ''}</p>
+                            ${(() => { const d = inwDkOf(e); if (!d || !(d.gross > 0)) return ''; return inwDkNeedsTare(e)
+                                ? `<p class="text-[11px] font-bold text-cyan-800">DK ${esc(d.slip)} · Gross ${esc(d.gross)} Kg · Tare at Out</p>`
+                                : `<p class="text-[11px] font-semibold text-cyan-800">DK ${esc(d.slip)} · G ${esc(d.gross)} · T ${esc(d.tare)} · Net ${esc(Number(d.net).toFixed(2))} Kg</p>`; })()}
                         </div>
                     </div>
                     <div class="flex gap-2">
@@ -4515,7 +5155,7 @@
         const HYD_APPROVER_KEY = 'gate1_hyd_approver_v1';   // the last approver chosen on this phone (most days the same person)
         const isHydra = e => !!e && e.category === 'HYDRA / JCB';
         // an entry the launcher decides on (Whom to Meet for a visitor, the Approver for a Hydra)
-        const needsApr = e => (isVisitor(e) || isHydra(e) || isSample(e) || isInward(e)) && !!e.needApproval;
+        const needsApr = e => (isVisitor(e) || isHydra(e) || isSample(e) || isInward(e) || isDispatch(e)) && !!e.needApproval;
         const isHydPending = e => isHydra(e) && e.needApproval && e.status === 'IN' && !e.hydDoneAt;
         const isHydInside = e => isHydra(e) && e.status === 'IN' && (!e.needApproval || !!e.hydDoneAt);
         const isHydRecentOut = e => isHydra(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
@@ -5460,7 +6100,7 @@
             document.getElementById('modalPurpose').textContent = entry.purpose;
 
             const approvalBadge = document.getElementById('modalApprovalBadge');
-            if (entry.approvalStatus === 'APPROVAL PENDING') {
+            if (entry.approvalStatus === 'APPROVAL PENDING' && !needsApr(entry)) {
                 approvalBadge.innerHTML = `<i class="fa-solid fa-clock"></i> APPROVAL PENDING`;
                 approvalBadge.className = 'inline-flex items-center gap-1 bg-amber-500/15 text-amber-700 border border-amber-300 text-[11px] font-extrabold px-2.5 py-1 rounded-lg uppercase';
                 approvalBadge.classList.remove('hidden');
@@ -5522,6 +6162,10 @@
                     const pend = isInwPending(entry);
                     markOutBtn.innerHTML = `<i class="fa-solid ${pend ? 'fa-user-clock' : 'fa-right-from-bracket'}"></i> ${pend ? 'Approval Pending' : 'Mark Out'}`;
                     markOutBtn.onclick = () => { closePassModal(); if (pend) showView('inwardPending'); else openVisitorOut(entry.id); };
+                } else if (isDspPending(entry)) {
+                    // 6C: a Dispatch slip sent for approval goes out only after Done (PIN) in Pending Approval
+                    markOutBtn.innerHTML = `<i class="fa-solid fa-user-clock"></i> ${visAprStatus(entry) === 'APPROVED' ? 'Approved · press Done' : 'Approval Pending'}`;
+                    markOutBtn.onclick = () => { closePassModal(); showView('dispatchPending'); };
                 } else if (isHydra(entry) && (isHydPending(entry) || entry.hydraStage !== 'STORE_APPROVED')) {
                     // waiting for approval -> Approval Pending; at work / store entry pending -> Existing Hydra / JCB
                     const pend = isHydPending(entry);
@@ -5683,6 +6327,7 @@
             if (isHydra(entry)) { closeQrVerifyModal(); openVisitorOut(id); return; }
             if (isInward(entry)) { closeQrVerifyModal(); if (isInwPending(entry)) showView('inwardPending'); else openVisitorOut(id); return; }   // Out with the vehicle photo
             if (isSample(entry)) { closeQrVerifyModal(); if (isSmpPending(entry)) showView('samplePending'); else smpOpenReturn(id); return; }   // its own Return (Outward No. + item photo)   // so does a Hydra / JCB (or it is sent to its next step)
+            if (isDspPending(entry)) { closeQrVerifyModal(); closePassModal(); showView('dispatchPending'); showIosBanner(visAprStatus(entry) === 'APPROVED' ? 'Approved: press Done (PIN) first, then Mark Out' : 'Waiting for approval: the vehicle cannot go out yet', 'error'); return; }
             if (dkNoMarkOut(entry)) { showIosBanner('A Dharam Kanta slip has no Mark Out: make its Outward Dispatch Packing slip (or delete the slip).', 'error'); return; }
             entry.status = 'OUT';
             entry.outTime = new Date().toISOString();
@@ -5927,6 +6572,7 @@
                 showIosBanner(isInwPending(open) ? `${o.no}: gate Inward ${open.id} is waiting for approval` : `${o.no}: gate Inward ${open.id} of this ${o.po ? 'PO' : 'PR'} is inside. Mark Out when the vehicle leaves.`, 'info');
                 return;
             }
+            inwResetType();   // a Supplier Copy scan = a normal Inward (Inward NB only from New Inward Entry, with the PIN)
             showView('inwardForm');
             const pc = GATE_COMBOS.inPartyName;
             if (pc && o.p) pc.set(o.p, true);   // silent: the PO list popup is not needed, the numbers come from the code
@@ -6126,10 +6772,11 @@
                 showIosBanner('No records to export', 'info');
                 return;
             }
-            const headers = ['Pass ID', 'Category', 'Name/Party', 'Details/Ref', 'Vehicle', 'Purpose', 'In Time', 'Out Time', 'Status', 'Guard', 'Host Approval', 'Approved / Decided By', 'Decided At', 'Out Remarks'];
+            const headers = ['Pass ID', 'Category', 'In Entry Type', 'Name/Party', 'Details/Ref', 'Vehicle', 'Purpose', 'In Time', 'Out Time', 'Status', 'Guard', 'Host Approval', 'Approved / Decided By', 'Decided At', 'Out Remarks'];
             const rows = gateEntries.map(e => [
                 e.id,
                 e.category,
+                isInward(e) ? inwEntryTypeOf(e) : '',
                 `"${(e.name || '').replace(/"/g, '""')}"`,
                 `"${(e.host || '').replace(/"/g, '""')}"`,
                 e.vehicle || 'N/A',

@@ -67,6 +67,11 @@ a.app.lv-tile.lv-new{animation:lvPulse 1.6s ease-out 2;}
 .lv-reason{width:100%; min-height:78px; border-radius:14px; border:0; outline:none; resize:vertical; font:400 16px var(--ls-font); color:var(--ls-txt); background:var(--ls-fill2); padding:12px 14px; margin-bottom:12px;}
 .lv-reason:focus{box-shadow:0 0 0 3px rgba(10,132,255,.35);}
 .lv-err{min-height:20px; text-align:center; color:var(--ls-red); font-size:14px; margin:8px 0 2px;}
+/* Inward approval: the Unloader who uploads the Photos / Original Invoice (launcher-visitor.js unloaderSelect) */
+.lv-unlbox{margin:0 0 12px;}
+.lv-sel{width:100%; border-radius:14px; border:0; outline:none; font:500 16px var(--ls-font); color:var(--ls-txt); background:var(--ls-fill2); padding:13px 14px;}
+.lv-sel:focus{box-shadow:0 0 0 3px rgba(10,132,255,.35);}
+.lv-unlmsg{margin:4px 2px; color:var(--ls-txt2); font-size:14px; text-align:center;}
 
 /* ── full-screen photo ── */
 .lv-zoom{position:fixed; inset:0; z-index:9200; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; opacity:0; transition:opacity .2s ease;}

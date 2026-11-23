@@ -4132,6 +4132,17 @@ async function ensureUnloaderApproval_(rows){
    which is what the PDF then prints. If the RPC cannot run, the snapshot the
    gate read is written instead so the record is never left without it. */
 async function unloadMarkUsed_(rows,docNo,inwardId){
+  // the gate's Unloader (GATE UNLOADER PHOTOS): no Unloader Supervisor request to retire, the details go straight on the record
+  if(sarvInwUnloadActive&&sarvInwUnloadActive.viaGate){
+    const u=sarvInwUnloadActive;
+    try{
+      const r=await SB.from('inward_entries').update({unload_info:{name:u.name,emp_code:u.empCode,contact_no:u.contact,
+        designation:u.designation,department:u.department,at:u.at,request_no:u.requestNo,approval_id:null,
+        photo_count:u.photoCount,remarks:u.remarks,via:'GATE'}}).eq('id',inwardId);
+      if(r.error)throw r.error;
+    }catch(e){console.warn('[SARV] Gate Unloader details not stored on the Inward:',e.message||e);}
+    return;
+  }
   if(!sarvInwUnloadActive||sarvUnloadTableMissing)return;
   const sig=inwardApprovalSignature_(rows,inwardPoRefList_(rows),inwardPrRefList_(rows));
   try{
@@ -23705,7 +23716,14 @@ let PR_TEAL=[13,92,83];
       the requests; the Final Submit needs the photo. */
    const selectedPoNos=getSelectedPoNos();
    {
-     const ulOk=sarvEditingInwardId?true:await ensureUnloaderApproval_(rows);
+     /* A Gate Entry No. whose approver assigned an Unloader: that Unloader's Photos / Original Invoice
+        are the unloading proof, so it is not sent to the Unloader Supervisor (GATE UNLOADER PHOTOS);
+        it waits until they are uploaded. Otherwise the Unloader Supervisor step as before. */
+     const gul=await inwGateUlGate_();
+     if(gul===false)return;
+     // an earlier Submit set the gate's Unloader, and the Gate Entry No. was changed / cleared since
+     if(gul!==true&&sarvInwUnloadActive&&sarvInwUnloadActive.viaGate)sarvInwUnloadActive=null;
+     const ulOk=sarvEditingInwardId||gul===true?true:await ensureUnloaderApproval_(rows);
      /* Excess / rate / extra item need the MD's approval — see the notes above
         inwardDocOverrides. Checked on EVERY save, not only when the PO picker
         has something ticked: an Admin edit never re-ticks the picker, and that
@@ -33748,6 +33766,7 @@ function inwGateInfo_(){
     +(row.status?'<span>Gate status: '+escText(row.status)+'</span>':'')
     +(row.guard?'<span>Guard: '+escText(row.guard)+'</span>':'')
     +(row.hasBill?'<span style="color:#15803d;">Bill photo at the gate ✓</span>':'')+'</div>'
+    +inwGateUlHtml_(row)
     +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">Check: '+warns.map(escText).join(' · ')+'</div>'
       :'<div style="margin-top:6px;color:#15803d;font-weight:700;">Matches this Inward.</div>');
 }
@@ -33756,6 +33775,8 @@ function inwGateInfo_(){
 async function inwGatePicked_(){
   sarvInwGate.want=pVal('inwGateEntryNo');
   const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGate.want);
+  // the Unloader's Photos / Original Invoice of this gate entry into the photo box (and those of one picked before out)
+  inwGateUlApply_(r||null);
   if(r&&!sarvEditingInwardId){
     const sup=byId('supplierName');
     if(sup&&!sup.value.trim()&&r.party&&!sup.readOnly&&!sup.disabled){
@@ -33784,6 +33805,10 @@ async function inwGateRefresh_(force){
   await inwGateLoad_(force);
   if(force||before!==sarvInwGate.list||!byId('inwGateEntryNo').options.length)inwGateRender_();
   else inwGateInfo_();
+  // the Unloader uploaded while the Store waited on the form: their photos come in by themselves
+  const r=(sarvInwGate.list||[]).find(x=>x.no===pVal('inwGateEntryNo'));
+  const ul=inwGateUlOf_(r);
+  if(ul&&ul.status==='DONE'&&!inwGateUlHas_(r.no))inwGateUlApply_(r);
 }
 setInterval(()=>{
   const p=byId('inwardPanel');if(!p||p.offsetParent===null)return;
@@ -33855,8 +33880,90 @@ async function inwGateSave_(id){
 function inwGateReset_(){
   if(!sarvInwGate)return;
   const S=sarvInwGate;S.want='';S.editHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';
+  if(typeof sarvInwGateUl!=='undefined'){sarvInwGateUl.no='';sarvInwGateUl.err='';}
   const sel=byId('inwGateEntryNo');if(sel)sel.value='';
   inwGateInfo_();
+}
+/* ═══════════════════════════════════════════════════════════════════════
+   GATE UNLOADER PHOTOS   (sql/GATE_INWARD_UNLOADER_MIGRATION.sql)
+   The gate Inward's approver (launcher › Gate Approvals) assigns an Unloader,
+   who uploads the Photos / Original Invoice in unloader.html › Gate Inward.
+   gate_inward_list gives each row `unload` {status ASSIGNED / DONE, to, doneBy,
+   doneEmp, doneContact, photoCount ...}. Picking such a Gate Entry No. puts
+   those photos into the form's Photos / Original Invoice box (marked gateNo,
+   so picking another entry swaps them; the ✕ still removes one), where the
+   Store sees the preview and they become the Original Invoice PDF.
+   Submit: a gate entry with an Unloader does NOT go to the Unloader Supervisor
+   (ensureUnloaderApproval_) any more; it waits until the photos are uploaded,
+   and the Unloader's Name / Emp Code / Mobile print on the PDF as the unload
+   info (written straight onto the record, unloadMarkUsed_). A gate entry
+   without an Unloader (approved before, or nobody had the app) and an Inward
+   without a Gate Entry No. go to the Unloader Supervisor as before.
+   ═══════════════════════════════════════════════════════════════════════ */
+var sarvInwGateUl={no:'',err:'',busy:''};
+function inwGateUlOf_(r){return r&&r.unload&&typeof r.unload==='object'?r.unload:null;}
+function inwGateUlHas_(no){return !!no&&(window.getPhotos?window.getPhotos('inward'):[]).some(f=>f&&f.gateNo===no);}
+function inwGateUlHtml_(row){
+  const ul=inwGateUlOf_(row);if(!ul)return '';
+  const S=sarvInwGateUl;
+  if(ul.status!=='DONE')return '<div style="margin-top:6px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px;padding:6px 9px;color:#9a3412;font-weight:700;">'
+    +'Unloader: '+escText(ul.to||'-')+(ul.toEmp?' ('+escText(ul.toEmp)+')':'')+' · the Photos / Original Invoice are not uploaded yet (unloader.html › Gate Inward). Submit waits for them.</div>';
+  const n=(window.getPhotos?window.getPhotos('inward'):[]).filter(f=>f&&f.gateNo===row.no).length;
+  return '<div style="margin-top:6px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 9px;color:#166534;font-weight:700;">'
+    +'Unloader: '+escText(ul.doneBy||ul.to||'-')+(ul.doneEmp?' ('+escText(ul.doneEmp)+')':'')+' · '+escText(ul.photoCount||0)+' photo(s) uploaded '+escText(inwGateDmyT_(ul.doneAt))
+    +(S.busy===row.no?' · loading them…':n?' · '+n+' in Photos / Original Invoice below ✓':S.err&&S.no===row.no?' · <span style="color:#b91c1c;">not loaded: '+escText(S.err)+'</span> <a href="#" onclick="inwGateUlApply_(inwGateCheck_().row);return false;">Try again</a>':'')
+    +(ul.remarks?'<br><span style="font-weight:500;">Remarks: '+escText(ul.remarks)+'</span>':'')
+    +'<br><span style="font-weight:500;">Not sent to the Unloader Supervisor on Submit: these photos are the unloading proof.</span></div>';
+}
+// r = the picked gate row (or null): its uploaded photos in, any other gate entry's out
+async function inwGateUlApply_(r){
+  const S=sarvInwGateUl, no=r?r.no:'';
+  if(window.getPhotos&&window.putPhotos){
+    const cur=window.getPhotos('inward');
+    if(cur.some(f=>f&&f.gateNo&&f.gateNo!==no))window.putPhotos('inward',cur.filter(f=>!f||!f.gateNo||f.gateNo===no));
+  }
+  S.no=no;S.err='';
+  const ul=inwGateUlOf_(r);
+  if(!r||!ul||ul.status!=='DONE'||sarvEditingInwardId||!window.putPhotos||inwGateUlHas_(no)){inwGateInfo_();return;}
+  S.busy=no;inwGateInfo_();
+  try{
+    let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+    const q=await SB.rpc('gate_ul_photos',{p_token:tok,p_uid:r.uid});
+    if(q.error)throw q.error;
+    const d=q.data||{};if(d.success===false)throw new Error(String(d.error||'NOT_FOUND'));
+    if(S.no!==no)return;                          // another entry picked meanwhile
+    const list=(d.photos||[]).filter(src=>/^data:image\//.test(String(src||'')));
+    const by=((d.unloader||ul).doneBy)||'';
+    // named for what they are (the invoice pages), not "UNLOADING PHOTO": Preview files those under Unloader
+    const files=list.map((src,i)=>({name:no+' · PHOTO '+(i+1)+' of '+list.length+(by?' · uploaded by '+by:''),type:'image/jpeg',dataUrl:src,gateNo:no}));
+    if(!inwGateUlHas_(no))window.putPhotos('inward',window.getPhotos('inward').filter(f=>!f||!f.gateNo).concat(files));
+    const grp=byId('inwPhotoGroup');if(grp&&files.length){grp.style.outline='';grp.style.background='';}
+    if(files.length)showToast('Gate '+escText(no)+': '+files.length+' photo(s) of the Unloader <b>'+escText(by||'-')+'</b> added to Photos / Original Invoice');
+  }catch(e){
+    S.err=e.message||String(e);console.warn('[SARV] Gate Unloader photos not loaded:',S.err);
+  }finally{if(S.busy===no)S.busy='';}
+  inwGateInfo_();
+}
+/* Submit, right after inwGateGate_: the chosen gate entry's Unloader.
+   null = none (the Unloader Supervisor step runs as before), false = stop (said why),
+   true = covered: sarvInwUnloadActive holds the Unloader for the PDF. */
+async function inwGateUlGate_(){
+  if(sarvEditingInwardId||!sarvInwGateChosen)return null;
+  const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGateChosen), ul=inwGateUlOf_(r);
+  if(!ul)return null;
+  if(ul.status!=='DONE'){
+    byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+    showToast('Gate entry <b>'+escText(r.no)+'</b>: the Unloader <b>'+escText(ul.to||'-')+'</b> has not uploaded the Photos / Original Invoice yet '
+      +'(unloader.html › Gate Inward). Submit again once they are uploaded; the approver can move it to another Unloader on the launcher.','warn');
+    return false;
+  }
+  if(!inwGateUlHas_(r.no)){
+    await inwGateUlApply_(r);
+    if(!inwGateUlHas_(r.no)){showToast('The Unloader\'s photos of gate entry '+escText(r.no)+' could not be loaded'+(sarvInwGateUl.err?' ('+escText(sarvInwGateUl.err)+')':'')+'. Check the internet and Submit again.','error');return false;}
+  }
+  sarvInwUnloadActive={name:ul.doneBy||ul.to||'',empCode:ul.doneEmp||'',contact:ul.doneContact||'',designation:ul.doneDesig||'',
+    department:ul.doneDept||'',at:ul.doneAt||'',requestNo:'Gate '+r.no,approvalId:null,photoCount:pNum(ul.photoCount),remarks:ul.remarks||'',viaGate:true};
+  return true;
 }
 function inwYarnUlReset_(){
   if(!sarvInwYarnUl)return;
