@@ -1341,16 +1341,18 @@ function applyCategoryPurchaser(category){
 let sarvSelectedPoNos=[];
 function getSelectedPoNos(){return [...sarvSelectedPoNos]}
 // POs on offer: open ones, narrowed to the typed supplier. A blank supplier
-// applies no filter, so the full open list is still reachable.
+// applies no filter, so the full open list is still reachable. With a Gate Entry
+// No. picked, the gate entry's PARTY decides instead (GATE ENTRY LINK): its PO can
+// be changed, but only to another PO of that same supplier.
 function poOptionsForSupplier(){
-  const sup=(byId('supplierName')?.value||'').trim().toUpperCase();
+  const sup=(inwGateParty_()||(byId('supplierName')?.value||'')).trim().toUpperCase();
   if(!sup)return sarvPoCatalog;
   return sarvPoCatalog.filter(po=>String(po.vendor_name||'').trim().toUpperCase()===sup);
 }
 function renderPoNumberPanel(){
   const panel=byId('poNumberPanel');if(!panel)return;
   const opts=poOptionsForSupplier();
-  const sup=(byId('supplierName')?.value||'').trim();
+  const sup=(inwGateParty_()||(byId('supplierName')?.value||'')).trim();
   /* MD-approved DRAFTS come first, above the open POs. An approved excess /
      rate / extra-item request is a finished entry waiting to be booked — a
      click loads it back exactly as the MD approved it — so it belongs at the
@@ -10327,6 +10329,7 @@ document.addEventListener('DOMContentLoaded',()=>{
     box.innerHTML=s.files.map((f,i)=>`
       <div style="position:relative;width:80px;height:80px;border-radius:6px;overflow:hidden;border:1.5px solid #cbd5e1;flex-shrink:0;">
         <img src="${f.dataUrl}" style="width:100%;height:100%;object-fit:cover;">
+        ${f.saved?'<span style="position:absolute;top:2px;left:2px;background:#0d5c53;color:#fff;font-size:8px;font-weight:800;padding:1px 4px;border-radius:3px;">SAVED</span>':''}
         <button onclick="removePhotoAt('${key}',${i})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,0.6);color:#fff;border:none;border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;line-height:18px;text-align:center;padding:0;">✕</button>
         <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.5);color:#fff;font-size:8px;padding:2px 4px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;">${f.name}</div>
       </div>`).join('');
@@ -18584,6 +18587,8 @@ async function loadInwardForEdit(id,no){
   updateStoreTotals();
   refreshStoreEditUi();
   showToast(''+(sarvEditingInwardNo||'Record')+' is open in edit mode. Make your changes and press Update.');
+  // its Original Invoice pages back into Photos / Original Invoice (in the background; SAVED ATTACHMENTS ON EDIT)
+  if(sarvEditingInwardNo)sarvEditAttachLoad_('inward',sarvEditingInwardNo,!!(sarvInwUnloadActive&&sarvInwUnloadActive.approvalId));
 }
 
 async function loadOutwardForEdit(id,no){
@@ -18690,6 +18695,8 @@ async function loadOutwardForEdit(id,no){
   if((e.entry_type||'')==='ISSUE'&&String(e.lot_no||'').trim())
     restoreOutLotStrips_(e.lot_no).catch(err=>console.warn('[SARV] lot strip restore skipped:',err.message||err));
   showToast(''+(sarvEditingOutwardNo||'Record')+' is open in edit mode. Make your changes and press Update.');
+  // its Original Invoice pages back into Photos / Original Document (in the background; SAVED ATTACHMENTS ON EDIT)
+  if(sarvEditingOutwardNo)sarvEditAttachLoad_('outward',sarvEditingOutwardNo,false);
 }
 /* Re-links the rows now on the form to a saved lot's requirement list, matched
    on the Item Master id each row is pinned to. Rows the sheet says nothing
@@ -20231,6 +20238,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    doc.setTextColor(0,0,0);
    doc.setLineWidth(0.5); doc.line(x,y+bandH,x+w,y+bandH);
    let yy=y+bandH+4.6*K;
+   /* Gate barcode (sarv-qr.js drawBarcodePdf): the bill number as a long horizontal Code 128, centred in its own
+      strip under the band, the number printed under it. Wide bars (~0.3 mm) so a phone reads it from a distance;
+      at most 100 mm / 62 % of the copy. d.__gateBar is set by buildStoreNativePdfBlob (PDF Settings › Gate code). */
+   if(d.__gateBar&&window.SarvQR&&SarvQR.drawBarcodePdf){
+     const bw=Math.min(100,w*0.62),bh=10,by=y+bandH+1.8;
+     if(SarvQR.drawBarcodePdf(doc,d.__gateBar,x+(w-bw)/2,by,bw,bh)){
+       doc.setFont(undefined,'normal');doc.setFontSize(6.5*K);doc.setTextColor(0,0,0);
+       doc.text(String(d.__gateBar),x+w/2,by+bh+2.6*K,{align:'center'});
+       yy=by+bh+3.4*K+4.6*K;
+     }
+   }
    // Meta info — two columns of label/value pairs, full width under the heading band (and the QR)
    const halfW=(w-4)/2;
    const metaX=x, mHalfW=halfW;
@@ -20763,12 +20781,17 @@ window.addEventListener('DOMContentLoaded',()=>{
    if(oneCopy){
      const margin=sarvPdfOpt_('store','marginTwo');
      if(variant==='ACCOUNT_BASE')d.__remarksBox=true;
-     // The Gate-2 QR goes on the Supplier Copy of an Inward / NB and the Receiver Copy of an Outward only (no Issue, Issue Return or Account Copy)
+     /* The gate code goes on the Supplier Copy of an Inward / NB and the Receiver Copy of an Outward only (no Issue,
+        Issue Return or Account Copy): PDF Settings › Store › Gate code = Barcode + small QR / Barcode only / QR only
+        (this store's own setting, SARV_PDF_STORE). A library that cannot load leaves its code out, never the PDF. */
      if(variant==='SUPPLIER_ONE'&&(kind==='INWARD'||kind==='OUTWARD')&&!sarvIsIssueReturn_(d)){
-       try{if(window.SarvQR&&await SarvQR.ready())d.__gateQr=sarvStoreGateQr_(kind,d,items);}catch(e){console.warn('[store pdf] gate QR skipped',e);}
+       const gc=sarvPdfOpt_('store','gateCode');
+       if(gc!=='BAR'){try{if(window.SarvQR&&await SarvQR.ready())d.__gateQr=sarvStoreGateQr_(kind,d,items);}catch(e){console.warn('[store pdf] gate QR skipped',e);}}
+       const bno=String((kind==='OUTWARD'?d.outwardNo:d.inwardNo)||'').trim();
+       if(gc!=='QR'&&bno){try{if(window.SarvQR&&SarvQR.barReady&&await SarvQR.barReady())d.__gateBar=bno;}catch(e){console.warn('[store pdf] gate barcode skipped',e);}}
      }
      try{drawStoreCopyNative_(doc,kind,d,items,variant==='ACCOUNT_BASE'?copyATitle:copyBTitle,margin,margin,pageW-margin*2,pageH-margin*2);}
-     finally{delete d.__remarksBox;delete d.__gateQr;}
+     finally{delete d.__remarksBox;delete d.__gateQr;delete d.__gateBar;}
    } else if(isTwoPage){
      const margin=sarvPdfOpt_('store','marginTwo');
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,pageW-margin*2,pageH-margin*2);
@@ -22453,12 +22476,112 @@ let PR_TEAL=[13,92,83];
      return (q.data&&q.data[0]&&q.data[0].public_url)||'';
    }catch(e){console.warn('[SARV PDF] invoice lookup skipped:',e.message||e);return null;}
  }
+ /* ══ SAVED ATTACHMENTS ON EDIT ══════════════════════════════════════
+    Opening a saved Inward / Outward / Issue for edit (loadInwardForEdit /
+    loadOutwardForEdit) loads its Original Invoice PDF back into the form's
+    Photos / Original Invoice box: each page is drawn by pdf.js, the photo is
+    cut out of it (the header band, the footer line and the white margins of
+    buildStoreInvoicePdfBlob are taken off) and put in the photo store marked
+    `saved` with its own footer name, so the Admin sees the preview and can
+    Update straight away, remove a page (✕) or add more.
+      • Nothing changed (the same saved pages, none removed / added): the stored
+        Original Invoice PDF is KEPT as it is (generateStorePdfs leaves INVOICE out).
+      • Anything changed: it is rebuilt from what the box holds (saved pages +
+        new photos). Before this, adding one photo on an edit replaced the whole
+        Original Invoice with that one photo.
+    Pages that are Unloader Supervisor photos ("UNLOADING PHOTO" in the footer)
+    are not loaded when the record has an unload approval: a rebuild adds them
+    again from inward_unload_photos (unloadPhotosForPdf_), so they never double.
+    If the saved pages could not be loaded, Update asks before a rebuild would
+    drop them (ensureStorePhotos_). */
+ const sarvEditAttach={inward:null,outward:null};   // {no, state 'loading'|'done'|'failed'|'none', n, skipped, p}
+ const SEA_MM=72/25.4, SEA_M=8, SEA_HEAD=17, SEA_FOOT=8;   // = buildStoreInvoicePdfBlob's M / HEAD / FOOT + 2 (mm)
+ function sarvEditAttachSet_(key,st){
+   const c=byId(key==='inward'?'inwPhotoCount':'outPhotoCount');
+   if(c&&st)c.textContent=st;
+ }
+ // the photo inside a drawn page: the area under the header band / above the footer, white margins trimmed
+ function sarvEditAttachCut_(cv,pxPerMm){
+   const W=cv.width,H=cv.height;
+   const x0=Math.round(SEA_M*pxPerMm),y0=Math.round(SEA_HEAD*pxPerMm);
+   const x1=Math.max(x0+10,W-Math.round(SEA_M*pxPerMm)),y1=Math.max(y0+10,H-Math.round(SEA_FOOT*pxPerMm));
+   const cx=cv.getContext('2d'),data=cx.getImageData(x0,y0,x1-x0,y1-y0).data,w=x1-x0,h=y1-y0;
+   let l=w,t=h,r=-1,b=-1;
+   for(let y=0;y<h;y+=2)for(let x=0;x<w;x+=2){
+     const i=(y*w+x)*4;
+     if(data[i]<244||data[i+1]<244||data[i+2]<244){if(x<l)l=x;if(x>r)r=x;if(y<t)t=y;if(y>b)b=y;}
+   }
+   if(r<l||b<t){l=0;t=0;r=w-1;b=h-1;}                 // an all-white page: keep the whole area
+   const out=document.createElement('canvas');out.width=r-l+1;out.height=b-t+1;
+   const ox=out.getContext('2d');ox.fillStyle='#fff';ox.fillRect(0,0,out.width,out.height);
+   ox.drawImage(cv,x0+l,y0+t,out.width,out.height,0,0,out.width,out.height);
+   return {dataUrl:out.toDataURL('image/jpeg',0.85),w:out.width,h:out.height};
+ }
+ async function sarvEditAttachLoad_(key,no,hasUnloadApproval){
+   const S={no,state:'loading',n:0,skipped:0,p:null};sarvEditAttach[key]=S;
+   const still=()=>sarvEditAttach[key]===S&&(key==='inward'?sarvEditingInwardNo:sarvEditingOutwardNo)===no;
+   S.p=(async()=>{
+     sarvEditAttachSet_(key,'Loading the saved attachments…');
+     try{
+       const url=await storeInvoicePdfUrl_(no);
+       if(url===null)throw new Error('the saved attachment list could not be read');
+       if(!url){S.state='none';if(still())sarvEditAttachSet_(key,'No saved Original Invoice for '+no);return;}
+       const res=await fetch(url,{cache:'no-store'});
+       if(!res.ok)throw new Error('HTTP '+res.status);
+       const buf=await res.arrayBuffer();
+       const lib=await sarvPdfJs_();
+       const pdf=await lib.getDocument({data:buf}).promise;
+       const files=[];
+       for(let p=1;p<=pdf.numPages;p++){
+         if(!still())return;
+         const pg=await pdf.getPage(p),vp1=pg.getViewport({scale:1});
+         // the footer line: "<photo name>   ·   Printed: …"
+         let foot='';
+         try{const tc=await pg.getTextContent();foot=(tc.items||[]).map(x=>x.str||'').find(s=>/Printed:/.test(s))||'';}catch(e){}
+         if(hasUnloadApproval&&/UNLOADING PHOTO/i.test(foot)){S.skipped++;continue;}
+         const scale=Math.min(3,1800/vp1.width),vp=pg.getViewport({scale});
+         const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+         await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+         const cut=sarvEditAttachCut_(cv,scale*SEA_MM);
+         cv.width=cv.height=0;                           // free the page bitmap at once
+         const nm=(foot.split(/\s+·\s+Printed:/)[0]||'').trim();
+         files.push({name:nm&&!/^Printed:/.test(nm)?nm:'Saved page '+p,type:'image/jpeg',dataUrl:cut.dataUrl,w:cut.w,h:cut.h,saved:true,savedNo:no});
+       }
+       if(!still())return;
+       // the saved pages first, then whatever was added while they loaded
+       const cur=(window.getPhotos?window.getPhotos(key):[]).filter(f=>!(f&&f.saved));
+       if(window.putPhotos)window.putPhotos(key,files.concat(cur));
+       S.n=files.length;S.state='done';
+       const grp=byId(key==='inward'?'inwPhotoGroup':'outPhotoGroup');if(grp&&files.length){grp.style.outline='';grp.style.background='';}
+       showToast(no+': '+files.length+' saved attachment page(s) loaded into Photos / Original Invoice'+(S.skipped?' ('+S.skipped+' Unloader photo page(s) are added back on Update)':'')+'. Update keeps them as they are unless you remove or add one.');
+     }catch(e){
+       if(!still())return;
+       S.state='failed';S.err=e.message||String(e);
+       console.warn('[SARV] Saved attachments not loaded:',S.err);
+       sarvEditAttachSet_(key,'Saved attachments could not be loaded ('+S.err+')');
+       showToast('The saved attachments of '+escText(no)+' could not be loaded into the form ('+escText(S.err)+'). Update without new photos keeps them; adding a photo would replace them.','warn');
+     }
+   })();
+   return S.p;
+ }
+ /* Update of an edit: true = the box still holds exactly the saved pages (none removed,
+    none added), so the stored Original Invoice PDF is kept instead of being rebuilt. */
+ function sarvEditAttachUnchanged_(key,no,images){
+   const S=sarvEditAttach[key];
+   if(!S||S.no!==no||S.state!=='done'||!S.n)return false;
+   return images.length===S.n&&images.every(f=>f&&f.saved&&f.savedNo===no);
+ }
  /* Submit gate: an Inward / Outward / Issue needs at least one photo (the
     original invoice / gate pass). Waits for photos still being processed first.
     An Admin EDIT of an entry that already has its Original Invoice PDF may go
     without new photos — the stored one is kept as it is. */
  async function ensureStorePhotos_(key,editNo){
    if(window.photosReady)await window.photosReady(key);
+   // an edit whose saved pages are still being loaded into the box: wait for them (SAVED ATTACHMENTS ON EDIT)
+   const sv=editNo&&sarvEditAttach[key]&&sarvEditAttach[key].no===editNo?sarvEditAttach[key]:null;
+   if(sv&&sv.state==='loading'&&sv.p){showToast('Loading the saved attachments first…');try{await sv.p;}catch(e){}}
+   if(sv&&sv.state==='failed'&&window.getPhotos&&window.getPhotos(key).length
+     &&!confirm('The saved attachments of '+editNo+' could not be loaded into this form.\n\nUpdate now and the Original Invoice is REBUILT from only the photo(s) in the box, so its old pages are lost.\n\nContinue? (Cancel, remove the new photos and Update to keep the saved Original Invoice.)'))return false;
    if(window.getPhotos&&window.getPhotos(key).length)return true;
    if(editNo){
      const url=await storeInvoicePdfUrl_(editNo);
@@ -23241,7 +23364,10 @@ let PR_TEAL=[13,92,83];
        (issBuildPdf_) builds an approved Issue from what the server kept, not
        from this form: its own photos and sign, and nothing on screen (the
        preview / link bar of the entry being typed) is touched. */
-    const images=(opts.images||(window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput))).slice();
+    let images=(opts.images||(window.getPhotos?window.getPhotos(photoKey):await readPdfImages(photoInput))).slice();
+    /* An edit whose box still holds exactly its saved pages: the stored Original Invoice PDF
+       stays as it is, not rebuilt from them (SAVED ATTACHMENTS ON EDIT). */
+    if(opts.isEdit&&!opts.images&&sarvEditAttachUnchanged_(photoKey,d.inwardNo||d.outwardNo,images))images=[];
     /* The Unloader Supervisor's item photos go into the same Original Invoice
        PDF, after the invoice pages. Only when the store attached its own photos
        this time: an Admin edit without new photos keeps the stored Original
@@ -31202,7 +31328,13 @@ const SARV_PDF_DEFS=[
       {k:'showRemarks',l:'Remarks',type:'bool',def:true},
       {k:'showChecklist',l:'Checklist (Dropdown Master › Store checklists)',type:'bool',def:true},
       {k:'showPrinted',l:'"Printed:" date & time under the signatures',type:'bool',def:true},
-      {k:'showDivider',l:'Dashed cutting line between the two copies (SINGLE PDF)',type:'bool',def:true}]}]},
+      {k:'showDivider',l:'Dashed cutting line between the two copies (SINGLE PDF)',type:'bool',def:true}]},
+    /* What the gate scans on the Supplier Copy (Inward / NB) and the Receiver Copy (Outward): the long
+       barcode of the bill number (fast from a distance; the gate gets the details from the server) and / or
+       the small QR (party, PO / PR, items inside, works offline). sarv-qr.js draws both. */
+    {g:'Gate code (Supplier / Receiver Copy)',opts:[
+      {k:'gateCode',l:'Code printed for the gate scanner',type:'select',def:'BOTH',choices:[['BOTH','Barcode + small QR'],['BAR','Barcode only'],['QR','QR only']],
+        hint:'Barcode = a long horizontal bar code of the bill number under the heading, quick to scan. The small QR (top-left) carries the party, PO / PR and items, so the gate also works offline with it.'}]}]},
   {doc:'pr',label:'Purchase Requirement (PR)',groups:[
     {g:'Text size',opts:[
       {k:'scale',l:'Text size',type:'num',unit:'%',def:100,min:85,max:125,step:1,hint:'Every text of the PR PDF, here and in the mobile app. This layout has fixed columns: above 100%, check the preview with a long PR.'}]}]},
@@ -31244,6 +31376,7 @@ function sarvPdfOpt_(doc,k){
   if(!def)return v;
   if(v===undefined||v===null||v==='')return def.def;
   if(def.type==='bool')return v===true||v==='true'||v===1;
+  if(def.type==='select')return (def.choices||[]).some(c=>c[0]===v)?v:def.def;
   const n=Number(v);
   return isFinite(n)?Math.min(def.max,Math.max(def.min,n)):def.def;
 }
@@ -31273,6 +31406,10 @@ function sarvRenderPdfSettings_(){
     const v=sarvPdfOpt_(D.doc,o.k),changed=cur[o.k]!==undefined&&cur[o.k]!==o.def;
     const lab='<div style="font-size:12px;font-weight:700;color:#0f172a;">'+escText(o.l)+(changed?' <span style="color:#b45309;font-size:10.5px;">changed</span>':'')+'</div>';
     const hint=o.hint?'<div style="font-size:10.5px;color:#64748b;margin-top:2px;line-height:1.4;">'+escText(o.hint)+'</div>':'';
+    if(o.type==='select')return '<div style="padding:7px 0;border-top:1px solid #f1f5f9;">'+lab
+      +'<select data-pdfk="'+o.k+'" class="form-control" style="height:30px;font-size:12px;margin-top:4px;">'
+      +(o.choices||[]).map(c=>'<option value="'+escText(c[0])+'"'+(c[0]===v?' selected':'')+'>'+escText(c[1])+'</option>').join('')+'</select>'
+      +'<div style="font-size:10px;color:#94a3b8;">default '+escText(((o.choices||[]).find(c=>c[0]===o.def)||[o.def,o.def])[1])+'</div>'+hint+'</div>';
     if(o.type==='bool')return '<label style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-top:1px solid #f1f5f9;cursor:pointer;">'
       +'<input type="checkbox" data-pdfk="'+o.k+'"'+(v?' checked':'')+' style="width:16px;height:16px;margin-top:1px;"><div>'+lab+hint+'</div></label>';
     return '<div style="padding:7px 0;border-top:1px solid #f1f5f9;">'+lab
@@ -31320,8 +31457,9 @@ function sarvRenderPdfSettings_(){
   // wiring
   box.querySelectorAll('[data-pdfk]').forEach(el=>el.addEventListener(el.type==='range'?'input':'change',()=>{
     const o=sarvPdfDef_(D.doc,el.dataset.pdfk);
-    let v=el.type==='checkbox'?el.checked:Number(el.value);
-    if(o.type!=='bool'){if(!isFinite(v))v=o.def;v=Math.min(o.max,Math.max(o.min,v));
+    let v=el.type==='checkbox'?el.checked:o.type==='select'?el.value:Number(el.value);
+    if(o.type==='select'){if(!(o.choices||[]).some(c=>c[0]===v))v=o.def;}
+    else if(o.type!=='bool'){if(!isFinite(v))v=o.def;v=Math.min(o.max,Math.max(o.min,v));
       box.querySelectorAll('[data-pdfk="'+o.k+'"]').forEach(x=>{if(x!==el)x.value=v;});}
     const docs=SARV_PDF_DRAFT.docs,dd=Object.assign({},docs[D.doc]||{});
     if(v===o.def)delete dd[o.k];else dd[o.k]=v;   // only what differs from the default is kept
@@ -33685,7 +33823,7 @@ async function inwYarnUlStore_(id){
    No migration = the box says so and the Inward saves as before.
    ═══════════════════════════════════════════════════════════════════════ */
 var sarvInwGate={list:null,store:'',at:0,busy:null,noMig:false,err:'',required:false,want:'',editHad:false,editStore:'',sig:''};
-var sarvInwGateChosen='';
+var sarvInwGateChosen='', sarvInwGateRef=null;
 function inwGateStoreOf_(){return ((sarvInwGate&&sarvInwGate.editStore)||sarvStore||'STORE 2')==='STORE 1'?'STORE 1':'STORE 2';}
 function inwGateLabel_(){return inwGateStoreOf_()==='STORE 1'?'Gate-1 (Unit-1)':'Gate-2 (Unit-2)';}
 function inwGateDmyT_(v){
@@ -33724,22 +33862,34 @@ function inwGateRender_(){
   else if(cur&&S.want===cur&&mine){sel.insertAdjacentHTML('beforeend','<option value="'+escText(cur)+'">'+escText(cur)+' (this record)</option>');sel.value=cur;}
   inwGateInfo_();
 }
-// The picked gate entry against this Inward: {row, warns}
+// The party of the picked gate entry (capitals), '' when none is picked
+function inwGateParty_(){
+  if(typeof sarvInwGate==='undefined'||!sarvInwGate)return '';
+  const v=pVal('inwGateEntryNo'), r=(sarvInwGate.list||[]).find(x=>x.no===v);
+  return r&&r.party?String(r.party).trim().toUpperCase():'';
+}
+/* The picked gate entry against this Inward: {row, errs, warns, refChange}
+     errs       stop Submit: a different Supplier Name, a ticked PO of another vendor (the PO may be
+                changed, but only within the gate entry's party)
+     refChange  {type, no} when this Inward books other PO(s) / PR(s) than the guard noted: Save writes
+                them back onto the gate entry (inwGateRefSync_) */
 function inwGateCheck_(){
   const v=pVal('inwGateEntryNo'), r=(sarvInwGate.list||[]).find(x=>x.no===v);
-  if(!r)return {row:null,warns:[]};
-  const warns=[], sup=pVal('supplierName');
-  if(r.party&&sup&&yulKey_(r.party)!==yulKey_(sup))warns.push('Party: gate "'+r.party+'", this Inward "'+sup+'"');
+  if(!r)return {row:null,errs:[],warns:[],refChange:null};
+  const errs=[], warns=[], sup=pVal('supplierName');
+  if(r.party&&sup&&yulKey_(r.party)!==yulKey_(sup))errs.push('Supplier Name must be the gate entry\'s party "'+r.party+'" (this Inward: "'+sup+'")');
+  const pos=getSelectedPoNos(), prs=getSelectedPrNos();
+  if(r.party&&pos.length){
+    const other=pos.filter(no=>{const po=sarvPoCatalog.find(p=>yulKey_(p.po_no)===yulKey_(no));return po&&yulKey_(po.vendor_name||'')!==yulKey_(r.party);});
+    if(other.length)errs.push('PO '+other.join(', ')+' is not of '+r.party+': only a PO of the gate entry\'s supplier can be chosen');
+  }
   const refs=String(r.refNo||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
-  if(/^PO$/i.test(r.refType||'')&&refs.length){
-    const mine=getSelectedPoNos();
-    if(mine.length&&!refs.some(x=>mine.some(m=>yulKey_(m)===yulKey_(x))))warns.push('PO: gate '+refs.join(', ')+', this Inward '+mine.join(', '));
-  }
-  if(/^PR$/i.test(r.refType||'')&&refs.length){
-    const mine=getSelectedPrNos();
-    if(mine.length&&!refs.some(x=>mine.some(m=>yulKey_(m)===yulKey_(x))))warns.push('PR: gate '+refs.join(', ')+', this Inward '+mine.join(', '));
-  }
-  return {row:r,warns};
+  const same=(a,b)=>a.length===b.length&&a.every(x=>b.some(y=>yulKey_(x)===yulKey_(y)));
+  let refChange=null;
+  if(pos.length&&!(/^PO$/i.test(r.refType||'')&&same(pos,refs)))refChange={type:'PO',no:pos.join(', ')};
+  else if(!pos.length&&prs.length&&!(/^PR$/i.test(r.refType||'')&&same(prs,refs)))refChange={type:'PR',no:prs.join(', ')};
+  if(refChange)warns.push('Gate '+(r.refType||'Ref')+' '+(refs.join(', ')||'-')+' → this Inward '+refChange.type+' '+refChange.no+': the gate entry is updated to it on Save');
+  return {row:r,errs,warns,refChange};
 }
 function inwGateInfo_(){
   const box=byId('inwGateInfo');if(!box)return;
@@ -33750,7 +33900,7 @@ function inwGateInfo_(){
     const ck=byId('inwGateReqChk');if(ck)ck.checked=!!S.required;const lb=byId('inwGateReqLbl');if(lb)lb.textContent='Compulsory for '+store;}
   if(S.noMig){box.innerHTML='<span style="color:#92400e;font-weight:700;">The gate link needs sql/GATE_INWARD_LINK_MIGRATION.sql (Admin). Until then this Inward saves without a Gate Entry No.</span>';return;}
   if(S.err){box.innerHTML='<span style="color:#b91c1c;font-weight:700;">Could not read the gate entries ('+escText(S.err)+'). Press Refresh.</span>';return;}
-  const {row,warns}=inwGateCheck_();
+  const {row,errs,warns}=inwGateCheck_();
   if(!row){
     const n=(S.list||[]).filter(r=>!r.usedBy).length;
     box.innerHTML='<span style="color:#475569;">'+(S.list?(n?n+' approved Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery.'
@@ -33767,8 +33917,9 @@ function inwGateInfo_(){
     +(row.guard?'<span>Guard: '+escText(row.guard)+'</span>':'')
     +(row.hasBill?'<span style="color:#15803d;">Bill photo at the gate ✓</span>':'')+'</div>'
     +inwGateUlHtml_(row)
-    +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">Check: '+warns.map(escText).join(' · ')+'</div>'
-      :'<div style="margin-top:6px;color:#15803d;font-weight:700;">Matches this Inward.</div>');
+    +(errs.length?'<div style="margin-top:6px;background:#fef2f2;border:1px solid #f87171;border-radius:6px;padding:6px 9px;color:#b91c1c;font-weight:700;">Not allowed: '+errs.map(escText).join(' · ')+'</div>':'')
+    +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">'+warns.map(escText).join(' · ')+'</div>'
+      :errs.length?'':'<div style="margin-top:6px;color:#15803d;font-weight:700;">Matches this Inward.</div>');
 }
 /* Picked: fill what is still empty. Supplier Name when blank; the gate's PO (or Field Boy PR) when nothing is
    ticked, no item row is filled and no MD-approved draft is loaded, through the pickers' own state + loaders. */
@@ -33777,12 +33928,17 @@ async function inwGatePicked_(){
   const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGate.want);
   // the Unloader's Photos / Original Invoice of this gate entry into the photo box (and those of one picked before out)
   inwGateUlApply_(r||null);
+  inwGatePhotosLoad_(r||null);   // and every photo of the delivery under the box, to look at (GATE ENTRY PHOTOS)
   if(r&&!sarvEditingInwardId){
     const sup=byId('supplierName');
-    if(sup&&!sup.value.trim()&&r.party&&!sup.readOnly&&!sup.disabled){
-      sup.value=String(r.party).toUpperCase();
-      sup.dispatchEvent(new Event('input',{bubbles:true}));sup.dispatchEvent(new Event('change',{bubbles:true}));
+    // the gate entry's party IS the supplier of this Inward (its PO may change, only within that supplier)
+    if(sup&&r.party&&!sup.readOnly&&!sup.disabled&&yulKey_(sup.value)!==yulKey_(r.party)){
+      if(!sup.value.trim()){
+        sup.value=String(r.party).toUpperCase();
+        sup.dispatchEvent(new Event('input',{bubbles:true}));sup.dispatchEvent(new Event('change',{bubbles:true}));
+      }else showToast('Gate entry '+escText(r.no)+' is of <b>'+escText(r.party)+'</b>, not of the Supplier Name on this form. Change the Supplier Name (and its PO), or pick another gate entry.','warn');
     }
+    renderPoNumberPanel();   // the PO list follows the gate entry's party
     const filled=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].some(tr=>(tr.querySelector('.item-name')?.value||'').trim());
     const refs=String(r.refNo||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
     if(refs.length&&!filled&&!sarvInwDraftActive&&!getSelectedPoNos().length&&!getSelectedPrNos().length){
@@ -33807,6 +33963,8 @@ async function inwGateRefresh_(force){
   else inwGateInfo_();
   // the Unloader uploaded while the Store waited on the form: their photos come in by themselves
   const r=(sarvInwGate.list||[]).find(x=>x.no===pVal('inwGateEntryNo'));
+  // an entry opened for edit (or picked before the list arrived): its photos too; an upload since = read again
+  {const ul=inwGateUlOf_(r),sig=r?r.uid+'|'+(ul?ul.status+(ul.photoCount||0):''):'';if(sig!==sarvInwGatePh.sig)inwGatePhotosLoad_(r||null);}
   const ul=inwGateUlOf_(r);
   if(ul&&ul.status==='DONE'&&!inwGateUlHas_(r.no))inwGateUlApply_(r);
 }
@@ -33835,7 +33993,7 @@ async function inwGateSetRequired_(on){
 }
 // Submit: the gate before anything is written. false = stop (the reason was shown).
 async function inwGateGate_(){
-  sarvInwGateChosen='';
+  sarvInwGateChosen='';sarvInwGateRef=null;
   const v0=pVal('inwGateEntryNo'), mine=String(sarvEditingInwardId||'');
   const list=await inwGateLoad_(true);
   const S=sarvInwGate;
@@ -33859,9 +34017,14 @@ async function inwGateGate_(){
   const r=(list||[]).find(x=>x.no===v);
   if(!r&&!(mine&&v===S.want)){showToast('Gate entry '+v+' is not an Inward entry of '+inwGateLabel_()+' (30 days). Press Refresh.','warn');return false;}
   if(r&&r.usedBy&&r.usedBy.id!==mine){showToast('Gate entry '+v+' is already booked by Inward '+(r.usedBy.no||'')+'. Choose another one.','error');return false;}
-  const {warns}=inwGateCheck_();
-  if(warns.length&&!confirm('Gate entry '+v+' does not match this Inward:\n• '+warns.join('\n• ')+'\n\nSave against this Gate Entry No. anyway?'))return false;
+  const {errs,refChange}=inwGateCheck_();
+  if(errs.length){
+    byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+    showToast('Gate entry '+escText(v)+': '+errs.map(escText).join('<br>'),'error');
+    return false;
+  }
   sarvInwGateChosen=v;
+  sarvInwGateRef=refChange||null;   // written onto the gate entry after the save (inwGateRefSync_)
   return true;
 }
 // After the header is written: the number on the record (or taken off on an edit where it was cleared)
@@ -33873,14 +34036,113 @@ async function inwGateSave_(id){
     if(r.error){
       if(r.error.code==='23505')showToast('Gate entry '+v+' was just booked by another Inward, so this Inward is saved WITHOUT it. Open it, choose the right one and Update.','error');
       else console.warn('[SARV] Gate Entry No. not stored (run GATE_INWARD_LINK_MIGRATION.sql):',r.error.message);
-    }
+    }else if(v)await inwGateRefSync_(v,id);
   }catch(e){console.warn('[SARV] Gate Entry No. not stored:',e.message||e);}
   sarvInwGate.at=0;   // the list changes now
+}
+/* The Inward booked other PO(s) / PR(s) than the guard noted (same supplier, checked at Submit and again
+   on the server): the gate entry is updated to them (gate_inward_set_ref, GATE_INWARD_REF_SYNC_MIGRATION.sql),
+   so the Gate app shows what was really received. Never stops the save: a failure is only said. */
+async function inwGateRefSync_(entryNo,inwardId){
+  const refChange=sarvInwGateRef;sarvInwGateRef=null;
+  if(!refChange)return;
+  let docNo='';
+  try{const q=await SB.from('inward_entries').select('document_no').eq('id',inwardId).maybeSingle();docNo=(q.data&&q.data.document_no)||'';}catch(e){}
+  try{
+    let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+    const r=await SB.rpc('gate_inward_set_ref',{p_token:tok,p_entry_no:entryNo,p_ref_type:refChange.type,p_ref_no:refChange.no,p_doc_no:docNo||null});
+    if(r.error)throw r.error;
+    const d=r.data||{};
+    if(d.success===false){
+      showToast('Gate entry '+escText(entryNo)+' still shows its old '+escText(refChange.type)+' ('+escText(d.error==='PARTY_MISMATCH'?'PO '+(d.detail||'')+' is not of the gate entry\'s supplier':d.error||'not updated')+').','warn');
+      return;
+    }
+    if(d.changed)showToast('Gate entry '+escText(entryNo)+' updated to '+escText(refChange.type+' '+refChange.no));
+  }catch(e){
+    const m=String(e.message||e);
+    console.warn('[SARV] Gate entry reference not updated'+(/gate_inward_set_ref|schema cache|PGRST202/i.test(m)?' (run GATE_INWARD_REF_SYNC_MIGRATION.sql)':'')+':',m);
+  }
+}
+/* ═══════════════════════════════════════════════════════════════════════
+   GATE ENTRY PHOTOS   (sql/GATE_INWARD_PHOTOS_MIGRATION.sql)
+   Under the Gate Entry No. box: every photo of the picked delivery, so the Store
+   can look at them before booking the bill. Gate = the guard's Bill / Item /
+   Vehicle (weighbridge) photos and the vehicle at Out; Unloader = the Photos /
+   Original Invoice the Unloader uploaded. Small thumbnails; a tap opens them full
+   screen (inwGatePhotoView_: ← → / swipe, Esc or a tap outside closes). Read once
+   per entry (gate_inward_photos, any ERP login) and again when the Unloader
+   uploads meanwhile (the list refresh notices it). No migration = a note.
+   ═══════════════════════════════════════════════════════════════════════ */
+var sarvInwGatePh={uid:'',sig:'',busy:false,err:'',list:[]};
+const GATE_PH_LABEL={billPhoto:'Gate · Bill',itemPhoto:'Gate · Item',vehiclePhoto:'Gate · Vehicle (weighbridge)',outPhoto:'Gate · Vehicle at Out'};
+async function inwGatePhotosLoad_(r){
+  const S=sarvInwGatePh, ul=inwGateUlOf_(r);
+  S.uid=r?String(r.uid||''):''; S.sig=r?r.uid+'|'+(ul?ul.status+(ul.photoCount||0):''):''; S.list=[]; S.err='';
+  if(!S.uid){inwGatePhotosRender_();return;}
+  const uid=S.uid; S.busy=true; inwGatePhotosRender_();
+  try{
+    let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+    const q=await SB.rpc('gate_inward_photos',{p_token:tok,p_uid:uid});
+    if(q.error)throw q.error;
+    const d=q.data||{};if(d.success===false)throw new Error(String(d.error||'NOT_FOUND'));
+    if(S.uid!==uid)return;   // another entry picked meanwhile
+    const g=d.gate||{}, list=[];
+    ['billPhoto','itemPhoto','vehiclePhoto','outPhoto'].forEach(k=>{if(/^data:image\//.test(String(g[k]||'')))list.push({src:g[k],label:GATE_PH_LABEL[k],who:'gate'});});
+    const u=(d.unloader||[]).filter(x=>/^data:image\//.test(String(x||''))), by=((d.ul||{}).doneBy)||'';
+    u.forEach((src,i)=>list.push({src,label:'Unloader · Photo '+(i+1)+' of '+u.length+(by?' · '+by:''),who:'ul'}));
+    S.list=list;
+  }catch(e){
+    if(S.uid!==uid)return;
+    const m=String(e.message||e);
+    S.err=/gate_inward_photos|schema cache|PGRST202|42883/i.test(m)?'The photos need sql/GATE_INWARD_PHOTOS_MIGRATION.sql (Admin).':'The photos could not be read ('+m+'). Press Refresh.';
+  }finally{if(S.uid===uid)S.busy=false;}
+  inwGatePhotosRender_();
+}
+function inwGatePhotosRender_(){
+  const box=byId('inwGatePhotos');if(!box)return;
+  const S=sarvInwGatePh;
+  if(!S.uid){box.innerHTML='';return;}
+  if(S.busy){box.innerHTML='<span style="color:#64748b;">Loading the gate / Unloader photos…</span>';return;}
+  if(S.err){box.innerHTML='<span style="color:#b45309;font-weight:700;">'+escText(S.err)+'</span>';return;}
+  if(!S.list.length){box.innerHTML='<span style="color:#64748b;">No photo was saved for this gate entry.</span>';return;}
+  const nG=S.list.filter(x=>x.who==='gate').length, nU=S.list.length-nG;
+  box.innerHTML='<div style="font-weight:800;color:#4c1d95;margin-bottom:5px;">Photos of this delivery · Gate '+nG+(nU?' · Unloader '+nU:'')+' <span style="font-weight:500;color:#64748b;">(tap to view)</span></div>'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px;">'
+    +S.list.map((p,i)=>'<button type="button" onclick="inwGatePhotoView_('+i+')" title="'+escText(p.label)+'" style="position:relative;width:78px;height:78px;padding:0;border:2px solid '+(p.who==='gate'?'#a78bfa':'#86efac')+';border-radius:7px;overflow:hidden;cursor:zoom-in;background:#f8fafc;">'
+      +'<img src="'+p.src+'" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">'
+      +'<span style="position:absolute;left:0;right:0;bottom:0;background:rgba(15,23,42,.72);color:#fff;font-size:8.5px;font-weight:700;padding:1px 3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">'+escText(p.label.replace(/^(Gate|Unloader) · /,''))+'</span></button>').join('')
+    +'</div>';
+}
+// Full screen: one photo at a time, its label, n of N; ← → / swipe / the side buttons move, Esc or a tap outside closes
+function inwGatePhotoView_(start){
+  const list=sarvInwGatePh.list;if(!list.length)return;
+  let i=Math.max(0,Math.min(list.length-1,start|0));
+  const ov=document.createElement('div');
+  ov.style.cssText='position:fixed;inset:0;z-index:100001;background:rgba(2,6,23,.92);display:flex;flex-direction:column;align-items:center;justify-content:center;';
+  ov.innerHTML='<div style="position:absolute;top:10px;left:14px;right:70px;color:#e2e8f0;font-size:13px;font-weight:700;" data-cap></div>'
+    +'<button type="button" data-x style="position:absolute;top:8px;right:12px;height:34px;padding:0 14px;border:0;border-radius:17px;background:#dc2626;color:#fff;font-weight:800;cursor:pointer;">✕ Close</button>'
+    +'<img data-img alt="" style="max-width:94vw;max-height:84vh;object-fit:contain;border-radius:6px;box-shadow:0 10px 40px rgba(0,0,0,.5);background:#fff;">'
+    +'<button type="button" data-p style="position:absolute;left:10px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer;">‹</button>'
+    +'<button type="button" data-n style="position:absolute;right:10px;top:50%;transform:translateY(-50%);width:44px;height:44px;border-radius:50%;border:0;background:rgba(255,255,255,.18);color:#fff;font-size:20px;cursor:pointer;">›</button>';
+  document.body.appendChild(ov);
+  const img=ov.querySelector('[data-img]'), cap=ov.querySelector('[data-cap]');
+  const show=()=>{img.src=list[i].src;cap.textContent=(i+1)+' of '+list.length+' · '+list[i].label;
+    ov.querySelector('[data-p]').style.visibility=i>0?'visible':'hidden';ov.querySelector('[data-n]').style.visibility=i<list.length-1?'visible':'hidden';};
+  const go=d=>{const j=i+d;if(j>=0&&j<list.length){i=j;show();}};
+  const close=()=>{document.removeEventListener('keydown',key,true);ov.remove();};
+  const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}else if(e.key==='ArrowLeft'){e.preventDefault();go(-1);}else if(e.key==='ArrowRight'){e.preventDefault();go(1);}};
+  document.addEventListener('keydown',key,true);
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  ov.querySelector('[data-x]').onclick=close;ov.querySelector('[data-p]').onclick=()=>go(-1);ov.querySelector('[data-n]').onclick=()=>go(1);
+  let x0=null;ov.addEventListener('touchstart',e=>{x0=e.touches[0].clientX;},{passive:true});
+  ov.addEventListener('touchend',e=>{if(x0==null)return;const dx=e.changedTouches[0].clientX-x0;x0=null;if(Math.abs(dx)>50)go(dx<0?1:-1);});
+  show();
 }
 function inwGateReset_(){
   if(!sarvInwGate)return;
   const S=sarvInwGate;S.want='';S.editHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';
   if(typeof sarvInwGateUl!=='undefined'){sarvInwGateUl.no='';sarvInwGateUl.err='';}
+  if(typeof sarvInwGatePh!=='undefined')inwGatePhotosLoad_(null);
   const sel=byId('inwGateEntryNo');if(sel)sel.value='';
   inwGateInfo_();
 }

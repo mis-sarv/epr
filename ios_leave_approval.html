@@ -1,0 +1,1161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Leave Approval — iOS Pro</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Inter Font for SF Pro aesthetic -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Lucide Icons for crisp iOS-like vector glyphs -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'media',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'sans-serif'],
+                    },
+                    colors: {
+                        ios: {
+                            bg: '#F2F2F7',
+                            darkBg: '#000000',
+                            card: '#FFFFFF',
+                            darkCard: '#1C1C1E',
+                            blue: '#007AFF',
+                            green: '#34C759',
+                            red: '#FF3B30',
+                            orange: '#FF9500',
+                            gray: '#8E8E93',
+                            separator: '#C6C6C8',
+                            darkSeparator: '#38383A',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Strict Mobile Fit & No Horizontal Scroll */
+        html, body {
+            max-width: 100%;
+            overflow-x: hidden;
+            -webkit-tap-highlight-color: transparent;
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
+            scroll-behavior: smooth;
+        }
+
+        /* iOS Spring Animations */
+        .ios-spring {
+            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease, background-color 0.2s ease;
+        }
+        .ios-spring:active {
+            transform: scale(0.96);
+        }
+
+        /* iOS Segmented Control Sliding Pill */
+        .segmented-pill {
+            transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+
+        /* Frosted Glass iOS Navigation Bar */
+        .ios-blur {
+            backdrop-filter: saturate(180%) blur(20px);
+            -webkit-backdrop-filter: saturate(180%) blur(20px);
+        }
+
+        /* Smooth Expand/Collapse for Conditional Fields */
+        .accordion-content {
+            display: grid;
+            grid-template-rows: 0fr;
+            transition: grid-template-rows 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .accordion-content.open {
+            grid-template-rows: 1fr;
+        }
+        .accordion-inner {
+            overflow: hidden;
+        }
+
+        /* Custom iOS Switch Toggle */
+        .ios-switch {
+            width: 51px;
+            height: 31px;
+            background-color: #E9E9EA;
+            border-radius: 9999px;
+            position: relative;
+            transition: background-color 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+            cursor: pointer;
+        }
+        @media (prefers-color-scheme: dark) {
+            .ios-switch { background-color: #39393D; }
+        }
+        .ios-switch.checked {
+            background-color: #34C759;
+        }
+        .ios-switch-knob {
+            width: 27px;
+            height: 27px;
+            background: #FFFFFF;
+            border-radius: 50%;
+            position: absolute;
+            top: 2px;
+            left: 2px;
+            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
+            transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
+        }
+        .ios-switch.checked .ios-switch-knob {
+            transform: translateX(20px);
+        }
+
+        /* Hide scrollbars cleanly where appropriate */
+        ::-webkit-scrollbar {
+            width: 0px;
+            background: transparent;
+        }
+    </style>
+</head>
+<body class="bg-[#F2F2F7] dark:bg-black text-black dark:text-white min-h-screen flex justify-center selection:bg-[#007AFF]/20">
+
+    <!-- Mobile Viewport Container (Centered on desktop, full edge-to-edge on mobile) -->
+    <div id="app-shell" class="w-full max-w-[440px] min-h-screen bg-[#F2F2F7] dark:bg-black relative flex flex-col pt-[84px] pb-28 shadow-2xl sm:border-x border-gray-200 dark:border-zinc-800">
+
+        <!-- iOS Top Strictly Fixed Header (Stays pinned during up/down scrolling) -->
+        <header class="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[440px] z-40 ios-blur bg-[#F2F2F7]/90 dark:bg-black/90 border-b border-black/10 dark:border-white/10 px-4 pt-3 pb-2.5 shadow-2xs">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <div class="w-7 h-7 rounded-lg bg-[#007AFF] flex items-center justify-center text-white shadow-sm">
+                        <i data-lucide="calendar-check" class="w-4 h-4"></i>
+                    </div>
+                    <span class="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">HR Portal</span>
+                </div>
+                <!-- Quick Mode Pill (Employee vs Approver View) -->
+                <button onclick="toggleSpotlightSearch()" class="ios-spring flex items-center space-x-1.5 bg-black/5 dark:bg-white/10 px-3 py-1.5 rounded-full text-xs font-semibold text-[#007AFF]">
+                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
+                    <span>Spotlight</span>
+                </button>
+            </div>
+            <div class="mt-1 flex items-end justify-between">
+                <h1 id="header-title" class="text-[26px] font-bold tracking-tight leading-tight">Leave Portal</h1>
+                <span id="live-clock" class="text-xs font-medium text-[#8E8E93] pb-1"></span>
+            </div>
+        </header>
+
+        <!-- Dynamic Toast / iOS Banner Notification -->
+        <div id="ios-toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-[400px] pointer-events-none opacity-0 -translate-y-6 transition-all duration-300 ease-out">
+            <div class="ios-blur bg-white/95 dark:bg-zinc-900/95 border border-black/10 dark:border-white/15 rounded-2xl p-3.5 shadow-xl flex items-center space-x-3">
+                <div id="toast-icon-bg" class="w-9 h-9 rounded-full bg-[#34C759]/15 text-[#34C759] flex items-center justify-center shrink-0">
+                    <i id="toast-icon" data-lucide="check-circle-2" class="w-5 h-5"></i>
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p id="toast-title" class="text-sm font-semibold truncate">Notification</p>
+                    <p id="toast-msg" class="text-xs text-[#8E8E93] truncate">Action completed successfully.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 1: NEW LEAVE APPLICATION FORM -->
+        <main id="view-apply" class="flex-1 px-4 pt-4 space-y-6">
+
+            <!-- Employee Quick Details (iOS Inset Grouped List) -->
+            <section>
+                <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93] px-4 mb-1.5">Employee Details</h2>
+                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
+                    <div class="flex items-center px-4 py-3">
+                        <label class="w-28 text-[15px] font-medium shrink-0">Name <span class="text-[#FF3B30]">*</span></label>
+                        <input type="text" id="emp-name" placeholder="Enter your full name" class="w-full bg-transparent text-[15px] text-right focus:outline-none placeholder-[#8E8E93]/60">
+                    </div>
+                    <div class="flex items-center px-4 py-3">
+                        <label class="w-28 text-[15px] font-medium shrink-0">Emp ID / Dept</label>
+                        <input type="text" id="emp-id" placeholder="e.g. EMP-104 • Production" class="w-full bg-transparent text-[15px] text-right focus:outline-none placeholder-[#8E8E93]/60">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 1. LEAVE TYPE (MANDATORY) -->
+            <section>
+                <div class="flex items-center justify-between px-4 mb-1.5">
+                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">1. Leave Type <span class="text-[#FF3B30]">*</span></h2>
+                    <span class="text-[11px] font-semibold text-[#007AFF]">Mandatory</span>
+                </div>
+                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl p-1.5 grid grid-cols-3 gap-1.5 shadow-xs">
+                    <button type="button" onclick="selectLeaveType('CASUAL')" id="lt-CASUAL" class="leave-type-btn ios-spring py-2.5 px-2 rounded-xl text-[13px] font-semibold flex flex-col items-center justify-center space-y-1 bg-[#007AFF] text-white shadow-sm">
+                        <i data-lucide="coffee" class="w-4 h-4"></i>
+                        <span>Casual</span>
+                    </button>
+                    <button type="button" onclick="selectLeaveType('EMERGENCY')" id="lt-EMERGENCY" class="leave-type-btn ios-spring py-2.5 px-2 rounded-xl text-[13px] font-semibold flex flex-col items-center justify-center space-y-1 text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5">
+                        <i data-lucide="alert-circle" class="w-4 h-4 text-[#FF9500]"></i>
+                        <span>Emergency</span>
+                    </button>
+                    <button type="button" onclick="selectLeaveType('SICK LEAVE')" id="lt-SICK LEAVE" class="leave-type-btn ios-spring py-2.5 px-2 rounded-xl text-[13px] font-semibold flex flex-col items-center justify-center space-y-1 text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5">
+                        <i data-lucide="heart-pulse" class="w-4 h-4 text-[#FF3B30]"></i>
+                        <span>Sick Leave</span>
+                    </button>
+                </div>
+            </section>
+
+            <!-- 2. DURATION (HALF / FULL DAY / MORE THAN 1 DAY) -->
+            <section>
+                <div class="flex items-center justify-between px-4 mb-1.5">
+                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">2. Leave Duration <span class="text-[#FF3B30]">*</span></h2>
+                </div>
+
+                <!-- Apple Segmented Control -->
+                <div class="bg-[#E3E3E8] dark:bg-[#1C1C1E] p-1 rounded-xl grid grid-cols-3 relative mb-3">
+                    <button type="button" onclick="selectDuration('HALF')" id="dur-HALF" class="dur-btn ios-spring py-2 text-[12px] font-semibold rounded-lg bg-white dark:bg-[#3A3A3C] text-black dark:text-white shadow-xs">
+                        Half Day
+                    </button>
+                    <button type="button" onclick="selectDuration('FULL')" id="dur-FULL" class="dur-btn ios-spring py-2 text-[12px] font-semibold rounded-lg text-[#8E8E93]">
+                        Full Day
+                    </button>
+                    <button type="button" onclick="selectDuration('MULTI')" id="dur-MULTI" class="dur-btn ios-spring py-2 text-[12px] font-semibold rounded-lg text-[#8E8E93]">
+                        More Than 1 Day
+                    </button>
+                </div>
+
+                <!-- Dynamic Calendar & Session Card -->
+                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
+                    
+                    <!-- CASE A: HALF DAY -->
+                    <div id="panel-HALF" class="divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
+                        <div class="flex items-center justify-between px-4 py-3">
+                            <div class="flex items-center space-x-2.5">
+                                <span class="w-7 h-7 rounded-lg bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center">
+                                    <i data-lucide="calendar" class="w-4 h-4"></i>
+                                </span>
+                                <span class="text-[15px] font-medium">Select Date</span>
+                            </div>
+                            <input type="date" id="date-half" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
+                        </div>
+                        <div class="px-4 py-3">
+                            <span class="text-[13px] text-[#8E8E93] block mb-2">Select Half Day Shift</span>
+                            <div class="grid grid-cols-2 gap-2">
+                                <button type="button" onclick="selectHalfShift('BEFORE LUNCH')" id="shift-BEFORE" class="ios-spring py-2.5 px-3 rounded-xl border border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] text-[13px] font-semibold flex items-center justify-center space-x-1.5">
+                                    <i data-lucide="sunrise" class="w-4 h-4"></i>
+                                    <span>Before Lunch</span>
+                                </button>
+                                <button type="button" onclick="selectHalfShift('AFTER LUNCH')" id="shift-AFTER" class="ios-spring py-2.5 px-3 rounded-xl border border-transparent bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] text-[13px] font-semibold flex items-center justify-center space-x-1.5">
+                                    <i data-lucide="sunset" class="w-4 h-4"></i>
+                                    <span>After Lunch</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- CASE B: FULL DAY -->
+                    <div id="panel-FULL" class="hidden">
+                        <div class="flex items-center justify-between px-4 py-3.5">
+                            <div class="flex items-center space-x-2.5">
+                                <span class="w-7 h-7 rounded-lg bg-[#34C759]/15 text-[#34C759] flex items-center justify-center">
+                                    <i data-lucide="calendar-days" class="w-4 h-4"></i>
+                                </span>
+                                <span class="text-[15px] font-medium">Full Day Date</span>
+                            </div>
+                            <input type="date" id="date-full" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
+                        </div>
+                    </div>
+
+                    <!-- CASE C: MORE THAN 1 DAY -->
+                    <div id="panel-MULTI" class="hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
+                        <div class="flex items-center justify-between px-4 py-3">
+                            <div class="flex items-center space-x-2.5">
+                                <span class="w-7 h-7 rounded-lg bg-[#FF9500]/15 text-[#FF9500] flex items-center justify-center">
+                                    <i data-lucide="calendar-arrow-up" class="w-4 h-4"></i>
+                                </span>
+                                <span class="text-[15px] font-medium">From Date</span>
+                            </div>
+                            <input type="date" id="date-from" onchange="calculateTotalDays()" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
+                        </div>
+                        <div class="flex items-center justify-between px-4 py-3">
+                            <div class="flex items-center space-x-2.5">
+                                <span class="w-7 h-7 rounded-lg bg-[#FF3B30]/15 text-[#FF3B30] flex items-center justify-center">
+                                    <i data-lucide="calendar-arrow-down" class="w-4 h-4"></i>
+                                </span>
+                                <span class="text-[15px] font-medium">To Date</span>
+                            </div>
+                            <input type="date" id="date-to" onchange="calculateTotalDays()" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
+                        </div>
+                        <div class="px-4 py-2.5 bg-[#F9F9FB] dark:bg-[#252528] flex items-center justify-between">
+                            <span class="text-xs font-medium text-[#8E8E93]">Total Duration</span>
+                            <span id="total-days-badge" class="text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 px-2.5 py-1 rounded-full">2 Days</span>
+                        </div>
+                    </div>
+
+                </div>
+            </section>
+
+            <!-- 3. REASON OF LEAVE (TICK ANY + OTHER INPUT) -->
+            <section>
+                <div class="flex items-center justify-between px-4 mb-1.5">
+                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">3. Reason of Leave (Tick Any)</h2>
+                    <span id="reason-count" class="text-[11px] font-semibold text-[#8E8E93]">0 Selected</span>
+                </div>
+                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]" id="reasons-list">
+                    <!-- Populated via JS for crisp iOS checklist rows -->
+                </div>
+                <!-- Other Reason Input -->
+                <div class="mt-2.5 bg-white dark:bg-[#1C1C1E] rounded-2xl px-4 py-3">
+                    <label class="text-[12px] font-semibold text-[#8E8E93] uppercase tracking-wider block mb-1">Any Other Reason / Remarks</label>
+                    <input type="text" id="reason-other" placeholder="Type custom reason here..." class="w-full bg-transparent text-[15px] focus:outline-none placeholder-[#8E8E93]/60">
+                </div>
+            </section>
+
+            <!-- 4. WHOM TO APPROVE -->
+            <section>
+                <div class="flex items-center justify-between px-4 mb-1.5">
+                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">4. Whom To Approve <span class="text-[#FF3B30]">*</span></h2>
+                    <span class="text-[11px] font-medium text-[#8E8E93]">Tap to Select</span>
+                </div>
+                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]" id="approvers-list">
+                    <!-- Populated via JS -->
+                </div>
+            </section>
+
+            <!-- Primary iOS Submit & Share Action Button -->
+            <div class="pt-2 pb-4 space-y-3">
+                <button type="button" onclick="submitAndGenerateApproval()" class="ios-spring w-full bg-[#007AFF] hover:bg-[#0066D6] text-white font-semibold text-[17px] py-4 rounded-2xl shadow-lg shadow-[#007AFF]/25 flex items-center justify-center space-x-2">
+                    <i data-lucide="send" class="w-5 h-5"></i>
+                    <span>Send for Mobile Approval</span>
+                </button>
+                <p class="text-center text-[11px] text-[#8E8E93] px-4">
+                    Generates a mobile approval card & instant WhatsApp/Share link to approve from any phone.
+                </p>
+            </div>
+        </main>
+
+        <!-- TAB 2: APPROVER / TRACKER INBOX VIEW -->
+        <main id="view-inbox" class="hidden flex-1 px-4 pt-4 space-y-5">
+            <!-- Fast iOS Search Bar inside Inbox -->
+            <div class="relative">
+                <i data-lucide="search" class="w-4 h-4 text-[#8E8E93] absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                <input type="text" id="inbox-search" oninput="renderInbox()" placeholder="Search employee, status, approver, date..." class="w-full bg-[#E3E3E8] dark:bg-[#1C1C1E] rounded-xl pl-10 pr-4 py-2.5 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#007AFF]">
+            </div>
+
+            <!-- Filter Pills -->
+            <div class="flex space-x-2 overflow-x-auto pb-1">
+                <button onclick="setInboxFilter('ALL')" id="filter-ALL" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#007AFF] text-white shrink-0">All Requests</button>
+                <button onclick="setInboxFilter('PENDING')" id="filter-PENDING" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0">Pending</button>
+                <button onclick="setInboxFilter('APPROVED')" id="filter-APPROVED" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0">Approved</button>
+                <button onclick="setInboxFilter('REJECTED')" id="filter-REJECTED" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0">Rejected</button>
+            </div>
+
+            <!-- Requests Feed -->
+            <div id="inbox-list" class="space-y-3.5">
+                <!-- Cards rendered dynamically -->
+            </div>
+        </main>
+
+        <!-- iOS Bottom Tab Bar -->
+        <nav class="fixed bottom-0 w-full max-w-[440px] z-40 ios-blur bg-white/85 dark:bg-[#1C1C1E]/85 border-t border-black/10 dark:border-white/10 px-6 py-2 pb-5 flex justify-around items-center">
+            <button onclick="switchTab('apply')" id="tab-apply" class="ios-spring flex flex-col items-center space-y-1 text-[#007AFF]">
+                <i data-lucide="file-plus-2" class="w-6 h-6"></i>
+                <span class="text-[10px] font-semibold">Apply Leave</span>
+            </button>
+            <button onclick="switchTab('inbox')" id="tab-inbox" class="ios-spring relative flex flex-col items-center space-y-1 text-[#8E8E93]">
+                <i data-lucide="inbox" class="w-6 h-6"></i>
+                <span class="text-[10px] font-semibold">Approvals & Track</span>
+                <span id="pending-badge" class="hidden absolute -top-1 -right-2 bg-[#FF3B30] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
+            </button>
+        </nav>
+
+        <!-- STEP 1: CONFIRMATION SUMMARY POP-UP MODAL -->
+        <div id="confirm-modal" class="hidden fixed inset-0 z-50 bg-black/55 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity">
+            <div class="w-full max-w-[440px] bg-[#F2F2F7] dark:bg-[#1C1C1E] rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-6 space-y-4 shadow-2xl border-t sm:border border-black/10 dark:border-white/10">
+                <div class="w-10 h-1.5 bg-gray-300 dark:bg-zinc-600 rounded-full mx-auto mb-1 sm:hidden"></div>
+                <div class="flex items-center justify-between">
+                    <div>
+                        <span class="text-[11px] font-bold uppercase tracking-wider text-[#007AFF]">Review Details</span>
+                        <h3 class="text-lg font-bold">Confirm Leave Summary</h3>
+                    </div>
+                    <button onclick="closeConfirmModal()" class="w-8 h-8 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-[#8E8E93]">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Detailed Summary Card of Selected Options -->
+                <div id="confirm-summary-body" class="bg-white dark:bg-[#2C2C2E] rounded-2xl p-4 space-y-2.5 text-sm divide-y divide-[#C6C6C8]/30 dark:divide-white/10">
+                    <!-- Populated dynamically before confirmation -->
+                </div>
+
+                <!-- Edit or Confirm Actions -->
+                <div class="grid grid-cols-2 gap-3 pt-1">
+                    <button type="button" onclick="closeConfirmModal()" class="ios-spring bg-white dark:bg-[#2C2C2E] text-[#8E8E93] font-semibold py-3.5 rounded-2xl flex items-center justify-center space-x-1.5 border border-black/5 dark:border-white/10">
+                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                        <span>Edit Form</span>
+                    </button>
+                    <button type="button" onclick="confirmAndSubmitLeave()" class="ios-spring bg-[#34C759] hover:bg-[#2DB84D] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#34C759]/30 flex items-center justify-center space-x-1.5">
+                        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
+                        <span>Confirm & Send</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- iOS SHARE & REMOTE MOBILE APPROVAL SHEET MODAL -->
+        <div id="share-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end justify-center transition-opacity">
+            <div class="w-full max-w-[440px] bg-[#F2F2F7] dark:bg-[#1C1C1E] rounded-t-3xl p-5 pb-8 space-y-4 shadow-2xl transform transition-transform">
+                <div class="w-10 h-1.5 bg-gray-300 dark:bg-zinc-600 rounded-full mx-auto mb-1"></div>
+                <div class="flex items-center justify-between">
+                    <h3 class="text-lg font-bold">Send to Approver's Mobile</h3>
+                    <button onclick="closeShareModal()" class="w-8 h-8 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-[#8E8E93]">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                </div>
+
+                <!-- Summary Preview Card -->
+                <div id="share-summary-card" class="bg-white dark:bg-black/40 rounded-2xl p-4 space-y-2 border border-black/5 dark:border-white/10 text-sm">
+                    <!-- Filled dynamically -->
+                </div>
+
+                <!-- Action Buttons: WhatsApp, Copy Link, or Open Approver Screen Directly -->
+                <div class="space-y-2.5 pt-1">
+                    <button onclick="shareViaWhatsApp()" class="ios-spring w-full bg-[#34C759] text-white font-semibold py-3.5 rounded-2xl flex items-center justify-center space-x-2 shadow-md">
+                        <i data-lucide="message-circle" class="w-5 h-5"></i>
+                        <span>Send via WhatsApp to Approver</span>
+                    </button>
+                    <button onclick="copyApprovalLink()" class="ios-spring w-full bg-[#007AFF] text-white font-semibold py-3.5 rounded-2xl flex items-center justify-center space-x-2">
+                        <i data-lucide="link" class="w-5 h-5"></i>
+                        <span>Copy Mobile Approval Link</span>
+                    </button>
+                    <button onclick="openCurrentInApproverMode()" class="ios-spring w-full bg-white dark:bg-[#2C2C2E] text-[#007AFF] font-semibold py-3 rounded-2xl text-sm">
+                        Preview Approver Mobile Screen
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- DEDICATED REMOTE APPROVER ACTION MODAL (Opens when link is opened on another mobile) -->
+        <div id="approver-action-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
+            <div class="w-full max-w-[400px] bg-white dark:bg-[#1C1C1E] rounded-3xl p-5 shadow-2xl space-y-4 border border-black/10 dark:border-white/10">
+                <div class="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-[#FF9500] animate-pulse"></span>
+                        <span class="text-xs font-bold uppercase tracking-wider text-[#8E8E93]">Mobile Leave Approval</span>
+                    </div>
+                    <button onclick="closeApproverModal()" class="text-[#8E8E93] p-1">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div id="approver-modal-body" class="space-y-3 text-sm">
+                    <!-- Request details injected here -->
+                </div>
+
+                <div>
+                    <label class="text-xs font-semibold text-[#8E8E93] uppercase block mb-1">Approver Remarks (Optional)</label>
+                    <input type="text" id="approver-remark-input" placeholder="e.g. Approved, take care" class="w-full bg-[#F2F2F7] dark:bg-[#2C2C2E] rounded-xl px-3.5 py-2.5 text-sm focus:outline-none">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3 pt-2">
+                    <button onclick="processApprovalDecision('REJECTED')" class="ios-spring bg-[#FF3B30]/15 text-[#FF3B30] font-bold py-3.5 rounded-2xl flex items-center justify-center space-x-1.5">
+                        <i data-lucide="x-circle" class="w-5 h-5"></i>
+                        <span>Reject</span>
+                    </button>
+                    <button onclick="processApprovalDecision('APPROVED')" class="ios-spring bg-[#34C759] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#34C759]/30 flex items-center justify-center space-x-1.5">
+                        <i data-lucide="check-circle" class="w-5 h-5"></i>
+                        <span>Approve</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- iOS SPOTLIGHT INSTANT SEARCH OVERLAY -->
+        <div id="spotlight-overlay" class="hidden fixed inset-0 z-50 ios-blur bg-[#F2F2F7]/90 dark:bg-black/90 p-4 pt-6 flex flex-col">
+            <div class="w-full max-w-[408px] mx-auto space-y-4 flex-1 flex flex-col">
+                <div class="flex items-center space-x-2">
+                    <div class="relative flex-1">
+                        <i data-lucide="search" class="w-4 h-4 text-[#8E8E93] absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                        <input type="text" id="spotlight-input" oninput="runSpotlightSearch()" placeholder="Spotlight Search: Name, Leave, Approver..." class="w-full bg-white dark:bg-[#1C1C1E] rounded-2xl pl-10 pr-4 py-3 text-[16px] shadow-sm focus:outline-none">
+                    </div>
+                    <button onclick="toggleSpotlightSearch()" class="text-[#007AFF] font-semibold text-[16px] px-2">Cancel</button>
+                </div>
+                <div id="spotlight-results" class="flex-1 overflow-y-auto space-y-2.5 pb-10">
+                    <!-- Instant zero-latency search results -->
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. STATE & CONSTANTS
+        // ==========================================
+        const REASONS_LIST = [
+            { id: 'ILLNESS', label: 'Illness', icon: 'thermometer' },
+            { id: 'URGENT WORK', label: 'Urgent Work', icon: 'briefcase' },
+            { id: 'MARRIAGE', label: 'Marriage', icon: 'heart' },
+            { id: 'DEATH IN RELATION', label: 'Death in Relation', icon: 'flower-2' },
+            { id: 'EXAM', label: 'Exam', icon: 'book-open' },
+            { id: 'INTERVIEW', label: 'Interview', icon: 'user-check' },
+            { id: 'BANK WORK', label: 'Bank Work', icon: 'landmark' },
+            { id: 'GOVT DEPARTMENT WORK', label: 'Govt Department Work', icon: 'building-2' }
+        ];
+
+        const APPROVERS_LIST = [
+            { id: 'DEPARTMENT HEAD', label: '1. Department Head', role: 'HOD Approval', optional: false, mandatory: false },
+            { id: 'G.M', label: '2. G.M', role: 'General Manager', optional: false, mandatory: false },
+            { id: 'CEO', label: '3. CEO', role: 'Chief Executive Officer', optional: false, mandatory: false },
+            { id: 'EA', label: '4. EA', role: 'Executive Assistant', optional: false, mandatory: false },
+            { id: 'PC', label: '5. PC', role: 'Process Coordinator', optional: false, mandatory: true },
+            { id: 'DEO', label: '6. DEO', role: 'Data Entry Operator', optional: false, mandatory: true },
+            { id: 'HR', label: '7. HR', role: 'Human Resources', optional: false, mandatory: true },
+            { id: 'MD-1', label: '8. MD-1', role: 'Managing Director (Optional)', optional: true, mandatory: false }
+        ];
+
+        let state = {
+            leaveType: 'CASUAL',
+            durationType: 'HALF', // 'HALF' | 'FULL' | 'MULTI'
+            halfShift: 'BEFORE LUNCH',
+            selectedReasons: new Set(),
+            selectedApprovers: new Set(['DEPARTMENT HEAD', 'PC', 'DEO', 'HR']),
+            inboxFilter: 'ALL',
+            requests: [],
+            pendingDraftRequest: null,
+            activeShareRequest: null,
+            activeApproverModalId: null
+        };
+
+        // ==========================================
+        // 2. INITIALIZATION & URL PAYLOAD DECODER
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initDates();
+            renderReasons();
+            renderApprovers();
+            loadRequestsFromStorage();
+            checkIncomingUrlApproval();
+            updateClock();
+            setInterval(updateClock, 15000);
+        });
+
+        function updateClock() {
+            const now = new Date();
+            document.getElementById('live-clock').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function initDates() {
+            const today = new Date().toISOString().split('T')[0];
+            const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+            document.getElementById('date-half').value = today;
+            document.getElementById('date-full').value = today;
+            document.getElementById('date-from').value = today;
+            document.getElementById('date-to').value = tomorrow;
+            calculateTotalDays();
+        }
+
+        // ==========================================
+        // 3. FORM INTERACTION HANDLERS
+        // ==========================================
+        function selectLeaveType(type) {
+            state.leaveType = type;
+            document.querySelectorAll('.leave-type-btn').forEach(btn => {
+                btn.classList.remove('bg-[#007AFF]', 'text-white', 'shadow-sm');
+                btn.classList.add('text-black', 'dark:text-white');
+            });
+            const activeBtn = document.getElementById(`lt-${type}`);
+            activeBtn.classList.add('bg-[#007AFF]', 'text-white', 'shadow-sm');
+            activeBtn.classList.remove('text-black', 'dark:text-white');
+        }
+
+        function selectDuration(dur) {
+            state.durationType = dur;
+            ['HALF', 'FULL', 'MULTI'].forEach(d => {
+                const btn = document.getElementById(`dur-${d}`);
+                const panel = document.getElementById(`panel-${d}`);
+                if (d === dur) {
+                    btn.classList.add('bg-white', 'dark:bg-[#3A3A3C]', 'text-black', 'dark:text-white', 'shadow-xs');
+                    btn.classList.remove('text-[#8E8E93]');
+                    panel.classList.remove('hidden');
+                } else {
+                    btn.classList.remove('bg-white', 'dark:bg-[#3A3A3C]', 'text-black', 'dark:text-white', 'shadow-xs');
+                    btn.classList.add('text-[#8E8E93]');
+                    panel.classList.add('hidden');
+                }
+            });
+        }
+
+        function selectHalfShift(shift) {
+            state.halfShift = shift;
+            const beforeBtn = document.getElementById('shift-BEFORE');
+            const afterBtn = document.getElementById('shift-AFTER');
+            if (shift === 'BEFORE LUNCH') {
+                beforeBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
+                afterBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-transparent bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
+            } else {
+                afterBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
+                beforeBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-transparent bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
+            }
+        }
+
+        function calculateTotalDays() {
+            const fromVal = document.getElementById('date-from').value;
+            const toVal = document.getElementById('date-to').value;
+            if (!fromVal || !toVal) return;
+            const d1 = new Date(fromVal);
+            const d2 = new Date(toVal);
+            const diffTime = d2 - d1;
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+            const badge = document.getElementById('total-days-badge');
+            if (diffDays < 1) {
+                badge.textContent = 'Invalid Date Range';
+                badge.className = 'text-xs font-bold text-[#FF3B30] bg-[#FF3B30]/10 px-2.5 py-1 rounded-full';
+            } else {
+                badge.textContent = `${diffDays} Day${diffDays > 1 ? 's' : ''}`;
+                badge.className = 'text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 px-2.5 py-1 rounded-full';
+            }
+        }
+
+        function renderReasons() {
+            const container = document.getElementById('reasons-list');
+            container.innerHTML = REASONS_LIST.map(item => {
+                const checked = state.selectedReasons.has(item.id);
+                return `
+                    <div onclick="toggleReason('${item.id}')" class="ios-spring flex items-center justify-between px-4 py-3 cursor-pointer active:bg-black/5 dark:active:bg-white/5">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-7 h-7 rounded-lg bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center">
+                                <i data-lucide="${item.icon}" class="w-4 h-4"></i>
+                            </div>
+                            <span class="text-[15px] font-medium">${item.label}</span>
+                        </div>
+                        <div class="w-6 h-6 rounded-full flex items-center justify-center transition-colors ${checked ? 'bg-[#007AFF] text-white' : 'border-2 border-[#C6C6C8] dark:border-[#48484A]'}">
+                            ${checked ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            document.getElementById('reason-count').textContent = `${state.selectedReasons.size} Selected`;
+            lucide.createIcons();
+        }
+
+        function toggleReason(id) {
+            if (state.selectedReasons.has(id)) {
+                state.selectedReasons.delete(id);
+            } else {
+                state.selectedReasons.add(id);
+            }
+            renderReasons();
+        }
+
+        function renderApprovers() {
+            const container = document.getElementById('approvers-list');
+            container.innerHTML = APPROVERS_LIST.map(app => {
+                const isSelected = app.mandatory ? true : state.selectedApprovers.has(app.id);
+                return `
+                    <div onclick="toggleApprover('${app.id}')" class="ios-spring flex items-center justify-between px-4 py-3 ${app.mandatory ? 'cursor-not-allowed bg-[#F9F9FB]/60 dark:bg-white/[0.02]' : 'cursor-pointer'}">
+                        <div>
+                            <div class="flex items-center space-x-2">
+                                <span class="text-[15px] font-semibold">${app.label}</span>
+                                ${app.mandatory ? '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#007AFF]/15 text-[#007AFF] flex items-center gap-1"><i data-lucide="lock" class="w-2.5 h-2.5"></i> Mandatory</span>' : ''}
+                                ${app.optional ? '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#8E8E93]/15 text-[#8E8E93]">Optional</span>' : ''}
+                            </div>
+                            <span class="text-xs text-[#8E8E93]">${app.role}</span>
+                        </div>
+                        <div class="ios-switch ${isSelected ? 'checked' : ''} ${app.mandatory ? 'opacity-80 pointer-events-none' : ''}">
+                            <div class="ios-switch-knob"></div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function toggleApprover(id) {
+            const approver = APPROVERS_LIST.find(a => a.id === id);
+            if (approver && approver.mandatory) {
+                showToast('Mandatory Approver', `${approver.label} is locked ON and cannot be turned off.`, 'error');
+                return;
+            }
+            if (state.selectedApprovers.has(id)) {
+                state.selectedApprovers.delete(id);
+            } else {
+                state.selectedApprovers.add(id);
+            }
+            renderApprovers();
+        }
+
+        // ==========================================
+        // 4. SUBMISSION & MOBILE CROSS-DEVICE SHARING
+        // ==========================================
+        function submitAndGenerateApproval() {
+            const empName = document.getElementById('emp-name').value.trim();
+            const empId = document.getElementById('emp-id').value.trim() || 'Staff';
+            const otherReason = document.getElementById('reason-other').value.trim();
+
+            if (!empName) {
+                showToast('Name Required', 'Please enter employee name before sending.', 'error');
+                document.getElementById('emp-name').focus();
+                return;
+            }
+
+            if (state.selectedApprovers.size === 0) {
+                showToast('Select Approver', 'Choose at least one authority to approve.', 'error');
+                return;
+            }
+
+            // Build Duration Summary
+            let durationLabel = '';
+            let dateSummary = '';
+            if (state.durationType === 'HALF') {
+                const d = document.getElementById('date-half').value;
+                if (!d) return showToast('Date Missing', 'Select date from calendar.', 'error');
+                durationLabel = `Half Day (${state.halfShift})`;
+                dateSummary = `${formatDate(d)} • Half Day (${state.halfShift})`;
+            } else if (state.durationType === 'FULL') {
+                const d = document.getElementById('date-full').value;
+                if (!d) return showToast('Date Missing', 'Select date from calendar.', 'error');
+                durationLabel = 'Full Day';
+                dateSummary = `${formatDate(d)} • Full Day`;
+            } else {
+                const f = document.getElementById('date-from').value;
+                const t = document.getElementById('date-to').value;
+                if (!f || !t || new Date(t) < new Date(f)) {
+                    return showToast('Invalid Dates', 'Please check From and To dates.', 'error');
+                }
+                const days = Math.floor((new Date(t) - new Date(f)) / 86400000) + 1;
+                durationLabel = `More Than 1 Day (${days} Days)`;
+                dateSummary = `${formatDate(f)} to ${formatDate(t)} (${days} Days)`;
+            }
+
+            const reasonsArr = Array.from(state.selectedReasons);
+            if (otherReason) reasonsArr.push(`Other: ${otherReason}`);
+            if (reasonsArr.length === 0) {
+                return showToast('Reason Required', 'Tick at least one reason or type in Other.', 'error');
+            }
+
+            // Store draft & show Confirmation Summary Popup first
+            state.pendingDraftRequest = {
+                id: 'LV-' + Math.floor(100000 + Math.random() * 900000),
+                empName,
+                empId,
+                leaveType: state.leaveType,
+                durationType: state.durationType,
+                durationLabel,
+                dateSummary,
+                reasons: reasonsArr,
+                approvers: Array.from(state.selectedApprovers),
+                status: 'PENDING',
+                remark: '',
+                createdAt: new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
+            };
+
+            openConfirmModal(state.pendingDraftRequest);
+        }
+
+        function openConfirmModal(draft) {
+            const body = document.getElementById('confirm-summary-body');
+            body.innerHTML = `
+                <div class="flex justify-between items-center pb-2">
+                    <span class="text-xs text-[#8E8E93]">Employee</span>
+                    <span class="font-bold text-right">${draft.empName} <span class="text-xs font-normal text-[#8E8E93]">(${draft.empId})</span></span>
+                </div>
+                <div class="flex justify-between items-center pt-2 pb-2">
+                    <span class="text-xs text-[#8E8E93]">1. Leave Type</span>
+                    <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#007AFF]/15 text-[#007AFF]">${draft.leaveType}</span>
+                </div>
+                <div class="flex justify-between items-center pt-2 pb-2">
+                    <span class="text-xs text-[#8E8E93]">2. Duration</span>
+                    <span class="text-xs font-semibold text-right">${draft.durationLabel}</span>
+                </div>
+                <div class="flex justify-between items-center pt-2 pb-2">
+                    <span class="text-xs text-[#8E8E93]">Calendar Date</span>
+                    <span class="text-xs font-bold text-right text-[#007AFF]">${draft.dateSummary}</span>
+                </div>
+                <div class="pt-2 pb-2">
+                    <span class="text-xs text-[#8E8E93] block mb-1">3. Selected Reasons</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${draft.reasons.map(r => `<span class="text-[11px] font-medium bg-[#F2F2F7] dark:bg-black/40 px-2 py-0.5 rounded-md">${r}</span>`).join('')}
+                    </div>
+                </div>
+                <div class="pt-2">
+                    <span class="text-xs text-[#8E8E93] block mb-1">4. Whom To Approve</span>
+                    <div class="flex flex-wrap gap-1.5">
+                        ${draft.approvers.map(a => `<span class="text-[11px] font-bold bg-[#34C759]/15 text-[#34C759] px-2 py-0.5 rounded-md">${a}</span>`).join('')}
+                    </div>
+                </div>
+            `;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeConfirmModal() {
+            document.getElementById('confirm-modal').classList.add('hidden');
+        }
+
+        function confirmAndSubmitLeave() {
+            const confirmedReq = state.pendingDraftRequest;
+            if (!confirmedReq) return;
+
+            // Save to Approvals & Track list
+            state.requests.unshift(confirmedReq);
+            saveRequestsToStorage();
+            state.activeShareRequest = confirmedReq;
+            state.pendingDraftRequest = null;
+
+            // Close confirmation popup, switch to Approvals & Track tab, and open Mobile Share sheet
+            closeConfirmModal();
+            switchTab('inbox');
+            openShareModal(confirmedReq);
+            showToast('Confirmed & Sent', 'Added to Approvals & Track! Send link to approver.', 'success');
+        }
+
+        function buildShareableUrl(req) {
+            const payload = btoa(encodeURIComponent(JSON.stringify(req)));
+            const baseUrl = window.location.href.split('?')[0].split('#')[0];
+            return `${baseUrl}?approve=${payload}`;
+        }
+
+        function openShareModal(req) {
+            const summaryBox = document.getElementById('share-summary-card');
+            summaryBox.innerHTML = `
+                <div class="flex justify-between items-center">
+                    <span class="text-xs font-bold text-[#007AFF]">${req.id}</span>
+                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#FF9500]/15 text-[#FF9500]">${req.leaveType}</span>
+                </div>
+                <p class="font-bold text-base">${req.empName} <span class="text-xs font-normal text-[#8E8E93]">(${req.empId})</span></p>
+                <p class="text-xs text-[#8E8E93] flex items-center gap-1.5"><i data-lucide="calendar" class="w-3.5 h-3.5 text-[#007AFF]"></i> ${req.dateSummary}</p>
+                <p class="text-xs text-[#8E8E93]"><strong class="text-black dark:text-white">Reason:</strong> ${req.reasons.join(', ')}</p>
+                <p class="text-xs text-[#8E8E93]"><strong class="text-black dark:text-white">Approvers:</strong> ${req.approvers.join(', ')}</p>
+            `;
+            document.getElementById('share-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeShareModal() {
+            document.getElementById('share-modal').classList.add('hidden');
+        }
+
+        function shareViaWhatsApp() {
+            const req = state.activeShareRequest;
+            if (!req) return;
+            const link = buildShareableUrl(req);
+            const msg = `*LEAVE APPROVAL REQUEST (${req.id})*\n` +
+                        `👤 *Employee:* ${req.empName} (${req.empId})\n` +
+                        `📌 *Type:* ${req.leaveType}\n` +
+                        `📅 *Duration:* ${req.dateSummary}\n` +
+                        `📝 *Reason:* ${req.reasons.join(', ')}\n` +
+                        `✅ *For Approval:* ${req.approvers.join(', ')}\n\n` +
+                        `Tap link below to Approve/Reject on your mobile:\n${link}`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
+        }
+
+        function copyApprovalLink() {
+            const req = state.activeShareRequest;
+            if (!req) return;
+            const link = buildShareableUrl(req);
+            const tempInput = document.createElement('input');
+            tempInput.value = link;
+            document.body.appendChild(tempInput);
+            tempInput.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempInput);
+            showToast('Link Copied', 'Paste & send to approver via SMS/WhatsApp.', 'success');
+        }
+
+        function openCurrentInApproverMode() {
+            closeShareModal();
+            if (state.activeShareRequest) {
+                openApproverModal(state.activeShareRequest.id);
+            }
+        }
+
+        // ==========================================
+        // 5. RECEIVING & APPROVING ON ANOTHER MOBILE
+        // ==========================================
+        function checkIncomingUrlApproval() {
+            const params = new URLSearchParams(window.location.search);
+            const encoded = params.get('approve');
+            if (!encoded) return;
+            try {
+                const decoded = JSON.parse(decodeURIComponent(atob(encoded)));
+                const exists = state.requests.find(r => r.id === decoded.id);
+                if (!exists) {
+                    state.requests.unshift(decoded);
+                    saveRequestsToStorage();
+                }
+                switchTab('inbox');
+                openApproverModal(decoded.id);
+                // Clean URL bar cleanly without reload
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } catch (e) {
+                console.error('Invalid approval link payload', e);
+            }
+        }
+
+        function openApproverModal(reqId) {
+            const req = state.requests.find(r => r.id === reqId);
+            if (!req) return;
+            state.activeApproverModalId = reqId;
+            document.getElementById('approver-remark-input').value = req.remark || '';
+            document.getElementById('approver-modal-body').innerHTML = `
+                <div class="bg-[#F2F2F7] dark:bg-[#2C2C2E] p-3.5 rounded-2xl space-y-2">
+                    <div class="flex justify-between">
+                        <span class="text-xs font-bold text-[#007AFF]">${req.id}</span>
+                        <span class="text-xs font-bold uppercase ${req.status === 'APPROVED' ? 'text-[#34C759]' : req.status === 'REJECTED' ? 'text-[#FF3B30]' : 'text-[#FF9500]'}">${req.status}</span>
+                    </div>
+                    <div class="text-base font-bold">${req.empName} <span class="text-xs font-normal text-[#8E8E93]">(${req.empId})</span></div>
+                    <div class="text-xs"><span class="text-[#8E8E93]">Leave Type:</span> <strong>${req.leaveType}</strong></div>
+                    <div class="text-xs"><span class="text-[#8E8E93]">Schedule:</span> <strong>${req.dateSummary}</strong></div>
+                    <div class="text-xs"><span class="text-[#8E8E93]">Reasons:</span> <strong>${req.reasons.join(', ')}</strong></div>
+                    <div class="text-xs"><span class="text-[#8E8E93]">Authority:</span> <strong>${req.approvers.join(', ')}</strong></div>
+                </div>
+            `;
+            document.getElementById('approver-action-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeApproverModal() {
+            document.getElementById('approver-action-modal').classList.add('hidden');
+        }
+
+        function processApprovalDecision(decision) {
+            const req = state.requests.find(r => r.id === state.activeApproverModalId);
+            if (!req) return;
+            req.status = decision;
+            req.remark = document.getElementById('approver-remark-input').value.trim();
+            req.decidedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            saveRequestsToStorage();
+            closeApproverModal();
+            renderInbox();
+            showToast(
+                decision === 'APPROVED' ? 'Leave Approved' : 'Leave Rejected',
+                `${req.empName}'s request marked as ${decision}.`,
+                decision === 'APPROVED' ? 'success' : 'error'
+            );
+        }
+
+        // ==========================================
+        // 6. FAST IPHONE-SPEED SEARCH & INBOX RENDERING
+        // ==========================================
+        function switchTab(tab) {
+            const applyView = document.getElementById('view-apply');
+            const inboxView = document.getElementById('view-inbox');
+            const tabApply = document.getElementById('tab-apply');
+            const tabInbox = document.getElementById('tab-inbox');
+            const title = document.getElementById('header-title');
+
+            if (tab === 'apply') {
+                applyView.classList.remove('hidden');
+                inboxView.classList.add('hidden');
+                tabApply.classList.replace('text-[#8E8E93]', 'text-[#007AFF]');
+                tabInbox.classList.replace('text-[#007AFF]', 'text-[#8E8E93]');
+                title.textContent = 'Leave Portal';
+            } else {
+                applyView.classList.add('hidden');
+                inboxView.classList.remove('hidden');
+                tabInbox.classList.replace('text-[#8E8E93]', 'text-[#007AFF]');
+                tabApply.classList.replace('text-[#007AFF]', 'text-[#8E8E93]');
+                title.textContent = 'Leave Portal • Approvals';
+                renderInbox();
+            }
+        }
+
+        function setInboxFilter(filter) {
+            state.inboxFilter = filter;
+            ['ALL', 'PENDING', 'APPROVED', 'REJECTED'].forEach(f => {
+                const btn = document.getElementById(`filter-${f}`);
+                if (f === filter) {
+                    btn.className = 'filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#007AFF] text-white shrink-0';
+                } else {
+                    btn.className = 'filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0';
+                }
+            });
+            renderInbox();
+        }
+
+        function renderInbox() {
+            const query = document.getElementById('inbox-search').value.toLowerCase().trim();
+            const listEl = document.getElementById('inbox-list');
+
+            const filtered = state.requests.filter(r => {
+                const matchesFilter = state.inboxFilter === 'ALL' || r.status === state.inboxFilter;
+                if (!matchesFilter) return false;
+                if (!query) return true;
+                const searchable = `${r.id} ${r.empName} ${r.empId} ${r.leaveType} ${r.dateSummary} ${r.reasons.join(' ')} ${r.approvers.join(' ')} ${r.status}`.toLowerCase();
+                return searchable.includes(query);
+            });
+
+            if (filtered.length === 0) {
+                listEl.innerHTML = `
+                    <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl p-8 text-center space-y-2">
+                        <i data-lucide="folder-open" class="w-10 h-10 text-[#8E8E93] mx-auto opacity-50"></i>
+                        <p class="font-semibold text-base">No Leave Records Found</p>
+                        <p class="text-xs text-[#8E8E93]">Submit a leave form or adjust your search filter.</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            listEl.innerHTML = filtered.map(req => {
+                const statusColors = {
+                    'PENDING': 'bg-[#FF9500]/15 text-[#FF9500]',
+                    'APPROVED': 'bg-[#34C759]/15 text-[#34C759]',
+                    'REJECTED': 'bg-[#FF3B30]/15 text-[#FF3B30]'
+                };
+                return `
+                    <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs space-y-3 border border-black/5 dark:border-white/5">
+                        <div class="flex items-start justify-between">
+                            <div>
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-[16px]">${req.empName}</span>
+                                    <span class="text-[11px] font-semibold text-[#8E8E93]">${req.empId}</span>
+                                </div>
+                                <span class="text-[11px] text-[#8E8E93]">${req.id} • ${req.createdAt}</span>
+                            </div>
+                            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full ${statusColors[req.status]}">${req.status}</span>
+                        </div>
+
+                        <div class="bg-[#F2F2F7] dark:bg-[#2C2C2E] rounded-xl p-3 space-y-1.5 text-xs">
+                            <div class="flex justify-between">
+                                <span class="text-[#8E8E93]">Type:</span>
+                                <span class="font-bold text-[#007AFF]">${req.leaveType}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-[#8E8E93]">Duration:</span>
+                                <span class="font-semibold text-right">${req.dateSummary}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-[#8E8E93]">Reason:</span>
+                                <span class="font-medium text-right max-w-[65%] truncate">${req.reasons.join(', ')}</span>
+                            </div>
+                            <div class="flex justify-between">
+                                <span class="text-[#8E8E93]">To Approve:</span>
+                                <span class="font-semibold text-right max-w-[65%] truncate">${req.approvers.join(', ')}</span>
+                            </div>
+                            ${req.remark ? `<div class="pt-1 border-t border-black/5 dark:border-white/10 text-[#007AFF]"><strong>Remark:</strong> ${req.remark}</div>` : ''}
+                        </div>
+
+                        <div class="flex items-center space-x-2 pt-0.5">
+                            <button onclick="openApproverModal('${req.id}')" class="ios-spring flex-1 bg-[#007AFF] text-white text-xs font-semibold py-2.5 rounded-xl flex items-center justify-center space-x-1">
+                                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
+                                <span>Approve / Action</span>
+                            </button>
+                            <button onclick="reShareRequest('${req.id}')" class="ios-spring px-3.5 bg-[#34C759]/15 text-[#34C759] text-xs font-semibold py-2.5 rounded-xl flex items-center justify-center">
+                                <i data-lucide="share" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function reShareRequest(id) {
+            const req = state.requests.find(r => r.id === id);
+            if (req) {
+                state.activeShareRequest = req;
+                openShareModal(req);
+            }
+        }
+
+        // ==========================================
+        // 7. iOS SPOTLIGHT ZERO-LATENCY SEARCH
+        // ==========================================
+        function toggleSpotlightSearch() {
+            const overlay = document.getElementById('spotlight-overlay');
+            const input = document.getElementById('spotlight-input');
+            if (overlay.classList.contains('hidden')) {
+                overlay.classList.remove('hidden');
+                input.value = '';
+                runSpotlightSearch();
+                setTimeout(() => input.focus(), 50);
+            } else {
+                overlay.classList.add('hidden');
+            }
+        }
+
+        function runSpotlightSearch() {
+            const q = document.getElementById('spotlight-input').value.toLowerCase().trim();
+            const container = document.getElementById('spotlight-results');
+
+            const matches = state.requests.filter(r => {
+                if (!q) return true;
+                return `${r.id} ${r.empName} ${r.empId} ${r.leaveType} ${r.dateSummary} ${r.reasons.join(' ')} ${r.approvers.join(' ')} ${r.status}`.toLowerCase().includes(q);
+            });
+
+            if (matches.length === 0) {
+                container.innerHTML = `<p class="text-center text-sm text-[#8E8E93] pt-10">No instant matches for "${q}"</p>`;
+                return;
+            }
+
+            container.innerHTML = matches.map(r => `
+                <div onclick="toggleSpotlightSearch(); openApproverModal('${r.id}')" class="ios-spring bg-white dark:bg-[#1C1C1E] p-3.5 rounded-2xl flex items-center justify-between shadow-xs cursor-pointer">
+                    <div class="min-w-0 pr-2">
+                        <p class="font-bold text-sm truncate">${r.empName} <span class="text-xs font-normal text-[#8E8E93]">• ${r.leaveType}</span></p>
+                        <p class="text-xs text-[#8E8E93] truncate">${r.dateSummary} • ${r.approvers.join(', ')}</p>
+                    </div>
+                    <span class="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${r.status === 'APPROVED' ? 'bg-[#34C759]/15 text-[#34C759]' : r.status === 'REJECTED' ? 'bg-[#FF3B30]/15 text-[#FF3B30]' : 'bg-[#FF9500]/15 text-[#FF9500]'}">${r.status}</span>
+                </div>
+            `).join('');
+        }
+
+        // ==========================================
+        // 8. STORAGE & HELPERS
+        // ==========================================
+        function saveRequestsToStorage() {
+            localStorage.setItem('ios_leave_requests_v1', JSON.stringify(state.requests));
+            updatePendingBadge();
+        }
+
+        function loadRequestsFromStorage() {
+            const raw = localStorage.getItem('ios_leave_requests_v1');
+            if (raw) {
+                try {
+                    state.requests = JSON.parse(raw);
+                } catch (e) {
+                    state.requests = [];
+                }
+            }
+            updatePendingBadge();
+        }
+
+        function updatePendingBadge() {
+            const count = state.requests.filter(r => r.status === 'PENDING').length;
+            const badge = document.getElementById('pending-badge');
+            if (count > 0) {
+                badge.textContent = count;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function formatDate(isoStr) {
+            if (!isoStr) return '';
+            const [y, m, d] = isoStr.split('-');
+            const date = new Date(y, m - 1, d);
+            return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        let toastTimer;
+        function showToast(title, msg, type = 'success') {
+            const toast = document.getElementById('ios-toast');
+            const iconBg = document.getElementById('toast-icon-bg');
+            const icon = document.getElementById('toast-icon');
+            document.getElementById('toast-title').textContent = title;
+            document.getElementById('toast-msg').textContent = msg;
+
+            if (type === 'error') {
+                iconBg.className = 'w-9 h-9 rounded-full bg-[#FF3B30]/15 text-[#FF3B30] flex items-center justify-center shrink-0';
+                icon.setAttribute('data-lucide', 'alert-circle');
+            } else {
+                iconBg.className = 'w-9 h-9 rounded-full bg-[#34C759]/15 text-[#34C759] flex items-center justify-center shrink-0';
+                icon.setAttribute('data-lucide', 'check-circle-2');
+            }
+            lucide.createIcons();
+
+            toast.classList.remove('opacity-0', '-translate-y-6');
+            toast.classList.add('opacity-100', 'translate-y-0');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
+                toast.classList.add('opacity-0', '-translate-y-6');
+                toast.classList.remove('opacity-100', 'translate-y-0');
+            }, 3000);
+        }
+    </script>
+</body>
+</html>
