@@ -1786,6 +1786,7 @@ function renderHome(user){
   $('appsHead').style.display = n ? 'block' : 'none';
   $('noApps').style.display   = n ? 'none' : 'block';
   notepadTile();
+  leaveTile();
   sopTile();
   // Visitor Approvals (launcher-visitor.js): visitors at Gate-2 waiting for this user's PIN; kept first in the grid
   if (window.visApprovalTile) visApprovalTile();
@@ -1816,6 +1817,51 @@ function notepadTile(){
   grid.insertBefore(el, grid.firstChild);
   $('appsHead').style.display = 'block';
   $('noApps').style.display   = 'none';
+}
+
+/* ── Leave Approval ────────────────────────────────────────────────────
+   Every employee applies for leave in ios_leave_approval.html, so like My
+   Notepad it is not an app key and shows for everyone (the lv_* RPCs of
+   LEAVE_APPROVAL_MIGRATION.sql check the session). Painted after the
+   Notepad, so it sits left of it (and right of My SOPs). The count is the
+   leaves waiting for THIS user's approval (lv_inbox_count), red while any
+   wait; it opens straight on the Approvals tab then. No migration / an
+   error = the tile without a count. */
+let LV_INFO = null;
+function leaveTile(){
+  const grid = $('appGrid');
+  const old = $('lvTile');
+  if (old) old.remove();
+  if (!grid) return;
+  const el = document.createElement('a');
+  el.id = 'lvTile';
+  el.className = 'app rise';
+  el.style.setProperty('--a', '#007aff');
+  grid.insertBefore(el, grid.firstChild);
+  paintLeaveTile();
+  $('appsHead').style.display = 'block';
+  $('noApps').style.display   = 'none';
+  let tok = null;
+  try{ tok = localStorage.getItem(K_SSO); }catch(e){}
+  if (!tok) return;
+  SB.rpc('lv_inbox_count', { p_token: tok }).then(r => {
+    const d = (!r.error && r.data) || {};
+    if (!d.success) return;
+    LV_INFO = d;
+    paintLeaveTile();
+  }).catch(() => {});
+}
+function paintLeaveTile(){
+  const el = $('lvTile');
+  if (!el) return;
+  const todo = (LV_INFO && LV_INFO.todo) || 0, mine = (LV_INFO && LV_INFO.minePending) || 0;
+  el.href = 'ios_leave_approval.html' + (todo ? '#todo' : '');
+  el.innerHTML =
+      '<span class="tile"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/><path d="M9 15l2 2 4-4"/></svg></span>'
+    + '<span class="body"><span class="t">Leave Approval</span>'
+    + '<span class="s">' + (todo ? todo + ' leave' + (todo > 1 ? 's' : '') + ' waiting for your approval' : mine ? mine + ' of your leaves pending · apply or track' : 'Apply for leave and track its approval') + '</span></span>'
+    + (todo ? '<span class="cnt">' + todo + '</span>' : '')
+    + '<span class="go">→</span>';
 }
 
 /* ── My SOPs ───────────────────────────────────────────────────────────
@@ -1862,9 +1908,9 @@ function paintSopTile(){
   $('appsHead').style.display = 'block';
   $('noApps').style.display   = 'none';
 }
-// Back from sop.html (page restored from the browser cache): fresh count.
+// Back from sop.html / the Leave Approval (page restored from the browser cache): fresh counts.
 window.addEventListener('pageshow', e => {
-  if (e.persisted && $('homeWrap').style.display !== 'none'){ SOP_INFO = null; SOP_ASKED = false; sopTile(); }
+  if (e.persisted && $('homeWrap').style.display !== 'none'){ if ($('lvTile')) leaveTile(); SOP_INFO = null; SOP_ASKED = false; sopTile(); }
 });
 
 /* ── An app added after this session was created ───────────────────────
@@ -2095,7 +2141,7 @@ async function fillEmpDatalist(){
 <!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
 <script src="launcher-lock.js?v=20261118a"></script>
 <script src="launcher-login.js?v=20261118a"></script>
-<script src="launcher-visitor.js?v=20261124c"></script>
+<script src="launcher-visitor.js?v=20261124d"></script>
 <!-- The splash that prevents the login screen from flashing does not run on
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->

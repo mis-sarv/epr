@@ -862,7 +862,6 @@
                             <div id="dispDkSlipList" class="gate-combo hidden"></div>
                         </div>
                         <!-- Quick-Select Available Dharam Kanta Slips -->
-                        <div id="dispDkQuickChips" class="flex flex-wrap gap-1.5 mt-2"></div>
                     </div>
 
                     <!-- Auto-Fetched Vehicle Number (Locked) -->
@@ -911,6 +910,27 @@
                         </div>
                     </div>
 
+                    <!-- Dharam Kanta Photo (compulsory): the weighbridge slip / display with this Gross. Saved in the entry's photo field
+                         'billPhoto' (dkPhotoField; a fixed field of gate_entry_save, so the register needs no change); shown on the pass,
+                         on the launcher and in packing.html › Dispatch Confirm (sql/PACKING_DISPATCH_PHOTOS_MIGRATION.sql) -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Dharam Kanta Photo *</label>
+                        <label class="ios-btn flex flex-col items-center justify-center p-4 bg-cyan-50/70 border-2 border-dashed border-cyan-200 rounded-2xl cursor-pointer text-center">
+                            <div class="w-10 h-10 rounded-full bg-cyan-600 text-white flex items-center justify-center text-base mb-1.5 shadow-sm">
+                                <i class="fa-solid fa-weight-scale"></i>
+                            </div>
+                            <span id="dispDkPhotoLabel" class="text-xs font-bold text-cyan-800 truncate w-full">Tap to capture the Dharam Kanta</span>
+                            <span class="text-[10px] text-cyan-600 mt-0.5">Weighbridge slip / display showing the Gross Wt</span>
+                            <input type="file" id="dispDkPhotoInput" data-up="gate-dispatch-dk" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'dispDkPhotoLabel', 'dispDkPreviewImg', 'dispDk', 'dispDkPreviewBox')">
+                        </label>
+                        <div id="dispDkPreviewBox" class="hidden mt-2.5 relative rounded-2xl overflow-hidden border border-cyan-200 bg-gray-50 h-32">
+                            <img id="dispDkPreviewImg" class="gp-fit" alt="Dharam Kanta Preview">
+                            <span class="absolute bottom-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full">
+                                <i class="fa-solid fa-circle-check text-emerald-400 mr-1"></i> Dharam Kanta Captured
+                            </span>
+                        </div>
+                    </div>
+
                     <!-- Verify and Submit Button -->
                     <button type="submit" id="dispSubmitBtn" class="ios-btn w-full bg-indigo-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-indigo-500/30 flex items-center justify-center gap-2 text-sm mt-2">
                         <i class="fa-solid fa-circle-check"></i> Verify and Submit
@@ -953,6 +973,15 @@
                         </div>
                         <i class="fa-solid fa-lock text-gray-500 text-xs"></i>
                     </button>
+                </div>
+                <!-- The Dharam Kanta slips still waiting for their Dispatch Packing Slip (the same list as under the Dharam Kanta
+                     form, renderDkPending): Dispatch Slip opens the form with that slip chosen (dkGoDispatch) -->
+                <div id="dispMenuDkBox" class="mt-5">
+                    <div class="flex items-center justify-between px-1 mb-2">
+                        <span class="text-[11px] font-extrabold text-amber-700 uppercase tracking-wider">Dharam Kanta saved slips · Dispatch slip pending</span>
+                        <span id="dispMenuDkCount" class="text-[10px] font-bold bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full">0</span>
+                    </div>
+                    <div id="dispMenuDkList" class="space-y-2"></div>
                 </div>
             </div>
 
@@ -3322,6 +3351,7 @@
             if (viewId === 'outwardDispatchForm') {
                 initDispatchPackingSlipForm();
             }
+            if (viewId === 'dispatchMenu') { try { renderDkPending(); } catch (e) { } }
 
             if (viewId === 'dharamKantaForm') {
                 if (!pinLockAuth('dkGrossWeight')) pinLock('dkGrossWeight');   // locked again unless this form was unlocked and not saved yet
@@ -3923,6 +3953,7 @@
             form.reset();
             matchedDispatchDkEntry = null;
             tempPhotos.dispVehicle = null;
+            tempPhotos.dispDk = null;
             dispScanSet(null);   // a slip read by Scan QR is set again by gateScanPackingSlip after this
 
             gateFillNo('OUT', 'dispOutwardNo', 'dispOutwardNoHint');
@@ -3948,26 +3979,20 @@
             document.getElementById('dispVehiclePhotoLabel').textContent = 'Tap to Open Live Camera';
             document.getElementById('dispVehiclePreviewBox').classList.add('hidden');
             document.getElementById('dispVehiclePreviewImg').classList.add('hidden');
-
-            // Quick-select chips from the recorded Dharam Kanta slips (the full list is the combo box above)
-            const dkSlips = getAllDharamKantaSlips();
-            const chipsBox = document.getElementById('dispDkQuickChips');
-
-            if (dkSlips.length > 0) {
-                chipsBox.innerHTML = `<span class="text-[10px] font-bold text-gray-400 self-center mr-1">Recent Slips:</span>` +
-                    dkSlips.slice(0, 4).map(s => `
-                        <button type="button" onclick="selectDispatchDkChip('${esc(s.id)}')" class="ios-btn text-[10px] font-mono font-bold bg-cyan-500/10 text-cyan-800 border border-cyan-200 px-2.5 py-1 rounded-full">
-                            ${esc(s.id)} (${esc(s.vehicle)})
-                        </button>
-                    `).join('');
-            } else {
-                chipsBox.innerHTML = `<span class="text-[10px] text-amber-600 font-semibold">No Dharam Kanta slip found. Create one in Dharam Kanta first.</span>`;
-            }
+            document.getElementById('dispDkPhotoLabel').textContent = 'Tap to capture the Dharam Kanta';
+            document.getElementById('dispDkPreviewBox').classList.add('hidden');
+            document.getElementById('dispDkPreviewImg').classList.add('hidden');
         }
 
         function selectDispatchDkChip(slipId) {
             if (GATE_COMBOS.dispDkSlipNo) GATE_COMBOS.dispDkSlipNo.set(slipId);   // commits + runs the lookup (onPick)
             else { document.getElementById('dispDkSlipNo').value = slipId; lookupDispatchDkSlip(); }
+        }
+        // Saved Slips · Dispatch slip pending (Dharam Kanta form) → straight into the Dispatch Packing Slip form with this slip
+        function dkGoDispatch(slipId) {
+            showView('outwardDispatchForm');
+            selectDispatchDkChip(slipId);
+            showIosBanner('Dharam Kanta slip ' + slipId + ' chosen: weigh the loaded vehicle and enter the Gross', 'info');
         }
         // Saved Dharam Kanta slips, newest first. A slip already used by a Dispatch Packing entry is marked, not hidden.
         function dispDkSlipOptions() {
@@ -4065,6 +4090,10 @@
                 showIosBanner('Please capture Loaded Vehicle Photo from Live Camera!', 'error');
                 return;
             }
+            if (!tempPhotos.dispDk) {
+                showIosBanner('Please capture the Dharam Kanta Photo (weighbridge slip / display)!', 'error');
+                return;
+            }
 
             // 6C DISPATCH APPROVAL: the band of the weight difference (6D: Net − loaded slips; no slip data = the Net Wt);
             // a group = one person of it (none in the group / offline list = the Admin decides). The server works it out again.
@@ -4112,6 +4141,7 @@
                 // the first part (before •) is what the approver sees on the launcher
                 purpose: (wb.kind === 'DIFF' ? `Diff: ${wb.diff > 0 ? '+' : ''}${wb.diff.toFixed(2)} Kg (Net ${net} − Slips ${wb.loaded.toFixed(2)} Kg) · ` : '') + `Net Wt: ${net} Kg · Gross: ${gross.toFixed(2)} Kg · Tare: ${tare.toFixed(2)} Kg • ${needAp ? 'APPROVAL: ' + (DISP_GROUPS[apGroup] || apGroup) : 'No approval needed'}`,
                 vehiclePhoto: tempPhotos.dispVehicle,
+                billPhoto: tempPhotos.dispDk, dkPhotoField: 'billPhoto',   // the Dharam Kanta Photo (see the form)
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
                 outTime: null,
@@ -4129,6 +4159,7 @@
             if (apUser) { const m = readLS(DISP_LAST_AP_KEY, {}) || {}; m[apGroup] = apUser.id; writeLS(DISP_LAST_AP_KEY, m); }
             this.reset();
             tempPhotos.dispVehicle = null;
+            tempPhotos.dispDk = null;
             matchedDispatchDkEntry = null;
             dispScanSet(null);
             dispLoadFor('');
@@ -5257,6 +5288,7 @@
             const rows = dkAwaitingDispatch(), admin = gateIsAdmin();   // Delete is shown to the Admin only
             box.classList.toggle('hidden', !rows.length);
             document.getElementById('dkPendingCount').textContent = rows.length;
+            const mList = document.getElementById('dispMenuDkList'), mCnt = document.getElementById('dispMenuDkCount');
             const fmt = iso => { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
             list.innerHTML = rows.map(d => {
                 const gross = Number(d.grossWeight) || 0;
@@ -5265,10 +5297,14 @@
                         <span class="block font-mono text-[13px] font-extrabold text-gray-900 truncate">${esc(d.vehicle || '-')}</span>
                         <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg${gross ? ' · Gross ' + esc(gross) + ' Kg' : ''} · ${esc(fmt(d.inTime))}</span>
                     </button>
-                    <span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full uppercase whitespace-nowrap b-pend">Dispatch slip pending</span>
+                    <button type="button" onclick="dkGoDispatch('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white flex items-center gap-1" title="Open the Dispatch Packing Slip form with this slip"><i class="fa-solid fa-truck-fast"></i> Dispatch Slip</button>
                     ${admin ? `<button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>` : ''}
                 </div>`;
             }).join('');
+            // the same rows in Out From Dispatch (an empty list says so there, the Dharam Kanta form hides it)
+            if (mList) mList.innerHTML = rows.length ? list.innerHTML
+                : '<p class="text-[11px] font-semibold text-gray-400 bg-gray-50 border border-gray-200 rounded-2xl px-3 py-3 text-center">No Dharam Kanta slip is waiting for its Dispatch Packing Slip. Weigh the empty vehicle in Dharam Kanta first.</p>';
+            if (mCnt) mCnt.textContent = rows.length;
         }
 
         document.getElementById('formDharamKanta').addEventListener('submit', async function(e) {
@@ -6673,7 +6709,7 @@
             renderPassApproval(entry);
             const photoList = [];
             const add = (f, label) => { const src = photoOf(entry, f); if (src) photoList.push({ label, src }); };
-            add('billPhoto', 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', entry.passPdf ? 'Store Bill' : 'Gate Pass Photo');
+            add('billPhoto', isDispatch(entry) ? 'Dharam Kanta Photo' : 'Bill Photo'); add('itemPhoto', 'Item Photo'); add('passPhoto', entry.passPdf ? 'Store Bill' : 'Gate Pass Photo');
             add('visitorPhoto', entry.category === 'EMPLOYEE' ? 'Employee Photo' : 'Visitor Photo'); add('vehiclePhoto', 'Vehicle Photo');
             add('inwardPhoto', 'Hydra Inward Photo'); add('stopPhoto', 'Work Complete Photo'); add('outPhoto', isHydra(entry) ? 'Hydra at Out' : isSample(entry) ? 'Item at Return' : 'Visitor at Out');
 

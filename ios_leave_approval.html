@@ -1,1161 +1,695 @@
 <!DOCTYPE html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Leave Approval — iOS Pro</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Inter Font for SF Pro aesthetic -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-    <!-- Lucide Icons for crisp iOS-like vector glyphs -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'media',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['-apple-system', 'BlinkMacSystemFont', 'Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        ios: {
-                            bg: '#F2F2F7',
-                            darkBg: '#000000',
-                            card: '#FFFFFF',
-                            darkCard: '#1C1C1E',
-                            blue: '#007AFF',
-                            green: '#34C759',
-                            red: '#FF3B30',
-                            orange: '#FF9500',
-                            gray: '#8E8E93',
-                            separator: '#C6C6C8',
-                            darkSeparator: '#38383A',
-                        }
-                    }
-                }
-            }
-        }
-    </script>
-    <style>
-        /* Strict Mobile Fit & No Horizontal Scroll */
-        html, body {
-            max-width: 100%;
-            overflow-x: hidden;
-            -webkit-tap-highlight-color: transparent;
-            font-family: -apple-system, BlinkMacSystemFont, 'Inter', sans-serif;
-            scroll-behavior: smooth;
-        }
-
-        /* iOS Spring Animations */
-        .ios-spring {
-            transition: transform 0.25s cubic-bezier(0.25, 1, 0.5, 1), opacity 0.2s ease, background-color 0.2s ease;
-        }
-        .ios-spring:active {
-            transform: scale(0.96);
-        }
-
-        /* iOS Segmented Control Sliding Pill */
-        .segmented-pill {
-            transition: transform 0.3s cubic-bezier(0.32, 0.72, 0, 1);
-        }
-
-        /* Frosted Glass iOS Navigation Bar */
-        .ios-blur {
-            backdrop-filter: saturate(180%) blur(20px);
-            -webkit-backdrop-filter: saturate(180%) blur(20px);
-        }
-
-        /* Smooth Expand/Collapse for Conditional Fields */
-        .accordion-content {
-            display: grid;
-            grid-template-rows: 0fr;
-            transition: grid-template-rows 0.32s cubic-bezier(0.32, 0.72, 0, 1);
-        }
-        .accordion-content.open {
-            grid-template-rows: 1fr;
-        }
-        .accordion-inner {
-            overflow: hidden;
-        }
-
-        /* Custom iOS Switch Toggle */
-        .ios-switch {
-            width: 51px;
-            height: 31px;
-            background-color: #E9E9EA;
-            border-radius: 9999px;
-            position: relative;
-            transition: background-color 0.28s cubic-bezier(0.32, 0.72, 0, 1);
-            cursor: pointer;
-        }
-        @media (prefers-color-scheme: dark) {
-            .ios-switch { background-color: #39393D; }
-        }
-        .ios-switch.checked {
-            background-color: #34C759;
-        }
-        .ios-switch-knob {
-            width: 27px;
-            height: 27px;
-            background: #FFFFFF;
-            border-radius: 50%;
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
-            transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
-        }
-        .ios-switch.checked .ios-switch-knob {
-            transform: translateX(20px);
-        }
-
-        /* Hide scrollbars cleanly where appropriate */
-        ::-webkit-scrollbar {
-            width: 0px;
-            background: transparent;
-        }
-    </style>
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Leave Approval</title>
+<script src="date-dmy.js"></script>
+<!-- First, so a logged-in user never sees a flash of anything else. -->
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
+<!--
+  LEAVE APPROVAL (launcher tile "Leave Approval", leaveTile() in launcher.html; sql/LEAVE_APPROVAL_MIGRATION.sql)
+    Apply      Employee Details come from the ERP login (Name, Emp Code, Department, Designation: fixed, never
+               typed); Leave Type, Duration (Half Day + shift / Full Day / More Than 1 Day), Reasons (tick + remarks),
+               WHOM TO APPROVE = the Admin's approval steps for the user's department: a Compulsory step must have
+               its approver, an Optional one may be switched on; approvers ONLY from the Admin's list of that step
+               (one user = picked by itself; the applicant himself is never offered). Confirm sheet → lv_save.
+    My Leaves  own requests with their step-by-step pipeline (who, status, time, remarks); Cancel with a reason
+               (pending, or approved before its first day).
+    Approvals  To Approve (the steps waiting for me) → Approve / Reject (reason) with my OWN PIN (lv_decide);
+               Decided by me; All (Admin: every request, and an Admin may decide the step in turn for anyone).
+    Setup      Admin only (lv_admin_get / lv_admin_save with the Admin PIN): approval steps (name, Compulsory /
+               Optional, departments, approver users, order), one after the other or all at once, how many days
+               back / ahead a leave may be applied, Leave Types and Reasons. A new setting = one key in the config
+               (lv_default_cfg_ on the server fills what is missing), no migration.
+  The SERVER checks everything again (list-only approvers, compulsory steps, dates, overlap, PIN, whose turn).
+  Data every 5 s while on screen (AUTO SYNC), redrawn only when it changed. Without the migration: a note only.
+  LOGIN = ERP LOGIN (launcher.html), gate booted with app: null like My Notepad (every employee applies for leave).
+  iOS look of its own (like bill-check / notepad), so no caps-input.js / hover-tip.js: remarks keep their case.
+  The old browser-only prototype (localStorage ios_leave_requests_v1 + WhatsApp links) is gone: anybody with a
+  link could "approve" there.
+-->
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--text:#000;--muted:#8e8e93;--sep:rgba(60,60,67,.18);--fill:#f2f2f7;--fill2:#e3e3e8;
+  --blue:#007aff;--green:#34c759;--red:#ff3b30;--orange:#ff9500;--shadow:0 1px 2px rgba(0,0,0,.05)}
+@media (prefers-color-scheme: dark){:root{--bg:#000;--card:#1c1c1e;--text:#fff;--muted:#98989f;--sep:rgba(84,84,88,.55);--fill:#2c2c2e;--fill2:#1c1c1e;--shadow:none}}
+*{box-sizing:border-box}
+html,body{margin:0;max-width:100%;overflow-x:hidden;-webkit-tap-highlight-color:transparent}
+body{background:var(--bg);color:var(--text);font:15px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+.shell{max-width:560px;margin:0 auto;min-height:100vh;padding:calc(env(safe-area-inset-top) + 92px) 16px calc(env(safe-area-inset-bottom) + 96px)}
+header.bar{position:fixed;top:0;left:50%;transform:translateX(-50%);width:100%;max-width:560px;z-index:40;padding:calc(env(safe-area-inset-top) + 10px) 16px 10px;
+  background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid var(--sep)}
+.bar .top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.bar a.back{display:inline-flex;align-items:center;gap:4px;color:var(--blue);text-decoration:none;font-size:15px}
+.bar h1{margin:4px 0 0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+.bar .who{font-size:12px;color:var(--muted);text-align:right;max-width:60%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;white-space:nowrap}
+.p-wait{background:rgba(255,149,0,.15);color:var(--orange)}.p-ok{background:rgba(52,199,89,.16);color:#248a3d}.p-bad{background:rgba(255,59,48,.14);color:var(--red)}
+.p-off{background:rgba(142,142,147,.16);color:var(--muted)}.p-blue{background:rgba(0,122,255,.13);color:var(--blue)}
+@media (prefers-color-scheme: dark){.p-ok{color:var(--green)}}
+h2.sec{font-size:13px;font-weight:500;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);margin:22px 16px 6px;display:flex;justify-content:space-between;align-items:center;gap:8px}
+h2.sec .r{text-transform:none;font-weight:600;font-size:12px;color:var(--blue)}
+.card{background:var(--card);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.row{display:flex;align-items:center;gap:10px;padding:11px 16px;min-height:46px;position:relative}
+.row+.row{border-top:.5px solid var(--sep)}
+.row .l{flex:0 0 auto;font-weight:500}.row .v{flex:1;text-align:right;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis}
+.row .v.dark{color:var(--text);font-weight:600}
+.lock{display:inline-flex;align-items:center;gap:4px;font-size:11px;color:var(--muted);text-transform:none}
+.seg{display:grid;background:var(--fill2);border-radius:10px;padding:2px;gap:2px}
+.seg button{border:0;background:transparent;border-radius:8px;padding:8px 4px;font-size:13px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--card);color:var(--text);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.chips{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:6px;padding:6px}
+.chip{border:0;background:var(--fill);border-radius:10px;padding:10px 8px;font-size:13px;font-weight:600;text-align:center}
+.chip.on{background:var(--blue);color:#fff}
+.inp{width:100%;border:0;background:var(--fill);border-radius:9px;padding:9px 11px;outline:none}
+.inp:focus{box-shadow:0 0 0 2px rgba(0,122,255,.45)}
+.inp.sm{width:auto;padding:7px 10px;font-weight:600;color:var(--blue)}
+textarea.inp{resize:vertical;min-height:60px}
+.tick{width:22px;height:22px;border-radius:50%;border:2px solid #c7c7cc;flex:none;display:flex;align-items:center;justify-content:center}
+.tick.on{background:var(--blue);border-color:var(--blue);color:#fff}
+.sw{width:51px;height:31px;border-radius:999px;background:#e9e9ea;position:relative;flex:none;transition:background .25s;border:0;padding:0}
+@media (prefers-color-scheme: dark){.sw{background:#39393d}}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 3px 8px rgba(0,0,0,.15);transition:transform .25s cubic-bezier(.32,.72,0,1)}
+.sw.on{background:var(--green)}.sw.on::after{transform:translateX(20px)}.sw[disabled]{opacity:.55}
+.btn{border:0;border-radius:13px;padding:14px 16px;font-weight:700;font-size:16px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.blue{background:var(--blue);color:#fff}.btn.green{background:var(--green);color:#fff}.btn.red{background:rgba(255,59,48,.14);color:var(--red)}
+.btn.gray{background:var(--fill);color:var(--text)}.btn.full{width:100%}.btn[disabled]{opacity:.45}
+.btn.small{padding:8px 12px;font-size:13px;border-radius:10px}
+.note{border-radius:12px;padding:10px 12px;font-size:13px;margin-top:10px}
+.n-warn{background:rgba(255,149,0,.12);color:#9a5b00}.n-bad{background:rgba(255,59,48,.1);color:var(--red)}.n-info{background:rgba(0,122,255,.1);color:var(--blue)}
+@media (prefers-color-scheme: dark){.n-warn{color:var(--orange)}}
+.req{padding:12px 14px}.req+.req{border-top:.5px solid var(--sep)}
+.req .h{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.req .nm{font-weight:700;font-size:15px}.req .mt{font-size:12px;color:var(--muted);margin-top:2px}
+.pipe{margin-top:8px;border-left:2px solid var(--sep);margin-left:6px;padding-left:12px}
+.pipe .p{position:relative;padding:3px 0;font-size:12.5px}
+.pipe .p::before{content:"";position:absolute;left:-18px;top:7px;width:10px;height:10px;border-radius:50%;background:var(--muted)}
+.pipe .p.APPROVED::before{background:var(--green)}.pipe .p.REJECTED::before{background:var(--red)}.pipe .p.PENDING::before{background:var(--orange)}.pipe .p.SKIPPED::before{background:#c7c7cc}
+.pipe .p .w{color:var(--muted)}
+.acts{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+.search{position:relative}.search input{padding-left:34px}.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.tabs{position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:560px;z-index:40;display:flex;justify-content:space-around;padding:6px 8px calc(env(safe-area-inset-bottom) + 8px);
+  background:color-mix(in srgb,var(--card) 88%,transparent);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--sep)}
+.tabs button{border:0;background:transparent;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10px;font-weight:600;color:var(--muted);position:relative;min-width:64px;padding:4px}
+.tabs button.on{color:var(--blue)}
+.tabs .cnt{position:absolute;top:-2px;right:10px;background:var(--red);color:#fff;font-size:10px;font-weight:800;min-width:17px;height:17px;border-radius:9px;display:flex;align-items:center;justify-content:center;padding:0 4px}
+.hide{display:none!important}
+.ov{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.42);display:flex;align-items:flex-end;justify-content:center}
+@media (min-width:700px){.ov{align-items:center}}
+.sheet{background:var(--bg);width:100%;max-width:520px;max-height:92vh;overflow:auto;border-radius:18px 18px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom) + 18px);animation:lvUp .28s cubic-bezier(.32,.72,0,1)}
+@media (min-width:700px){.sheet{border-radius:18px}}
+@keyframes lvUp{from{transform:translateY(40px);opacity:.3}to{transform:none;opacity:1}}
+.sheet .gr{width:38px;height:5px;border-radius:3px;background:#c7c7cc;margin:0 auto 10px}
+.sheet h3{margin:0 0 4px;font-size:18px}.sheet .sub{color:var(--muted);font-size:13px;margin-bottom:10px}
+.pin{letter-spacing:.5em;text-align:center;font-size:22px;font-weight:700}
+.err{color:var(--red);font-size:13px;min-height:18px;margin-top:6px}
+.toast{position:fixed;top:calc(env(safe-area-inset-top) + 10px);left:50%;transform:translate(-50%,-20px);opacity:0;z-index:90;max-width:92%;
+  background:color-mix(in srgb,var(--card) 95%,transparent);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border-radius:16px;padding:11px 14px;box-shadow:0 10px 30px rgba(0,0,0,.18);font-size:14px;font-weight:600;transition:all .3s;pointer-events:none}
+.toast.show{opacity:1;transform:translate(-50%,0)}.toast.bad{color:var(--red)}
+.empty{color:var(--muted);text-align:center;padding:26px 14px;font-size:14px}
+.uchip{display:inline-flex;align-items:center;gap:6px;background:var(--fill);border-radius:999px;padding:5px 6px 5px 11px;font-size:12.5px;font-weight:600;margin:3px}
+.uchip button{border:0;background:rgba(142,142,147,.25);border-radius:50%;width:18px;height:18px;font-size:11px;line-height:18px;padding:0}
+.ulist{max-height:52vh;overflow:auto}
+.ulist label{display:flex;gap:10px;align-items:center;padding:9px 4px;border-bottom:.5px solid var(--sep)}
+.ulist small{color:var(--muted);display:block}
+.mini{border:0;background:var(--fill);border-radius:8px;padding:5px 9px;font-size:12px;font-weight:600}
+.mini.red{color:var(--red)}.mini[disabled]{opacity:.35}
+</style>
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+<link rel="stylesheet" href="ios-dialog.css?v=20261120a">
+<script>window.IOS_UI = { overlays:false };</script>
+<script src="ios-ui.js?v=20261118a" defer></script>
+<script src="ios-dropdown.js?v=20261120a" defer></script>
+<script src="ios-dialog.js?v=20261120a"></script>
 </head>
-<body class="bg-[#F2F2F7] dark:bg-black text-black dark:text-white min-h-screen flex justify-center selection:bg-[#007AFF]/20">
-
-    <!-- Mobile Viewport Container (Centered on desktop, full edge-to-edge on mobile) -->
-    <div id="app-shell" class="w-full max-w-[440px] min-h-screen bg-[#F2F2F7] dark:bg-black relative flex flex-col pt-[84px] pb-28 shadow-2xl sm:border-x border-gray-200 dark:border-zinc-800">
-
-        <!-- iOS Top Strictly Fixed Header (Stays pinned during up/down scrolling) -->
-        <header class="fixed top-0 left-1/2 -translate-x-1/2 w-full max-w-[440px] z-40 ios-blur bg-[#F2F2F7]/90 dark:bg-black/90 border-b border-black/10 dark:border-white/10 px-4 pt-3 pb-2.5 shadow-2xs">
-            <div class="flex items-center justify-between">
-                <div class="flex items-center space-x-2">
-                    <div class="w-7 h-7 rounded-lg bg-[#007AFF] flex items-center justify-center text-white shadow-sm">
-                        <i data-lucide="calendar-check" class="w-4 h-4"></i>
-                    </div>
-                    <span class="text-xs font-semibold uppercase tracking-wider text-[#8E8E93]">HR Portal</span>
-                </div>
-                <!-- Quick Mode Pill (Employee vs Approver View) -->
-                <button onclick="toggleSpotlightSearch()" class="ios-spring flex items-center space-x-1.5 bg-black/5 dark:bg-white/10 px-3 py-1.5 rounded-full text-xs font-semibold text-[#007AFF]">
-                    <i data-lucide="search" class="w-3.5 h-3.5"></i>
-                    <span>Spotlight</span>
-                </button>
-            </div>
-            <div class="mt-1 flex items-end justify-between">
-                <h1 id="header-title" class="text-[26px] font-bold tracking-tight leading-tight">Leave Portal</h1>
-                <span id="live-clock" class="text-xs font-medium text-[#8E8E93] pb-1"></span>
-            </div>
-        </header>
-
-        <!-- Dynamic Toast / iOS Banner Notification -->
-        <div id="ios-toast" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-[400px] pointer-events-none opacity-0 -translate-y-6 transition-all duration-300 ease-out">
-            <div class="ios-blur bg-white/95 dark:bg-zinc-900/95 border border-black/10 dark:border-white/15 rounded-2xl p-3.5 shadow-xl flex items-center space-x-3">
-                <div id="toast-icon-bg" class="w-9 h-9 rounded-full bg-[#34C759]/15 text-[#34C759] flex items-center justify-center shrink-0">
-                    <i id="toast-icon" data-lucide="check-circle-2" class="w-5 h-5"></i>
-                </div>
-                <div class="flex-1 min-w-0">
-                    <p id="toast-title" class="text-sm font-semibold truncate">Notification</p>
-                    <p id="toast-msg" class="text-xs text-[#8E8E93] truncate">Action completed successfully.</p>
-                </div>
-            </div>
-        </div>
-
-        <!-- TAB 1: NEW LEAVE APPLICATION FORM -->
-        <main id="view-apply" class="flex-1 px-4 pt-4 space-y-6">
-
-            <!-- Employee Quick Details (iOS Inset Grouped List) -->
-            <section>
-                <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93] px-4 mb-1.5">Employee Details</h2>
-                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
-                    <div class="flex items-center px-4 py-3">
-                        <label class="w-28 text-[15px] font-medium shrink-0">Name <span class="text-[#FF3B30]">*</span></label>
-                        <input type="text" id="emp-name" placeholder="Enter your full name" class="w-full bg-transparent text-[15px] text-right focus:outline-none placeholder-[#8E8E93]/60">
-                    </div>
-                    <div class="flex items-center px-4 py-3">
-                        <label class="w-28 text-[15px] font-medium shrink-0">Emp ID / Dept</label>
-                        <input type="text" id="emp-id" placeholder="e.g. EMP-104 • Production" class="w-full bg-transparent text-[15px] text-right focus:outline-none placeholder-[#8E8E93]/60">
-                    </div>
-                </div>
-            </section>
-
-            <!-- 1. LEAVE TYPE (MANDATORY) -->
-            <section>
-                <div class="flex items-center justify-between px-4 mb-1.5">
-                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">1. Leave Type <span class="text-[#FF3B30]">*</span></h2>
-                    <span class="text-[11px] font-semibold text-[#007AFF]">Mandatory</span>
-                </div>
-                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl p-1.5 grid grid-cols-3 gap-1.5 shadow-xs">
-                    <button type="button" onclick="selectLeaveType('CASUAL')" id="lt-CASUAL" class="leave-type-btn ios-spring py-2.5 px-2 rounded-xl text-[13px] font-semibold flex flex-col items-center justify-center space-y-1 bg-[#007AFF] text-white shadow-sm">
-                        <i data-lucide="coffee" class="w-4 h-4"></i>
-                        <span>Casual</span>
-                    </button>
-                    <button type="button" onclick="selectLeaveType('EMERGENCY')" id="lt-EMERGENCY" class="leave-type-btn ios-spring py-2.5 px-2 rounded-xl text-[13px] font-semibold flex flex-col items-center justify-center space-y-1 text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5">
-                        <i data-lucide="alert-circle" class="w-4 h-4 text-[#FF9500]"></i>
-                        <span>Emergency</span>
-                    </button>
-                    <button type="button" onclick="selectLeaveType('SICK LEAVE')" id="lt-SICK LEAVE" class="leave-type-btn ios-spring py-2.5 px-2 rounded-xl text-[13px] font-semibold flex flex-col items-center justify-center space-y-1 text-black dark:text-white hover:bg-black/5 dark:hover:bg-white/5">
-                        <i data-lucide="heart-pulse" class="w-4 h-4 text-[#FF3B30]"></i>
-                        <span>Sick Leave</span>
-                    </button>
-                </div>
-            </section>
-
-            <!-- 2. DURATION (HALF / FULL DAY / MORE THAN 1 DAY) -->
-            <section>
-                <div class="flex items-center justify-between px-4 mb-1.5">
-                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">2. Leave Duration <span class="text-[#FF3B30]">*</span></h2>
-                </div>
-
-                <!-- Apple Segmented Control -->
-                <div class="bg-[#E3E3E8] dark:bg-[#1C1C1E] p-1 rounded-xl grid grid-cols-3 relative mb-3">
-                    <button type="button" onclick="selectDuration('HALF')" id="dur-HALF" class="dur-btn ios-spring py-2 text-[12px] font-semibold rounded-lg bg-white dark:bg-[#3A3A3C] text-black dark:text-white shadow-xs">
-                        Half Day
-                    </button>
-                    <button type="button" onclick="selectDuration('FULL')" id="dur-FULL" class="dur-btn ios-spring py-2 text-[12px] font-semibold rounded-lg text-[#8E8E93]">
-                        Full Day
-                    </button>
-                    <button type="button" onclick="selectDuration('MULTI')" id="dur-MULTI" class="dur-btn ios-spring py-2 text-[12px] font-semibold rounded-lg text-[#8E8E93]">
-                        More Than 1 Day
-                    </button>
-                </div>
-
-                <!-- Dynamic Calendar & Session Card -->
-                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
-                    
-                    <!-- CASE A: HALF DAY -->
-                    <div id="panel-HALF" class="divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
-                        <div class="flex items-center justify-between px-4 py-3">
-                            <div class="flex items-center space-x-2.5">
-                                <span class="w-7 h-7 rounded-lg bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center">
-                                    <i data-lucide="calendar" class="w-4 h-4"></i>
-                                </span>
-                                <span class="text-[15px] font-medium">Select Date</span>
-                            </div>
-                            <input type="date" id="date-half" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
-                        </div>
-                        <div class="px-4 py-3">
-                            <span class="text-[13px] text-[#8E8E93] block mb-2">Select Half Day Shift</span>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button type="button" onclick="selectHalfShift('BEFORE LUNCH')" id="shift-BEFORE" class="ios-spring py-2.5 px-3 rounded-xl border border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] text-[13px] font-semibold flex items-center justify-center space-x-1.5">
-                                    <i data-lucide="sunrise" class="w-4 h-4"></i>
-                                    <span>Before Lunch</span>
-                                </button>
-                                <button type="button" onclick="selectHalfShift('AFTER LUNCH')" id="shift-AFTER" class="ios-spring py-2.5 px-3 rounded-xl border border-transparent bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] text-[13px] font-semibold flex items-center justify-center space-x-1.5">
-                                    <i data-lucide="sunset" class="w-4 h-4"></i>
-                                    <span>After Lunch</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- CASE B: FULL DAY -->
-                    <div id="panel-FULL" class="hidden">
-                        <div class="flex items-center justify-between px-4 py-3.5">
-                            <div class="flex items-center space-x-2.5">
-                                <span class="w-7 h-7 rounded-lg bg-[#34C759]/15 text-[#34C759] flex items-center justify-center">
-                                    <i data-lucide="calendar-days" class="w-4 h-4"></i>
-                                </span>
-                                <span class="text-[15px] font-medium">Full Day Date</span>
-                            </div>
-                            <input type="date" id="date-full" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
-                        </div>
-                    </div>
-
-                    <!-- CASE C: MORE THAN 1 DAY -->
-                    <div id="panel-MULTI" class="hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]">
-                        <div class="flex items-center justify-between px-4 py-3">
-                            <div class="flex items-center space-x-2.5">
-                                <span class="w-7 h-7 rounded-lg bg-[#FF9500]/15 text-[#FF9500] flex items-center justify-center">
-                                    <i data-lucide="calendar-arrow-up" class="w-4 h-4"></i>
-                                </span>
-                                <span class="text-[15px] font-medium">From Date</span>
-                            </div>
-                            <input type="date" id="date-from" onchange="calculateTotalDays()" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
-                        </div>
-                        <div class="flex items-center justify-between px-4 py-3">
-                            <div class="flex items-center space-x-2.5">
-                                <span class="w-7 h-7 rounded-lg bg-[#FF3B30]/15 text-[#FF3B30] flex items-center justify-center">
-                                    <i data-lucide="calendar-arrow-down" class="w-4 h-4"></i>
-                                </span>
-                                <span class="text-[15px] font-medium">To Date</span>
-                            </div>
-                            <input type="date" id="date-to" onchange="calculateTotalDays()" class="bg-[#F2F2F7] dark:bg-[#2C2C2E] px-3 py-1.5 rounded-lg text-[14px] font-semibold text-[#007AFF] focus:outline-none">
-                        </div>
-                        <div class="px-4 py-2.5 bg-[#F9F9FB] dark:bg-[#252528] flex items-center justify-between">
-                            <span class="text-xs font-medium text-[#8E8E93]">Total Duration</span>
-                            <span id="total-days-badge" class="text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 px-2.5 py-1 rounded-full">2 Days</span>
-                        </div>
-                    </div>
-
-                </div>
-            </section>
-
-            <!-- 3. REASON OF LEAVE (TICK ANY + OTHER INPUT) -->
-            <section>
-                <div class="flex items-center justify-between px-4 mb-1.5">
-                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">3. Reason of Leave (Tick Any)</h2>
-                    <span id="reason-count" class="text-[11px] font-semibold text-[#8E8E93]">0 Selected</span>
-                </div>
-                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]" id="reasons-list">
-                    <!-- Populated via JS for crisp iOS checklist rows -->
-                </div>
-                <!-- Other Reason Input -->
-                <div class="mt-2.5 bg-white dark:bg-[#1C1C1E] rounded-2xl px-4 py-3">
-                    <label class="text-[12px] font-semibold text-[#8E8E93] uppercase tracking-wider block mb-1">Any Other Reason / Remarks</label>
-                    <input type="text" id="reason-other" placeholder="Type custom reason here..." class="w-full bg-transparent text-[15px] focus:outline-none placeholder-[#8E8E93]/60">
-                </div>
-            </section>
-
-            <!-- 4. WHOM TO APPROVE -->
-            <section>
-                <div class="flex items-center justify-between px-4 mb-1.5">
-                    <h2 class="text-[13px] font-normal uppercase tracking-wide text-[#8E8E93]">4. Whom To Approve <span class="text-[#FF3B30]">*</span></h2>
-                    <span class="text-[11px] font-medium text-[#8E8E93]">Tap to Select</span>
-                </div>
-                <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl overflow-hidden divide-y divide-[#C6C6C8]/40 dark:divide-[#38383A]" id="approvers-list">
-                    <!-- Populated via JS -->
-                </div>
-            </section>
-
-            <!-- Primary iOS Submit & Share Action Button -->
-            <div class="pt-2 pb-4 space-y-3">
-                <button type="button" onclick="submitAndGenerateApproval()" class="ios-spring w-full bg-[#007AFF] hover:bg-[#0066D6] text-white font-semibold text-[17px] py-4 rounded-2xl shadow-lg shadow-[#007AFF]/25 flex items-center justify-center space-x-2">
-                    <i data-lucide="send" class="w-5 h-5"></i>
-                    <span>Send for Mobile Approval</span>
-                </button>
-                <p class="text-center text-[11px] text-[#8E8E93] px-4">
-                    Generates a mobile approval card & instant WhatsApp/Share link to approve from any phone.
-                </p>
-            </div>
-        </main>
-
-        <!-- TAB 2: APPROVER / TRACKER INBOX VIEW -->
-        <main id="view-inbox" class="hidden flex-1 px-4 pt-4 space-y-5">
-            <!-- Fast iOS Search Bar inside Inbox -->
-            <div class="relative">
-                <i data-lucide="search" class="w-4 h-4 text-[#8E8E93] absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                <input type="text" id="inbox-search" oninput="renderInbox()" placeholder="Search employee, status, approver, date..." class="w-full bg-[#E3E3E8] dark:bg-[#1C1C1E] rounded-xl pl-10 pr-4 py-2.5 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#007AFF]">
-            </div>
-
-            <!-- Filter Pills -->
-            <div class="flex space-x-2 overflow-x-auto pb-1">
-                <button onclick="setInboxFilter('ALL')" id="filter-ALL" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#007AFF] text-white shrink-0">All Requests</button>
-                <button onclick="setInboxFilter('PENDING')" id="filter-PENDING" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0">Pending</button>
-                <button onclick="setInboxFilter('APPROVED')" id="filter-APPROVED" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0">Approved</button>
-                <button onclick="setInboxFilter('REJECTED')" id="filter-REJECTED" class="filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0">Rejected</button>
-            </div>
-
-            <!-- Requests Feed -->
-            <div id="inbox-list" class="space-y-3.5">
-                <!-- Cards rendered dynamically -->
-            </div>
-        </main>
-
-        <!-- iOS Bottom Tab Bar -->
-        <nav class="fixed bottom-0 w-full max-w-[440px] z-40 ios-blur bg-white/85 dark:bg-[#1C1C1E]/85 border-t border-black/10 dark:border-white/10 px-6 py-2 pb-5 flex justify-around items-center">
-            <button onclick="switchTab('apply')" id="tab-apply" class="ios-spring flex flex-col items-center space-y-1 text-[#007AFF]">
-                <i data-lucide="file-plus-2" class="w-6 h-6"></i>
-                <span class="text-[10px] font-semibold">Apply Leave</span>
-            </button>
-            <button onclick="switchTab('inbox')" id="tab-inbox" class="ios-spring relative flex flex-col items-center space-y-1 text-[#8E8E93]">
-                <i data-lucide="inbox" class="w-6 h-6"></i>
-                <span class="text-[10px] font-semibold">Approvals & Track</span>
-                <span id="pending-badge" class="hidden absolute -top-1 -right-2 bg-[#FF3B30] text-white text-[10px] font-bold w-4 h-4 rounded-full flex items-center justify-center">0</span>
-            </button>
-        </nav>
-
-        <!-- STEP 1: CONFIRMATION SUMMARY POP-UP MODAL -->
-        <div id="confirm-modal" class="hidden fixed inset-0 z-50 bg-black/55 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 transition-opacity">
-            <div class="w-full max-w-[440px] bg-[#F2F2F7] dark:bg-[#1C1C1E] rounded-t-3xl sm:rounded-3xl p-5 pb-8 sm:pb-6 space-y-4 shadow-2xl border-t sm:border border-black/10 dark:border-white/10">
-                <div class="w-10 h-1.5 bg-gray-300 dark:bg-zinc-600 rounded-full mx-auto mb-1 sm:hidden"></div>
-                <div class="flex items-center justify-between">
-                    <div>
-                        <span class="text-[11px] font-bold uppercase tracking-wider text-[#007AFF]">Review Details</span>
-                        <h3 class="text-lg font-bold">Confirm Leave Summary</h3>
-                    </div>
-                    <button onclick="closeConfirmModal()" class="w-8 h-8 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-[#8E8E93]">
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                    </button>
-                </div>
-
-                <!-- Detailed Summary Card of Selected Options -->
-                <div id="confirm-summary-body" class="bg-white dark:bg-[#2C2C2E] rounded-2xl p-4 space-y-2.5 text-sm divide-y divide-[#C6C6C8]/30 dark:divide-white/10">
-                    <!-- Populated dynamically before confirmation -->
-                </div>
-
-                <!-- Edit or Confirm Actions -->
-                <div class="grid grid-cols-2 gap-3 pt-1">
-                    <button type="button" onclick="closeConfirmModal()" class="ios-spring bg-white dark:bg-[#2C2C2E] text-[#8E8E93] font-semibold py-3.5 rounded-2xl flex items-center justify-center space-x-1.5 border border-black/5 dark:border-white/10">
-                        <i data-lucide="pencil" class="w-4 h-4"></i>
-                        <span>Edit Form</span>
-                    </button>
-                    <button type="button" onclick="confirmAndSubmitLeave()" class="ios-spring bg-[#34C759] hover:bg-[#2DB84D] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#34C759]/30 flex items-center justify-center space-x-1.5">
-                        <i data-lucide="check-circle-2" class="w-5 h-5"></i>
-                        <span>Confirm & Send</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- iOS SHARE & REMOTE MOBILE APPROVAL SHEET MODAL -->
-        <div id="share-modal" class="hidden fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-end justify-center transition-opacity">
-            <div class="w-full max-w-[440px] bg-[#F2F2F7] dark:bg-[#1C1C1E] rounded-t-3xl p-5 pb-8 space-y-4 shadow-2xl transform transition-transform">
-                <div class="w-10 h-1.5 bg-gray-300 dark:bg-zinc-600 rounded-full mx-auto mb-1"></div>
-                <div class="flex items-center justify-between">
-                    <h3 class="text-lg font-bold">Send to Approver's Mobile</h3>
-                    <button onclick="closeShareModal()" class="w-8 h-8 rounded-full bg-black/5 dark:bg-white/10 flex items-center justify-center text-[#8E8E93]">
-                        <i data-lucide="x" class="w-4 h-4"></i>
-                    </button>
-                </div>
-
-                <!-- Summary Preview Card -->
-                <div id="share-summary-card" class="bg-white dark:bg-black/40 rounded-2xl p-4 space-y-2 border border-black/5 dark:border-white/10 text-sm">
-                    <!-- Filled dynamically -->
-                </div>
-
-                <!-- Action Buttons: WhatsApp, Copy Link, or Open Approver Screen Directly -->
-                <div class="space-y-2.5 pt-1">
-                    <button onclick="shareViaWhatsApp()" class="ios-spring w-full bg-[#34C759] text-white font-semibold py-3.5 rounded-2xl flex items-center justify-center space-x-2 shadow-md">
-                        <i data-lucide="message-circle" class="w-5 h-5"></i>
-                        <span>Send via WhatsApp to Approver</span>
-                    </button>
-                    <button onclick="copyApprovalLink()" class="ios-spring w-full bg-[#007AFF] text-white font-semibold py-3.5 rounded-2xl flex items-center justify-center space-x-2">
-                        <i data-lucide="link" class="w-5 h-5"></i>
-                        <span>Copy Mobile Approval Link</span>
-                    </button>
-                    <button onclick="openCurrentInApproverMode()" class="ios-spring w-full bg-white dark:bg-[#2C2C2E] text-[#007AFF] font-semibold py-3 rounded-2xl text-sm">
-                        Preview Approver Mobile Screen
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- DEDICATED REMOTE APPROVER ACTION MODAL (Opens when link is opened on another mobile) -->
-        <div id="approver-action-modal" class="hidden fixed inset-0 z-50 bg-black/60 backdrop-blur-md flex items-center justify-center p-4">
-            <div class="w-full max-w-[400px] bg-white dark:bg-[#1C1C1E] rounded-3xl p-5 shadow-2xl space-y-4 border border-black/10 dark:border-white/10">
-                <div class="flex items-center justify-between border-b border-black/10 dark:border-white/10 pb-3">
-                    <div class="flex items-center space-x-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-[#FF9500] animate-pulse"></span>
-                        <span class="text-xs font-bold uppercase tracking-wider text-[#8E8E93]">Mobile Leave Approval</span>
-                    </div>
-                    <button onclick="closeApproverModal()" class="text-[#8E8E93] p-1">
-                        <i data-lucide="x" class="w-5 h-5"></i>
-                    </button>
-                </div>
-
-                <div id="approver-modal-body" class="space-y-3 text-sm">
-                    <!-- Request details injected here -->
-                </div>
-
-                <div>
-                    <label class="text-xs font-semibold text-[#8E8E93] uppercase block mb-1">Approver Remarks (Optional)</label>
-                    <input type="text" id="approver-remark-input" placeholder="e.g. Approved, take care" class="w-full bg-[#F2F2F7] dark:bg-[#2C2C2E] rounded-xl px-3.5 py-2.5 text-sm focus:outline-none">
-                </div>
-
-                <div class="grid grid-cols-2 gap-3 pt-2">
-                    <button onclick="processApprovalDecision('REJECTED')" class="ios-spring bg-[#FF3B30]/15 text-[#FF3B30] font-bold py-3.5 rounded-2xl flex items-center justify-center space-x-1.5">
-                        <i data-lucide="x-circle" class="w-5 h-5"></i>
-                        <span>Reject</span>
-                    </button>
-                    <button onclick="processApprovalDecision('APPROVED')" class="ios-spring bg-[#34C759] text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-[#34C759]/30 flex items-center justify-center space-x-1.5">
-                        <i data-lucide="check-circle" class="w-5 h-5"></i>
-                        <span>Approve</span>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <!-- iOS SPOTLIGHT INSTANT SEARCH OVERLAY -->
-        <div id="spotlight-overlay" class="hidden fixed inset-0 z-50 ios-blur bg-[#F2F2F7]/90 dark:bg-black/90 p-4 pt-6 flex flex-col">
-            <div class="w-full max-w-[408px] mx-auto space-y-4 flex-1 flex flex-col">
-                <div class="flex items-center space-x-2">
-                    <div class="relative flex-1">
-                        <i data-lucide="search" class="w-4 h-4 text-[#8E8E93] absolute left-3.5 top-1/2 -translate-y-1/2"></i>
-                        <input type="text" id="spotlight-input" oninput="runSpotlightSearch()" placeholder="Spotlight Search: Name, Leave, Approver..." class="w-full bg-white dark:bg-[#1C1C1E] rounded-2xl pl-10 pr-4 py-3 text-[16px] shadow-sm focus:outline-none">
-                    </div>
-                    <button onclick="toggleSpotlightSearch()" class="text-[#007AFF] font-semibold text-[16px] px-2">Cancel</button>
-                </div>
-                <div id="spotlight-results" class="flex-1 overflow-y-auto space-y-2.5 pb-10">
-                    <!-- Instant zero-latency search results -->
-                </div>
-            </div>
-        </div>
-
-    </div>
-
-    <script>
-        // ==========================================
-        // 1. STATE & CONSTANTS
-        // ==========================================
-        const REASONS_LIST = [
-            { id: 'ILLNESS', label: 'Illness', icon: 'thermometer' },
-            { id: 'URGENT WORK', label: 'Urgent Work', icon: 'briefcase' },
-            { id: 'MARRIAGE', label: 'Marriage', icon: 'heart' },
-            { id: 'DEATH IN RELATION', label: 'Death in Relation', icon: 'flower-2' },
-            { id: 'EXAM', label: 'Exam', icon: 'book-open' },
-            { id: 'INTERVIEW', label: 'Interview', icon: 'user-check' },
-            { id: 'BANK WORK', label: 'Bank Work', icon: 'landmark' },
-            { id: 'GOVT DEPARTMENT WORK', label: 'Govt Department Work', icon: 'building-2' }
-        ];
-
-        const APPROVERS_LIST = [
-            { id: 'DEPARTMENT HEAD', label: '1. Department Head', role: 'HOD Approval', optional: false, mandatory: false },
-            { id: 'G.M', label: '2. G.M', role: 'General Manager', optional: false, mandatory: false },
-            { id: 'CEO', label: '3. CEO', role: 'Chief Executive Officer', optional: false, mandatory: false },
-            { id: 'EA', label: '4. EA', role: 'Executive Assistant', optional: false, mandatory: false },
-            { id: 'PC', label: '5. PC', role: 'Process Coordinator', optional: false, mandatory: true },
-            { id: 'DEO', label: '6. DEO', role: 'Data Entry Operator', optional: false, mandatory: true },
-            { id: 'HR', label: '7. HR', role: 'Human Resources', optional: false, mandatory: true },
-            { id: 'MD-1', label: '8. MD-1', role: 'Managing Director (Optional)', optional: true, mandatory: false }
-        ];
-
-        let state = {
-            leaveType: 'CASUAL',
-            durationType: 'HALF', // 'HALF' | 'FULL' | 'MULTI'
-            halfShift: 'BEFORE LUNCH',
-            selectedReasons: new Set(),
-            selectedApprovers: new Set(['DEPARTMENT HEAD', 'PC', 'DEO', 'HR']),
-            inboxFilter: 'ALL',
-            requests: [],
-            pendingDraftRequest: null,
-            activeShareRequest: null,
-            activeApproverModalId: null
-        };
-
-        // ==========================================
-        // 2. INITIALIZATION & URL PAYLOAD DECODER
-        // ==========================================
-        window.addEventListener('DOMContentLoaded', () => {
-            lucide.createIcons();
-            initDates();
-            renderReasons();
-            renderApprovers();
-            loadRequestsFromStorage();
-            checkIncomingUrlApproval();
-            updateClock();
-            setInterval(updateClock, 15000);
-        });
-
-        function updateClock() {
-            const now = new Date();
-            document.getElementById('live-clock').textContent = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        }
-
-        function initDates() {
-            const today = new Date().toISOString().split('T')[0];
-            const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-            document.getElementById('date-half').value = today;
-            document.getElementById('date-full').value = today;
-            document.getElementById('date-from').value = today;
-            document.getElementById('date-to').value = tomorrow;
-            calculateTotalDays();
-        }
-
-        // ==========================================
-        // 3. FORM INTERACTION HANDLERS
-        // ==========================================
-        function selectLeaveType(type) {
-            state.leaveType = type;
-            document.querySelectorAll('.leave-type-btn').forEach(btn => {
-                btn.classList.remove('bg-[#007AFF]', 'text-white', 'shadow-sm');
-                btn.classList.add('text-black', 'dark:text-white');
-            });
-            const activeBtn = document.getElementById(`lt-${type}`);
-            activeBtn.classList.add('bg-[#007AFF]', 'text-white', 'shadow-sm');
-            activeBtn.classList.remove('text-black', 'dark:text-white');
-        }
-
-        function selectDuration(dur) {
-            state.durationType = dur;
-            ['HALF', 'FULL', 'MULTI'].forEach(d => {
-                const btn = document.getElementById(`dur-${d}`);
-                const panel = document.getElementById(`panel-${d}`);
-                if (d === dur) {
-                    btn.classList.add('bg-white', 'dark:bg-[#3A3A3C]', 'text-black', 'dark:text-white', 'shadow-xs');
-                    btn.classList.remove('text-[#8E8E93]');
-                    panel.classList.remove('hidden');
-                } else {
-                    btn.classList.remove('bg-white', 'dark:bg-[#3A3A3C]', 'text-black', 'dark:text-white', 'shadow-xs');
-                    btn.classList.add('text-[#8E8E93]');
-                    panel.classList.add('hidden');
-                }
-            });
-        }
-
-        function selectHalfShift(shift) {
-            state.halfShift = shift;
-            const beforeBtn = document.getElementById('shift-BEFORE');
-            const afterBtn = document.getElementById('shift-AFTER');
-            if (shift === 'BEFORE LUNCH') {
-                beforeBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
-                afterBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-transparent bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
-            } else {
-                afterBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-[#007AFF] bg-[#007AFF]/10 text-[#007AFF] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
-                beforeBtn.className = 'ios-spring py-2.5 px-3 rounded-xl border border-transparent bg-[#F2F2F7] dark:bg-[#2C2C2E] text-[#8E8E93] text-[13px] font-semibold flex items-center justify-center space-x-1.5';
-            }
-        }
-
-        function calculateTotalDays() {
-            const fromVal = document.getElementById('date-from').value;
-            const toVal = document.getElementById('date-to').value;
-            if (!fromVal || !toVal) return;
-            const d1 = new Date(fromVal);
-            const d2 = new Date(toVal);
-            const diffTime = d2 - d1;
-            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
-            const badge = document.getElementById('total-days-badge');
-            if (diffDays < 1) {
-                badge.textContent = 'Invalid Date Range';
-                badge.className = 'text-xs font-bold text-[#FF3B30] bg-[#FF3B30]/10 px-2.5 py-1 rounded-full';
-            } else {
-                badge.textContent = `${diffDays} Day${diffDays > 1 ? 's' : ''}`;
-                badge.className = 'text-xs font-bold text-[#007AFF] bg-[#007AFF]/10 px-2.5 py-1 rounded-full';
-            }
-        }
-
-        function renderReasons() {
-            const container = document.getElementById('reasons-list');
-            container.innerHTML = REASONS_LIST.map(item => {
-                const checked = state.selectedReasons.has(item.id);
-                return `
-                    <div onclick="toggleReason('${item.id}')" class="ios-spring flex items-center justify-between px-4 py-3 cursor-pointer active:bg-black/5 dark:active:bg-white/5">
-                        <div class="flex items-center space-x-3">
-                            <div class="w-7 h-7 rounded-lg bg-[#007AFF]/10 text-[#007AFF] flex items-center justify-center">
-                                <i data-lucide="${item.icon}" class="w-4 h-4"></i>
-                            </div>
-                            <span class="text-[15px] font-medium">${item.label}</span>
-                        </div>
-                        <div class="w-6 h-6 rounded-full flex items-center justify-center transition-colors ${checked ? 'bg-[#007AFF] text-white' : 'border-2 border-[#C6C6C8] dark:border-[#48484A]'}">
-                            ${checked ? '<i data-lucide="check" class="w-3.5 h-3.5 stroke-[3]"></i>' : ''}
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            document.getElementById('reason-count').textContent = `${state.selectedReasons.size} Selected`;
-            lucide.createIcons();
-        }
-
-        function toggleReason(id) {
-            if (state.selectedReasons.has(id)) {
-                state.selectedReasons.delete(id);
-            } else {
-                state.selectedReasons.add(id);
-            }
-            renderReasons();
-        }
-
-        function renderApprovers() {
-            const container = document.getElementById('approvers-list');
-            container.innerHTML = APPROVERS_LIST.map(app => {
-                const isSelected = app.mandatory ? true : state.selectedApprovers.has(app.id);
-                return `
-                    <div onclick="toggleApprover('${app.id}')" class="ios-spring flex items-center justify-between px-4 py-3 ${app.mandatory ? 'cursor-not-allowed bg-[#F9F9FB]/60 dark:bg-white/[0.02]' : 'cursor-pointer'}">
-                        <div>
-                            <div class="flex items-center space-x-2">
-                                <span class="text-[15px] font-semibold">${app.label}</span>
-                                ${app.mandatory ? '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#007AFF]/15 text-[#007AFF] flex items-center gap-1"><i data-lucide="lock" class="w-2.5 h-2.5"></i> Mandatory</span>' : ''}
-                                ${app.optional ? '<span class="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-[#8E8E93]/15 text-[#8E8E93]">Optional</span>' : ''}
-                            </div>
-                            <span class="text-xs text-[#8E8E93]">${app.role}</span>
-                        </div>
-                        <div class="ios-switch ${isSelected ? 'checked' : ''} ${app.mandatory ? 'opacity-80 pointer-events-none' : ''}">
-                            <div class="ios-switch-knob"></div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            lucide.createIcons();
-        }
-
-        function toggleApprover(id) {
-            const approver = APPROVERS_LIST.find(a => a.id === id);
-            if (approver && approver.mandatory) {
-                showToast('Mandatory Approver', `${approver.label} is locked ON and cannot be turned off.`, 'error');
-                return;
-            }
-            if (state.selectedApprovers.has(id)) {
-                state.selectedApprovers.delete(id);
-            } else {
-                state.selectedApprovers.add(id);
-            }
-            renderApprovers();
-        }
-
-        // ==========================================
-        // 4. SUBMISSION & MOBILE CROSS-DEVICE SHARING
-        // ==========================================
-        function submitAndGenerateApproval() {
-            const empName = document.getElementById('emp-name').value.trim();
-            const empId = document.getElementById('emp-id').value.trim() || 'Staff';
-            const otherReason = document.getElementById('reason-other').value.trim();
-
-            if (!empName) {
-                showToast('Name Required', 'Please enter employee name before sending.', 'error');
-                document.getElementById('emp-name').focus();
-                return;
-            }
-
-            if (state.selectedApprovers.size === 0) {
-                showToast('Select Approver', 'Choose at least one authority to approve.', 'error');
-                return;
-            }
-
-            // Build Duration Summary
-            let durationLabel = '';
-            let dateSummary = '';
-            if (state.durationType === 'HALF') {
-                const d = document.getElementById('date-half').value;
-                if (!d) return showToast('Date Missing', 'Select date from calendar.', 'error');
-                durationLabel = `Half Day (${state.halfShift})`;
-                dateSummary = `${formatDate(d)} • Half Day (${state.halfShift})`;
-            } else if (state.durationType === 'FULL') {
-                const d = document.getElementById('date-full').value;
-                if (!d) return showToast('Date Missing', 'Select date from calendar.', 'error');
-                durationLabel = 'Full Day';
-                dateSummary = `${formatDate(d)} • Full Day`;
-            } else {
-                const f = document.getElementById('date-from').value;
-                const t = document.getElementById('date-to').value;
-                if (!f || !t || new Date(t) < new Date(f)) {
-                    return showToast('Invalid Dates', 'Please check From and To dates.', 'error');
-                }
-                const days = Math.floor((new Date(t) - new Date(f)) / 86400000) + 1;
-                durationLabel = `More Than 1 Day (${days} Days)`;
-                dateSummary = `${formatDate(f)} to ${formatDate(t)} (${days} Days)`;
-            }
-
-            const reasonsArr = Array.from(state.selectedReasons);
-            if (otherReason) reasonsArr.push(`Other: ${otherReason}`);
-            if (reasonsArr.length === 0) {
-                return showToast('Reason Required', 'Tick at least one reason or type in Other.', 'error');
-            }
-
-            // Store draft & show Confirmation Summary Popup first
-            state.pendingDraftRequest = {
-                id: 'LV-' + Math.floor(100000 + Math.random() * 900000),
-                empName,
-                empId,
-                leaveType: state.leaveType,
-                durationType: state.durationType,
-                durationLabel,
-                dateSummary,
-                reasons: reasonsArr,
-                approvers: Array.from(state.selectedApprovers),
-                status: 'PENDING',
-                remark: '',
-                createdAt: new Date().toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })
-            };
-
-            openConfirmModal(state.pendingDraftRequest);
-        }
-
-        function openConfirmModal(draft) {
-            const body = document.getElementById('confirm-summary-body');
-            body.innerHTML = `
-                <div class="flex justify-between items-center pb-2">
-                    <span class="text-xs text-[#8E8E93]">Employee</span>
-                    <span class="font-bold text-right">${draft.empName} <span class="text-xs font-normal text-[#8E8E93]">(${draft.empId})</span></span>
-                </div>
-                <div class="flex justify-between items-center pt-2 pb-2">
-                    <span class="text-xs text-[#8E8E93]">1. Leave Type</span>
-                    <span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-[#007AFF]/15 text-[#007AFF]">${draft.leaveType}</span>
-                </div>
-                <div class="flex justify-between items-center pt-2 pb-2">
-                    <span class="text-xs text-[#8E8E93]">2. Duration</span>
-                    <span class="text-xs font-semibold text-right">${draft.durationLabel}</span>
-                </div>
-                <div class="flex justify-between items-center pt-2 pb-2">
-                    <span class="text-xs text-[#8E8E93]">Calendar Date</span>
-                    <span class="text-xs font-bold text-right text-[#007AFF]">${draft.dateSummary}</span>
-                </div>
-                <div class="pt-2 pb-2">
-                    <span class="text-xs text-[#8E8E93] block mb-1">3. Selected Reasons</span>
-                    <div class="flex flex-wrap gap-1.5">
-                        ${draft.reasons.map(r => `<span class="text-[11px] font-medium bg-[#F2F2F7] dark:bg-black/40 px-2 py-0.5 rounded-md">${r}</span>`).join('')}
-                    </div>
-                </div>
-                <div class="pt-2">
-                    <span class="text-xs text-[#8E8E93] block mb-1">4. Whom To Approve</span>
-                    <div class="flex flex-wrap gap-1.5">
-                        ${draft.approvers.map(a => `<span class="text-[11px] font-bold bg-[#34C759]/15 text-[#34C759] px-2 py-0.5 rounded-md">${a}</span>`).join('')}
-                    </div>
-                </div>
-            `;
-            document.getElementById('confirm-modal').classList.remove('hidden');
-            lucide.createIcons();
-        }
-
-        function closeConfirmModal() {
-            document.getElementById('confirm-modal').classList.add('hidden');
-        }
-
-        function confirmAndSubmitLeave() {
-            const confirmedReq = state.pendingDraftRequest;
-            if (!confirmedReq) return;
-
-            // Save to Approvals & Track list
-            state.requests.unshift(confirmedReq);
-            saveRequestsToStorage();
-            state.activeShareRequest = confirmedReq;
-            state.pendingDraftRequest = null;
-
-            // Close confirmation popup, switch to Approvals & Track tab, and open Mobile Share sheet
-            closeConfirmModal();
-            switchTab('inbox');
-            openShareModal(confirmedReq);
-            showToast('Confirmed & Sent', 'Added to Approvals & Track! Send link to approver.', 'success');
-        }
-
-        function buildShareableUrl(req) {
-            const payload = btoa(encodeURIComponent(JSON.stringify(req)));
-            const baseUrl = window.location.href.split('?')[0].split('#')[0];
-            return `${baseUrl}?approve=${payload}`;
-        }
-
-        function openShareModal(req) {
-            const summaryBox = document.getElementById('share-summary-card');
-            summaryBox.innerHTML = `
-                <div class="flex justify-between items-center">
-                    <span class="text-xs font-bold text-[#007AFF]">${req.id}</span>
-                    <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-[#FF9500]/15 text-[#FF9500]">${req.leaveType}</span>
-                </div>
-                <p class="font-bold text-base">${req.empName} <span class="text-xs font-normal text-[#8E8E93]">(${req.empId})</span></p>
-                <p class="text-xs text-[#8E8E93] flex items-center gap-1.5"><i data-lucide="calendar" class="w-3.5 h-3.5 text-[#007AFF]"></i> ${req.dateSummary}</p>
-                <p class="text-xs text-[#8E8E93]"><strong class="text-black dark:text-white">Reason:</strong> ${req.reasons.join(', ')}</p>
-                <p class="text-xs text-[#8E8E93]"><strong class="text-black dark:text-white">Approvers:</strong> ${req.approvers.join(', ')}</p>
-            `;
-            document.getElementById('share-modal').classList.remove('hidden');
-            lucide.createIcons();
-        }
-
-        function closeShareModal() {
-            document.getElementById('share-modal').classList.add('hidden');
-        }
-
-        function shareViaWhatsApp() {
-            const req = state.activeShareRequest;
-            if (!req) return;
-            const link = buildShareableUrl(req);
-            const msg = `*LEAVE APPROVAL REQUEST (${req.id})*\n` +
-                        `👤 *Employee:* ${req.empName} (${req.empId})\n` +
-                        `📌 *Type:* ${req.leaveType}\n` +
-                        `📅 *Duration:* ${req.dateSummary}\n` +
-                        `📝 *Reason:* ${req.reasons.join(', ')}\n` +
-                        `✅ *For Approval:* ${req.approvers.join(', ')}\n\n` +
-                        `Tap link below to Approve/Reject on your mobile:\n${link}`;
-            window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
-        }
-
-        function copyApprovalLink() {
-            const req = state.activeShareRequest;
-            if (!req) return;
-            const link = buildShareableUrl(req);
-            const tempInput = document.createElement('input');
-            tempInput.value = link;
-            document.body.appendChild(tempInput);
-            tempInput.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempInput);
-            showToast('Link Copied', 'Paste & send to approver via SMS/WhatsApp.', 'success');
-        }
-
-        function openCurrentInApproverMode() {
-            closeShareModal();
-            if (state.activeShareRequest) {
-                openApproverModal(state.activeShareRequest.id);
-            }
-        }
-
-        // ==========================================
-        // 5. RECEIVING & APPROVING ON ANOTHER MOBILE
-        // ==========================================
-        function checkIncomingUrlApproval() {
-            const params = new URLSearchParams(window.location.search);
-            const encoded = params.get('approve');
-            if (!encoded) return;
-            try {
-                const decoded = JSON.parse(decodeURIComponent(atob(encoded)));
-                const exists = state.requests.find(r => r.id === decoded.id);
-                if (!exists) {
-                    state.requests.unshift(decoded);
-                    saveRequestsToStorage();
-                }
-                switchTab('inbox');
-                openApproverModal(decoded.id);
-                // Clean URL bar cleanly without reload
-                window.history.replaceState({}, document.title, window.location.pathname);
-            } catch (e) {
-                console.error('Invalid approval link payload', e);
-            }
-        }
-
-        function openApproverModal(reqId) {
-            const req = state.requests.find(r => r.id === reqId);
-            if (!req) return;
-            state.activeApproverModalId = reqId;
-            document.getElementById('approver-remark-input').value = req.remark || '';
-            document.getElementById('approver-modal-body').innerHTML = `
-                <div class="bg-[#F2F2F7] dark:bg-[#2C2C2E] p-3.5 rounded-2xl space-y-2">
-                    <div class="flex justify-between">
-                        <span class="text-xs font-bold text-[#007AFF]">${req.id}</span>
-                        <span class="text-xs font-bold uppercase ${req.status === 'APPROVED' ? 'text-[#34C759]' : req.status === 'REJECTED' ? 'text-[#FF3B30]' : 'text-[#FF9500]'}">${req.status}</span>
-                    </div>
-                    <div class="text-base font-bold">${req.empName} <span class="text-xs font-normal text-[#8E8E93]">(${req.empId})</span></div>
-                    <div class="text-xs"><span class="text-[#8E8E93]">Leave Type:</span> <strong>${req.leaveType}</strong></div>
-                    <div class="text-xs"><span class="text-[#8E8E93]">Schedule:</span> <strong>${req.dateSummary}</strong></div>
-                    <div class="text-xs"><span class="text-[#8E8E93]">Reasons:</span> <strong>${req.reasons.join(', ')}</strong></div>
-                    <div class="text-xs"><span class="text-[#8E8E93]">Authority:</span> <strong>${req.approvers.join(', ')}</strong></div>
-                </div>
-            `;
-            document.getElementById('approver-action-modal').classList.remove('hidden');
-            lucide.createIcons();
-        }
-
-        function closeApproverModal() {
-            document.getElementById('approver-action-modal').classList.add('hidden');
-        }
-
-        function processApprovalDecision(decision) {
-            const req = state.requests.find(r => r.id === state.activeApproverModalId);
-            if (!req) return;
-            req.status = decision;
-            req.remark = document.getElementById('approver-remark-input').value.trim();
-            req.decidedAt = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            saveRequestsToStorage();
-            closeApproverModal();
-            renderInbox();
-            showToast(
-                decision === 'APPROVED' ? 'Leave Approved' : 'Leave Rejected',
-                `${req.empName}'s request marked as ${decision}.`,
-                decision === 'APPROVED' ? 'success' : 'error'
-            );
-        }
-
-        // ==========================================
-        // 6. FAST IPHONE-SPEED SEARCH & INBOX RENDERING
-        // ==========================================
-        function switchTab(tab) {
-            const applyView = document.getElementById('view-apply');
-            const inboxView = document.getElementById('view-inbox');
-            const tabApply = document.getElementById('tab-apply');
-            const tabInbox = document.getElementById('tab-inbox');
-            const title = document.getElementById('header-title');
-
-            if (tab === 'apply') {
-                applyView.classList.remove('hidden');
-                inboxView.classList.add('hidden');
-                tabApply.classList.replace('text-[#8E8E93]', 'text-[#007AFF]');
-                tabInbox.classList.replace('text-[#007AFF]', 'text-[#8E8E93]');
-                title.textContent = 'Leave Portal';
-            } else {
-                applyView.classList.add('hidden');
-                inboxView.classList.remove('hidden');
-                tabInbox.classList.replace('text-[#8E8E93]', 'text-[#007AFF]');
-                tabApply.classList.replace('text-[#007AFF]', 'text-[#8E8E93]');
-                title.textContent = 'Leave Portal • Approvals';
-                renderInbox();
-            }
-        }
-
-        function setInboxFilter(filter) {
-            state.inboxFilter = filter;
-            ['ALL', 'PENDING', 'APPROVED', 'REJECTED'].forEach(f => {
-                const btn = document.getElementById(`filter-${f}`);
-                if (f === filter) {
-                    btn.className = 'filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[#007AFF] text-white shrink-0';
-                } else {
-                    btn.className = 'filter-pill ios-spring px-3.5 py-1.5 rounded-full text-xs font-semibold bg-white dark:bg-[#1C1C1E] text-[#8E8E93] shrink-0';
-                }
-            });
-            renderInbox();
-        }
-
-        function renderInbox() {
-            const query = document.getElementById('inbox-search').value.toLowerCase().trim();
-            const listEl = document.getElementById('inbox-list');
-
-            const filtered = state.requests.filter(r => {
-                const matchesFilter = state.inboxFilter === 'ALL' || r.status === state.inboxFilter;
-                if (!matchesFilter) return false;
-                if (!query) return true;
-                const searchable = `${r.id} ${r.empName} ${r.empId} ${r.leaveType} ${r.dateSummary} ${r.reasons.join(' ')} ${r.approvers.join(' ')} ${r.status}`.toLowerCase();
-                return searchable.includes(query);
-            });
-
-            if (filtered.length === 0) {
-                listEl.innerHTML = `
-                    <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl p-8 text-center space-y-2">
-                        <i data-lucide="folder-open" class="w-10 h-10 text-[#8E8E93] mx-auto opacity-50"></i>
-                        <p class="font-semibold text-base">No Leave Records Found</p>
-                        <p class="text-xs text-[#8E8E93]">Submit a leave form or adjust your search filter.</p>
-                    </div>
-                `;
-                lucide.createIcons();
-                return;
-            }
-
-            listEl.innerHTML = filtered.map(req => {
-                const statusColors = {
-                    'PENDING': 'bg-[#FF9500]/15 text-[#FF9500]',
-                    'APPROVED': 'bg-[#34C759]/15 text-[#34C759]',
-                    'REJECTED': 'bg-[#FF3B30]/15 text-[#FF3B30]'
-                };
-                return `
-                    <div class="bg-white dark:bg-[#1C1C1E] rounded-2xl p-4 shadow-xs space-y-3 border border-black/5 dark:border-white/5">
-                        <div class="flex items-start justify-between">
-                            <div>
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold text-[16px]">${req.empName}</span>
-                                    <span class="text-[11px] font-semibold text-[#8E8E93]">${req.empId}</span>
-                                </div>
-                                <span class="text-[11px] text-[#8E8E93]">${req.id} • ${req.createdAt}</span>
-                            </div>
-                            <span class="text-[11px] font-bold px-2.5 py-1 rounded-full ${statusColors[req.status]}">${req.status}</span>
-                        </div>
-
-                        <div class="bg-[#F2F2F7] dark:bg-[#2C2C2E] rounded-xl p-3 space-y-1.5 text-xs">
-                            <div class="flex justify-between">
-                                <span class="text-[#8E8E93]">Type:</span>
-                                <span class="font-bold text-[#007AFF]">${req.leaveType}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-[#8E8E93]">Duration:</span>
-                                <span class="font-semibold text-right">${req.dateSummary}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-[#8E8E93]">Reason:</span>
-                                <span class="font-medium text-right max-w-[65%] truncate">${req.reasons.join(', ')}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-[#8E8E93]">To Approve:</span>
-                                <span class="font-semibold text-right max-w-[65%] truncate">${req.approvers.join(', ')}</span>
-                            </div>
-                            ${req.remark ? `<div class="pt-1 border-t border-black/5 dark:border-white/10 text-[#007AFF]"><strong>Remark:</strong> ${req.remark}</div>` : ''}
-                        </div>
-
-                        <div class="flex items-center space-x-2 pt-0.5">
-                            <button onclick="openApproverModal('${req.id}')" class="ios-spring flex-1 bg-[#007AFF] text-white text-xs font-semibold py-2.5 rounded-xl flex items-center justify-center space-x-1">
-                                <i data-lucide="shield-check" class="w-3.5 h-3.5"></i>
-                                <span>Approve / Action</span>
-                            </button>
-                            <button onclick="reShareRequest('${req.id}')" class="ios-spring px-3.5 bg-[#34C759]/15 text-[#34C759] text-xs font-semibold py-2.5 rounded-xl flex items-center justify-center">
-                                <i data-lucide="share" class="w-4 h-4"></i>
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            lucide.createIcons();
-        }
-
-        function reShareRequest(id) {
-            const req = state.requests.find(r => r.id === id);
-            if (req) {
-                state.activeShareRequest = req;
-                openShareModal(req);
-            }
-        }
-
-        // ==========================================
-        // 7. iOS SPOTLIGHT ZERO-LATENCY SEARCH
-        // ==========================================
-        function toggleSpotlightSearch() {
-            const overlay = document.getElementById('spotlight-overlay');
-            const input = document.getElementById('spotlight-input');
-            if (overlay.classList.contains('hidden')) {
-                overlay.classList.remove('hidden');
-                input.value = '';
-                runSpotlightSearch();
-                setTimeout(() => input.focus(), 50);
-            } else {
-                overlay.classList.add('hidden');
-            }
-        }
-
-        function runSpotlightSearch() {
-            const q = document.getElementById('spotlight-input').value.toLowerCase().trim();
-            const container = document.getElementById('spotlight-results');
-
-            const matches = state.requests.filter(r => {
-                if (!q) return true;
-                return `${r.id} ${r.empName} ${r.empId} ${r.leaveType} ${r.dateSummary} ${r.reasons.join(' ')} ${r.approvers.join(' ')} ${r.status}`.toLowerCase().includes(q);
-            });
-
-            if (matches.length === 0) {
-                container.innerHTML = `<p class="text-center text-sm text-[#8E8E93] pt-10">No instant matches for "${q}"</p>`;
-                return;
-            }
-
-            container.innerHTML = matches.map(r => `
-                <div onclick="toggleSpotlightSearch(); openApproverModal('${r.id}')" class="ios-spring bg-white dark:bg-[#1C1C1E] p-3.5 rounded-2xl flex items-center justify-between shadow-xs cursor-pointer">
-                    <div class="min-w-0 pr-2">
-                        <p class="font-bold text-sm truncate">${r.empName} <span class="text-xs font-normal text-[#8E8E93]">• ${r.leaveType}</span></p>
-                        <p class="text-xs text-[#8E8E93] truncate">${r.dateSummary} • ${r.approvers.join(', ')}</p>
-                    </div>
-                    <span class="text-[10px] font-bold px-2 py-1 rounded-full shrink-0 ${r.status === 'APPROVED' ? 'bg-[#34C759]/15 text-[#34C759]' : r.status === 'REJECTED' ? 'bg-[#FF3B30]/15 text-[#FF3B30]' : 'bg-[#FF9500]/15 text-[#FF9500]'}">${r.status}</span>
-                </div>
-            `).join('');
-        }
-
-        // ==========================================
-        // 8. STORAGE & HELPERS
-        // ==========================================
-        function saveRequestsToStorage() {
-            localStorage.setItem('ios_leave_requests_v1', JSON.stringify(state.requests));
-            updatePendingBadge();
-        }
-
-        function loadRequestsFromStorage() {
-            const raw = localStorage.getItem('ios_leave_requests_v1');
-            if (raw) {
-                try {
-                    state.requests = JSON.parse(raw);
-                } catch (e) {
-                    state.requests = [];
-                }
-            }
-            updatePendingBadge();
-        }
-
-        function updatePendingBadge() {
-            const count = state.requests.filter(r => r.status === 'PENDING').length;
-            const badge = document.getElementById('pending-badge');
-            if (count > 0) {
-                badge.textContent = count;
-                badge.classList.remove('hidden');
-            } else {
-                badge.classList.add('hidden');
-            }
-        }
-
-        function formatDate(isoStr) {
-            if (!isoStr) return '';
-            const [y, m, d] = isoStr.split('-');
-            const date = new Date(y, m - 1, d);
-            return date.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
-        }
-
-        let toastTimer;
-        function showToast(title, msg, type = 'success') {
-            const toast = document.getElementById('ios-toast');
-            const iconBg = document.getElementById('toast-icon-bg');
-            const icon = document.getElementById('toast-icon');
-            document.getElementById('toast-title').textContent = title;
-            document.getElementById('toast-msg').textContent = msg;
-
-            if (type === 'error') {
-                iconBg.className = 'w-9 h-9 rounded-full bg-[#FF3B30]/15 text-[#FF3B30] flex items-center justify-center shrink-0';
-                icon.setAttribute('data-lucide', 'alert-circle');
-            } else {
-                iconBg.className = 'w-9 h-9 rounded-full bg-[#34C759]/15 text-[#34C759] flex items-center justify-center shrink-0';
-                icon.setAttribute('data-lucide', 'check-circle-2');
-            }
-            lucide.createIcons();
-
-            toast.classList.remove('opacity-0', '-translate-y-6');
-            toast.classList.add('opacity-100', 'translate-y-0');
-            clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => {
-                toast.classList.add('opacity-0', '-translate-y-6');
-                toast.classList.remove('opacity-100', 'translate-y-0');
-            }, 3000);
-        }
-    </script>
+<body>
+<header class="bar">
+  <div class="top">
+    <a class="back" href="launcher.html" aria-label="Back to the apps"><svg width="11" height="18" viewBox="0 0 11 18" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2L2 9l7 7"/></svg> Apps</a>
+    <span class="who" id="who"></span>
+  </div>
+  <h1 id="title">Apply Leave</h1>
+</header>
+
+<div class="shell">
+  <div id="banner"></div>
+  <main id="v-apply"></main>
+  <main id="v-mine" class="hide"></main>
+  <main id="v-todo" class="hide"></main>
+  <main id="v-setup" class="hide"></main>
+</div>
+
+<nav class="tabs" id="tabs">
+  <button type="button" data-tab="apply" class="on"><span data-ic="plus"></span>Apply Leave</button>
+  <button type="button" data-tab="mine"><span data-ic="list"></span>My Leaves<span class="cnt hide" id="cntMine"></span></button>
+  <button type="button" data-tab="todo"><span data-ic="check"></span>Approvals<span class="cnt hide" id="cntTodo"></span></button>
+  <button type="button" data-tab="setup" class="hide" id="tabSetup"><span data-ic="gear"></span>Setup</button>
+</nav>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const buzz = n => { try { navigator.vibrate && navigator.vibrate(n || 8); } catch (e) {} };
+const AUTO_MS = 5000, PIN_AUTO_MS = 600;
+
+// Line icons (no emojis, no icon library to load)
+const IC = {
+  plus:'<path d="M12 5v14M5 12h14"/>', list:'<path d="M8 6h13M8 12h13M8 18h13"/><circle cx="3.5" cy="6" r="1"/><circle cx="3.5" cy="12" r="1"/><circle cx="3.5" cy="18" r="1"/>',
+  check:'<path d="M20 6L9 17l-5-5"/>', gear:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2 12h3M19 12h3M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  lock:'<rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>', search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+  up:'<path d="M18 15l-6-6-6 6"/>', down:'<path d="M6 9l6 6 6-6"/>', x:'<path d="M18 6L6 18M6 6l12 12"/>'
+};
+const ico = (n, s) => '<svg width="' + (s || 22) + '" height="' + (s || 22) + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[n] || '') + '</svg>';
+document.querySelectorAll('[data-ic]').forEach(el => { el.outerHTML = ico(el.getAttribute('data-ic')); });
+
+const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1 };
+const ERR = {
+  WRONG_PIN:'Incorrect PIN', PIN_CHECK_UNAVAILABLE:'The PIN could not be checked. Try again.', REASON_REQUIRED:'Write the reason first',
+  BAD_LEAVE_TYPE:'Choose the Leave Type', BAD_DATE:'Choose the date', BAD_RANGE:'To Date must be after From Date', BAD_DURATION:'Choose the duration',
+  BAD_SHIFT:'Choose Before Lunch or After Lunch', TOO_OLD:'This date is too far back', TOO_FAR:'This date is too far ahead', TOO_LONG:'At most 61 days in one leave',
+  REMARKS_TOO_LONG:'Remarks: at most 500 letters', OVERLAP:'You already have a leave on these days (pending or approved)',
+  STEP_NOT_SET:'The Admin has not set the approvers of a compulsory step', APPROVER_REQUIRED:'Choose the approver of every compulsory step',
+  NOT_IN_LIST:'That approver is not in the Admin\'s list any more. Choose again', SELF_APPROVER:'You cannot approve your own leave',
+  NO_APPROVER:'There is no approver for you yet: ask the Admin to set up Leave Approval', NOT_FOUND:'This leave is not there any more',
+  ALREADY_DONE:'Already decided', OWN_LEAVE:'You cannot decide your own leave', NOT_YOUR_STEP:'It is not your turn on this leave',
+  NOT_ALLOWED:'Admin only', CANNOT_CANCEL:'This leave cannot be cancelled now', BAD_ACTION:'Unknown action',
+  NO_LEAVE_TYPE:'Keep at least one Leave Type', NO_STEP:'Keep at least one approval step', STEP_NAME_REQUIRED:'Every step needs a name', STEP_TWICE:'Two steps have the same name'
+};
+
+async function rpc(fn, args) {
+  let r;
+  try { r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method:'POST', headers:{ 'Content-Type':'application/json', apikey:SUPABASE_ANON, Authorization:'Bearer ' + SUPABASE_ANON },
+      body:JSON.stringify(Object.assign({ p_token:SARV_GATE.token }, args || {})) }); }
+  catch (e) { const er = new Error('No internet connection.'); er.net = true; throw er; }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) { const e = new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status)); e.code = d && d.code; e.missing = e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01'; throw e; }
+  if (d && d.success === false) {
+    const c = String(d.error || '');
+    if (SESSION_ERR[c]) { location.replace('launcher.html?why=' + c); return new Promise(() => {}); }
+    const e = new Error((ERR[c] || c || 'Unknown error') + (d.step ? ': ' + d.step : '')); e.code = c; e.data = d; throw e;
+  }
+  return d;
+}
+
+function toast(msg, bad) {
+  const t = $('toast'); t.textContent = msg; t.className = 'toast show' + (bad ? ' bad' : '');
+  clearTimeout(toast.t); toast.t = setTimeout(() => { t.className = 'toast'; }, 3200);
+}
+const dmy = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? m[3] + '-' + m[2] + '-' + m[1] : (d || '-'); };
+const when = iso => { if (!iso) return ''; const t = new Date(iso); if (isNaN(t)) return ''; const p = n => String(n).padStart(2, '0'); return p(t.getDate()) + '-' + p(t.getMonth() + 1) + '-' + t.getFullYear() + ' ' + p(t.getHours()) + ':' + p(t.getMinutes()); };
+const addDays = (iso, n) => { const t = new Date(iso + 'T00:00:00'); t.setDate(t.getDate() + n); const p = x => String(x).padStart(2, '0'); return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate()); };
+const daysBetween = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+const STATUS_PILL = { PENDING:'p-wait', APPROVED:'p-ok', REJECTED:'p-bad', CANCELLED:'p-off', WAITING:'p-off', SKIPPED:'p-off' };
+const STATUS_TXT = { PENDING:'Pending', APPROVED:'Approved', REJECTED:'Rejected', CANCELLED:'Cancelled', WAITING:'Waiting', SKIPPED:'Skipped' };
+
+const S = {
+  me:null, cfg:null, steps:[], counts:{}, today:'', tab:'apply', noMig:false,
+  f:{ type:'', dur:'FULL', shift:'BEFORE LUNCH', reasons:new Set(), on:{}, pick:{} },
+  lists:{}, sig:{}, listBusy:{}, seg:'TODO', mineFilter:'ALL', q:'', admin:null, sheets:0
+};
+const meId = () => String((S.me && (S.me.uid || S.me.id)) || '');
+
+/* ── BOOT ─────────────────────────────────────────────────────────────── */
+(async function () {
+  try { await SARV_GATE.boot({ url:SUPABASE_URL, key:SUPABASE_ANON, app:null, label:'Leave Approval' }); }
+  finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  document.querySelectorAll('#tabs [data-tab]').forEach(b => b.addEventListener('click', () => go(b.getAttribute('data-tab'))));
+  await loadBoot();
+  const want = (location.hash || '').replace('#', '');
+  go(['mine', 'todo', 'setup'].indexOf(want) >= 0 ? want : (S.counts.todo ? 'todo' : 'apply'));
+  setInterval(autoSync, AUTO_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) autoSync(); });
+})();
+
+async function loadBoot() {
+  try {
+    const d = await rpc('lv_boot');
+    S.noMig = false;
+    S.me = d.me; S.cfg = d.cfg; S.steps = d.steps || []; S.counts = d.counts || {}; S.today = String(d.today || '').slice(0, 10);
+    if (!S.f.type && (S.cfg.leaveTypes || [])[0]) S.f.type = S.cfg.leaveTypes[0].code;
+    S.steps.forEach(st => { if (!(st.code in S.f.on)) S.f.on[st.code] = !!st.mandatory; });
+    $('who').textContent = [S.me.name, S.me.empCode].filter(Boolean).join(' · ');
+    $('tabSetup').classList.toggle('hide', !S.me.isAdmin);
+    $('banner').innerHTML = '';
+  } catch (e) {
+    if (e.missing) { S.noMig = true; $('banner').innerHTML = '<div class="note n-warn">Leave Approval needs <b>sql/LEAVE_APPROVAL_MIGRATION.sql</b> on the server (Admin, Supabase SQL Editor). Until then nothing can be applied here.</div>'; }
+    else $('banner').innerHTML = '<div class="note n-bad">Could not load: ' + esc(e.message) + ' <button type="button" class="mini" onclick="loadBoot().then(()=>go(S.tab))">Try again</button></div>';
+  }
+  paintCounts();
+}
+function paintCounts() {
+  const t = S.counts.todo || 0, m = S.counts.minePending || 0;
+  $('cntTodo').textContent = t; $('cntTodo').classList.toggle('hide', !t);
+  $('cntMine').textContent = m; $('cntMine').classList.toggle('hide', !m);
+}
+function go(tab) {
+  if (tab === 'setup' && !(S.me && S.me.isAdmin)) tab = 'apply';
+  S.tab = tab;
+  try { history.replaceState(null, '', '#' + tab); } catch (e) {}
+  document.querySelectorAll('#tabs [data-tab]').forEach(b => b.classList.toggle('on', b.getAttribute('data-tab') === tab));
+  ['apply', 'mine', 'todo', 'setup'].forEach(v => $('v-' + v).classList.toggle('hide', v !== tab));
+  $('title').textContent = { apply:'Apply Leave', mine:'My Leaves', todo:'Approvals', setup:'Leave Setup' }[tab];
+  if (S.noMig || !S.me) return;
+  if (tab === 'apply') renderApply();
+  else if (tab === 'mine') loadList('MINE');
+  else if (tab === 'todo') loadList(S.seg);
+  else if (tab === 'setup') loadAdmin();
+  window.scrollTo(0, 0);
+}
+
+/* ── AUTO SYNC (every 5 s while on screen, online, no sheet open and no box with the cursor) ── */
+async function autoSync() {
+  if (document.hidden || navigator.onLine === false || S.noMig || !S.me || S.sheets > 0) return;
+  const a = document.activeElement;
+  if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  try {
+    const c = await rpc('lv_inbox_count');
+    if (c.todo !== S.counts.todo || c.minePending !== S.counts.minePending) { S.counts.todo = c.todo; S.counts.minePending = c.minePending; paintCounts(); }
+  } catch (e) { return; }
+  if (S.tab === 'mine') loadList('MINE', true);
+  else if (S.tab === 'todo') loadList(S.seg, true);
+}
+
+/* ── APPLY ────────────────────────────────────────────────────────────── */
+function renderApply() {
+  const v = $('v-apply'), me = S.me, c = S.cfg;
+  const minD = addDays(S.today, -(Number(c.backDays) || 0)), maxD = addDays(S.today, Number(c.aheadDays) || 180);
+  v.innerHTML =
+      (c.configured ? '' : '<div class="note n-warn">' + (me.isAdmin ? 'Set the approvers first: <b>Setup</b> tab (who approves which step).' : 'The Admin has not set up Leave Approval yet: you can fill the form, sending works once the approvers are set.') + '</div>')
+    + '<h2 class="sec">Employee Details <span class="lock">' + ico('lock', 12) + ' From your ERP login</span></h2>'
+    + '<div class="card">'
+    + '<div class="row"><span class="l">Name</span><span class="v dark">' + esc(me.name || '-') + '</span></div>'
+    + '<div class="row"><span class="l">Emp ID</span><span class="v dark">' + esc(me.empCode || 'Not set') + '</span></div>'
+    + '<div class="row"><span class="l">Department</span><span class="v dark">' + esc(me.dept || 'Not set') + '</span></div>'
+    + (me.desig ? '<div class="row"><span class="l">Designation</span><span class="v">' + esc(me.desig) + '</span></div>' : '')
+    + '</div>'
+    + (!me.empCode || !me.dept ? '<div class="note n-info">' + (!me.empCode ? 'Your ERP login has no Emp Code. ' : '') + (!me.dept ? 'No Department found for your Emp Code in the Employee Master. ' : '') + 'Ask the Admin to complete it.</div>' : '')
+    + '<h2 class="sec">1. Leave Type *</h2><div class="card"><div class="chips" id="fTypes"></div></div>'
+    + '<h2 class="sec">2. Leave Duration *</h2>'
+    + '<div class="seg" style="grid-template-columns:repeat(3,1fr)" id="fDur">'
+    + '<button type="button" data-d="HALF">Half Day</button><button type="button" data-d="FULL">Full Day</button><button type="button" data-d="MULTI">More Than 1 Day</button></div>'
+    + '<div class="card" style="margin-top:8px">'
+    + '<div class="row"><span class="l" id="lDate">Date</span><span class="v"><input type="date" class="inp sm" id="fFrom" min="' + minD + '" max="' + maxD + '"></span></div>'
+    + '<div class="row" id="rTo"><span class="l">To Date</span><span class="v"><input type="date" class="inp sm" id="fTo" min="' + minD + '" max="' + maxD + '"></span></div>'
+    + '<div class="row" id="rShift"><div class="seg" style="grid-template-columns:1fr 1fr;width:100%" id="fShift"><button type="button" data-s="BEFORE LUNCH">Before Lunch</button><button type="button" data-s="AFTER LUNCH">After Lunch</button></div></div>'
+    + '<div class="row"><span class="l" style="color:var(--muted);font-size:13px">Total</span><span class="v" id="fDays"></span></div>'
+    + '</div>'
+    + '<h2 class="sec">3. Reason of Leave <span class="r" id="fReasonCnt"></span></h2><div class="card" id="fReasons"></div>'
+    + '<div class="card" style="margin-top:8px;padding:10px 12px"><textarea class="inp" id="fRemarks" maxlength="500" placeholder="Any other reason / remarks"></textarea></div>'
+    + '<h2 class="sec">4. Whom To Approve * <span class="r" style="color:var(--muted)">Set by the Admin</span></h2><div class="card" id="fSteps"></div>'
+    + '<div style="margin-top:18px"><button type="button" class="btn blue full" id="fSend">Send for Approval</button></div>'
+    + '<p id="fWhy" style="text-align:center;font-size:12px;color:var(--muted);margin:8px 16px">The approvers see it in their Leave Approval app and on the launcher, and decide with their own PIN.</p>';
+  const from = $('fFrom'), to = $('fTo');
+  from.value = S.f.from || S.today;
+  to.value = S.f.to && S.f.to > from.value ? S.f.to : addDays(from.value, 1);
+  from.addEventListener('change', () => { S.f.from = from.value; if (S.f.dur === 'MULTI' && to.value <= from.value) to.value = addDays(from.value, 1); paintDays(); });
+  to.addEventListener('change', () => { S.f.to = to.value; paintDays(); });
+  $('fDur').addEventListener('click', e => { const b = e.target.closest('[data-d]'); if (b) { S.f.dur = b.getAttribute('data-d'); paintDur(); } });
+  $('fShift').addEventListener('click', e => { const b = e.target.closest('[data-s]'); if (b) { S.f.shift = b.getAttribute('data-s'); paintDur(); } });
+  $('fRemarks').value = S.f.remarks || '';
+  $('fRemarks').addEventListener('input', e => { S.f.remarks = e.target.value; });
+  $('fSend').addEventListener('click', askSend);
+  paintTypes(); paintDur(); paintReasons(); paintSteps();
+}
+function paintTypes() {
+  $('fTypes').innerHTML = (S.cfg.leaveTypes || []).map(t => '<button type="button" class="chip' + (t.code === S.f.type ? ' on' : '') + '" data-t="' + esc(t.code) + '">' + esc(t.label) + '</button>').join('');
+  $('fTypes').onclick = e => { const b = e.target.closest('[data-t]'); if (b) { S.f.type = b.getAttribute('data-t'); paintTypes(); } };
+}
+function paintDur() {
+  const d = S.f.dur;
+  document.querySelectorAll('#fDur [data-d]').forEach(b => b.classList.toggle('on', b.getAttribute('data-d') === d));
+  document.querySelectorAll('#fShift [data-s]').forEach(b => b.classList.toggle('on', b.getAttribute('data-s') === S.f.shift));
+  $('rTo').classList.toggle('hide', d !== 'MULTI');
+  $('rShift').classList.toggle('hide', d !== 'HALF');
+  $('lDate').textContent = d === 'MULTI' ? 'From Date' : 'Date';
+  if (d === 'MULTI' && $('fTo').value <= $('fFrom').value) $('fTo').value = addDays($('fFrom').value, 1);
+  paintDays();
+}
+function formDays() {
+  const f = $('fFrom').value, t = $('fTo').value;
+  if (S.f.dur === 'HALF') return f ? 0.5 : 0;
+  if (S.f.dur === 'FULL') return f ? 1 : 0;
+  return f && t && t > f ? daysBetween(f, t) + 1 : 0;
+}
+function paintDays() {
+  const n = formDays();
+  $('fDays').innerHTML = n ? '<span class="pill p-blue">' + n + ' day' + (n === 1 ? '' : 's') + '</span>' : '<span class="pill p-bad">Check the dates</span>';
+}
+function paintReasons() {
+  const list = S.cfg.reasons || [];
+  $('fReasons').innerHTML = list.map(r => { const on = S.f.reasons.has(r.code);
+    return '<div class="row" data-r="' + esc(r.code) + '" style="cursor:pointer"><span class="l">' + esc(r.label) + '</span><span class="v"></span><span class="tick' + (on ? ' on' : '') + '">' + (on ? ico('check', 14) : '') + '</span></div>'; }).join('')
+    || '<div class="empty">No reasons listed: write it in the remarks.</div>';
+  $('fReasonCnt').textContent = S.f.reasons.size + ' selected';
+  $('fReasons').onclick = e => { const r = e.target.closest('[data-r]'); if (!r) return; const k = r.getAttribute('data-r'); if (S.f.reasons.has(k)) S.f.reasons.delete(k); else S.f.reasons.add(k); paintReasons(); };
+}
+// The steps the Admin set for my department: approvers only from each step's list, never myself
+function stepOthers(st) { return (st.users || []).filter(u => String(u.id) !== meId()); }
+function paintSteps() {
+  const box = $('fSteps');
+  if (!S.steps.length) { box.innerHTML = '<div class="empty">No approval step applies to you yet. Ask the Admin (Setup tab).</div>'; paintSend(); return; }
+  box.innerHTML = S.steps.map(st => {
+    const others = stepOthers(st), on = st.mandatory || !!S.f.on[st.code];
+    let right = '';
+    if (!(st.users || []).length) right = '<span class="pill p-bad">Not set by the Admin</span>';
+    else if (!others.length) right = '<span class="pill p-off">Own step · skipped</span>';
+    else if (!on) right = '';
+    else if (others.length === 1) { S.f.pick[st.code] = String(others[0].id); right = '<span class="v dark" style="text-align:right">' + esc(others[0].name) + (others[0].desig ? ' <span style="font-weight:500;color:var(--muted)">· ' + esc(others[0].desig) + '</span>' : '') + '</span>'; }
+    else {
+      const cur = S.f.pick[st.code];
+      if (cur && !others.some(u => String(u.id) === String(cur))) delete S.f.pick[st.code];
+      right = '<select class="inp" data-pick="' + esc(st.code) + '" style="max-width:100%"><option value="">Choose the approver…</option>'
+        + others.map(u => '<option value="' + esc(u.id) + '"' + (String(u.id) === String(S.f.pick[st.code] || '') ? ' selected' : '') + '>' + esc(u.name) + (u.empCode ? ' (' + esc(u.empCode) + ')' : '') + (u.desig ? ' · ' + esc(u.desig) : '') + '</option>').join('') + '</select>';
+    }
+    return '<div class="row" style="flex-wrap:wrap">'
+      + '<div style="flex:1;min-width:140px"><div style="font-weight:600">' + esc(st.label) + '</div>'
+      + '<div style="margin-top:3px">' + (st.mandatory ? '<span class="pill p-blue">' + ico('lock', 10) + ' Compulsory</span>' : '<span class="pill p-off">Optional</span>') + '</div></div>'
+      + (st.mandatory ? '' : '<button type="button" class="sw' + (on ? ' on' : '') + '" data-on="' + esc(st.code) + '" aria-label="Ask ' + esc(st.label) + '"' + (others.length ? '' : ' disabled') + '></button>')
+      + (right ? '<div style="flex-basis:100%;display:flex;justify-content:flex-end;margin-top:6px">' + right + '</div>' : '')
+      + '</div>';
+  }).join('');
+  box.querySelectorAll('[data-pick]').forEach(sel => sel.addEventListener('change', () => { S.f.pick[sel.getAttribute('data-pick')] = sel.value; paintSend(); }));
+  box.querySelectorAll('[data-on]').forEach(b => b.addEventListener('click', () => { const k = b.getAttribute('data-on'); S.f.on[k] = !S.f.on[k]; if (!S.f.on[k]) delete S.f.pick[k]; paintSteps(); }));
+  paintSend();
+}
+// What blocks sending (the server checks the same again)
+function sendBlock() {
+  for (const st of S.steps) {
+    const others = stepOthers(st), on = st.mandatory || S.f.on[st.code];
+    if (st.mandatory && !(st.users || []).length) return st.label + ': the Admin has not set its approver';
+    if (on && others.length && !S.f.pick[st.code]) return 'Choose the approver of ' + st.label;
+  }
+  if (!S.steps.some(st => (st.mandatory || S.f.on[st.code]) && stepOthers(st).length)) return 'There is no approver for you yet';
+  return '';
+}
+function paintSend() {
+  const b = $('fSend'); if (!b) return;
+  const why = sendBlock(); b.disabled = !!why;
+  $('fWhy').textContent = why || 'The approvers see it in their Leave Approval app and on the launcher, and decide with their own PIN.';
+  $('fWhy').style.color = why ? 'var(--red)' : 'var(--muted)';
+}
+function formReq() {
+  const d = S.f.dur, f = $('fFrom').value, t = d === 'MULTI' ? $('fTo').value : f;
+  return { leaveType:S.f.type, duration:d, halfShift:d === 'HALF' ? S.f.shift : null, from:f, to:t, reasons:[...S.f.reasons], remarks:($('fRemarks').value || '').trim(),
+    approvers:S.steps.filter(st => (st.mandatory || S.f.on[st.code]) && S.f.pick[st.code]).map(st => ({ code:st.code, userId:S.f.pick[st.code] })) };
+}
+function askSend() {
+  const r = formReq(), c = S.cfg;
+  if (!r.leaveType) return toast('Choose the Leave Type', true);
+  if (!r.from) return toast('Choose the date', true);
+  if (r.from < addDays(S.today, -(Number(c.backDays) || 0))) return toast('This date is too far back (at most ' + (Number(c.backDays) || 0) + ' days)', true);
+  if (r.duration === 'MULTI' && !(r.to > r.from)) return toast('To Date must be after From Date', true);
+  if (!r.reasons.length && !r.remarks) return toast('Tick a reason or write the remarks', true);
+  const why = sendBlock(); if (why) return toast(why, true);
+  const type = (c.leaveTypes || []).find(t => t.code === r.leaveType) || {};
+  const reasons = r.reasons.map(k => ((c.reasons || []).find(x => x.code === k) || {}).label || k);
+  const days = formDays();
+  const steps = S.steps.filter(st => st.mandatory || S.f.on[st.code]).map(st => {
+    const others = stepOthers(st); if (!others.length) return '<div class="row"><span class="l">' + esc(st.label) + '</span><span class="v">Own step · skipped</span></div>';
+    const u = others.find(x => String(x.id) === String(S.f.pick[st.code])) || {};
+    return '<div class="row"><span class="l">' + esc(st.label) + '</span><span class="v dark">' + esc(u.name || '-') + '</span></div>'; }).join('');
+  const sh = sheet('<h3>Confirm Leave</h3><div class="sub">Check it once: it goes to the approvers now.</div>'
+    + '<div class="card">'
+    + '<div class="row"><span class="l">Employee</span><span class="v dark">' + esc(S.me.name) + (S.me.empCode ? ' (' + esc(S.me.empCode) + ')' : '') + '</span></div>'
+    + '<div class="row"><span class="l">Department</span><span class="v">' + esc(S.me.dept || '-') + '</span></div>'
+    + '<div class="row"><span class="l">Leave Type</span><span class="v dark">' + esc(type.label || r.leaveType) + '</span></div>'
+    + '<div class="row"><span class="l">Duration</span><span class="v dark">' + (r.duration === 'HALF' ? 'Half Day · ' + esc(r.halfShift) : r.duration === 'FULL' ? 'Full Day' : 'More Than 1 Day') + '</span></div>'
+    + '<div class="row"><span class="l">Date</span><span class="v dark">' + esc(dmy(r.from)) + (r.duration === 'MULTI' ? ' to ' + esc(dmy(r.to)) : '') + ' · ' + days + ' day' + (days === 1 ? '' : 's') + '</span></div>'
+    + '<div class="row"><span class="l">Reason</span><span class="v">' + esc(reasons.concat(r.remarks ? [r.remarks] : []).join(', ')) + '</span></div>'
+    + '</div><h2 class="sec">Whom To Approve</h2><div class="card">' + steps + '</div>'
+    + '<div class="err" id="sErr"></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px"><button type="button" class="btn gray" data-x>Edit</button><button type="button" class="btn green" id="sOk">Confirm &amp; Send</button></div>');
+  sh.el.querySelector('#sOk').addEventListener('click', async () => {
+    const b = sh.el.querySelector('#sOk'); b.disabled = true; b.textContent = 'Sending...';
+    try {
+      const d = await rpc('lv_save', { p_req:r });
+      sh.close(); buzz(20);
+      toast('Leave ' + d.request.no + ' sent for approval');
+      S.f.reasons = new Set(); S.f.remarks = '';
+      go('mine');
+    } catch (e) {
+      b.disabled = false; b.textContent = 'Confirm & Send'; sh.el.querySelector('#sErr').textContent = e.message;
+      if (e.code === 'NOT_IN_LIST' || e.code === 'STEP_NOT_SET' || e.code === 'APPROVER_REQUIRED') loadBoot().then(() => { if (S.tab === 'apply') paintSteps(); });
+    }
+  });
+}
+
+/* ── LISTS ────────────────────────────────────────────────────────────── */
+async function loadList(scope, quiet) {
+  if (S.listBusy[scope]) return;
+  S.listBusy[scope] = true;
+  const box = $(scope === 'MINE' ? 'v-mine' : 'v-todo');
+  if (!quiet && !S.lists[scope]) paintList(scope);
+  try {
+    const d = await rpc('lv_list', { p_scope:scope, p_days:scope === 'ALL' ? 60 : 180 });
+    const sig = JSON.stringify(d.rows);
+    S.lists[scope] = d.rows || [];
+    if (scope === 'TODO') S.counts.todo = S.lists.TODO.length;
+    if (scope === 'MINE') S.counts.minePending = S.lists.MINE.filter(x => x.status === 'PENDING').length;
+    paintCounts();
+    const shown = (scope === 'MINE' && S.tab === 'mine') || (scope !== 'MINE' && S.tab === 'todo' && S.seg === scope);
+    if (shown && (!quiet || sig !== S.sig[scope])) paintList(scope);
+    S.sig[scope] = sig;
+  } catch (e) {
+    if (!quiet) box.innerHTML = '<div class="note n-bad">Could not load: ' + esc(e.message) + '</div>';
+  } finally { S.listBusy[scope] = false; }
+}
+function reqHtml(r, scope) {
+  const me = meId(), myTurn = r.status === 'PENDING' && (r.steps || []).some(s => s.status === 'PENDING' && String(s.approverId) === me);
+  const adminTurn = !myTurn && S.me.isAdmin && r.status === 'PENDING' && String(r.userId) !== me && scope !== 'MINE';
+  const canCancel = String(r.userId) === me && (r.status === 'PENDING' || (r.status === 'APPROVED' && String(r.from) > S.today));
+  const dates = esc(dmy(r.from)) + (r.to !== r.from ? ' to ' + esc(dmy(r.to)) : '') + ' · ' + esc(r.days) + ' day' + (Number(r.days) === 1 ? '' : 's')
+    + (r.duration === 'HALF' ? ' · ' + esc(r.halfShift || '') : '');
+  const reasons = (r.reasons || []).map(k => ((S.cfg.reasons || []).find(x => x.code === k) || {}).label || k);
+  return '<div class="req">'
+    + '<div class="h"><div><div class="nm">' + (scope === 'MINE' ? esc(r.leaveLabel) : esc(r.name) + (r.empCode ? ' <span style="font-weight:500;color:var(--muted)">(' + esc(r.empCode) + ')</span>' : '')) + '</div>'
+    + '<div class="mt">' + esc(r.no) + (scope === 'MINE' ? '' : ' · ' + esc(r.leaveLabel) + (r.dept ? ' · ' + esc(r.dept) : '')) + '</div></div>'
+    + '<span class="pill ' + (STATUS_PILL[r.status] || 'p-off') + '">' + esc(STATUS_TXT[r.status] || r.status) + '</span></div>'
+    + '<div style="margin-top:6px;font-weight:600;font-size:14px">' + dates + '</div>'
+    + (reasons.length || r.remarks ? '<div class="mt">Reason: ' + esc(reasons.concat(r.remarks ? [r.remarks] : []).join(', ')) + '</div>' : '')
+    + '<div class="mt">Applied ' + esc(when(r.createdAt)) + '</div>'
+    + (r.status === 'CANCELLED' ? '<div class="mt">Cancelled ' + esc(when(r.cancelledAt)) + (r.cancelReason ? ': ' + esc(r.cancelReason) : '') + '</div>' : '')
+    + '<div class="pipe">' + (r.steps || []).map(s => '<div class="p ' + esc(s.status) + '"><b>' + esc(s.label) + '</b> · ' + esc(s.approver || '-')
+        + ' <span class="pill ' + (STATUS_PILL[s.status] || 'p-off') + '" style="padding:1px 6px">' + esc(STATUS_TXT[s.status] || s.status) + '</span>'
+        + (s.decidedAt && s.status !== 'SKIPPED' ? ' <span class="w">' + esc(when(s.decidedAt)) + (s.via === 'ADMIN' ? ' · by Admin ' + esc(s.decidedBy || '') : '') + '</span>' : '')
+        + (s.remarks ? '<div class="w">' + esc(s.remarks) + '</div>' : '') + '</div>').join('') + '</div>'
+    + (myTurn || adminTurn || canCancel ? '<div class="acts">'
+        + (myTurn || adminTurn ? '<button type="button" class="btn small red" data-act="REJECT" data-id="' + esc(r.id) + '">Reject</button><button type="button" class="btn small green" data-act="APPROVE" data-id="' + esc(r.id) + '">Approve' + (adminTurn ? ' (as Admin)' : '') + '</button>' : '')
+        + (canCancel ? '<button type="button" class="btn small gray" data-act="CANCEL" data-id="' + esc(r.id) + '">Cancel leave</button>' : '')
+        + '</div>' : '')
+    + '</div>';
+}
+function paintList(scope) {
+  const box = $(scope === 'MINE' ? 'v-mine' : 'v-todo'), rows = S.lists[scope];
+  let head = '';
+  if (scope !== 'MINE') {
+    const segs = [['TODO', 'To Approve'], ['DONE', 'Decided by me']].concat(S.me.isAdmin ? [['ALL', 'All (Admin)']] : []);
+    head = '<div class="seg" style="grid-template-columns:repeat(' + segs.length + ',1fr);margin-bottom:10px">' + segs.map(s => '<button type="button" data-seg="' + s[0] + '" class="' + (S.seg === s[0] ? 'on' : '') + '">' + s[1] + (s[0] === 'TODO' && S.counts.todo ? ' · ' + S.counts.todo : '') + '</button>').join('') + '</div>';
+  } else {
+    head = '<div class="seg" style="grid-template-columns:repeat(4,1fr);margin-bottom:10px">' + ['ALL', 'PENDING', 'APPROVED', 'REJECTED'].map(f => '<button type="button" data-mf="' + f + '" class="' + (S.mineFilter === f ? 'on' : '') + '">' + (f === 'ALL' ? 'All' : STATUS_TXT[f]) + '</button>').join('') + '</div>';
+  }
+  head += '<div class="search" style="margin-bottom:10px">' + ico('search', 16) + '<input class="inp" id="q-' + scope + '" placeholder="Search name, Emp Code, LV no., type, date…" value="' + esc(S.q) + '"></div>';
+  let list = rows || [];
+  if (scope === 'MINE' && S.mineFilter !== 'ALL') list = list.filter(r => r.status === S.mineFilter);
+  const words = S.q.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  if (words.length) list = list.filter(r => { const hay = [r.no, r.name, r.empCode, r.dept, r.leaveLabel, r.status, dmy(r.from), dmy(r.to), (r.steps || []).map(s => s.approver + ' ' + s.label).join(' ')].join(' ').toUpperCase(); return words.every(w => hay.indexOf(w) >= 0); });
+  box.innerHTML = head + (!rows ? '<div class="empty">Loading…</div>'
+    : list.length ? '<div class="card">' + list.map(r => reqHtml(r, scope)).join('') + '</div>'
+    : '<div class="empty">' + (scope === 'TODO' ? 'Nothing waiting for your approval.' : scope === 'MINE' ? (rows.length ? 'Nothing matches.' : 'No leave applied yet.') : 'Nothing here.') + '</div>');
+  box.querySelectorAll('[data-seg]').forEach(b => b.addEventListener('click', () => { S.seg = b.getAttribute('data-seg'); paintList(S.seg); loadList(S.seg); }));
+  box.querySelectorAll('[data-mf]').forEach(b => b.addEventListener('click', () => { S.mineFilter = b.getAttribute('data-mf'); paintList('MINE'); }));
+  const q = $('q-' + scope);
+  if (q) q.addEventListener('input', () => { S.q = q.value; const pos = q.selectionStart; paintList(scope); const q2 = $('q-' + scope); if (q2) { q2.focus(); try { q2.setSelectionRange(pos, pos); } catch (e) {} } });
+  box.querySelectorAll('[data-act]').forEach(b => b.addEventListener('click', () => act(b.getAttribute('data-act'), b.getAttribute('data-id'), scope)));
+}
+function findReq(id) { for (const k in S.lists) { const r = (S.lists[k] || []).find(x => String(x.id) === String(id)); if (r) return r; } return null; }
+async function act(kind, id, scope) {
+  const r = findReq(id); if (!r) return;
+  const span = esc(dmy(r.from)) + (r.to !== r.from ? ' to ' + esc(dmy(r.to)) : '');
+  if (kind === 'CANCEL') {
+    const res = await askPin({ title:'Cancel leave ' + r.no, sub:esc(r.leaveLabel) + ' · ' + span, reason:true, reasonReq:true, reasonPh:'Why it is cancelled', noPin:true, okLabel:'Cancel leave', red:true,
+      run:v => rpc('lv_cancel', { p_id:id, p_reason:v.reason }) });
+    if (res) { toast('Leave ' + r.no + ' cancelled'); loadList('MINE'); }
+    return;
+  }
+  const rej = kind === 'REJECT', st = (r.steps || []).find(s => s.status === 'PENDING' && String(s.approverId) === meId()) || (r.steps || []).find(s => s.status === 'PENDING') || {};
+  const res = await askPin({ title:(rej ? 'Reject' : 'Approve') + ' · ' + r.name, sub:esc(r.no) + ' · ' + esc(r.leaveLabel) + ' · ' + span + ' · ' + esc(r.days) + ' day(s)<br>Step: <b>' + esc(st.label || '-') + '</b>' + (String(st.approverId) !== meId() ? ' (Admin, for ' + esc(st.approver || '-') + ')' : ''),
+    reason:true, reasonReq:rej, reasonPh:rej ? 'Reason (the employee sees it)' : 'Remarks (optional)', okLabel:rej ? 'Reject' : 'Approve', red:rej, auto:!rej,
+    run:v => rpc('lv_decide', { p_id:id, p_action:kind, p_pin:v.pin, p_remarks:v.reason || null }) });
+  if (res) { buzz(20); toast(r.name + ': ' + (rej ? 'rejected' : 'approved') + (res.via === 'ADMIN' ? ' (as Admin)' : '')); loadList(S.seg); if (S.seg !== 'TODO') loadList('TODO', true); }
+}
+
+/* ── SHEETS: a bottom sheet, and the reason + own-PIN step (4+ digits send by themselves) ── */
+function sheet(html) {
+  const ov = document.createElement('div'); ov.className = 'ov';
+  ov.innerHTML = '<div class="sheet" role="dialog" aria-modal="true"><div class="gr"></div>' + html + '</div>';
+  document.body.appendChild(ov); S.sheets++;
+  const key = e => { if (e.key === 'Escape') { e.preventDefault(); api.close(); if (api.onClose) api.onClose(); } };
+  const api = { el:ov, close() { if (!ov.isConnected) return; ov.remove(); S.sheets = Math.max(0, S.sheets - 1); document.removeEventListener('keydown', key, true); } };
+  document.addEventListener('keydown', key, true);
+  ov.addEventListener('click', e => { if (e.target === ov || e.target.closest('[data-x]')) { api.close(); if (api.onClose) api.onClose(); } });
+  return api;
+}
+function askPin(o) {
+  return new Promise(resolve => {
+    const sh = sheet('<h3>' + esc(o.title) + '</h3><div class="sub">' + (o.sub || '') + '</div>'
+      + (o.reason ? '<textarea class="inp" id="pReason" maxlength="300" placeholder="' + esc(o.reasonPh || '') + '"></textarea>' : '')
+      + (o.noPin ? '' : '<input class="inp pin" id="pPin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="Your PIN" name="lv-pin" style="margin-top:10px">')
+      + '<div class="err" id="pErr"></div>'
+      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:6px"><button type="button" class="btn gray" data-x>Back</button><button type="button" class="btn ' + (o.red ? 'red' : 'green') + '" id="pOk">' + esc(o.okLabel || 'OK') + '</button></div>');
+    let done = false, t = null;
+    sh.onClose = () => { clearTimeout(t); if (!done) { done = true; resolve(null); } };
+    const pin = sh.el.querySelector('#pPin'), rea = sh.el.querySelector('#pReason'), err = sh.el.querySelector('#pErr'), ok = sh.el.querySelector('#pOk');
+    let busy = false;
+    const submit = async () => {
+      clearTimeout(t);
+      if (busy) return;
+      const v = { pin:pin ? pin.value : '', reason:rea ? rea.value.trim() : '' };
+      if (o.reasonReq && rea && !v.reason) { err.textContent = 'Write the reason first'; rea.focus(); return; }
+      if (pin && v.pin.length < 4) { err.textContent = 'Enter your PIN'; pin.focus(); return; }
+      busy = true; ok.disabled = true; err.textContent = '';
+      try { const d = await o.run(v); done = true; sh.close(); resolve(d || true); }
+      catch (e) {
+        busy = false; ok.disabled = false; err.textContent = e.message;
+        if (e.code === 'WRONG_PIN' && pin) { buzz([14, 50, 14]); pin.value = ''; pin.focus(); }
+        if (e.code === 'ALREADY_DONE' || e.code === 'NOT_YOUR_STEP') { done = true; setTimeout(() => { sh.close(); resolve(null); go(S.tab); }, 900); }
+      }
+    };
+    ok.addEventListener('click', submit);
+    if (pin) {
+      pin.addEventListener('input', () => { pin.value = pin.value.replace(/\D/g, '').slice(0, 8); err.textContent = ''; clearTimeout(t);
+        if (o.auto && pin.value.length >= 4) t = setTimeout(submit, PIN_AUTO_MS); });
+      pin.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); submit(); } });
+    }
+    setTimeout(() => { (o.reasonReq && rea ? rea : pin || rea || ok).focus(); }, 250);
+  });
+}
+
+/* ── SETUP (Admin) ────────────────────────────────────────────────────── */
+async function loadAdmin() {
+  const v = $('v-setup');
+  if (S.admin && S.admin.dirty) { paintAdmin(); return; }   // unsaved changes stay while moving between tabs
+  v.innerHTML = '<div class="empty">Loading the setup…</div>';
+  try {
+    const d = await rpc('lv_admin_get');
+    S.admin = { cfg:JSON.parse(JSON.stringify(d.cfg)), users:d.users || [], depts:d.depts || [], savedAt:d.savedAt, savedBy:d.savedBy, configured:d.configured, dirty:false };
+    ['steps', 'leaveTypes', 'reasons'].forEach(k => { if (!Array.isArray(S.admin.cfg[k])) S.admin.cfg[k] = []; });
+    S.admin.cfg.steps.forEach(st => { st.depts = Array.isArray(st.depts) ? st.depts : []; st.users = Array.isArray(st.users) ? st.users.map(String) : []; });
+    paintAdmin();
+  } catch (e) { v.innerHTML = '<div class="note n-bad">Could not load the setup: ' + esc(e.message) + '</div>'; }
+}
+const userById = id => (S.admin.users || []).find(u => String(u.id) === String(id));
+const codeOf = s => String(s || '').trim().toUpperCase().replace(/\s+/g, ' ');
+function paintAdmin() {
+  const A = S.admin, c = A.cfg, v = $('v-setup');
+  v.innerHTML =
+      '<div class="note ' + (A.configured ? 'n-info' : 'n-warn') + '">' + (A.configured ? 'Saved ' + esc(when(A.savedAt)) + (A.savedBy ? ' by ' + esc(A.savedBy) : '') + '.' : 'Not saved yet: employees cannot send a leave until you save the approvers here.')
+    + ' Every employee sees only the steps of his department and may choose approvers only from the list you set here. A compulsory step cannot be left out.'
+    + (A.dirty ? ' <b>Unsaved changes.</b>' : '') + '</div>'
+    + '<h2 class="sec">Approval Steps <span class="r">in this order</span></h2><div id="aSteps"></div>'
+    + '<button type="button" class="btn gray full" id="aAddStep" style="margin-top:8px">+ Add step</button>'
+    + '<h2 class="sec">Rules</h2><div class="card">'
+    + '<div class="row"><span class="l">One step after the other</span><span class="v" style="font-size:12px">' + (c.sequential ? 'the next approver gets it after the previous one approves' : 'every approver at once') + '</span><button type="button" class="sw' + (c.sequential ? ' on' : '') + '" id="aSeq"></button></div>'
+    + '<div class="row"><span class="l">Days back allowed</span><span class="v"><input type="number" class="inp sm" id="aBack" min="0" max="60" value="' + esc(c.backDays) + '" style="width:80px;text-align:right"></span></div>'
+    + '<div class="row"><span class="l">Days ahead allowed</span><span class="v"><input type="number" class="inp sm" id="aAhead" min="1" max="400" value="' + esc(c.aheadDays) + '" style="width:80px;text-align:right"></span></div>'
+    + '</div>'
+    + listEditor('Leave Types', 'leaveTypes', 'e.g. Earned Leave')
+    + listEditor('Reasons of Leave', 'reasons', 'e.g. Family Function')
+    + '<div style="margin-top:18px"><button type="button" class="btn blue full" id="aSave">Save setup (Admin PIN)</button></div>'
+    + '<div style="height:12px"></div>';
+  paintAdminSteps();
+  $('aAddStep').onclick = () => { c.steps.push({ code:'', label:'', mandatory:true, depts:[], users:[] }); A.dirty = true; paintAdminSteps(); };
+  $('aSeq').onclick = () => { c.sequential = !c.sequential; A.dirty = true; paintAdmin(); };
+  $('aBack').onchange = e => { c.backDays = Math.max(0, Math.min(60, Number(e.target.value) || 0)); A.dirty = true; };
+  $('aAhead').onchange = e => { c.aheadDays = Math.max(1, Math.min(400, Number(e.target.value) || 180)); A.dirty = true; };
+  v.querySelectorAll('[data-lst]').forEach(box => bindListEditor(box));
+  $('aSave').onclick = saveAdmin;
+}
+function paintAdminSteps() {
+  const A = S.admin, steps = A.cfg.steps, box = $('aSteps');
+  box.innerHTML = steps.map((st, i) => '<div class="card" style="margin-top:' + (i ? 10 : 0) + 'px" data-i="' + i + '">'
+    + '<div class="row"><span class="pill p-blue">' + (i + 1) + '</span><input class="inp" data-f="label" value="' + esc(st.label) + '" placeholder="Step name, e.g. Department Head" style="flex:1">'
+    + '<button type="button" class="mini" data-mv="-1" aria-label="Move up"' + (i ? '' : ' disabled') + '>' + ico('up', 14) + '</button><button type="button" class="mini" data-mv="1" aria-label="Move down"' + (i < steps.length - 1 ? '' : ' disabled') + '>' + ico('down', 14) + '</button>'
+    + '<button type="button" class="mini red" data-del aria-label="Remove the step">' + ico('x', 14) + '</button></div>'
+    + '<div class="row"><span class="l">Compulsory</span><span class="v" style="font-size:12px">' + (st.mandatory ? 'the employee cannot leave it out' : 'optional: the employee may ask it') + '</span><button type="button" class="sw' + (st.mandatory ? ' on' : '') + '" data-mand></button></div>'
+    + '<div class="row" style="flex-wrap:wrap"><span class="l">Departments</span><span class="v" style="font-size:12px">' + ((st.depts || []).length ? '' : 'all departments') + '</span>'
+    + '<div style="flex-basis:100%">' + (st.depts || []).map((d, k) => '<span class="uchip">' + esc(d) + '<button type="button" data-dd="' + k + '" aria-label="Remove">✕</button></span>').join('')
+    + '<select class="inp" data-adddept style="margin-top:4px"><option value="">+ Only for a department…</option>' + (A.depts || []).filter(d => (st.depts || []).indexOf(d) < 0).map(d => '<option value="' + esc(d) + '">' + esc(d) + '</option>').join('') + '</select></div></div>'
+    + '<div class="row" style="flex-wrap:wrap"><span class="l">Approvers</span><span class="v" style="font-size:12px">' + ((st.users || []).length ? (st.users.length === 1 ? 'picked by itself' : 'the employee chooses one of these') : '<span style="color:var(--red)">none yet</span>') + '</span>'
+    + '<div style="flex-basis:100%">' + (st.users || []).map((id, k) => { const u = userById(id) || { name:'(inactive user)' }; return '<span class="uchip">' + esc(u.name) + (u.empCode ? ' · ' + esc(u.empCode) : '') + '<button type="button" data-du="' + k + '" aria-label="Remove">✕</button></span>'; }).join('')
+    + '<button type="button" class="mini" data-addu style="margin-top:4px">+ Choose approvers</button></div></div>'
+    + '</div>').join('') || '<div class="empty">No step: add one.</div>';
+  box.querySelectorAll('[data-i]').forEach(card => {
+    const i = Number(card.getAttribute('data-i')), st = steps[i];
+    card.querySelector('[data-f="label"]').addEventListener('input', e => { st.label = e.target.value; st.code = codeOf(e.target.value); A.dirty = true; });
+    card.querySelectorAll('[data-mv]').forEach(b => b.addEventListener('click', () => { const j = i + Number(b.getAttribute('data-mv')); if (j < 0 || j >= steps.length) return; steps.splice(j, 0, steps.splice(i, 1)[0]); A.dirty = true; paintAdminSteps(); }));
+    card.querySelector('[data-del]').addEventListener('click', () => { if (st.label && !confirm('Remove the step "' + st.label + '"?')) return; steps.splice(i, 1); A.dirty = true; paintAdminSteps(); });
+    card.querySelector('[data-mand]').addEventListener('click', () => { st.mandatory = !st.mandatory; A.dirty = true; paintAdminSteps(); });
+    card.querySelectorAll('[data-dd]').forEach(b => b.addEventListener('click', () => { st.depts.splice(Number(b.getAttribute('data-dd')), 1); A.dirty = true; paintAdminSteps(); }));
+    card.querySelector('[data-adddept]').addEventListener('change', e => { if (!e.target.value) return; st.depts = (st.depts || []).concat([e.target.value]); A.dirty = true; paintAdminSteps(); });
+    card.querySelectorAll('[data-du]').forEach(b => b.addEventListener('click', () => { st.users.splice(Number(b.getAttribute('data-du')), 1); A.dirty = true; paintAdminSteps(); }));
+    card.querySelector('[data-addu]').addEventListener('click', () => pickUsers(st));
+  });
+}
+// Approvers of a step: a search list of the active ERP users, ticked ones kept
+function pickUsers(st) {
+  const A = S.admin, sel = new Set((st.users || []).map(String));
+  const sh = sheet('<h3>Approvers · ' + esc(st.label || 'step') + '</h3><div class="sub">Only these users may approve this step. Tick one or more.</div>'
+    + '<div class="search" style="margin-bottom:6px">' + ico('search', 16) + '<input class="inp" id="uQ" placeholder="Search name, Emp Code, department…"></div>'
+    + '<div class="ulist" id="uList"></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px"><button type="button" class="btn gray" data-x>Cancel</button><button type="button" class="btn blue" id="uOk">Use</button></div>');
+  const q = sh.el.querySelector('#uQ'), listEl = sh.el.querySelector('#uList');
+  const draw = () => {
+    const words = (q.value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+    const list = A.users.filter(u => { const h = [u.name, u.empCode, u.dept, u.desig].join(' ').toUpperCase(); return words.every(w => h.indexOf(w) >= 0); });
+    listEl.innerHTML = list.map(u => '<label><input type="checkbox" data-u="' + esc(u.id) + '"' + (sel.has(String(u.id)) ? ' checked' : '') + '><span><b>' + esc(u.name) + '</b><small>' + esc([u.empCode, u.desig, u.dept].filter(Boolean).join(' · ')) + '</small></span></label>').join('') || '<div class="empty">Nobody matches.</div>';
+    listEl.querySelectorAll('[data-u]').forEach(cb => cb.addEventListener('change', () => { if (cb.checked) sel.add(cb.getAttribute('data-u')); else sel.delete(cb.getAttribute('data-u')); }));
+  };
+  q.addEventListener('input', draw); draw();
+  sh.el.querySelector('#uOk').addEventListener('click', () => { st.users = [...sel]; A.dirty = true; sh.close(); paintAdminSteps(); });
+}
+function listEditor(title, key, ph) {
+  return '<h2 class="sec">' + esc(title) + '</h2><div class="card" data-lst="' + key + '">'
+    + (S.admin.cfg[key] || []).map((x, i) => '<div class="row"><input class="inp" data-li="' + i + '" value="' + esc(x.label) + '"><button type="button" class="mini red" data-ld="' + i + '" aria-label="Remove">' + ico('x', 14) + '</button></div>').join('')
+    + '<div class="row"><input class="inp" data-lnew placeholder="' + esc(ph) + '"><button type="button" class="mini" data-ladd>Add</button></div></div>';
+}
+function bindListEditor(box) {
+  const key = box.getAttribute('data-lst'), list = S.admin.cfg[key];
+  box.querySelectorAll('[data-li]').forEach(inp => inp.addEventListener('input', () => { list[Number(inp.getAttribute('data-li'))].label = inp.value; S.admin.dirty = true; }));
+  box.querySelectorAll('[data-ld]').forEach(b => b.addEventListener('click', () => { list.splice(Number(b.getAttribute('data-ld')), 1); S.admin.dirty = true; paintAdmin(); }));
+  const add = () => { const inp = box.querySelector('[data-lnew]'), t = inp.value.trim(); if (!t) return; if (list.some(x => x.code === codeOf(t))) return toast('Already in the list', true); list.push({ code:codeOf(t), label:t }); S.admin.dirty = true; paintAdmin(); };
+  box.querySelector('[data-ladd]').addEventListener('click', add);
+  box.querySelector('[data-lnew]').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+}
+async function saveAdmin() {
+  const c = S.admin.cfg;
+  c.steps.forEach(st => { st.label = (st.label || '').trim(); st.code = codeOf(st.code || st.label); });
+  if (!c.steps.length) return toast('Add at least one approval step', true);
+  if (c.steps.some(st => !st.label)) return toast('Every step needs a name', true);
+  const codes = c.steps.map(st => st.code); if (codes.some((k, i) => codes.indexOf(k) !== i)) return toast('Two steps have the same name', true);
+  if (!(c.leaveTypes || []).length) return toast('Keep at least one Leave Type', true);
+  const empty = c.steps.find(st => st.mandatory && !(st.users || []).length);
+  if (empty) {
+    const msg = '"' + empty.label + '" is compulsory but has no approver: nobody of its departments can send a leave until you add one.\n\nSave anyway?';
+    if (!(window.IosDialog ? await IosDialog.confirm(msg) : window.confirm(msg))) return;
+  }
+  (c.leaveTypes || []).forEach(x => { x.code = x.code || codeOf(x.label); });
+  (c.reasons || []).forEach(x => { x.code = x.code || codeOf(x.label); });
+  const res = await askPin({ title:'Save Leave Setup', sub:c.steps.length + ' approval step(s) · ' + (c.leaveTypes || []).length + ' leave type(s). Confirm with the Admin PIN.', okLabel:'Save', auto:true,
+    run:v => rpc('lv_admin_save', { p_cfg:c, p_pin:v.pin }) });
+  if (res) { S.admin.dirty = false; toast('Leave setup saved'); await loadBoot(); S.admin = null; loadAdmin(); }
+}
+</script>
 </body>
 </html>

@@ -14512,6 +14512,7 @@ function tbcShow_(g, n) {
         + kv('Freight', e(frMoney(g.tot.freight)))
         + '</div>'
         + '<div style="margin-top:8px;font-size:12px;color:#334155;"><b>' + slips.length + ' packing slip(s) on this trip:</b><div style="margin-top:2px;line-height:1.6;">' + slips.join('<br>') + '</div></div>'
+        + '<div data-tbc="photos" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:10px;"><span style="font-size:12px;color:#64748b;">Loading the gate photos…</span></div>'
         + tbTripHtml_(b)
         + '<div class="fr-note info" style="margin-top:8px;">Confirm Done saves this Tempo-Bill now: it gets its Tempo Bill No. and cannot be changed later. A packing slip saved on this tempo after this is NOT on it.</div>'
         + '<div data-tbc="err" style="display:none;margin-top:8px;" class="fr-note bad"></div>'
@@ -14526,7 +14527,49 @@ function tbcShow_(g, n) {
     });
     document.body.appendChild(ov);
     tbcOpen = { g: g, ov: ov, busy: false };
+    tbcPhotos_(ov, dp.id, t.slipNo);
     try { if (navigator.vibrate) navigator.vibrate([60, 40, 60]); } catch (er) { }
+}
+/* The gate's photos of the trip (sql/PACKING_DISPATCH_PHOTOS_MIGRATION.sql, pk_dispatch_photos): the Dharam Kanta Photo
+   and Loaded Vehicle Photo of the Dispatch Packing entry, the vehicle / item photos of its Dharam Kanta slip; tap = full
+   screen. Without the migration a note only. */
+async function tbcPhotos_(ov, dispatchNo, dkNo) {
+    var box = ov.querySelector('[data-tbc="photos"]'); if (!box) return;
+    var e = escapeHtmlJs, list = [];
+    try {
+        var r = await sarvPublic().rpc('pk_dispatch_photos', { p_token: tbToken_(), p_dispatch: dispatchNo || null, p_dk: dkNo || null });
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) throw new Error(d.error || 'FAILED');
+        var dp = d.dispatch || {}, dk = d.dk || {};
+        if (dp.dkPhoto) list.push({ src: dp.dkPhoto, label: 'Dharam Kanta Photo (Gross)' });
+        if (dp.vehiclePhoto) list.push({ src: dp.vehiclePhoto, label: 'Loaded vehicle at dispatch' });
+        if (dk.vehiclePhoto) list.push({ src: dk.vehiclePhoto, label: 'Vehicle at Tare (' + (dkNo || 'DK') + ')' });
+        if (dk.itemPhoto) list.push({ src: dk.itemPhoto, label: 'Items at Tare' });
+    } catch (er) {
+        var m = String((er && (er.message || er.details)) || er);
+        box.innerHTML = '<span style="font-size:12px;color:#b45309;">' + e(/pk_dispatch_photos|schema cache|PGRST202|42883|Could not find the function/i.test(m)
+            ? 'The gate photos need sql/PACKING_DISPATCH_PHOTOS_MIGRATION.sql (Admin).' : 'The gate photos could not be read: ' + m) + '</span>';
+        return;
+    }
+    if (!box.isConnected) return;
+    box.innerHTML = list.length ? list.map(function (p, i) {
+        return '<button type="button" data-tbc-ph="' + i + '" title="' + e(p.label) + ' (tap to view)" style="padding:0;border:1px solid #cbd5e1;border-radius:8px;overflow:hidden;background:#fff;cursor:zoom-in;width:150px;text-align:left;">'
+            + '<img src="' + p.src + '" alt="" style="width:150px;height:110px;object-fit:cover;display:block;">'
+            + '<span style="display:block;font-size:11px;font-weight:700;color:#334155;padding:3px 6px;">' + e(p.label) + '</span></button>';
+    }).join('') : '<span style="font-size:12px;color:#64748b;">No gate photo on this trip (an entry saved before the Dharam Kanta Photo was asked).</span>';
+    box.querySelectorAll('[data-tbc-ph]').forEach(function (btn) {
+        btn.addEventListener('click', function (ev) {
+            ev.stopPropagation();
+            var p = list[Number(btn.getAttribute('data-tbc-ph'))]; if (!p) return;
+            var z = document.createElement('div');
+            z.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.88);z-index:100070;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:14px;cursor:zoom-out;';
+            z.innerHTML = '<img src="' + p.src + '" alt="" style="max-width:100%;max-height:88vh;object-fit:contain;border-radius:6px;background:#fff;">'
+                + '<div style="color:#fff;font-size:13px;font-weight:700;margin-top:8px;">' + e(p.label) + ' · tap to close</div>';
+            z.addEventListener('click', function () { z.remove(); });
+            document.body.appendChild(z);
+        });
+    });
 }
 function tbcClose_() { if (tbcOpen && tbcOpen.ov) tbcOpen.ov.remove(); tbcOpen = null; }
 function tbcLater_() {
