@@ -479,7 +479,8 @@
                         </div>
                         <div class="col-span-2">
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">PO / PR Number *</label>
-                            <input type="text" id="inRefNo" list="gateRefList" autocomplete="off" required placeholder="e.g. PO-2026-884" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
+                            <!-- List only: read-only, filled by the Pending list popup (openRefPicker), never typed (checked again at Save, refNosInvalid) -->
+                            <input type="text" id="inRefNo" readonly inputmode="none" autocomplete="off" placeholder="Tap to choose from the list" onclick="openRefPicker()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openRefPicker();}" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
                         </div>
                     </div>
 
@@ -2486,11 +2487,11 @@
             if (type === 'PO') {
                 const all = GATE_MASTERS.pos || [], mine = party ? all.filter(p => normKey(p.vendor) === normKey(party)) : all;
                 opts = mine.slice(0, 200).map(p => ({ v: p.poNo, t: [p.vendor, p.date, p.status].filter(Boolean).join(' · ') }));
-                if (all.length) text = party ? (mine.length ? mine.length + ' open PO(s) of this party from the ERP: pick one or type it' : 'No open PO of this party in the ERP: type the number') : 'Choose the party first to see its POs';
+                if (all.length) text = party ? (mine.length ? mine.length + ' open PO(s) of this party from the ERP: tap the box to choose' : 'No open PO of this party in the ERP') : 'Choose the party first to see its POs';
             } else {
                 const fbp = party ? fbPrsFor(party) : (GATE_MASTERS.fbPrs || []);
-                opts = (fbp.length ? fbp : (GATE_MASTERS.prs || [])).slice(0, 200).map(p => ({ v: p.reqNo, t: [p.requestedBy, p.date, p.status].filter(Boolean).join(' · ') }));
-                if (opts.length) text = fbp.length ? fbp.length + ' open PR(s) of this Field Boy: use the Pending list' : 'Recent PRs from the ERP: pick one or type it';
+                opts = (fbp.length ? fbp : (GATE_MASTERS.prs || []).filter(gatePrOpen)).slice(0, 200).map(p => ({ v: p.reqNo, t: [p.requestedBy, p.date, p.status].filter(Boolean).join(' · ') }));
+                if (opts.length) text = fbp.length ? fbp.length + ' open PR(s) of this Field Boy: tap the box to choose' : 'Recent PRs from the ERP: tap the box to choose';
             }
             dl.innerHTML = opts.map(o => `<option value="${esc(o.v)}">${esc(o.t)}</option>`).join('');
             if (hint) hint.textContent = text;
@@ -2995,8 +2996,11 @@
         const isDefaultFbParty = n => GATE_FB_DEFAULT.some(rx => rx.test(normKey(n)));
         const isFieldBoyName = n => isDefaultFbParty(n) || (GATE_MASTERS.fieldBoys || []).some(x => normKey(x) === normKey(n));
         // The open PRs a Field Boy party brings: a default one gets every PR whose Purchaser is FIELD BOY (and his own name), another one his own
+        // PR statuses never offered at the gate (nothing more comes in against them): Completed, GM/CEO Approved.
+        // Compared without spaces / punctuation, so "GM / CEO Approved" or "GM-CEO APPROVED" count too.
+        function gatePrOpen(p) { return !['COMPLETED', 'GMCEOAPPROVED'].includes(String((p && p.status) || '').toUpperCase().replace(/[^A-Z0-9]/g, '')); }
         function fbPrsFor(party) {
-            const all = GATE_MASTERS.fbPrs || [], k = normKey(party);
+            const all = (GATE_MASTERS.fbPrs || []).filter(gatePrOpen), k = normKey(party);
             return isDefaultFbParty(party) ? all.filter(p => normKey(p.purchaser) === 'FIELD BOY' || normKey(p.purchaser) === k) : all.filter(p => normKey(p.purchaser) === k);
         }
         // Party options of the Inward form: every ERP supplier / local party, plus the Field Boys (their PRs are what they bring)
@@ -3045,8 +3049,9 @@
             const type = (document.getElementById('inRefType') || {}).value || 'PO';
             const party = (document.getElementById('inPartyName') || {}).value || '';
             if (type === 'PR') {
-                const rows = fbPrsFor(party);
-                return { type, party, rows: rows.map(p => ({ no: p.reqNo, title: p.reqNo, line: [p.requestedBy ? 'By ' + p.requestedBy : '', 'Purchaser ' + (p.purchaser || '-'), p.date].filter(Boolean).join(' · '), badge: p.status || 'Open', cls: 'b-pr' })) };
+                // a Field Boy's own open PRs; another party = the recent PRs of the ERP (what the PR list offered before)
+                const fbp = party ? fbPrsFor(party) : [], rows = fbp.length ? fbp : (GATE_MASTERS.prs || []).filter(gatePrOpen).slice(0, 200);
+                return { type, party, rows: rows.map(p => ({ no: p.reqNo, title: p.reqNo, line: [p.requestedBy ? 'By ' + p.requestedBy : '', p.purchaser ? 'Purchaser ' + p.purchaser : '', p.date].filter(Boolean).join(' · '), badge: p.status || 'Open', cls: 'b-pr' })) };
             }
             const rows = [];
             (GATE_MASTERS.pos || []).forEach(p => {
@@ -3074,7 +3079,7 @@
                     <span class="min-w-0 flex-1 text-left"><span class="t">${esc(r.title)}</span><span class="l">${esc(r.line)}</span></span>
                     <span class="bdg ${r.cls}">${esc(r.badge)}</span>
                 </button>`).join('')
-                : `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${noList ? 'The ERP list has not loaded yet. Check the internet and tap the refresh button at the top.' : (type === 'PR' ? 'No pending PR of the Field Boy purchaser in the ERP.' : 'No pending or partially received PO of this party in the ERP. Type the number in the PO / PR box if it is new.')}</p>`;
+                : `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${noList ? 'The ERP list has not loaded yet. Check the internet and tap the refresh button at the top.' : (type === 'PR' ? 'No open PR in the ERP for this party.' : 'No pending or partially received PO of this party in the ERP. A new PO must be made / approved in the ERP first; then tap the refresh button at the top.')}</p>`;
             refPickCount();
             document.getElementById('refPickModal').classList.remove('hidden');
         }
@@ -3096,6 +3101,11 @@
             showIosBanner(REF_PICK.size + ' selected', 'success');
         }
         function closeRefPicker() { document.getElementById('refPickModal').classList.add('hidden'); }
+        // The PO / PR numbers in the box that are NOT in the party's list (the box is list-only; a scan may bring one that is not)
+        function refNosInvalid() {
+            const { rows } = refPickerRows(), ok = new Set(rows.map(r => normKey(r.no)));
+            return refNosTyped().filter(n => !ok.has(normKey(n)));
+        }
 
         // ==========================================
         // 2. INITIALIZATION & CLOCK
@@ -3530,6 +3540,13 @@
                 return;
             }
             { const vv = document.getElementById('inVehicle').value.trim(); if (vv && !GATE_COMBOS.inVehicle.match(vv)) { showIosBanner('Choose the Vehicle Number from the list!', 'error'); return; } }
+            // PO / PR Number: only numbers of the party's list (the box is read-only, filled by the Pending list)
+            {
+                const rt0 = document.getElementById('inRefType').value === 'PR' ? 'PR' : 'PO';
+                if (!refNosTyped().length) { showIosBanner('Choose the ' + rt0 + ' Number from the list (tap the box)', 'error'); openRefPicker(); return; }
+                const bad = refNosInvalid();
+                if (bad.length) { showIosBanner(rt0 + ' ' + bad.join(', ') + ' is not in the pending list of this party. Choose from the list.', 'error'); openRefPicker(); return; }
+            }
             // Whom to Approve (an ERP user, from the list only)
             const inAp = GATE_COMBOS.inApprover ? GATE_COMBOS.inApprover.match(document.getElementById('inApprover').value) : null;
             if (!inAp) { showIosBanner('Choose Whom to Approve from the list (an ERP user)', 'error'); document.getElementById('inApprover').focus(); return; }

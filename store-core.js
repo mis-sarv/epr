@@ -4817,7 +4817,7 @@ setTimeout(()=>{
   issPdfWorker_();
   setInterval(()=>{issPdfWorker_();},25000);
   setInterval(()=>{if(document.visibilityState==='visible')issBarSync_();},4000);
-  setInterval(()=>{if(document.visibilityState==='visible'&&byId('issSupBar')?.offsetParent)issRefresh_().catch(()=>{});},20000);
+  setInterval(()=>{if(document.visibilityState==='visible'&&byId('issSupBar')?.offsetParent)issRefresh_().catch(()=>{});},5000);   // data sync every 5 s
 },8000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')issPdfWorker_();});
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
@@ -10464,13 +10464,17 @@ document.addEventListener('DOMContentLoaded',()=>{
 
    When the copy is used and when it is fetched again:
    - MASTERS (items, suppliers, employees, machines, dropdowns, design,
-     trims, everything not in LC_TXN): fresh for 5 min. Older than that
+     trims, everything not in LC_TXN): fresh for 5 s. Older than that
      (up to 12 h) it is shown AT ONCE and refreshed in the background,
-     so the next open has the new data.
+     so the next open has the new data (data sync every 5 s). The
+     background warm-up below still re-reads an unused master list only
+     after 5 min (LC_WARM_MASTER), so a big Item Master is not read
+     every 5 s while nobody looks at it.
    - TRANSACTIONS (LC_TXN: inward / outward / PO / PR and their lines,
      stock counts): stock depends on them, so an old copy is never
      shown. Fresh for 10 min while the Realtime link below is up (any
-     change from any device marks it old at once), 60 s without it.
+     change from any device marks it old at once, i.e. live), 5 s
+     without it.
    - A copy is marked old at once when: this ERP writes the table
      (SB.from(t).insert/update/upsert/delete, or a write RPC), another
      tab / iframe of this browser does (versions in localStorage
@@ -10496,7 +10500,7 @@ const LC_RELATED={inward_entries:['inward_lines'],inward_lines:['inward_entries'
   purchase_orders:['purchase_order_lines'],purchase_order_lines:['purchase_orders'],purchase_requirements:['purchase_requirement_lines'],purchase_requirement_lines:['purchase_requirements']};
 // The tables the mobile app already gets Realtime events for (so they are in the publication).
 const LC_RT_TABLES=['purchase_requirements','purchase_orders','inward_entries','outward_entries'];
-const LC_FRESH_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN_RT=10*60e3,LC_FRESH_TXN=60e3;
+const LC_FRESH_MASTER=5e3,LC_WARM_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN_RT=10*60e3,LC_FRESH_TXN=5e3;
 const LC_WRITE_RPC=/(save|delete|decide|post|insert|update|upsert|patch|import|approve|reject|cancel|undo|create|_set|set_|receive|transfer|edit|done|confirm)/i;
 const LC_QUIET_RPC=/^(erp_app_|verify_|get_|pdf_|tm_notify|sop_my)/i;
 const LC_MASTER_RPC=/item|supplier|employee|machine|dropdown|design|trims|fabric|brand/i;
@@ -10648,7 +10652,7 @@ async function lcWarm_(){
     const txn=e.deps.some(t=>LC_TXN.has(t));
     if(now-used>(txn?30*60e3:2*3600e3)){lcUsed.delete(key);continue;}
     if(txn&&!lcRtLive)continue;
-    if(e.ver===lcVerOf_(e.deps)&&now-e.at<lcFresh_(e.deps,e.at))continue;
+    if(e.ver===lcVerOf_(e.deps)&&now-e.at<(txn?lcFresh_(e.deps,e.at):LC_WARM_MASTER))continue;
     try{await lcFetch_(key,e.table,e.cols,e.order,e.calls);}catch(err){return;}
   }
 }
@@ -23846,9 +23850,10 @@ let PR_TEAL=[13,92,83];
       the requests; the Final Submit needs the photo. */
    const selectedPoNos=getSelectedPoNos();
    {
-     /* A Gate Entry No. whose approver assigned an Unloader: that Unloader's Photos / Original Invoice
-        are the unloading proof, so it is not sent to the Unloader Supervisor (GATE UNLOADER PHOTOS);
-        it waits until they are uploaded. Otherwise the Unloader Supervisor step as before. */
+     /* A Gate Entry No.: the approver's Unloader's Photos / Original Invoice are the unloading proof, so it is
+        never sent to the Unloader Supervisor (GATE UNLOADER PHOTOS); Submit waits until an Unloader is assigned
+        AND done. Without a Gate Entry No. (or an old one that never asked for approval) the Unloader Supervisor
+        step as before. */
      const gul=await inwGateUlGate_();
      if(gul===false)return;
      // an earlier Submit set the gate's Unloader, and the Gate Entry No. was changed / cleared since
@@ -33916,10 +33921,9 @@ function inwGateInfo_(){
     +'<span>Party: <b>'+escText(row.party||'-')+'</b></span>'
     +(row.refNo?'<span>'+escText(row.refType||'Ref')+': <b>'+escText(row.refNo)+'</b></span>':'')
     +(row.vehicle&&row.vehicle!=='N/A'?'<span>Vehicle: <b>'+escText(row.vehicle)+'</b></span>':'')
-    +'<span>In: '+escText(inwGateDmyT_(row.inTime))+'</span>'
     +(row.status?'<span>Gate status: '+escText(row.status)+'</span>':'')
-    +(row.guard?'<span>Guard: '+escText(row.guard)+'</span>':'')
     +(row.hasBill?'<span style="color:#15803d;">Bill photo at the gate ✓</span>':'')+'</div>'
+    +inwGatePipeHtml_(row)
     +inwGateUlHtml_(row)
     +(errs.length?'<div style="margin-top:6px;background:#fef2f2;border:1px solid #f87171;border-radius:6px;padding:6px 9px;color:#b91c1c;font-weight:700;">Not allowed: '+errs.map(escText).join(' · ')+'</div>':'')
     +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">'+warns.map(escText).join(' · ')+'</div>'
@@ -33945,12 +33949,32 @@ async function inwGatePicked_(){
     renderPoNumberPanel();   // the PO list follows the gate entry's party
     const filled=[...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].some(tr=>(tr.querySelector('.item-name')?.value||'').trim());
     const refs=String(r.refNo||'').split(/[,;]/).map(x=>x.trim()).filter(Boolean);
-    if(refs.length&&!filled&&!sarvInwDraftActive&&!getSelectedPoNos().length&&!getSelectedPrNos().length){
+    /* The gate's PO(s): EVERY PO the guard ticked is ticked here too (an entry may carry several, "PO-1, PO-2"),
+       also when other POs were ticked before the gate entry was picked; only item rows typed by hand
+       (no PO / PR loaded) are never thrown away. A gate PO missing from the open list reads the list again
+       first (it may be older than the PO), one still missing is named (received in full / not of this store). */
+    if(refs.length&&/^PO$/i.test(r.refType||'')&&!sarvInwDraftActive){
       try{
-        if(/^PO$/i.test(r.refType||'')){
-          const hit=refs.map(x=>sarvPoCatalog.find(p=>yulKey_(p.po_no)===yulKey_(x))).filter(Boolean);
-          if(hit.length){sarvSelectedPoNos=hit.map(p=>p.po_no);updatePoNumberBtnText();await loadPoIntoInward();showToast('Gate '+r.no+': PO '+sarvSelectedPoNos.join(', ')+' loaded');}
-        }else if(/^PR$/i.test(r.refType||'')){
+        const find=()=>refs.map(x=>sarvPoCatalog.find(p=>yulKey_(p.po_no)===yulKey_(x))).filter(Boolean);
+        let hit=find();
+        if(hit.length<refs.length){await loadOpenPoDropdown();hit=find();}
+        const want=[...new Set(hit.map(p=>p.po_no))], cur=getSelectedPoNos();
+        const missing=refs.filter(x=>!hit.some(p=>yulKey_(p.po_no)===yulKey_(x)));
+        const same=want.length===cur.length&&want.every(x=>cur.includes(x));
+        const manual=filled&&!cur.length&&!getSelectedPrNos().length;
+        if(want.length&&!same&&!manual){
+          if(getSelectedPrNos().length){setSelectedPrNos([]);updatePrNumberBtnText();}
+          setSelectedPoNos(want);updatePoNumberBtnText();await loadPoIntoInward();
+          showToast('Gate '+escText(r.no)+': PO '+escText(want.join(', '))+' selected'+(cur.length?' (in place of '+escText(cur.join(', '))+')':''));
+        }else if(want.length&&manual)
+          showToast('Gate '+escText(r.no)+' is against PO '+escText(want.join(', '))+'. Item rows are typed already, so tick the PO(s) yourself in PO Number.','warn');
+        if(missing.length)
+          showToast('Gate '+escText(r.no)+': PO '+escText(missing.join(', '))+' is not in the open PO list of '+escText(inwGateStoreOf_())+' (received in full, cancelled or not of this store).','warn');
+      }catch(e){console.warn('[SARV] gate PO not loaded:',e.message||e);}
+    }
+    else if(refs.length&&!filled&&!sarvInwDraftActive&&!getSelectedPoNos().length&&!getSelectedPrNos().length){
+      try{
+        if(/^PR$/i.test(r.refType||'')){
           const hit=refs.map(x=>sarvPrCatalog.find(p=>yulKey_(p.req_no)===yulKey_(x))).filter(Boolean);
           if(hit.length){setSelectedPrNos(hit.map(p=>p.req_no));updatePrNumberBtnText();await loadPrsIntoInward();showToast('Gate '+r.no+': PR '+hit.map(p=>p.req_no).join(', ')+' loaded');}
         }
@@ -34162,18 +34186,110 @@ function inwGateReset_(){
    Submit: a gate entry with an Unloader does NOT go to the Unloader Supervisor
    (ensureUnloaderApproval_) any more; it waits until the photos are uploaded,
    and the Unloader's Name / Emp Code / Mobile print on the PDF as the unload
-   info (written straight onto the record, unloadMarkUsed_). A gate entry
-   without an Unloader (approved before, or nobody had the app) and an Inward
-   without a Gate Entry No. go to the Unloader Supervisor as before.
+   info (written straight onto the record, unloadMarkUsed_). An APPROVED gate
+   entry without an Unloader is NOT sent to the Unloader Supervisor either: Submit
+   waits until the approver (launcher) or the Admin (GATE PIPELINE above) assigns
+   one and that Unloader is done. Only an Inward without a Gate Entry No., an old
+   gate entry that never asked for approval, and a server without the Unloader
+   migration still go to the Unloader Supervisor.
    ═══════════════════════════════════════════════════════════════════════ */
 var sarvInwGateUl={no:'',err:'',busy:''};
 function inwGateUlOf_(r){return r&&r.unload&&typeof r.unload==='object'?r.unload:null;}
 function inwGateUlHas_(no){return !!no&&(window.getPhotos?window.getPhotos('inward'):[]).some(f=>f&&f.gateNo===no);}
+/* ── GATE PIPELINE (2026-11-24) ───────────────────────────────────────────
+   The picked gate entry's way to the Store, step by step with the time of each:
+     Gate In (guard, vehicle, Dharam Kanta weights) → Approver approved → Unloader assigned
+     → Unloader done (Photos / Original Invoice uploaded) → Store entry.
+   The Store entry is allowed ONLY after the Unloader is done (inwGateUlGate_ on Submit), and such an
+   Inward is never sent to the Unloader Supervisor: the approver's Unloader IS the unloading check.
+   Rows from gate_inward_list: inTime / guard / purpose (the gate writes the DK part into it), approval
+   {status, by, at}, unload (gate_ul_json_; the key is missing before GATE_INWARD_UNLOADER_MIGRATION.sql).
+   Approved without an Unloader (approved before that migration): the approver assigns one on the
+   launcher, or the Admin here (inwGateUlAssign_, gate_ul_change of GATE_INWARD_UL_LATE_MIGRATION.sql). */
+// Dharam Kanta of a gate Inward: the purpose's "DK Slip: X (G:2000, T:500, Net:1500.00 Kg)" or "(G:2000 Kg, Tare at Out)"
+function inwGateDkOf_(row){
+  if(row&&row.dk&&typeof row.dk==='object'&&(row.dk.gross||row.dk.slip))return row.dk;
+  const m=/DK Slip:\s*([^\s(|]*)\s*\(G:\s*([\d.]+)(?:\s*Kg)?(?:,\s*T:\s*([\d.]+))?(?:,\s*Net:\s*([\d.]+))?/i.exec(String((row&&row.purpose)||''));
+  if(!m)return null;
+  const g=Number(m[2])||0,t=Number(m[3])||0;
+  return {slip:m[1]||'',gross:g,tare:t>0?t:null,net:m[4]!=null?Number(m[4]):(t>0?Math.max(0,g-t):null)};
+}
+function inwGatePipeHtml_(row){
+  if(!row)return '';
+  const ap=row.approval&&typeof row.approval==='object'?row.approval:null;
+  const ulOn=Object.prototype.hasOwnProperty.call(row,'unload'), ul=inwGateUlOf_(row), dk=inwGateDkOf_(row);
+  const kg=v=>v==null||v===''?'-':pNum(v).toLocaleString('en-IN',{maximumFractionDigits:2})+' Kg';
+  const C={done:['#15803d','#f0fdf4','#86efac'],wait:['#b45309','#fffbeb','#fcd34d'],miss:['#b91c1c','#fef2f2','#fca5a5'],off:['#64748b','#f8fafc','#cbd5e1']};
+  const step=(st,title,when,lines)=>{
+    const c=C[st]||C.off;
+    return '<div style="flex:1 1 150px;min-width:150px;border:1px solid '+c[2]+';background:'+c[1]+';border-radius:7px;padding:6px 8px;">'
+      +'<div style="display:flex;align-items:center;gap:6px;font-weight:800;color:'+c[0]+';">'
+      +'<span style="width:16px;height:16px;border-radius:50%;background:'+c[0]+';color:#fff;font-size:10px;line-height:16px;text-align:center;flex:none;">'+(st==='done'?'✓':st==='miss'?'!':'…')+'</span>'
+      +escText(title)+'</div>'
+      +(when?'<div style="font-size:11px;font-weight:700;color:#334155;margin-top:2px;">'+escText(when)+'</div>':'')
+      +lines.filter(Boolean).map(l=>'<div style="font-size:11px;color:#475569;margin-top:1px;">'+l+'</div>').join('')+'</div>';
+  };
+  const arrow='<div style="align-self:center;color:#94a3b8;font-weight:800;flex:none;">→</div>';
+  const steps=[];
+  // 1. Gate In: guard, vehicle, Dharam Kanta
+  steps.push(step('done','Gate In',inwGateDmyT_(row.inTime),[
+    row.guard?'Guard: <b>'+escText(row.guard)+'</b>':'',
+    row.vehicle&&row.vehicle!=='N/A'?'Vehicle: <b>'+escText(row.vehicle)+'</b>':'',
+    dk?'Dharam Kanta'+(dk.slip?' <b>'+escText(dk.slip)+'</b>':'')+': Gross <b>'+escText(kg(dk.gross))+'</b>'
+      +' · Tare <b>'+escText(dk.tare>0?kg(dk.tare):'at Out')+'</b>'+(dk.net!=null&&dk.tare>0?' · Net <b>'+escText(kg(dk.net))+'</b>':''):'No Dharam Kanta weighing',
+    row.outTime?'Gate Out: '+escText(inwGateDmyT_(row.outTime)):''
+  ]));
+  // 2. Approver
+  steps.push(ap&&ap.status==='APPROVED'
+    ?step('done','Approver Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.approver||'-')+'</b>'])
+    :step('off','Approver',ap?String(ap.status||''):'',[ap?'':'Old gate entry: no approval asked'+(row.approver?' ('+escText(row.approver)+')':'')]));
+  // 3. Unloader assigned, 4. Unloader done
+  const canAssign=ulOn&&!ul&&ap&&ap.status==='APPROVED'&&typeof isAdmin==='function'&&isAdmin()&&!sarvEditingInwardId;
+  if(!ulOn){
+    steps.push(step('off','Unloader','',['The server needs GATE_INWARD_UNLOADER_MIGRATION.sql: the Unloader Supervisor checks this Inward on Submit']));
+  }else if(!ul){
+    steps.push(step(ap?'miss':'off','Unloader Assigned','',[ap?'<b>Not assigned yet.</b> The approver assigns one on the launcher › Gate Approvals › Assign Unloader'
+      +(canAssign?' <a href="#" onclick="inwGateUlAssign_('+escText(JSON.stringify(row.no))+');return false;" style="font-weight:800;">Assign Unloader</a>':''):'Old gate entry: the Unloader Supervisor checks it on Submit']));
+  }else{
+    steps.push(step('done','Unloader Assigned',inwGateDmyT_(ul.at),['To <b>'+escText(ul.to||'-')+'</b>'+(ul.toEmp?' ('+escText(ul.toEmp)+')':''),ul.by?'By '+escText(ul.by):'']));
+    steps.push(ul.status==='DONE'
+      ?step('done','Unloader Done',inwGateDmyT_(ul.doneAt),['By <b>'+escText(ul.doneBy||ul.to||'-')+'</b>'+(ul.doneEmp?' ('+escText(ul.doneEmp)+')':''),escText(pNum(ul.photoCount))+' photo(s) uploaded'])
+      :step('wait','Unloader Done','',['Waiting for <b>'+escText(ul.to||'-')+'</b> to upload the Photos / Original Invoice (unloader.html › Gate Inward)']));
+  }
+  // 5. Store entry
+  const ready=!ulOn||(ul&&ul.status==='DONE')||(!ul&&!ap);
+  steps.push(step(ready?'done':'wait','Store Entry',ready?'Ready to Submit':'Locked',[ready?(ul?'The Unloader\'s photos are the unloading proof: no Unloader Supervisor step':''):'Allowed only after the Unloader is done']));
+  return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
+}
+// Admin: assign an Unloader to a gate Inward approved without one (gate_ul_change, GATE_INWARD_UL_LATE_MIGRATION.sql)
+async function inwGateUlAssign_(no){
+  const r=(sarvInwGate.list||[]).find(x=>x.no===no);if(!r)return;
+  if(!isAdmin())return showToast('Only the approver (launcher › Gate Approvals) or the Admin can assign the Unloader','warn');
+  let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+  try{
+    const q=await SB.rpc('gate_ul_unloaders',{p_token:tok});
+    if(q.error)throw q.error;
+    const d=q.data||{};if(d.success===false)throw new Error(String(d.error||'NOT_ALLOWED'));
+    const list=(d.unloaders||[]).map(u=>({id:u.id,user_name:u.name,emp_code:u.empCode,designation:u.desig,department:u.dept,contact_no:u.contact}));
+    if(!list.length)return showToast('No login has the <b>Unloader Supervisor</b> app. Switch it ON for the Unloaders under Admin Panel › Users › Apps.','error');
+    const pick=await ulPickSupervisor_(list,'Assign Unloader · '+no,'Gate entry '+no+' ('+(r.party||'-')+') was approved without an Unloader.\nThe chosen Unloader uploads its Photos / Original Invoice in the Unloader app; then this Inward can be submitted.','','Assign','sarv_gate_last_unloader');
+    if(!pick)return;
+    const w=await SB.rpc('gate_ul_change',{p_token:tok,p_uid:r.uid,p_unloader:pick.id});
+    if(w.error)throw w.error;
+    const a=w.data||{};
+    if(a.success===false){
+      return showToast(a.error==='NOT_FOUND'?'The server needs <code>GATE_INWARD_UL_LATE_MIGRATION.sql</code> (Admin) to assign an Unloader after the approval.'
+        :'Unloader not assigned: '+escText(String(a.error||'')),'error');
+    }
+    r.unload=a.unloader||r.unload;
+    showToast('Gate '+escText(no)+': Unloader <b>'+escText(pick.name)+'</b> assigned. The Inward can be submitted once they upload the Photos / Original Invoice.');
+    inwGateInfo_();inwGateRefresh_(true);
+  }catch(e){showToast('Unloader not assigned: '+escText(e.message||e),'error');}
+}
 function inwGateUlHtml_(row){
   const ul=inwGateUlOf_(row);if(!ul)return '';
   const S=sarvInwGateUl;
-  if(ul.status!=='DONE')return '<div style="margin-top:6px;background:#fff7ed;border:1px solid #fdba74;border-radius:6px;padding:6px 9px;color:#9a3412;font-weight:700;">'
-    +'Unloader: '+escText(ul.to||'-')+(ul.toEmp?' ('+escText(ul.toEmp)+')':'')+' · the Photos / Original Invoice are not uploaded yet (unloader.html › Gate Inward). Submit waits for them.</div>';
+  if(ul.status!=='DONE')return '';   // the pipeline above says who it waits for
   const n=(window.getPhotos?window.getPhotos('inward'):[]).filter(f=>f&&f.gateNo===row.no).length;
   return '<div style="margin-top:6px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;padding:6px 9px;color:#166534;font-weight:700;">'
     +'Unloader: '+escText(ul.doneBy||ul.to||'-')+(ul.doneEmp?' ('+escText(ul.doneEmp)+')':'')+' · '+escText(ul.photoCount||0)+' photo(s) uploaded '+escText(inwGateDmyT_(ul.doneAt))
@@ -34216,7 +34332,18 @@ async function inwGateUlApply_(r){
 async function inwGateUlGate_(){
   if(sarvEditingInwardId||!sarvInwGateChosen)return null;
   const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGateChosen), ul=inwGateUlOf_(r);
-  if(!ul)return null;
+  // before GATE_INWARD_UNLOADER_MIGRATION.sql no Unloader can be assigned at all: the Unloader Supervisor as before
+  if(!r||!Object.prototype.hasOwnProperty.call(r,'unload'))return null;
+  if(!ul){
+    // an old gate Inward that never asked for approval has no approver to assign one: the Unloader Supervisor as before
+    if(!r.approval)return null;
+    // approved: the Store entry waits for the approver's Unloader; it is NOT sent to the Unloader Supervisor again
+    byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+    showToast('Gate entry <b>'+escText(r.no)+'</b> has no Unloader yet. The approver'+(r.approval.by?' <b>'+escText(r.approval.by)+'</b>':'')
+      +' assigns one on the launcher › Gate Approvals › Assign Unloader'+(isAdmin()?' (or you, with Assign Unloader in the Gate Entry box)':'')
+      +'. The Store entry can be submitted only after the Unloader uploads the Photos / Original Invoice.','warn');
+    return false;
+  }
   if(ul.status!=='DONE'){
     byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
     showToast('Gate entry <b>'+escText(r.no)+'</b>: the Unloader <b>'+escText(ul.to||'-')+'</b> has not uploaded the Photos / Original Invoice yet '
