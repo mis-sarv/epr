@@ -301,10 +301,12 @@ function renderTabs(){
 }
 function setTab(k){ TAB = k; try { sessionStorage.setItem('ul_tab', k); } catch (e) {} renderTabs(); renderList(); }
 const items = r => (r && r.payload && Array.isArray(r.payload.items)) ? r.payload.items : [];
+// The ERP's Store Inward No. of the entry (given on Submit, sql/INWARD_PENDING_MIGRATION.sql); none on an older request
+const inwNo = r => String((r && r.payload && r.payload.inwardNo) || '');
 function renderList(){
   const q = ($('q').value || '').trim().toUpperCase();
   if (TAB === 'GATE') return renderGateList(q);
-  const list = ROWS[TAB].filter(r => !q || [r.request_no, r.supplier_name, r.invoice_no, r.po_numbers, r.req_numbers, r.requested_by]
+  const list = ROWS[TAB].filter(r => !q || [r.request_no, inwNo(r), r.supplier_name, r.invoice_no, r.po_numbers, r.req_numbers, r.requested_by]
     .some(v => String(v || '').toUpperCase().indexOf(q) >= 0));
   if (!list.length) {
     $('list').innerHTML = '<p class="empty-msg">' + (q ? 'Nothing matches the search.' : TAB === 'PENDING' ? 'Nothing waiting. New Inward entries appear here as soon as the store sends them to you.' : 'Nothing verified in the last 60 days.') + '</p>';
@@ -319,6 +321,7 @@ function renderList(){
     else act = '<div class="card-action wait" style="color:#b91c1c;">✖ Rejected by ' + esc(r.decided_by || '-') + ' · ' + esc(stamp(r.decided_at)) + (r.remarks ? ' · ' + esc(r.remarks) : '') + '</div>';
     return '<div class="card" onclick="openReq(' + r.id + ')">'
       + '<div class="card-header"><span>' + esc(r.request_no || ('#' + r.id)) + '</span><span style="font-size:0.75rem;color:#64748b;">' + esc(r.entry_type || 'INWARD') + ' · ' + storeTag(r) + '</span></div>'
+      + (inwNo(r) ? '<div class="card-detail">Store Inward No.: <b>' + esc(inwNo(r)) + '</b></div>' : '')
       + '<div class="card-detail">Supplier: <b>' + esc(r.supplier_name || '-') + '</b></div>'
       + '<div class="card-detail">Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '</div>'
       + '<div class="card-detail">' + esc(ref) + ' · <b>' + it.length + '</b> item(s) · Qty <b>' + esc(fmtN(qty)) + '</b></div>'
@@ -344,6 +347,7 @@ function openReq(id){
   const p = r.payload || {}, it = items(r);
   $('mTitle').textContent = (r.request_no || ('#' + r.id)) + ' · ' + (r.entry_type || 'INWARD');
   $('mMeta').innerHTML = '<b>' + esc(r.supplier_name || '-') + '</b><br>'
+    + (inwNo(r) ? 'Store Inward No.: <b>' + esc(inwNo(r)) + '</b><br>' : '')
     + 'Into: ' + storeTag(r) + '<br>'
     + 'Invoice: <b>' + esc(r.invoice_no || '-') + '</b>' + (r.invoice_date ? ' · ' + esc(dmy(r.invoice_date)) : '') + '<br>'
     + (r.po_numbers ? 'PO: <b>' + esc(r.po_numbers) + '</b><br>' : '') + (r.req_numbers ? 'PR: <b>' + esc(r.req_numbers) + '</b><br>' : '')
