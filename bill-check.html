@@ -870,10 +870,15 @@ function pdfJs(){
 }
 async function pdfDoc(url){ const lib = await pdfJs(); return lib.getDocument({ url, withCredentials:false }).promise; }
 const ATT_LABEL = { STORE:r => r.kind === 'inward' ? 'Supplier Copy' : 'Receiver Copy', ACCOUNT:() => 'Accountant Copy', BILL:r => r.kind === 'inward' ? 'Actual Bill' : 'Attachments',
-  PO:() => 'PO', PR:() => 'PR', YARN:() => 'Yarn Unloading', UNLOAD:() => 'Unloader', FIELD:() => 'Field Boy' };
-// Slide order on the sheet and in the viewer
-// PR, PO, Actual Bill, Supplier / Receiver Copy first, then all other attachments
-const ATT_ORDER = ['PR', 'PO', 'BILL', 'STORE', 'ACCOUNT', 'YARN', 'UNLOAD', 'FIELD'];
+  PO:() => 'PO', PR:() => 'PR', YARN:() => 'Yarn Unloading', UNLOAD:() => 'Unloader', FIELD:() => 'Field Boy',
+  GATE_IN:() => 'Gate Inward', GATE_OUT:r => r.kind === 'inward' ? 'Gate Out' : 'Gate Outward' };
+/* Slide order on the sheet and in the viewer (2026-11-24):
+     1 Supplier / Receiver Copy, Accountant Copy   2 Yarn Unloading (when one was made)   3 PO   4 PR   5 Actual Bill
+     6 Gate Inward entry photos   7 Field Boy item photos   8 Unloader   9 Gate Outward photos
+     10 the Bill Check Pipeline slide   11 every other group not named here (others in loadAttachments), so nothing is lost
+   A group that does not apply (no PO, no gate entry ...) has no slide and no note. The Accounts Check view keeps
+   its own short set (AC_GROUPS). */
+const ATT_ORDER = ['STORE', 'ACCOUNT', 'YARN', 'PO', 'PR', 'BILL', 'GATE_IN', 'FIELD', 'UNLOAD', 'GATE_OUT'];
 
 async function loadAttachments(r, force){
   let a = S.att[r.key];
@@ -893,11 +898,17 @@ async function loadAttachments(r, force){
     const inw = r.kind === 'inward';
     const skip = Promise.resolve(null);
     const first = await Promise.all([ac ? skip : run('STORE', attStore), run('ACCOUNT', attAccount), run('BILL', attBill),
-      inw && !ac ? run('FIELD', attField) : skip, inw && !ac ? run('PO', attPo) : skip, inw && !ac ? run('YARN', attYarn) : skip]);
+      inw && !ac ? run('FIELD', attField) : skip, inw && !ac ? run('PO', attPo) : skip, inw && !ac ? run('YARN', attYarn) : skip,
+      ac ? skip : run('GATE_IN', attGateIn), ac ? skip : run('GATE_OUT', attGateOut)]);
     first.forEach(o => { if (o) out[o.id] = o; });
     if (inw && !ac) { const [u, pr] = await Promise.all([run('UNLOAD', attUnload), run('PR', attPr)]); out.UNLOAD = u; out.PR = pr; }
     const slides = [];
-    (ac ? AC_GROUPS : ATT_ORDER).forEach(id => {
+    const order = ac ? AC_GROUPS : ATT_ORDER;
+    // 11: anything not in the list (not named 'rest': that is the REST reader this function uses above)
+    const others = ac ? [] : Object.keys(out).filter(id => order.indexOf(id) < 0 && ATT_LABEL[id]);
+    let pipeAt = -1;
+    order.concat(['__PIPE__'], others).forEach(id => {
+      if (id === '__PIPE__') { pipeAt = slides.length; return; }
       const o = out[id]; if (!o) return;
       const label = ATT_LABEL[id](r);
       if (o.e) { a.errs.push(label + ': ' + o.e); return; }
@@ -909,7 +920,8 @@ async function loadAttachments(r, force){
     // The Bill Check Pipeline slide (history, remarks, comments): not an attachment, never counted as "to look at" (needSeen)
     {
       const lastOf = g => { let k = -1; slides.forEach((s, i) => { if (s.group === g) k = i; }); return k; };
-      const at = ac ? lastOf('ACCOUNT') + 1 : Math.max(lastOf('STORE'), lastOf('BILL'), lastOf('PO'), lastOf('PR')) + 1;
+      // after the Accountant Copy in the Accounts Check view; else 10th, right after the Gate Outward photos
+      const at = ac ? lastOf('ACCOUNT') + 1 : (pipeAt >= 0 ? pipeAt : slides.length);
       slides.splice(at, 0, { type:'pipe', group:'PIPE', label:'Pipeline', pos:1, of:1, caption:'Bill check pipeline · every step with its history, remarks and comments' });
     }
     slides.forEach((s, i) => { s.n = i; });
@@ -953,6 +965,38 @@ async function attBill(r, ctx){
   }
   return { slides, empty:"The Original Invoice PDF holds only the Unloader's photos; no bill photo of its own." };
 }
+/* GATE photos (sql/BILL_CHECK_GATE_PHOTOS_MIGRATION.sql, bc_gate_photos): one call per bill, shared by both groups.
+     GATE_IN   an Inward booked against a gate entry (inward_entries.gate_entry_no): Bill / Item / Vehicle / Visitor
+               photos the guard took when it came in
+     GATE_OUT  Inward: the vehicle photo at Out (after unloading); Outward: the gate's Out From Store / Unit Transfer
+               entry of this Store bill (data.passNo): item / vehicle / Out photos
+   null = does not apply (no gate entry); no migration = a note, never an error. */
+function gatePhotos_(r, ctx){
+  if (ctx.gateP) return ctx.gateP;
+  const gno = String(ctx.rec.gate_entry_no || '').trim();
+  if (r.kind === 'inward' && !gno) return (ctx.gateP = Promise.resolve(null));
+  return (ctx.gateP = rpc('bc_gate_photos', { p_kind:r.kind, p_doc_no:r.no, p_gate_no:gno || null })
+    .catch(e => ({ _err:e.missing || /bc_gate_photos|schema cache/i.test(e.message || '') ? 'The gate photos need sql/BILL_CHECK_GATE_PHOTOS_MIGRATION.sql (Admin).' : e.message || String(e) })));
+}
+const gateWho_ = d => { const g = ((d && d.entries) || [])[0]; return g ? ' · ' + (g.gate === 'G1' ? 'Gate-1' : 'Gate-2') + ' ' + g.no : ''; };
+async function attGateIn(r, ctx){
+  if (r.kind !== 'inward') return null;
+  const d = await gatePhotos_(r, ctx);
+  if (!d) return null;
+  if (d._err) return { slides:[], empty:d._err };
+  const list = (d.in || []).filter(p => /^data:image/.test(String(p.image || '')));
+  return { slides:list.map(p => ({ type:'img', src:p.image, caption:p.label + gateWho_(d) })),
+           empty:'Gate entry ' + String(ctx.rec.gate_entry_no || '') + ': no photo of it at In is on the server.' };
+}
+async function attGateOut(r, ctx){
+  const d = await gatePhotos_(r, ctx);
+  if (!d) return null;
+  if (d._err) return r.kind === 'inward' ? null : { slides:[], empty:d._err };   // one note per bill is enough (Gate Inward says it)
+  const list = (d.out || []).filter(p => /^data:image/.test(String(p.image || '')));
+  if (!list.length && r.kind === 'outward' && !(d.entries || []).length) return null;   // this Outward never went through a gate
+  return { slides:list.map(p => ({ type:'img', src:p.image, caption:p.label + (r.kind === 'inward' ? gateWho_(d) : '') })),
+           empty:r.kind === 'inward' ? 'The vehicle has no Out photo at the gate yet.' : 'No photo of this Outward at the gate.' };
+}
 async function attUnload(r, ctx){
   const src = ctx.rec.unload_info, a = src && typeof src === 'object' ? ((src.approver && typeof src.approver === 'object') ? src.approver : src) : null;
   const who = a && a.name ? a.name + (a.emp_code ? ' (' + a.emp_code + ')' : '') : '';
@@ -964,6 +1008,7 @@ async function attUnload(r, ctx){
   }
   if (photos.length) return { slides:photos.map((p, i) => ({ type:'img', src:p.image_data, caption:'Unloading photo ' + (i + 1) + ' of ' + photos.length + (who ? ' · verified by ' + who : '') })) };
   if (ctx.invUnload.length) return { slides:ctx.invUnload };
+  if (src && (src.via === 'GATE' || src.viaGate)) return { slides:[], empty:'Unloaded by ' + (who || '-') + ' (assigned by the gate approver): the photos they uploaded are in the Actual Bill.' };
   return { slides:[], empty:a ? ('Verified by ' + who + ', but no photo was saved.') : 'This Inward was not verified by an Unloader Supervisor (older entry or Admin edit).' };
 }
 async function attField(r, ctx){

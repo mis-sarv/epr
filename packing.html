@@ -1249,6 +1249,7 @@
 
 
 <!-- Settings Panel (Admin) — Weight Rules: per Item Type weight limit for each Sr. row -->
+<style>#settings-panel.pk-view-only button{display:none!important}#settings-panel.pk-view-only input,#settings-panel.pk-view-only select,#settings-panel.pk-view-only textarea{pointer-events:none;background:#f8fafc}</style>
 <div class="container" id="settings-panel">
     <div class="card">
         <div class="card-title">Settings · Weight Rules (per Sr. row)</div>
@@ -7695,9 +7696,9 @@ function renderVerificationList(resetPage) {
                     ? '<a href="javascript:void(0)" onclick="event.stopPropagation();regenerateSlipPdf(\'' + escapeHtmlJs(s.packingType) + '\',\'' + escapeHtmlJs(s.slipNo) + '\', this)" ' +
                         'style="font-size:10px;color:#dc2626;text-decoration:none;margin-left:5px;display:inline-flex;align-items:center;" title="Regenerate PDF from DB">↻</a>'
                     : '') +
-                (session && session.role === 'MD'
+                (pkCanEditSlip()
                     ? '<a href="javascript:void(0)" onclick="event.stopPropagation();loadSlipForEdit(\'' + escapeHtmlJs(s.packingType) + '\',\'' + escapeHtmlJs(s.slipNo) + '\')" ' +
-                        'style="font-size:11px;font-weight:700;color:#7c3aed;text-decoration:none;margin-left:6px;padding:2px 7px;border:1.5px solid #7c3aed;border-radius:4px;background:#faf5ff;" title="Edit this packing slip (MD only)">Edit</a>'
+                        'style="font-size:11px;font-weight:700;color:#7c3aed;text-decoration:none;margin-left:6px;padding:2px 7px;border:1.5px solid #7c3aed;border-radius:4px;background:#faf5ff;" title="Edit this packing slip (MD / Admin)">Edit</a>'
                     : '') +
             '</div>';
 
@@ -8248,14 +8249,16 @@ function formatWaDate(dateStr) {
 }
 
 // ── ADMIN: Regenerate PDF from Database ──
-// MD: Load saved packing slip into form for editing
+// MD / Admin: Load saved packing slip into form for editing (pkCanEditSlip; Admin added 2026-11-24,
+// server side sql/PACKING_EDIT_SLIP_ADMIN_MIGRATION.sql when edit_packing_slip checks the role)
+function pkCanEditSlip() { var r = session ? String(session.role || '').toUpperCase() : ''; return r === 'MD' || r === 'ADMIN'; }
 var _editMode = false;
 var _editSlipNo = '';
 var _editPackingType = '';
 var _editModeExtraOrders = [];  // completed orders belonging to the slip being edited — survives dropdown rebuilds
 
 async function loadSlipForEdit(packingType, slipNo) {
-    if (!session || session.role !== 'MD') { alert('MD role only!'); return; }
+    if (!pkCanEditSlip()) { alert('MD / Admin only!'); return; }
 
     if (!confirm('Edit Slip ' + slipNo + '?\n\nPrevious slip will be CANCELLED and re-saved with the same number after editing.')) return;
 
@@ -11302,10 +11305,20 @@ async function loadWeightRules() {
     }
 }
 
+/* SETTINGS VIEW ONLY (2026-11-24): the MD sees every setting (Weight Rules, Freight Rates / Vehicles, Labour Rates)
+   but cannot change them: every save there is Admin-only on the page AND on the server (save_freight_rates,
+   save_labour_activities, save_slip_labour_rates ...), so for the MD the panel gets .pk-view-only (its buttons hidden,
+   its boxes locked, a note on top). Letting the MD save = those server functions must allow MD first. */
 function showSettingsPanel() {
-    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    var r = session ? String(session.role || '').toUpperCase() : '';
+    if (r !== 'ADMIN' && r !== 'MD') { alert('Admin / MD only!'); return; }
     hideAllPanels();
-    document.getElementById('settings-panel').style.display = 'block';
+    var sp = document.getElementById('settings-panel');
+    sp.style.display = 'block';
+    sp.classList.toggle('pk-view-only', r !== 'ADMIN');
+    var vn = document.getElementById('settings-view-note');
+    if (!vn) { vn = document.createElement('div'); vn.id = 'settings-view-note'; vn.className = 'card'; vn.style.cssText = 'background:#eff6ff;border:1px solid #93c5fd;color:#1e3a8a;font-size:13px;font-weight:700;'; vn.textContent = 'View only: the settings can be changed by the Admin only.'; sp.insertBefore(vn, sp.firstChild); }
+    vn.style.display = r === 'ADMIN' ? 'none' : '';
     updateNavButtons('settings-panel');
     if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
     stopAutoSaveDraft();
@@ -16904,7 +16917,7 @@ function updateNavButtons(activePanel) {
         'tempoBillNavBtn':  canVerify && activePanel !== 'tempo-bill-panel',
         'labourNavBtn':     canVerify && activePanel !== 'labour-panel',
         'dfuNavBtn':        canVerify && activePanel !== 'dfu-panel',
-        'settingsNavBtn':   isAdmin && activePanel !== 'settings-panel'
+        'settingsNavBtn':   (isAdmin || isMD) && activePanel !== 'settings-panel'   // MD: view only (SETTINGS VIEW ONLY)
     };
 
     Object.keys(btnMap).forEach(function(id) {

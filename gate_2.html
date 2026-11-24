@@ -3350,7 +3350,8 @@
             if (viewId === 'outwardDispatchForm') {
                 initDispatchPackingSlipForm();
             }
-            if (viewId === 'dispatchMenu') { try { renderDkPending(); } catch (e) { } }
+            // opening Out From Dispatch reads the loaded packing slips again (LOADED FIRST), so a slip just saved in the ERP shows
+            if (viewId === 'dispatchMenu') { try { if (typeof DK_LOADED === 'object' && DK_LOADED) Object.keys(DK_LOADED).forEach(k => { DK_LOADED[k].at = 0; }); renderDkPending(); } catch (e) { } }
 
             if (viewId === 'dharamKantaForm') {
                 if (!pinLockAuth('dkGrossWeight')) pinLock('dkGrossWeight');   // locked again unless this form was unlocked and not saved yet
@@ -5281,20 +5282,50 @@
             w.textContent = hit ? dkBlockText(hit) : '';
             w.classList.toggle('hidden', !hit);
         }
+        /* LOADED FIRST: a pending Dharam Kanta slip whose tempo already has ERP packing slips saved on it (the
+           Tempo-Bill rule, gate_dk_loaded = section 6D) goes to the TOP of both pending lists, green, with how many
+           slips / Kg are loaded: that vehicle is the one ready for its Dispatch Packing Slip. Read per slip, at most
+           every DK_LOADED_TTL; offline / not set up = the list stays as it is (no highlight). */
+        // var (not const): renderDkPending can run from the first register paint, before this line is reached
+        var DK_LOADED = DK_LOADED || {}, DK_LOADED_TTL = 60 * 1000, dkLoadedBusy = false;   // DK slip id -> {at, n, weight, ok}
+        async function dkLoadedRefresh(rows) {
+            if (dkLoadedBusy || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) return;
+            const now = Date.now(), due = rows.filter(d => !DK_LOADED[d.id] || now - DK_LOADED[d.id].at > (DK_LOADED_TTL || 60000)).slice(0, 25);
+            if (!due.length) return;
+            dkLoadedBusy = true;
+            let changed = false;
+            try {
+                for (const d of due) {
+                    const r = await gateRpc('gate_dk_loaded', { p_slip: d.id });
+                    if (r.error === 'NO_MIGRATION') { rows.forEach(x => { DK_LOADED[x.id] = { at: Date.now(), n: 0, weight: 0, ok: false }; }); break; }
+                    const slips = r.ok && r.data && r.data.available !== false ? (r.data.slips || []) : [];
+                    const was = DK_LOADED[d.id], n = slips.length;
+                    DK_LOADED[d.id] = { at: Date.now(), n, weight: r.ok ? Number(r.data.weight) || 0 : 0, ok: !!r.ok };
+                    if (!was || was.n !== n) changed = true;
+                }
+            } finally { dkLoadedBusy = false; }
+            if (changed) renderDkPending();
+        }
         function renderDkPending() {
             const box = document.getElementById('dkPendingBox'), list = document.getElementById('dkPendingList');
             if (!box || !list) return;
-            const rows = dkAwaitingDispatch(), admin = gateIsAdmin();   // Delete is shown to the Admin only
+            const admin = gateIsAdmin();   // Delete is shown to the Admin only
+            if (!DK_LOADED) DK_LOADED = {};
+            const loadedOf = d => (DK_LOADED[d.id] && DK_LOADED[d.id].n) || 0;
+            // loaded ones first (newest first among them), then the rest in their own order
+            const rows = dkAwaitingDispatch().map((d, i) => ({ d, i })).sort((a, b) => (loadedOf(b.d) > 0) - (loadedOf(a.d) > 0) || a.i - b.i).map(x => x.d);
+            dkLoadedRefresh(rows);
             box.classList.toggle('hidden', !rows.length);
             document.getElementById('dkPendingCount').textContent = rows.length;
             const mList = document.getElementById('dispMenuDkList'), mCnt = document.getElementById('dispMenuDkCount');
             const fmt = iso => { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
             list.innerHTML = rows.map(d => {
-                const gross = Number(d.grossWeight) || 0;
-                return `<div class="flex items-center gap-2 bg-amber-50/70 border border-amber-200 rounded-2xl px-3 py-2.5">
+                const gross = Number(d.grossWeight) || 0, ld = DK_LOADED[d.id], n = loadedOf(d);
+                return `<div class="flex items-center gap-2 ${n ? 'bg-emerald-50 border-2 border-emerald-400' : 'bg-amber-50/70 border border-amber-200'} rounded-2xl px-3 py-2.5">
                     <button type="button" onclick="openPassModal('${esc(d.id)}')" class="ios-btn min-w-0 flex-1 text-left">
-                        <span class="block font-mono text-[13px] font-extrabold text-gray-900 truncate">${esc(d.vehicle || '-')}</span>
+                        <span class="block font-mono text-[13px] font-extrabold ${n ? 'text-emerald-900' : 'text-gray-900'} truncate">${esc(d.vehicle || '-')}</span>
                         <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg${gross ? ' · Gross ' + esc(gross) + ' Kg' : ''} · ${esc(fmt(d.inTime))}</span>
+                        ${n ? `<span class="mt-1 inline-flex items-center gap-1 text-[10px] font-extrabold text-white bg-emerald-600 px-2 py-0.5 rounded-full"><i class="fa-solid fa-box"></i> ${n} packing slip${n > 1 ? 's' : ''} loaded · ${esc((Math.round((ld.weight || 0) * 100) / 100).toLocaleString('en-IN'))} Kg</span>` : ''}
                     </button>
                     <button type="button" onclick="dkGoDispatch('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white flex items-center gap-1" title="Open the Dispatch Packing Slip form with this slip"><i class="fa-solid fa-truck-fast"></i> Dispatch Slip</button>
                     ${admin ? `<button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>` : ''}
