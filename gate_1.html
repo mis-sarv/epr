@@ -1106,6 +1106,28 @@
                         </div>
                     </div>
 
+                    <!-- Visitor Type (VISITOR TYPE in section 7): Meeting / Interview / Working; Working also asks the Firm Name (a party
+                         of the list, gateCombo), and such a visitor can be booked in the ERP Inward by his Gate Entry No.
+                         (sql/GATE_VISITOR_WORKING_MIGRATION.sql) -->
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Visitor Type *</label>
+                            <select id="visType" onchange="visTypeChanged()" class="w-full px-3 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                                <option value="">Choose…</option>
+                                <option value="MEETING">Meeting</option>
+                                <option value="INTERVIEW">Interview</option>
+                                <option value="WORKING">Working</option>
+                            </select>
+                        </div>
+                        <div id="visFirmRow" class="hidden">
+                            <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Firm Name *</label>
+                            <div class="relative">
+                                <input type="text" id="visFirm" autocomplete="off" placeholder="Search the party..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                                <div id="visFirmList" class="gate-combo hidden"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Whom to Meet: only an ERP user (gateCombo), because that user approves the visitor from the launcher with his PIN -->
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -1120,7 +1142,7 @@
 
                     <div>
                         <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Purpose of Visit *</label>
-                        <input type="text" id="purpose" required placeholder="Meeting, Interview, Delivery..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
+                        <input type="text" id="purpose" required placeholder="e.g. Meeting with the GM, AC repair work..." class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:bg-white">
                     </div>
 
                     <!-- Visitor Photo & Vehicle Photo (Compressed) -->
@@ -1722,6 +1744,8 @@
             </div>
             <div class="p-5 overflow-y-auto space-y-3.5">
                 <div id="visOutWho" class="flex items-center gap-3"></div>
+                <!-- the Store entry booked in the ERP against this gate entry, with its bill (VISITOR OUT STORE BILL) -->
+                <div id="visOutBillBox" class="hidden p-3.5 bg-orange-50/60 border border-orange-200/80 rounded-2xl space-y-2"></div>
                 <!-- Inward with a Dharam Kanta slip (Gross weighed): the empty vehicle's Tare is compulsory here; one weighed at In comes pre-filled and can be changed -->
                 <div id="visOutDkBox" class="hidden p-3.5 bg-cyan-50/60 border border-cyan-200/80 rounded-2xl space-y-2">
                     <p class="text-[11px] font-bold text-cyan-800 uppercase">Dharam Kanta · Slip <span id="visOutDkSlip"></span></p>
@@ -3021,6 +3045,7 @@
             gateCombo({ inputId: 'dispDkSlipNo', listId: 'dispDkSlipList', options: dispDkSlipOptions, emptyText: 'No saved Dharam Kanta Slip. Create one in Dharam Kanta first.', onPick: lookupDispatchDkSlip });
             gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
             gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
+            gateCombo({ inputId: 'visFirm', listId: 'visFirmList', options: hydraSupplierOptions, emptyText: 'No such party. Use Add Party if it is new.' });
             gateCombo({ inputId: 'hydraSupplierName', listId: 'hydraSupplierList', options: hydraSupplierOptions, emptyText: 'No such supplier. Use Add Party if it is new.' });
             gsInit();   // 1E UNIVERSAL SEARCH
             gateCombo({ inputId: 'hydraApprover', listId: 'hydraApproverList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a Hydra / JCB.' });
@@ -3739,8 +3764,8 @@
             delete STORE_BILL[no];
             storeBillShow(no);
         }
-        function storeBillView() {
-            const no = document.getElementById('storePassSelect').value, o = STORE_BILL[no];
+        function storeBillView(noArg) {
+            const no = typeof noArg === 'string' && noArg ? noArg : document.getElementById('storePassSelect').value, o = STORE_BILL[no];
             if (!o || o.state !== 'ok') return;
             const el = document.createElement('div');
             el.className = 'fixed inset-0 z-[80] bg-black/90 flex flex-col';
@@ -4507,6 +4532,9 @@
                 if (GATE_COMBOS.hostName) GATE_COMBOS.hostName.set(prevEntry.host || '', true);
                 const cleanPurpose = (prevEntry.purpose || '').split('•')[0].trim();
                 document.getElementById('purpose').value = cleanPurpose;
+                document.getElementById('visType').value = prevEntry.visitorType || '';
+                visTypeChanged();
+                if (prevEntry.firm && GATE_COMBOS.visFirm) GATE_COMBOS.visFirm.set(prevEntry.firm, true);
 
                 const previewRow = document.getElementById('visitorPreviewRow');
                 const personImg = document.getElementById('visPersonPreview');
@@ -4562,6 +4590,14 @@
             }
             const host = hostOpt.value;
             const purpose = document.getElementById('purpose').value.trim();
+            const visitorType = document.getElementById('visType').value;
+            if (!VIS_TYPES[visitorType]) { showIosBanner('Choose the Visitor Type (Meeting / Interview / Working)', 'error'); document.getElementById('visType').focus(); return; }
+            let firm = '';
+            if (visitorType === 'WORKING') {
+                const fo = GATE_COMBOS.visFirm ? GATE_COMBOS.visFirm.match(document.getElementById('visFirm').value) : null;
+                if (!fo) { showIosBanner('Choose the Firm Name from the party list', 'error'); document.getElementById('visFirm').focus(); return; }
+                firm = fo.value;
+            }
 
             const photoTags = [];
             if (tempPhotos.visPerson) photoTags.push('Visitor Photo ✓');
@@ -4574,6 +4610,7 @@
                 mobile,
                 vehicle,
                 host,
+                visitorType, firm,   // VISITOR TYPE: a WORKING visitor's firm is booked in the ERP Inward by this entry's number
                 purpose: photoTags.length ? `${purpose} • ${photoTags.join(' | ')}` : purpose,
                 visitorPhoto: tempPhotos.visPerson,
                 vehiclePhoto: tempPhotos.visVehicle,
@@ -4597,10 +4634,72 @@
             document.getElementById('visPersonPreview').classList.add('hidden');
             document.getElementById('visVehiclePreview').classList.add('hidden');
             document.getElementById('visitorPreviewRow').classList.add('hidden');
+            visTypeChanged();   // the reset cleared the type: the Firm Name row hides again
 
             showView('visitorPending');
             showIosBanner(`Sent to ${host} for approval`, 'success');
         });
+
+        /* ── VISITOR TYPE (2026-11-24) ──
+           Meeting / Interview / Working, compulsory on a new visitor (entry.visitorType). Working = someone of a firm who
+           comes to do a job: Firm Name (entry.firm) is compulsory and only a party of the list (gateCombo over the same
+           parties as the Hydra supplier). Once his host approves him, the ERP lists his Gate Entry No. in the Store Inward
+           form, with the Firm Name as the party (sql/GATE_VISITOR_WORKING_MIGRATION.sql). When he goes out
+           (openVisitorOut) the Store bill booked against his entry is shown (VISITOR OUT STORE BILL). */
+        const VIS_TYPES = { MEETING: 'Meeting', INTERVIEW: 'Interview', WORKING: 'Working' };
+        function visTypeChanged() {
+            const w = document.getElementById('visType').value === 'WORKING';
+            document.getElementById('visFirmRow').classList.toggle('hidden', !w);
+            if (!w && GATE_COMBOS.visFirm) GATE_COMBOS.visFirm.set('', true);
+        }
+        const visTypeLine = e => e && e.visitorType ? (VIS_TYPES[e.visitorType] || e.visitorType) + (e.firm ? ' · ' + e.firm : '') + ' · ' : '';
+
+        /* ── VISITOR OUT STORE BILL ──
+           Out of a visitor (or an inward vehicle): the Store Inward booked in the ERP against this gate entry
+           (inward_entries.gate_entry_no = the entry's number, a cancelled Inward frees it) is looked up with the anon key,
+           and its Supplier Copy (pdf_documents, through storeBillLoad, the Store Bill code of a pass) is shown in the Out
+           sheet, tap = full view. Saved on the entry at Out as storeEntryNo / storeEntryPdf. Nothing booked yet / offline:
+           a note only, the Out is never held up. */
+        const VIS_OUT_BILL = {};   // entry id -> {state, no, at}
+        async function visOutBillLoad(id) {
+            const o = VIS_OUT_BILL[id] = { state: 'loading' };
+            visOutBillPaint(id);
+            try {
+                if (navigator.onLine === false) throw new Error('no internet');
+                if (!gateSb) gateSb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: false } });
+                const { data, error } = await gateSb.from('inward_entries').select('document_no,created_at').eq('gate_entry_no', id).order('created_at', { ascending: false }).limit(1);
+                if (error) throw new Error(error.message || 'read failed');
+                const row = (data || [])[0];
+                if (!row || !row.document_no) { o.state = 'none'; }
+                else {
+                    o.no = row.document_no; o.at = row.created_at; o.state = 'pdf';
+                    visOutBillPaint(id);
+                    await storeBillLoad(row.document_no);
+                    o.state = 'done';
+                }
+            } catch (e) { o.state = 'err'; o.err = (e && e.message) || String(e); }
+            visOutBillPaint(id);
+        }
+        function visOutBillPaint(id) {
+            const box = document.getElementById('visOutBillBox');
+            if (!box || VIS_OUT_ID !== id) return;
+            const o = VIS_OUT_BILL[id] || {}, b = o.no ? STORE_BILL[o.no] : null;
+            box.classList.remove('hidden');
+            let h = '<p class="text-[11px] font-bold text-orange-800 uppercase">Store Entry · Bill</p>';
+            if (o.state === 'loading') h += '<p class="text-[11px] font-semibold text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Looking for the Store entry of ' + esc(id) + ' in the ERP...</p>';
+            else if (o.state === 'none') h += '<p class="text-[11px] font-semibold text-amber-700">No Store entry is booked against ' + esc(id) + ' in the ERP yet.</p>';
+            else if (o.state === 'err') h += '<p class="text-[11px] font-semibold text-amber-700">Could not check the Store entry (' + esc(o.err) + ').</p>'
+                + '<button type="button" onclick="visOutBillLoad(\'' + esc(id) + '\')" class="ios-btn text-[11px] font-extrabold text-orange-700">Try again</button>';
+            else {
+                h += '<p class="text-[11px] font-semibold text-gray-700">Booked as <b>' + esc(o.no) + '</b>' + (o.at ? ' · ' + esc(formatDateTimeShort(o.at)) : '') + '</p>';
+                if (b && b.state === 'ok') h += '<button type="button" onclick="storeBillView(\'' + esc(o.no) + '\')" class="ios-btn block w-full rounded-xl overflow-hidden border border-orange-200 bg-white">'
+                    + '<img src="' + b.img + '" alt="Store bill" class="w-full max-h-56 object-cover object-top"></button>'
+                    + '<p class="text-[10px] font-semibold text-gray-500">Supplier Copy' + (b.pages > 1 ? ' (page 1 of ' + b.pages + ')' : '') + '. Tap to view.</p>';
+                else if (!b || b.state === 'loading' || o.state === 'pdf') h += '<p class="text-[11px] font-semibold text-gray-500"><i class="fa-solid fa-spinner fa-spin"></i> Getting the bill PDF...</p>';
+                else h += '<p class="text-[11px] font-semibold text-amber-700">' + (b.state === 'none' ? 'The bill PDF is not in the ERP yet.' : 'The bill PDF could not be opened (' + esc(b.err || '') + ').') + '</p>';
+            }
+            box.innerHTML = h;
+        }
 
         // ==========================================
         // 7B. VISITOR APPROVAL FLOW (sql/GATE2_VISITOR_APPROVAL_MIGRATION.sql, launcher-visitor.js)
@@ -4771,7 +4870,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
                             <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)} · ${esc(formatDateTimeShort(e.inTime))}</p>
-                            <p class="text-[11px] font-semibold text-gray-600 truncate">Meet: ${esc(e.host)} · ${esc(visPurpose(e))}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(visTypeLine(e))}Meet: ${esc(e.host)} · ${esc(visPurpose(e))}</p>
                             <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
                         </div>
                     </div>
@@ -4824,7 +4923,7 @@
                         <div class="min-w-0 flex-1">
                             <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${VIS_EXIST_TAB === 'in' ? visBadge((old ? 'Inside since ' : 'Inside ') + dur, old ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-800') : visBadge('Out', 'bg-emerald-100 text-emerald-800')}</div>
                             <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)}${e.vehicle && e.vehicle !== 'N/A' ? ' · ' + esc(e.vehicle) : ''}</p>
-                            <p class="text-[11px] font-semibold text-gray-600 truncate">Meet: ${esc(e.host)} · ${esc(visPurpose(e))}</p>
+                            <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(visTypeLine(e))}Meet: ${esc(e.host)} · ${esc(visPurpose(e))}</p>
                             <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${e.outTime ? ' · Out ' + esc(formatDateTimeShort(e.outTime)) + ' (' + dur + ')' : ''}${a && a.status === 'APPROVED' ? ' · Approved by ' + esc(a.decidedBy || a.host) : ''}</p>
                             ${e.outRemarks ? `<p class="text-[11px] font-semibold text-gray-700 mt-0.5">Remarks: ${esc(e.outRemarks)}</p>` : ''}
                         </div>
@@ -4885,9 +4984,13 @@
                 : `${visThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                 <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
                 <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.mobile)} · Meet: ${esc(e.host)}</p>
+                ${e.visitorType ? `<p class="text-[11px] font-semibold text-emerald-700 truncate">${esc(visTypeLine(e).replace(/ · $/, ''))}</p>` : ''}
                 <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}</p></div>`;
             closePassModal(); closeQrVerifyModal();
             document.getElementById('visOutModal').classList.remove('hidden');
+            // the Store bill booked against this entry (a visitor or an inward vehicle; a Hydra has its own Store Entry step)
+            document.getElementById('visOutBillBox').classList.add('hidden');
+            if (!hyd) visOutBillLoad(id);
         }
         function closeVisitorOut() { document.getElementById('visOutModal').classList.add('hidden'); VIS_OUT_ID = null; }
         function visOutDkCalc() {
@@ -4923,6 +5026,8 @@
             e.outPhoto = tempPhotos.visOut;
             e.outRemarks = remarks;
             e.outGuard = `${appSettings.guardName} (${appSettings.shiftName})`;
+            { const ob = VIS_OUT_BILL[e.id], bb = ob && ob.no ? STORE_BILL[ob.no] : null;
+              if (ob && ob.no) { e.storeEntryNo = ob.no; if (bb && bb.url) e.storeEntryPdf = bb.url; } }   // VISITOR OUT STORE BILL
             if (inw) e.inStage = 'EXITED';
             if (hyd) {
                 e.hydraStage = 'EXITED';

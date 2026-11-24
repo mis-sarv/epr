@@ -18146,6 +18146,8 @@ window.cancelStoreRecord=async function(kind,id,no){
   if(hTable==='inward_entries'){try{await SB.from('inward_entries').update({yarn_ul_no:null}).eq('id',id);}catch(e){}}
   // ... and its Gate Entry No. (GATE ENTRY LINK; a separate call: no column yet = nothing to free)
   if(hTable==='inward_entries'){try{await SB.from('inward_entries').update({gate_entry_no:null}).eq('id',id);}catch(e){}}
+  // ... and the Payable unloading it billed (UNLOADING BILL, GATE_INWARD_UL_PAYABLE_MIGRATION.sql)
+  if(hTable==='inward_entries'){try{await SB.from('inward_entries').update({gate_ul_no:null}).eq('id',id);}catch(e){}}
   const del=await SB.from(lTable).delete().eq(fk,id);
   if(del.error){
     // Put the notes back so the record doesn't read cancelled with its stock still counted.
@@ -18311,7 +18313,7 @@ async function loadInwardForEdit(id,no){
   sarvInwYarnUl.want=e.yarn_ul_no||'';sarvInwYarnUl.editHad=!!e.yarn_ul_no;sarvInwYarnUl.editStore=e.store||'';sarvInwYarnUl.sig='';
   setTimeout(()=>inwYarnUlRefresh_(true),600);
   // GATE ENTRY LINK: the gate Inward entry it was booked against, in the record's own store's gate
-  sarvInwGate.want=e.gate_entry_no||'';sarvInwGate.editHad=!!e.gate_entry_no;sarvInwGate.editStore=e.store||'';
+  sarvInwGate.want=e.gate_entry_no||(e.gate_ul_no?INW_UL_PFX+e.gate_ul_no:'');sarvInwGate.editHad=!!e.gate_entry_no;sarvInwGate.editUlHad=!!e.gate_ul_no;sarvInwGate.editStore=e.store||'';
   setTimeout(()=>inwGateRefresh_(true),650);
   // Kept through the edit so the regenerated PDF still names the supervisor.
   sarvInwUnloadActive=unloadInfoFrom_(e.unload_info);
@@ -33831,8 +33833,55 @@ async function inwYarnUlStore_(id){
    under the copy tag ("Gate Entry No:", drawStoreCopyNative_) and in the QR (ge).
    No migration = the box says so and the Inward saves as before.
    ═══════════════════════════════════════════════════════════════════════ */
-var sarvInwGate={list:null,store:'',at:0,busy:null,noMig:false,err:'',required:false,want:'',editHad:false,editStore:'',sig:''};
-var sarvInwGateChosen='', sarvInwGateRef=null;
+var sarvInwGate={list:null,store:'',at:0,busy:null,noMig:false,err:'',required:false,want:'',editHad:false,editStore:'',sig:'',
+  ulList:[],ulNoMig:false,editUlHad:false,renderNb:null};
+var sarvInwGateChosen='', sarvInwGateRef=null, sarvInwGateUlPay='';
+/* UNLOADING BILL (sql/GATE_INWARD_UL_PAYABLE_MIGRATION.sql). The gate Inward's approver picks the Unloader AND the
+   Unloading type on the launcher: FOC = nothing more (the usual workflow), PAYABLE = the Unloader is paid for it.
+   A PAYABLE unloading whose gate entry is booked by an Inward shows in the INWARD NB form's Gate Entry No. list as
+   "UL · <gate no> · Unloader <name>" (option value 'UL|<gate no>', gate_ul_payable_list), with the qty / weight of
+   that saved Inward bill (inwGateUlPayHtml_). Booking it = an Inward NB with inward_entries.gate_ul_no = the gate
+   entry no. (unique: booked once; a cancelled Inward NB frees it). Such an Inward NB never goes to the Unloader
+   Supervisor (it IS the Unloader's own bill; the Unloader prints as the unload info). */
+const INW_UL_PFX='UL|';
+function inwIsNbForm_(){return (byId('entryTypeSelect')?.value||'')==='INWARD NB';}
+function inwGateUlPayRow_(v){
+  v=v==null?pVal('inwGateEntryNo'):String(v||'');
+  if(v.indexOf(INW_UL_PFX)!==0)return null;
+  const no=v.slice(INW_UL_PFX.length);
+  return (sarvInwGate.ulList||[]).find(x=>x.no===no)||null;
+}
+function inwGateUlPayTot_(r){
+  const t={qty:{},wt:0,n:0};
+  ((r&&r.inward&&r.inward.lines)||[]).forEach(l=>{t.n++;const u=String(l.uom||'').toUpperCase()||'QTY';t.qty[u]=(t.qty[u]||0)+pNum(l.qty);t.wt+=pNum(l.weight);});
+  return t;
+}
+const inwGateUlNum_=v=>pNum(v).toLocaleString('en-IN',{maximumFractionDigits:3});
+function inwGateUlPayHtml_(r){
+  const ul=r.unload||{}, w=r.unloader||{}, iw=r.inward||{}, t=inwGateUlPayTot_(r);
+  const qtyTxt=Object.keys(t.qty).map(u=>inwGateUlNum_(t.qty[u])+' '+u).join(' + ')||'-';
+  return '<div style="color:#1e293b;">'
+    +'<div style="display:flex;flex-wrap:wrap;gap:6px 18px;">'
+    +'<span><b>Unloading bill · Payable</b> · '+escText(r.no)+' · '+escText(r.gate==='G1'?'Gate-1':'Gate-2')+'</span>'
+    +'<span>Unloader: <b>'+escText(w.name||ul.to||'-')+'</b>'+(w.emp?' ('+escText(w.emp)+')':'')+(w.contact?' · '+escText(w.contact):'')+'</span>'
+    +'<span>Unloaded: '+escText(inwGateDmyT_(ul.doneAt))+'</span>'
+    +(r.approval&&r.approval.by?'<span>Approved by '+escText(r.approval.by)+' · '+escText(inwGateDmyT_(r.approval.at))+'</span>':'')
+    +'<span>Vehicle: '+escText(r.vehicle||'-')+' · In '+escText(inwGateDmyT_(r.inTime))+'</span></div>'
+    +'<div style="margin-top:6px;">Store entry against the gate entry: <b>'+escText(iw.no||'-')+'</b>'+(iw.date?' · '+escText(iw.date):'')
+    +' · '+escText(iw.supplier||r.party||'-')+(iw.invoiceNo?' · Bill '+escText(iw.invoiceNo):'')+(iw.po?' · PO '+escText(iw.po):'')+'</div>'
+    +'<div style="margin-top:6px;max-height:220px;overflow:auto;border:1px solid #e2e8f0;border-radius:6px;">'
+    +'<table style="width:100%;border-collapse:collapse;font-size:11px;"><thead><tr style="background:#f1f5f9;">'
+    +'<th style="text-align:left;padding:4px 6px;">#</th><th style="text-align:left;padding:4px 6px;">Item unloaded</th>'
+    +'<th style="text-align:right;padding:4px 6px;">Qty</th><th style="text-align:left;padding:4px 6px;">UOM</th><th style="text-align:right;padding:4px 6px;">Weight</th></tr></thead><tbody>'
+    +((iw.lines||[]).map((l,i)=>'<tr style="border-top:1px solid #e2e8f0;"><td style="padding:3px 6px;">'+(i+1)+'</td><td style="padding:3px 6px;">'+escText(l.name||'-')
+      +(l.category?'<span style="color:#64748b;"> · '+escText(l.category)+'</span>':'')+'</td><td style="padding:3px 6px;text-align:right;">'+escText(inwGateUlNum_(l.qty))
+      +'</td><td style="padding:3px 6px;">'+escText(l.uom||'')+'</td><td style="padding:3px 6px;text-align:right;">'+(pNum(l.weight)?escText(inwGateUlNum_(l.weight))+' '+escText(l.wunit||'KG'):'-')+'</td></tr>').join('')
+      ||'<tr><td colspan="5" style="padding:6px;color:#94a3b8;">No item lines on that Inward.</td></tr>')
+    +'</tbody><tfoot><tr style="background:#f8fafc;font-weight:800;border-top:1px solid #cbd5e1;"><td colspan="2" style="padding:4px 6px;">TOTAL · '+t.n+' item(s)</td>'
+    +'<td colspan="2" style="padding:4px 6px;text-align:right;">'+escText(qtyTxt)+'</td><td style="padding:4px 6px;text-align:right;">'+(t.wt?escText(inwGateUlNum_(t.wt))+' KG':'-')+'</td></tr></tfoot></table></div>'
+    +'<div style="margin-top:6px;background:#eff6ff;border:1px solid #93c5fd;border-radius:6px;padding:6px 9px;color:#1e3a8a;font-weight:700;">'
+    +'Book the Unloader\'s unloading bill here as this Inward NB (Supplier Name = the Unloader / his contractor). It is not sent to the Unloader Supervisor. Booked once.</div></div>';
+}
 function inwGateStoreOf_(){return ((sarvInwGate&&sarvInwGate.editStore)||sarvStore||'STORE 2')==='STORE 1'?'STORE 1':'STORE 2';}
 function inwGateLabel_(){return inwGateStoreOf_()==='STORE 1'?'Gate-1 (Unit-1)':'Gate-2 (Unit-2)';}
 function inwGateDmyT_(v){
@@ -33853,6 +33902,12 @@ async function inwGateLoad_(force){
         S.err=S.noMig?'':(r.error.message||'read failed');S.list=[];
       }else if(r.data&&r.data.success===false){S.noMig=false;S.err=String(r.data.error||'NOT_ALLOWED');S.list=[];}
       else{S.noMig=false;S.err='';S.list=(r.data&&r.data.rows)||[];S.required=!!(r.data&&r.data.required);}
+      // UNLOADING BILL: the Payable unloadings (no function yet = none, said in the box only in the Inward NB form)
+      try{
+        const u=await SB.rpc('gate_ul_payable_list',{p_token:tok,p_store:store,p_days:30});
+        if(u.error){S.ulNoMig=u.error.code==='PGRST202'||u.error.code==='42883'||/gate_ul_payable_list|schema cache/i.test(u.error.message||'');S.ulList=[];}
+        else{S.ulNoMig=false;S.ulList=(u.data&&u.data.success!==false&&u.data.rows)||[];}
+      }catch(e){S.ulList=S.ulList||[];}
       S.store=store;S.at=Date.now();
       return S.list;
     }catch(e){console.warn('[SARV] Gate entries not read:',e.message||e);S.err=e.message||String(e);S.list=S.list||[];return S.list;}
@@ -33864,10 +33919,16 @@ function inwGateRender_(){
   const S=sarvInwGate, sel=byId('inwGateEntryNo');if(!sel)return;
   const cur=sel.value||S.want, mine=sarvEditingInwardId?String(sarvEditingInwardId):'';
   const opts=(S.list||[]).filter(r=>!r.usedBy||r.usedBy.id===mine);
-  sel.innerHTML='<option value="">-- Select the gate\'s Inward entry --</option>'+opts.map(r=>
-    '<option value="'+escText(r.no)+'">'+escText(r.no)+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
-      +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+'</option>').join('');
-  if(cur&&opts.some(r=>r.no===cur))sel.value=cur;
+  const nb=inwIsNbForm_(), ulOpts=nb?(S.ulList||[]).filter(r=>!r.usedBy||r.usedBy.id===mine):[];
+  S.renderNb=nb;
+  const ulHtml=ulOpts.length?'<optgroup label="Unloading bill · Payable (by Unloader)">'+ulOpts.map(r=>{
+    const t=inwGateUlPayTot_(r), w=r.unloader||{};
+    return '<option value="'+escText(INW_UL_PFX+r.no)+'">UL · '+escText(r.no)+' · Unloader '+escText(w.name||'-')+' · '+escText((r.inward||{}).no||'-')
+      +' · '+t.n+' item(s)'+(t.wt?' · '+escText(inwGateUlNum_(t.wt))+' Kg':'')+'</option>';}).join('')+'</optgroup>':'';
+  sel.innerHTML='<option value="">-- Select the gate\'s Inward entry --</option>'+ulHtml+(ulHtml?'<optgroup label="Gate Inward entries">':'')+opts.map(r=>
+    '<option value="'+escText(r.no)+'">'+escText(r.no)+(r.kind==='VISITOR'?' · Working visitor '+escText(r.visitor||'-')+' of':'')+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
+      +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+'</option>').join('')+(ulHtml?'</optgroup>':'');
+  if(cur&&(opts.some(r=>r.no===cur)||ulOpts.some(r=>INW_UL_PFX+r.no===cur)))sel.value=cur;
   else if(cur&&S.want===cur&&mine){sel.insertAdjacentHTML('beforeend','<option value="'+escText(cur)+'">'+escText(cur)+' (this record)</option>');sel.value=cur;}
   inwGateInfo_();
 }
@@ -33897,6 +33958,7 @@ function inwGateCheck_(){
   let refChange=null;
   if(pos.length&&!(/^PO$/i.test(r.refType||'')&&same(pos,refs)))refChange={type:'PO',no:pos.join(', ')};
   else if(!pos.length&&prs.length&&!(/^PR$/i.test(r.refType||'')&&same(prs,refs)))refChange={type:'PR',no:prs.join(', ')};
+  if(r.kind==='VISITOR')refChange=null;   // a Working visitor: nothing to write back (gate_inward_set_ref knows Inward entries only)
   if(refChange)warns.push('Gate '+(r.refType||'Ref')+' '+(refs.join(', ')||'-')+' → this Inward '+refChange.type+' '+refChange.no+': the gate entry is updated to it on Save');
   return {row:r,errs,warns,refChange};
 }
@@ -33910,8 +33972,14 @@ function inwGateInfo_(){
   if(S.noMig){box.innerHTML='<span style="color:#92400e;font-weight:700;">The gate link needs sql/GATE_INWARD_LINK_MIGRATION.sql (Admin). Until then this Inward saves without a Gate Entry No.</span>';return;}
   if(S.err){box.innerHTML='<span style="color:#b91c1c;font-weight:700;">Could not read the gate entries ('+escText(S.err)+'). Press Refresh.</span>';return;}
   const {row,errs,warns}=inwGateCheck_();
+  {const ur=inwGateUlPayRow_();if(ur){box.innerHTML=inwGateUlPayHtml_(ur);return;}}
   if(!row){
     const n=(S.list||[]).filter(r=>!r.usedBy).length;
+    if(inwIsNbForm_()){
+      const nu=(S.ulList||[]).filter(r=>!r.usedBy).length;
+      if(nu){box.innerHTML='<span style="color:#1e3a8a;font-weight:700;">'+nu+' Payable unloading'+(nu===1?'':'s')+' waiting for the Unloader\'s bill (UL · …). Choose one to book its bill as this Inward NB.</span>'
+        +'<div style="margin-top:4px;color:#475569;">'+(n?n+' gate Inward entr'+(n===1?'y':'ies')+' not booked yet.':'')+'</div>';return;}
+    }
     box.innerHTML='<span style="color:#475569;">'+(S.list?(n?n+' approved Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery.'
       :'No approved, unbooked Inward entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate saves it when the vehicle comes in and its approver approves it (launcher › Gate Approvals); then press Refresh.'):'Loading the gate entries…')+'</span>';
     return;
@@ -33933,6 +34001,14 @@ function inwGateInfo_(){
    ticked, no item row is filled and no MD-approved draft is loaded, through the pickers' own state + loaders. */
 async function inwGatePicked_(){
   sarvInwGate.want=pVal('inwGateEntryNo');
+  // UNLOADING BILL: no gate photos, no PO; Supplier Name = the Unloader when it is still empty
+  {const ur=inwGateUlPayRow_(sarvInwGate.want);
+   if(ur){
+     inwGateUlApply_(null);inwGatePhotosLoad_(null);
+     const sup=byId('supplierName'), nm=String((ur.unloader||{}).name||'').toUpperCase();
+     if(sup&&nm&&!sup.readOnly&&!sup.disabled&&!sup.value.trim()){sup.value=nm;sup.dispatchEvent(new Event('input',{bubbles:true}));sup.dispatchEvent(new Event('change',{bubbles:true}));}
+     renderPoNumberPanel();inwGateInfo_();return;
+   }}
   const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGate.want);
   // the Unloader's Photos / Original Invoice of this gate entry into the photo box (and those of one picked before out)
   inwGateUlApply_(r||null);
@@ -33985,9 +34061,9 @@ async function inwGatePicked_(){
 }
 async function inwGateRefresh_(force){
   if(!byId('inwGateGroup'))return;
-  const before=sarvInwGate.list;
+  const before=sarvInwGate.list, beforeUl=sarvInwGate.ulList;
   await inwGateLoad_(force);
-  if(force||before!==sarvInwGate.list||!byId('inwGateEntryNo').options.length)inwGateRender_();
+  if(force||before!==sarvInwGate.list||beforeUl!==sarvInwGate.ulList||sarvInwGate.renderNb!==inwIsNbForm_()||!byId('inwGateEntryNo').options.length)inwGateRender_();
   else inwGateInfo_();
   // the Unloader uploaded while the Store waited on the form: their photos come in by themselves
   const r=(sarvInwGate.list||[]).find(x=>x.no===pVal('inwGateEntryNo'));
@@ -33998,7 +34074,7 @@ async function inwGateRefresh_(force){
 }
 setInterval(()=>{
   const p=byId('inwardPanel');if(!p||p.offsetParent===null)return;
-  const sig=[pVal('supplierName'),inwGateStoreOf_(),getSelectedPoNos().join(','),getSelectedPrNos().join(',')].join('|');
+  const sig=[pVal('supplierName'),inwGateStoreOf_(),getSelectedPoNos().join(','),getSelectedPrNos().join(','),pVal('entryTypeSelect')].join('|');
   if(sig===sarvInwGate.sig&&Date.now()-sarvInwGate.at<60000)return;
   sarvInwGate.sig=sig;inwGateRefresh_(false);
 },1500);
@@ -34021,7 +34097,7 @@ async function inwGateSetRequired_(on){
 }
 // Submit: the gate before anything is written. false = stop (the reason was shown).
 async function inwGateGate_(){
-  sarvInwGateChosen='';sarvInwGateRef=null;
+  sarvInwGateChosen='';sarvInwGateRef=null;sarvInwGateUlPay='';
   const v0=pVal('inwGateEntryNo'), mine=String(sarvEditingInwardId||'');
   const list=await inwGateLoad_(true);
   const S=sarvInwGate;
@@ -34031,6 +34107,15 @@ async function inwGateGate_(){
   inwGateRender_();
   if(S.noMig)return true;
   const v=pVal('inwGateEntryNo');
+  // UNLOADING BILL: an Inward NB against a Payable unloading
+  if(v&&v.indexOf(INW_UL_PFX)===0){
+    const ur=inwGateUlPayRow_(v);
+    if(!inwIsNbForm_()){showToast('The Unloader\'s unloading bill ('+escText(v.slice(INW_UL_PFX.length))+') is booked as an <b>Inward NB</b> only. Change the entry type or choose another Gate Entry No.','warn');return false;}
+    if(!ur&&!(mine&&v===S.want)){showToast('Unloading '+escText(v.slice(INW_UL_PFX.length))+' is not in the Payable unloading list any more. Press Refresh.','warn');return false;}
+    if(ur&&ur.usedBy&&ur.usedBy.id!==mine){showToast('The unloading bill of '+escText(ur.no)+' is already booked by Inward NB '+escText(ur.usedBy.no||'')+'.','error');return false;}
+    sarvInwGateUlPay=v.slice(INW_UL_PFX.length);
+    return true;
+  }
   if(!v){
     if(mine)return true;                       // an older record without one stays as it is
     if(S.required){
@@ -34057,6 +34142,17 @@ async function inwGateGate_(){
 }
 // After the header is written: the number on the record (or taken off on an edit where it was cleared)
 async function inwGateSave_(id){
+  // UNLOADING BILL: the Payable unloading this Inward NB books (or taken off on an edit that no longer has it)
+  {const ulv=sarvInwGateUlPay||null;
+   if(ulv||sarvInwGate.editUlHad){
+     try{
+       const r=await SB.from('inward_entries').update({gate_ul_no:ulv}).eq('id',id);
+       if(r.error){
+         if(r.error.code==='23505')showToast('The unloading bill of '+escText(ulv)+' was just booked by another Inward NB, so this one is saved WITHOUT it.','error');
+         else console.warn('[SARV] Unloading bill link not stored (run GATE_INWARD_UL_PAYABLE_MIGRATION.sql):',r.error.message);
+       }
+     }catch(e){console.warn('[SARV] Unloading bill link not stored:',e.message||e);}
+   }}
   const v=sarvInwGateChosen||null;
   if(!v&&!sarvInwGate.editHad)return;
   try{
@@ -34102,7 +34198,7 @@ async function inwGateRefSync_(entryNo,inwardId){
    uploads meanwhile (the list refresh notices it). No migration = a note.
    ═══════════════════════════════════════════════════════════════════════ */
 var sarvInwGatePh={uid:'',sig:'',busy:false,err:'',list:[]};
-const GATE_PH_LABEL={billPhoto:'Gate · Bill',itemPhoto:'Gate · Item',vehiclePhoto:'Gate · Vehicle (weighbridge)',outPhoto:'Gate · Vehicle at Out'};
+const GATE_PH_LABEL={visitorPhoto:'Gate · Visitor',billPhoto:'Gate · Bill',itemPhoto:'Gate · Item',vehiclePhoto:'Gate · Vehicle (weighbridge)',outPhoto:'Gate · Vehicle at Out'};
 async function inwGatePhotosLoad_(r){
   const S=sarvInwGatePh, ul=inwGateUlOf_(r);
   S.uid=r?String(r.uid||''):''; S.sig=r?r.uid+'|'+(ul?ul.status+(ul.photoCount||0):''):''; S.list=[]; S.err='';
@@ -34115,7 +34211,7 @@ async function inwGatePhotosLoad_(r){
     const d=q.data||{};if(d.success===false)throw new Error(String(d.error||'NOT_FOUND'));
     if(S.uid!==uid)return;   // another entry picked meanwhile
     const g=d.gate||{}, list=[];
-    ['billPhoto','itemPhoto','vehiclePhoto','outPhoto'].forEach(k=>{if(/^data:image\//.test(String(g[k]||'')))list.push({src:g[k],label:GATE_PH_LABEL[k],who:'gate'});});
+    ['visitorPhoto','billPhoto','itemPhoto','vehiclePhoto','outPhoto'].forEach(k=>{if(/^data:image\//.test(String(g[k]||'')))list.push({src:g[k],label:GATE_PH_LABEL[k],who:'gate'});});
     const u=(d.unloader||[]).filter(x=>/^data:image\//.test(String(x||''))), by=((d.ul||{}).doneBy)||'';
     u.forEach((src,i)=>list.push({src,label:'Unloader · Photo '+(i+1)+' of '+u.length+(by?' · '+by:''),who:'ul'}));
     S.list=list;
@@ -34168,7 +34264,7 @@ function inwGatePhotoView_(start){
 }
 function inwGateReset_(){
   if(!sarvInwGate)return;
-  const S=sarvInwGate;S.want='';S.editHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';
+  const S=sarvInwGate;S.want='';S.editHad=false;S.editUlHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';sarvInwGateUlPay='';
   if(typeof sarvInwGateUl!=='undefined'){sarvInwGateUl.no='';sarvInwGateUl.err='';}
   if(typeof sarvInwGatePh!=='undefined')inwGatePhotosLoad_(null);
   const sel=byId('inwGateEntryNo');if(sel)sel.value='';
@@ -34231,6 +34327,22 @@ function inwGatePipeHtml_(row){
   };
   const arrow='<div style="align-self:center;color:#94a3b8;font-weight:800;flex:none;">→</div>';
   const steps=[];
+  // a Working visitor of the firm (GATE_VISITOR_WORKING_MIGRATION.sql): Gate In → Host approved → Store entry
+  if(row.kind==='VISITOR'){
+    steps.push(step('done','Gate In · Visitor',inwGateDmyT_(row.inTime),[
+      'Visitor: <b>'+escText(row.visitor||'-')+'</b>'+(row.mobile?' · '+escText(row.mobile):''),
+      'Working for <b>'+escText(row.party||'-')+'</b>',
+      row.vehicle&&row.vehicle!=='N/A'?'Vehicle: <b>'+escText(row.vehicle)+'</b>':'',
+      row.guard?'Guard: '+escText(row.guard):'',
+      row.outTime?'Gate Out: '+escText(inwGateDmyT_(row.outTime)):'Still inside'
+    ]));
+    steps.push(ap&&ap.status==='APPROVED'
+      ?step('done','Host Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.host||'-')+'</b>'])
+      :step('off','Host','',['Old visitor entry: no approval asked']));
+    steps.push(step('off','Unloader','',['Working visitor: no Unloader. The Unloader Supervisor checks this Inward on Submit']));
+    steps.push(step('done','Store Entry','Ready to Submit',['The Firm Name is the Supplier Name of this Inward']));
+    return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
+  }
   // 1. Gate In: guard, vehicle, Dharam Kanta
   steps.push(step('done','Gate In',inwGateDmyT_(row.inTime),[
     row.guard?'Guard: <b>'+escText(row.guard)+'</b>':'',
@@ -34251,14 +34363,16 @@ function inwGatePipeHtml_(row){
     steps.push(step(ap?'miss':'off','Unloader Assigned','',[ap?'<b>Not assigned yet.</b> The approver assigns one on the launcher › Gate Approvals › Assign Unloader'
       +(canAssign?' <a href="#" onclick="inwGateUlAssign_('+escText(JSON.stringify(row.no))+');return false;" style="font-weight:800;">Assign Unloader</a>':''):'Old gate entry: the Unloader Supervisor checks it on Submit']));
   }else{
-    steps.push(step('done','Unloader Assigned',inwGateDmyT_(ul.at),['To <b>'+escText(ul.to||'-')+'</b>'+(ul.toEmp?' ('+escText(ul.toEmp)+')':''),ul.by?'By '+escText(ul.by):'']));
+    steps.push(step('done','Unloader Assigned',inwGateDmyT_(ul.at),['To <b>'+escText(ul.to||'-')+'</b>'+(ul.toEmp?' ('+escText(ul.toEmp)+')':''),ul.by?'By '+escText(ul.by):'',
+      ul.chargeType?'Unloading: <b>'+(ul.chargeType==='PAYABLE'?'Payable':'FOC (free)')+'</b>':'']));
     steps.push(ul.status==='DONE'
       ?step('done','Unloader Done',inwGateDmyT_(ul.doneAt),['By <b>'+escText(ul.doneBy||ul.to||'-')+'</b>'+(ul.doneEmp?' ('+escText(ul.doneEmp)+')':''),escText(pNum(ul.photoCount))+' photo(s) uploaded'])
       :step('wait','Unloader Done','',['Waiting for <b>'+escText(ul.to||'-')+'</b> to upload the Photos / Original Invoice (unloader.html › Gate Inward)']));
   }
   // 5. Store entry
   const ready=!ulOn||(ul&&ul.status==='DONE')||(!ul&&!ap);
-  steps.push(step(ready?'done':'wait','Store Entry',ready?'Ready to Submit':'Locked',[ready?(ul?'The Unloader\'s photos are the unloading proof: no Unloader Supervisor step':''):'Allowed only after the Unloader is done']));
+  steps.push(step(ready?'done':'wait','Store Entry',ready?'Ready to Submit':'Locked',[ready?(ul?'The Unloader\'s photos are the unloading proof: no Unloader Supervisor step':''):'Allowed only after the Unloader is done',
+    ul&&ul.chargeType==='PAYABLE'?'Payable: after this Inward, the Unloader\'s bill is booked in Inward NB › Gate Entry No. (UL · '+escText(row.no)+')':'']));
   return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
 }
 // Admin: assign an Unloader to a gate Inward approved without one (gate_ul_change, GATE_INWARD_UL_LATE_MIGRATION.sql)
@@ -34330,10 +34444,20 @@ async function inwGateUlApply_(r){
    null = none (the Unloader Supervisor step runs as before), false = stop (said why),
    true = covered: sarvInwUnloadActive holds the Unloader for the PDF. */
 async function inwGateUlGate_(){
+  // UNLOADING BILL: the Unloader's own bill is never sent to the Unloader Supervisor; he prints as the unload info
+  if(sarvInwGateUlPay&&!sarvEditingInwardId){
+    const ur=(sarvInwGate.ulList||[]).find(x=>x.no===sarvInwGateUlPay), w=(ur&&ur.unloader)||{}, ul=(ur&&ur.unload)||{};
+    sarvInwUnloadActive={name:w.name||ul.to||'',empCode:w.emp||'',contact:w.contact||'',designation:w.desig||'',department:w.dept||'',
+      at:ul.doneAt||'',requestNo:'Unloading '+sarvInwGateUlPay,approvalId:null,photoCount:pNum(ul.photoCount),remarks:'Payable unloading bill',viaGate:true};
+    return true;
+  }
   if(sarvEditingInwardId||!sarvInwGateChosen)return null;
   const r=(sarvInwGate.list||[]).find(x=>x.no===sarvInwGateChosen), ul=inwGateUlOf_(r);
   // before GATE_INWARD_UNLOADER_MIGRATION.sql no Unloader can be assigned at all: the Unloader Supervisor as before
   if(!r||!Object.prototype.hasOwnProperty.call(r,'unload'))return null;
+  // a Working visitor's firm (GATE_VISITOR_WORKING_MIGRATION.sql): no Unloader is ever assigned to a visitor, so the
+  // Unloader Supervisor checks it on Submit like an Inward without a Gate Entry No.
+  if(r.kind==='VISITOR')return null;
   if(!ul){
     // an old gate Inward that never asked for approval has no approver to assign one: the Unloader Supervisor as before
     if(!r.approval)return null;
