@@ -1006,7 +1006,7 @@
                     <h2 class="text-[16px] font-bold text-gray-900">Approval Rules</h2>
                     <span class="w-10"></span>
                 </div>
-                <p class="text-[11px] font-semibold text-gray-500 mb-3">A Dispatch Packing Slip needs approval by its <b>weight difference (Kg)</b> = Net Wt (Gross − Tare) minus the Grand Total of the ERP packing slips loaded on the tempo (either way); with no packing slip data the Net Wt itself is used. Each band runs from its From up to (not including) its To; the last band has no To (= and above). The guard picks one person of the band's group; that person approves on the launcher with their PIN. The same rules work for both gates.</p>
+                <p class="text-[11px] font-semibold text-gray-500 mb-3">A Dispatch Packing Slip needs approval by its <b>weight difference (Kg)</b> = Net Wt (Gross − Tare) minus the Grand Total of the ERP packing slips loaded on the tempo (either way); with no packing slip data the Net Wt itself is used. Each band runs from its From up to (not including) its To; the last band has no To (= and above). Every person of the band's group gets the request on the launcher; the first to approve / reject with their PIN decides. The same rules work for both gates.</p>
                 <div id="dspRulesList" class="space-y-2"></div>
                 <div class="flex gap-2 mt-3">
                     <button type="button" onclick="dispRulesAdd()" class="ios-btn flex-1 py-2.5 rounded-xl bg-gray-100 text-gray-700 text-xs font-extrabold"><i class="fa-solid fa-plus"></i> Add band</button>
@@ -1014,6 +1014,16 @@
                 </div>
                 <p id="dspRulesMsg" class="text-[11px] font-bold mt-3"></p>
                 <button type="button" onclick="dispRulesSave()" class="ios-btn w-full mt-3 bg-gray-800 text-white font-bold py-3.5 rounded-2xl shadow-lg flex items-center justify-center gap-2 text-sm"><i class="fa-solid fa-floppy-disk"></i> Save rules (PIN)</button>
+                <!-- GROSS LOCK timer (Admin): seconds after typing the Gross Wt on the Dispatch Packing Slip before it locks; 0 = off -->
+                <div class="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3 mt-4 space-y-2">
+                    <p class="text-[11px] font-extrabold text-indigo-800 uppercase">Gross Wt auto-lock timer</p>
+                    <div class="flex gap-2 items-end">
+                        <div class="flex-1"><label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Lock after (seconds)</label>
+                            <input type="number" id="dspLockSec" min="0" max="3600" step="1" placeholder="0 = off" class="w-full px-3 py-2.5 bg-white border border-indigo-200 rounded-xl text-sm font-bold"></div>
+                        <button type="button" onclick="dispLockSave()" class="ios-btn px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-extrabold"><i class="fa-solid fa-lock"></i> Save timer (PIN)</button>
+                    </div>
+                    <p class="text-[10px] font-semibold text-gray-500">Once the guard types the Gross Wt on the Dispatch Packing Slip, the box locks by itself after these seconds (0 = never). Choosing the Dharam Kanta Slip again opens it.</p>
+                </div>
             </div>
 
             <!-- VIEW 5A: VISITOR MENU (New entry -> host approves on the launcher -> Done -> Existing -> Out) -->
@@ -3972,6 +3982,7 @@
             dispCfgLoad(false).then(() => dispApPaint());   // fresh rules + approvers (kept on the phone for offline)
 
             const grossInput = document.getElementById('dispGrossWeight');
+            dispGrossUnlock_();
             grossInput.value = '';
             grossInput.disabled = true;
             grossInput.placeholder = 'Enter Slip 1st';
@@ -4002,6 +4013,7 @@
         }
 
         function lookupDispatchDkSlip() {
+            dispGrossUnlock_();
             const rawVal = document.getElementById('dispDkSlipNo').value.trim().toUpperCase();
             const badge = document.getElementById('dispDkMatchBadge');
             const vehicleInput = document.getElementById('dispVehicleNo');
@@ -4057,7 +4069,31 @@
             }
         }
 
+        /* GROSS LOCK (Approval Rules › Gross Wt auto-lock, gate_dispatch_cfg.gross_lock_sec, 0 = off): once a Gross Wt is
+           typed, the box locks itself that many seconds after the last key; choosing the Dharam Kanta slip again (or a
+           new form) opens it. A tap on the locked box says so. */
+        let DISP_GROSS_T = null;
+        function dispGrossUnlock_() {
+            clearTimeout(DISP_GROSS_T); DISP_GROSS_T = null;
+            const g = document.getElementById('dispGrossWeight'); if (!g) return;
+            g.readOnly = false; g.dataset.locked = ''; g.classList.remove('bg-gray-200', 'cursor-not-allowed');
+        }
+        function dispGrossArm_() {
+            clearTimeout(DISP_GROSS_T); DISP_GROSS_T = null;
+            const sec = Number(DISP_CFG && DISP_CFG.grossLockSec) || 0, g = document.getElementById('dispGrossWeight');
+            if (!sec || !g || g.disabled || g.readOnly || !(parseFloat(g.value) > 0)) return;
+            DISP_GROSS_T = setTimeout(() => {
+                if (!(parseFloat(g.value) > 0) || g.disabled) return;
+                g.readOnly = true; g.dataset.locked = '1'; g.classList.add('bg-gray-200', 'cursor-not-allowed'); g.blur();
+                showIosBanner('Gross Wt ' + g.value + ' Kg is locked now', 'info');
+            }, sec * 1000);
+        }
+        document.addEventListener('click', e => {
+            const g = e.target && e.target.id === 'dispGrossWeight' ? e.target : null;
+            if (g && g.dataset.locked === '1') showIosBanner('Gross Wt is locked (' + (Number(DISP_CFG.grossLockSec) || 0) + ' s after typing). Choose the Dharam Kanta Slip again to re-enter it.', 'info');
+        });
         function calcDispatchNetWeight() {
+            dispGrossArm_();
             const tare = parseFloat(document.getElementById('dispTareWeight').value) || 0;
             const gross = parseFloat(document.getElementById('dispGrossWeight').value) || 0;
             const netInput = document.getElementById('dispNetWeight');
@@ -4101,14 +4137,8 @@
             const wb = dispWtBasis(netNum);
             const apRule = dispRuleFor(wb.basis), apGroup = apRule.approver || 'NONE';
             const needAp = apGroup !== 'NONE' && !DISP_NOMIG;
-            let apUser = null;
-            if (needAp) {
-                const list = dispMembers(apGroup), sel = document.getElementById('dispApprover');
-                if (list.length) {
-                    apUser = list.find(u => u.id === (sel ? sel.value : '')) || null;
-                    if (!apUser) { showIosBanner('Choose Whom to Approve (' + (DISP_GROUPS[apGroup] || apGroup) + ')', 'error'); if (sel) sel.focus(); return; }
-                }
-            }
+            // GROUP APPROVAL: the request goes to every member of the group (no host), see dispApPaint
+            const apUser = null, apMembers = needAp ? dispMembers(apGroup) : [];
 
             // Everything checked: now TAKE the Outward No. and the Packing Slip No.
             gateSaving.DISP = true;
@@ -4135,7 +4165,7 @@
                 approvalStatus: needAp ? 'APPROVAL PENDING' : 'NOT NEEDED',
                 needApproval: needAp,
                 apGroup: apGroup, apRule: { from: apRule.from, to: apRule.to == null ? null : apRule.to, approver: apGroup },
-                approver: apUser ? apUser.name : (needAp ? DISP_GROUPS[apGroup] || apGroup : ''),
+                approver: needAp ? 'Any ' + (DISP_GROUPS[apGroup] || apGroup) : '', apMembers: apMembers.map(u => u.name),
                 hostUserId: apUser ? apUser.id : null, hostEmpCode: apUser ? (apUser.empCode || null) : null,
                 host: `Outward: ${customOutwardNo} | DK: ${dkSlipId} | Tare: ${tare.toFixed(2)} Kg`,
                 // the first part (before •) is what the approver sees on the launcher
@@ -4165,12 +4195,22 @@
             dispLoadFor('');
             dispApPaint();
 
+            // AFTER SUBMIT: the weight difference and whether the approval request went (it was hidden in the form)
+            const grpTxt = DISP_GROUPS[apGroup] || apGroup;
+            const diffTxt = wb.kind === 'DIFF'
+                ? 'Difference: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net Wt ' + net + ' − Packing slips ' + wb.loaded.toFixed(2) + ' Kg)'
+                : 'Net Wt: ' + net + ' Kg (no ERP packing slip data for this tempo)';
+            const apTxt = needAp
+                ? 'Need for Approval: SENT to all ' + (apMembers.length ? apMembers.length + ' ' + grpTxt + ' (' + apMembers.map(u => u.name).join(', ') + ')' : grpTxt + ' (nobody has this role: the Admin decides)') + '. Mark Out waits for the approval.'
+                : apGroup === 'NONE' ? 'Need for Approval: NOT needed (' + dispBandText(apRule) + ').' : 'Need for Approval: not set up on the server, so it was NOT sent (saved without it).';
+            const msg = 'Packing Slip ' + generatedPackingSlipNo + ' (' + customOutwardNo + ') saved\n\n' + diffTxt + '\n\n' + apTxt;
+            if (window.IosDialog && IosDialog.alert) IosDialog.alert(msg); else alert(msg);
             if (needAp) {
                 showView('dispatchPending');
-                showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) sent to ${apUser ? apUser.name : 'the Admin'} for approval`, 'info');
+                showIosBanner(`${generatedPackingSlipNo}: approval request sent to all ${grpTxt}`, 'info');
             } else {
                 showView('dispatchMenu');
-                showIosBanner(`Packing Slip ${generatedPackingSlipNo} (${customOutwardNo}) saved · ${apGroup === 'NONE' ? 'no approval needed' : 'approval not set up on the server'}`, 'success');
+                showIosBanner(`${generatedPackingSlipNo} saved · ${apGroup === 'NONE' ? 'no approval needed' : 'approval not set up on the server'}`, 'success');
                 openPassModal(newDispatchEntry.id);
             }
         });
@@ -4205,7 +4245,7 @@
                 if (r.ok) {
                     DISP_NOMIG = false;
                     DISP_CFG = { rules: Array.isArray(r.data.rules) && r.data.rules.length ? r.data.rules : DISP_RULES_DEFAULT, groups: r.data.groups || {},
-                        updatedAt: r.data.updatedAt || null, updatedBy: r.data.updatedBy || '', at: Date.now(), server: true };
+                        updatedAt: r.data.updatedAt || null, updatedBy: r.data.updatedBy || '', grossLockSec: Number(r.data.grossLockSec) || 0, at: Date.now(), server: true };
                     writeLS(DISP_CFG_KEY, DISP_CFG);
                 } else if (r.error === 'NO_MIGRATION') DISP_NOMIG = true;
                 return DISP_CFG;
@@ -4232,7 +4272,7 @@
             if (g === 'NONE') {
                 box.className = 'rounded-2xl border border-emerald-200 bg-emerald-50/70 px-3.5 py-3 space-y-2';
                 box.innerHTML = `<p class="text-xs font-extrabold text-emerald-800"><i class="fa-solid fa-circle-check"></i> No approval needed</p>
-                    <p class="text-[10.5px] font-semibold text-emerald-700/80">${why} is in the band ${esc(dispBandText(rule))}.</p>`;
+                    <p class="text-[10.5px] font-semibold text-emerald-700/80">The weight check is shown after Verify and Submit.</p>`;
                 box.dataset.grp = g; return;
             }
             if (DISP_NOMIG) {
@@ -4240,19 +4280,16 @@
                 box.innerHTML = `<p class="text-[11px] font-bold text-amber-800">Approval (${esc(DISP_GROUPS[g] || g)}) is not set up on the server yet: the Admin must run GATE_DISPATCH_APPROVAL_MIGRATION.sql. This slip is saved without it.</p>`;
                 box.dataset.grp = g; return;
             }
-            const cur = box.dataset.grp === g ? (document.getElementById('dispApprover') || {}).value || '' : '';
-            const list = dispMembers(g), last = (readLS(DISP_LAST_AP_KEY, {}) || {})[g] || '';
-            const pick = cur || (list.some(u => u.id === last) ? last : (list.length === 1 ? list[0].id : ''));
+            // GROUP APPROVAL (sql/GATE_DISPATCH_GROUP_APPROVAL_MIGRATION.sql): no person is picked; the request goes to EVERY
+            // member of the group, the first one to approve / reject on the launcher decides
+            const list = dispMembers(g);
             box.className = 'rounded-2xl border border-orange-200 bg-orange-50/70 px-3.5 py-3 space-y-2';
-            box.innerHTML = `<p class="text-xs font-extrabold text-orange-800"><i class="fa-solid fa-user-shield"></i> Approval needed: ${esc(DISP_GROUPS[g] || g)}</p>
-                <p class="text-[10.5px] font-semibold text-orange-700/80">${why} is in the band ${esc(dispBandText(rule))}.</p>`
+            box.innerHTML = `<p class="text-xs font-extrabold text-orange-800"><i class="fa-solid fa-user-shield"></i> Approval needed: ${esc(DISP_GROUPS[g] || g)}</p>`
                 + (list.length
-                    ? `<label class="block text-[10px] font-bold text-gray-500 uppercase">Whom to Approve *</label>
-                       <select id="dispApprover" class="w-full px-3.5 py-3 bg-white border border-orange-200 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-orange-400">
-                         <option value="">Choose the ${esc(DISP_GROUPS[g] || g)}…</option>
-                         ${list.map(u => `<option value="${esc(u.id)}"${u.id === pick ? ' selected' : ''}>${esc(u.name)}${u.empCode ? ' (' + esc(u.empCode) + ')' : ''}${u.desig ? ' · ' + esc(u.desig) : ''}</option>`).join('')}
-                       </select>`
-                    : `<p class="text-[11px] font-bold text-amber-800">${DISP_CFG.server ? 'Nobody has this role yet' : 'The approver list is not loaded (offline)'}: the slip is sent for approval anyway and the Admin decides it on the launcher.</p>`);
+                    ? `<p class="text-[10.5px] font-semibold text-orange-700/90">Goes to all ${list.length} ${esc(DISP_GROUPS[g] || g)} on Submit · the first one to decide counts:</p>
+                       <div class="flex flex-wrap gap-1.5">${list.map(u => `<span class="text-[10.5px] font-bold bg-white border border-orange-200 text-gray-800 px-2 py-0.5 rounded-full">${esc(u.name)}${u.empCode ? ' (' + esc(u.empCode) + ')' : ''}</span>`).join('')}</div>`
+                    : `<p class="text-[11px] font-bold text-amber-800">${DISP_CFG.server ? 'Nobody has this role yet' : 'The approver list is not loaded (offline)'}: the slip is sent for approval anyway and the Admin decides it on the launcher.</p>`)
+                + '<p class="text-[10px] font-semibold text-gray-500">The weight check (difference) is shown after Verify and Submit.</p>';
             box.dataset.grp = g;
         }
 
@@ -4321,14 +4358,7 @@
                     + '<td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.packs) + '</td><td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.pcs) + '</td>'
                     + '<td class="px-1 py-1.5 text-right font-extrabold text-indigo-700 whitespace-nowrap">' + kg(d.weight) + ' Kg</td></tr></tbody></table></div>';
             }
-            if (isFinite(net)) {
-                const diff = net - (Number(d.weight) || 0);
-                h += '<div class="grid grid-cols-3 gap-2 mt-2.5">'
-                    + '<div class="rounded-xl bg-white border border-gray-200 px-2 py-1.5"><span class="block text-[9.5px] font-bold text-gray-500 uppercase">Net Wt</span><span class="text-xs font-extrabold text-gray-900">' + kg(net) + ' Kg</span></div>'
-                    + '<div class="rounded-xl bg-white border border-gray-200 px-2 py-1.5"><span class="block text-[9.5px] font-bold text-gray-500 uppercase">Grand Total</span><span class="text-xs font-extrabold text-gray-900">' + kg(d.weight) + ' Kg</span></div>'
-                    + '<div class="rounded-xl bg-white border border-indigo-300 px-2 py-1.5"><span class="block text-[9.5px] font-bold text-indigo-600 uppercase">Difference</span><span class="text-xs font-extrabold text-indigo-800">' + (diff > 0 ? '+' : '') + kg(diff) + ' Kg</span></div>'
-                    + '</div><p class="text-[10px] font-semibold text-gray-500 mt-1.5">The Approval Rules band follows this difference (heavier or lighter), not the Net Wt.</p>';
-            } else h += '<p class="text-[10px] font-semibold text-gray-500 mt-1.5">Enter the Gross Wt: the difference Net Wt − Grand Total decides the approval.</p>';
+            // the Net Wt / Grand Total / Difference cards are left out on purpose: the difference is shown after Verify and Submit
             box.innerHTML = wrap('border-indigo-200 bg-indigo-50/50', h);
         }
 
@@ -4425,6 +4455,8 @@
                     ${r.approver !== 'NONE' && DISP_CFG.server ? `<p class="text-[10px] font-semibold ${n ? 'text-gray-500' : 'text-red-600'} mt-1">${n ? n + ' person(s): ' + esc(dispMembers(r.approver).map(u => u.name).join(', ')) : 'Nobody has this role: such slips go to the Admin'}</p>` : ''}
                 </div>`;
             }).join('');
+            const ls = document.getElementById('dspLockSec');
+            if (ls && document.activeElement !== ls) ls.value = Number(DISP_CFG.grossLockSec) || 0;
             const msg = document.getElementById('dspRulesMsg'), err = dispRulesCheck(R);
             msg.textContent = err || ((DISP_CFG.updatedBy ? 'Last saved by ' + DISP_CFG.updatedBy + (DISP_CFG.updatedAt ? ' · ' + formatDateTimeShort(DISP_CFG.updatedAt) : '') + '. ' : '') + R.map(r => dispBandText(r) + ': ' + DISP_GROUPS[r.approver]).join(' · '));
             msg.className = 'text-[11px] font-bold mt-3 ' + (err ? 'text-red-600' : 'text-gray-600');
@@ -4463,6 +4495,20 @@
                 if (i > 0 && f !== Number(R[i - 1].to)) return `Band ${i + 1}: From must be the To of band ${i}.`;
             }
             return '';
+        }
+        function dispLockSave() {
+            const v = Math.max(0, Math.min(3600, Math.round(Number((document.getElementById('dspLockSec') || {}).value) || 0)));
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) { showIosBanner('No internet: the timer is saved on the server only', 'error'); return; }
+            gatePinAsk('Gross Wt auto-lock · PIN Required', 'save the Gross Wt auto-lock timer', async (auth, pin) => {
+                const r = await gateRpc('gate_disp_lock_save', { p_sec: v, p_pin: pin });
+                if (!r.ok) {
+                    showIosBanner(r.error === 'NO_MIGRATION' ? 'The server needs GATE_DISPATCH_GROUP_APPROVAL_MIGRATION.sql (Admin)'
+                        : r.error === 'NOT_ALLOWED' ? 'Only an Admin login can save the timer' : r.error === 'WRONG_PIN' ? 'Incorrect PIN!' : 'Not saved: ' + (r.detail || r.error), 'error');
+                    return;
+                }
+                await dispCfgLoad(true); dispRulesPaint();
+                showIosBanner(v ? 'Gross Wt locks ' + v + ' s after typing' : 'Gross Wt auto-lock is off', 'success');
+            });
         }
         function dispRulesSave() {
             const R = DISP_RULES_DRAFT, err = dispRulesCheck(R || []);
