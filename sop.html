@@ -706,14 +706,20 @@ function myState(r){
   return r.acked_version ? 'UPDATED' : 'NEW';
 }
 const STATE_LABEL = { NEW: ['NEW', 'st-new'], UPDATED: ['UPDATED', 'st-upd'], READ: ['✓ READ', 'st-read'], INFO: ['FOR INFO', 'st-info'] };
-async function loadMy(manual){
-  if (!MY.length) $('main').innerHTML = '<div class="empty">Loading your SOPs…</div>';
+let MY_SIG = '';
+// auto = the 5-second data sync: silent, and the list is redrawn only when something changed
+async function loadMy(manual, auto){
+  if (!MY.length && !auto) $('main').innerHTML = '<div class="empty">Loading your SOPs…</div>';
   try {
     const d = await rpc('sop_my_list');
+    const sig = JSON.stringify([d.me || {}, d.rows || []]);
+    if (auto && sig === MY_SIG) return;
+    MY_SIG = sig;
     ME = d.me || {}; MANAGE = !!ME.manage; MY = d.rows || [];
     paintHeader(); renderMy();
     if (manual) toast('List refreshed');
   } catch (e) {
+    if (auto) return;   // a failed background read keeps the list on screen
     paintHeader();
     $('main').innerHTML = '<div class="note bad">' + esc(e.message || e) + '</div>';
   }
@@ -1632,6 +1638,12 @@ function askLogout(){
   // A newly assigned SOP shows up without a refresh; never while one is open.
   // Not while Assign ticks are waiting to be saved either: the reload would redraw over them.
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !P && !ED && !A_PEND.size) reload(); });
+  // Data sync every 5 s for My SOPs (the Master is an editor: it keeps the read on open / on return to the tab).
+  // Never while an SOP is open or the search box has the cursor (the redraw would take the typing away).
+  setInterval(() => {
+    const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+    if (MODE !== 'master' && document.visibilityState === 'visible' && navigator.onLine !== false && !P && !ED && !typing) loadMy(false, true);
+  }, 5000);
 })();
 </script>
 <!-- Floating "← Apps" button (hidden inside the ERP iframe and without a session). -->

@@ -2021,7 +2021,8 @@ async function refresh(manual){ if (manual) toast('Refreshing…'); await loadLi
   // More than one step: which role now? (ROLE CHOOSER; every time the app is opened)
   if (S.can && !S.missing) chooseRole(false);
   // New bills show up on their own; never while a sheet is open, so nothing moves under the checker.
-  setInterval(() => { if (!LAYERS.length && document.visibilityState === 'visible') loadList(); }, 60000);
+  // data sync every 5 s (loadList itself skips a tick while the previous read is still running)
+  setInterval(() => { if (!LAYERS.length && document.visibilityState === 'visible' && navigator.onLine !== false) loadList(); }, 5000);
   document.addEventListener('visibilitychange', () => { if (!LAYERS.length && document.visibilityState === 'visible') loadList(); });
 })();
 </script>

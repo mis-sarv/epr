@@ -194,6 +194,10 @@
         #etBody td { border-top: 1px solid #e2e8f0; vertical-align: top; }
         #etBody td.et-hr { vertical-align: middle; background: #f8fafc; border-right: 1px solid #e2e8f0; }
         #etBody tr.et-free td { color: #94a3b8; }
+        .et-fq { display: inline-flex; align-items: center; gap: 6px; border-radius: 10px; border: 1px solid; padding: 6px 10px; font-size: 12px; font-weight: 800; }
+        .et-fq .n { font-size: 11px; opacity: .7; }
+        .et-fq[aria-pressed="false"] { background: #fff !important; color: #94a3b8 !important; border-color: #cbd5e1 !important; border-style: dashed; }
+        .et-fq[aria-pressed="false"] .lb { text-decoration: line-through; }
         @media (prefers-reduced-motion: reduce) { .et-tgl .dot, .et-tgl .dot::after, .et-tab { transition: none; } }
     </style>
 <!-- iOS motion / touch / speed layer (ios-ui.css + ios-ui.js): optional, only changes how the page moves and is touched -->
@@ -1363,10 +1367,14 @@
                         <button type="button" id="etNext" onclick="etStep(1)" title="Next employee (→)" aria-label="Next employee" class="et-nav"><i class="ph-bold ph-caret-right text-lg"></i></button>
                         <span id="etPos" class="text-xs font-extrabold text-slate-500 px-1"></span>
                         <div class="flex flex-wrap items-center gap-2 md:ml-auto">
-                            <button type="button" id="etEaBtn" onclick="etToggleEa()" aria-pressed="true" class="et-tgl"></button>
                             <button type="button" id="etFreeBtn" onclick="etToggleFree()" aria-pressed="false" title="Also list the hours between the first and the last task that have no task" class="et-tgl"></button>
                             <button type="button" id="etPdfBtn" onclick="etPdf()" class="inline-flex items-center gap-1.5 bg-slate-900 hover:bg-black text-white rounded-xl px-3.5 py-2 text-sm font-extrabold"><i class="ph-bold ph-file-pdf text-base"></i>Download PDF</button>
                         </div>
+                    </div>
+                    <!-- Frequency filter: tap a chip to hide / show that kind of task (etToggleKind). -->
+                    <div class="flex flex-wrap items-center gap-2 mb-4" role="group" aria-label="Show tasks by frequency">
+                        <span class="text-[11px] font-extrabold text-slate-500 uppercase tracking-wider mr-1">Show</span>
+                        <div id="etFreqBar" class="flex flex-wrap items-center gap-2"></div>
                     </div>
                     <div id="etHead" class="mb-4"></div>
                     <div class="overflow-x-auto rounded-2xl border border-slate-200 shadow-sm">
@@ -2062,6 +2070,37 @@
             const res = await loadData(appState.loadedFrom, appState.loadedTo);
             if (!res.ok) { tmErr(res, 'Could not reload'); return; }
             rerenderScreen();
+        }
+        /* DATA SYNC every 5 s: a task done / assigned on another phone shows up without a reload. Quiet like
+           pendDelayCheck (a failed read keeps the screen as it was), and only on the screens that just SHOW tasks:
+           forms (Add Task List, Score Master, Day Off ...) keep what is being typed, so they are left alone. Never
+           while a popup / camera / PIN box is open or a box has the cursor, and the screen is redrawn only when the
+           server's answer changed (the points that drop over time are liveTick's job). */
+        const TM_AUTO_SYNC_MS = 5000;
+        const TM_AUTO_SCREENS = ['home', 'employee-dashboard', 'employee-sheet', 'task-list', 'md-view', 'pc-followup'];
+        let tmAutoBusy = false, tmAutoSig = '';
+        function tmAutoBlocked_() {
+            if (document.visibilityState !== 'visible' || navigator.onLine === false || !window.innerWidth) return true;
+            if (!appState.dbReady || pendBeepTimer || TM_AUTO_SCREENS.indexOf(appState.currentScreen) < 0) return true;
+            const a = document.activeElement;
+            if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return true;
+            return [...document.querySelectorAll('.fixed.inset-0')].some(el => !el.classList.contains('hidden') && getComputedStyle(el).display !== 'none');
+        }
+        async function tmAutoSync() {
+            if (tmAutoBusy || tmAutoBlocked_()) return;
+            tmAutoBusy = true;
+            const keep = { ready: appState.dbReady, err: appState.dbError }, screen = appState.currentScreen;
+            try {
+                const res = await loadData(appState.loadedFrom, appState.loadedTo);
+                if (!res.ok) { appState.dbReady = keep.ready; appState.dbError = keep.err; return; }
+                const sig = JSON.stringify(res.data);
+                // the user may have opened a popup / another screen while the read was on its way
+                if (sig !== tmAutoSig && appState.currentScreen === screen && !tmAutoBlocked_()) {
+                    tmAutoSig = sig;
+                    const y = window.scrollY; rerenderScreen(); window.scrollTo(0, y);
+                }
+            } catch (e) { appState.dbReady = keep.ready; appState.dbError = keep.err; }
+            finally { tmAutoBusy = false; }
         }
         function rerenderScreen() {
             const s = appState.currentScreen;
@@ -3352,13 +3391,20 @@
            EA of an earlier day is history, not part of the plan; same "done"
            test as the due EA list). Personal (self) and switched-off tasks are
            never listed. Read only: it works on appState.employees as loaded,
-           so a save elsewhere shows here after the usual refresh. The view
-           choices (tab, EA, free hours, last employee) are kept per device in
-           localStorage 'tm_et_v1'. Download PDF = the same rows on A4, jsPDF +
-           autotable loaded on first use. */
-        const ET = { tab: 'tasks', code: '', ea: true, free: false, hi: 0, opts: [] };
-        try { const v = JSON.parse(localStorage.getItem('tm_et_v1') || '{}'); if (v.tab === 'list') ET.tab = 'list'; if (v.ea === false) ET.ea = false; if (v.free === true) ET.free = true; if (v.code) ET.code = String(v.code); } catch (e) {}
-        function etKeep() { try { localStorage.setItem('tm_et_v1', JSON.stringify({ tab: ET.tab, code: ET.code, ea: ET.ea, free: ET.free })); } catch (e) {} }
+           so a save elsewhere shows here after the usual refresh. Frequency
+           filter (the "Show" chips under the toolbar, EA Tasks among them):
+           each kind of ET_KINDS can be hidden / shown on its own; Live photo
+           is its own kind because those are daily rows of another sort. The
+           view choices (tab, hidden kinds, free hours, last employee) are kept
+           per device in localStorage 'tm_et_v1' (an older {ea:false} = EA
+           hidden). Download PDF = the same rows on A4 (it names the hidden
+           kinds), jsPDF + autotable loaded on first use. */
+        const ET_KINDS = [{ k: 'daily', label: 'Daily' }, { k: 'live', label: 'Live photo' }, { k: 'weekly', label: 'Weekly' }, { k: 'monthly', label: 'Monthly' }, { k: 'yearly', label: 'Yearly' }, { k: 'ea', label: 'EA Tasks' }];
+        const ET = { tab: 'tasks', code: '', hide: {}, free: false, hi: 0, opts: [] };
+        try { const v = JSON.parse(localStorage.getItem('tm_et_v1') || '{}'); if (v.tab === 'list') ET.tab = 'list'; if (v.ea === false) ET.hide.ea = true; if (Array.isArray(v.hide)) v.hide.forEach(k => { if (ET_KINDS.some(x => x.k === k)) ET.hide[k] = true; }); if (v.free === true) ET.free = true; if (v.code) ET.code = String(v.code); } catch (e) {}
+        function etKeep() { try { localStorage.setItem('tm_et_v1', JSON.stringify({ tab: ET.tab, code: ET.code, hide: Object.keys(ET.hide).filter(k => ET.hide[k]), free: ET.free })); } catch (e) {} }
+        function etKind(t) { if (t.live) return 'live'; const f = t.frequency || 'daily'; return ET_KINDS.some(x => x.k === f) ? f : 'daily'; }
+        function etKindCls(k) { return etFreqCls(k === 'live' ? { live: true } : { frequency: k }); }
         function etEmps() { return appState.employees.slice().sort((a, b) => String(a.empName || '').localeCompare(String(b.empName || ''), 'en', { sensitivity: 'base' }) || String(a.empCode).localeCompare(String(b.empCode))); }
         // The chosen one; else the logged-in user's own sheet; else the first by name.
         function etCur(all) { all = all || etEmps(); const me = appState.currentLoggedInEmp; return all.find(e => e.empCode === ET.code) || (me && all.find(e => e.empCode === me.empCode)) || all[0] || null; }
@@ -3371,21 +3417,36 @@
             if (t.live) return 'bg-violet-50 text-violet-700 border-violet-200';
             return ({ daily: 'bg-emerald-50 text-emerald-700 border-emerald-200', weekly: 'bg-sky-50 text-sky-700 border-sky-200', monthly: 'bg-amber-50 text-amber-700 border-amber-200', yearly: 'bg-rose-50 text-rose-700 border-rose-200', ea: 'bg-indigo-50 text-indigo-700 border-indigo-200' })[t.frequency || 'daily'] || 'bg-slate-50 text-slate-600 border-slate-200';
         }
-        // The rows, sorted by target time; eaOpen = the open EA tasks (counted even while hidden, for the button).
+        // The rows, sorted by target time. byKind = how many of each kind the employee has (hidden ones too, for the
+        // chips); hidden = how many the filter leaves out.
         function etRows(emp) {
-            const today = todayStr(), recs = emp.records || {};
-            let eaOpen = 0;
+            const today = todayStr(), recs = emp.records || {}, byKind = {};
+            let hidden = 0;
             const list = (emp.tasks || []).filter(t => t.active !== false && !t.isSelfTask && t.frequency !== 'self').filter(t => {
-                if (t.frequency !== 'ea') return true;
-                const r = recs[t.freqValue] && recs[t.freqValue][t.id];
-                const open = String(t.freqValue || '') >= today || !(r && r.checked);
-                if (open) eaOpen++;
-                return open && ET.ea;
+                if (t.frequency === 'ea') {
+                    const r = recs[t.freqValue] && recs[t.freqValue][t.id];
+                    if (!(String(t.freqValue || '') >= today || !(r && r.checked))) return false;   // a done EA of an earlier day
+                }
+                const k = etKind(t); byKind[k] = (byKind[k] || 0) + 1;
+                if (ET.hide[k]) { hidden++; return false; }
+                return true;
             }).map(t => { const p = parse12h(t.time); return { t, min: p ? p.h * 60 + p.m : null, h: p ? p.h : null }; });
             const fo = t => { const v = ET_FREQ_ORDER[t.frequency || 'daily']; return v == null ? 9 : v; };
             list.sort((a, b) => (a.min == null) - (b.min == null) || (a.min || 0) - (b.min || 0) || fo(a.t) - fo(b.t)
                 || String(a.t.freqValue || '').localeCompare(String(b.t.freqValue || '')) || String(a.t.desc || '').localeCompare(String(b.t.desc || ''), 'en', { sensitivity: 'base' }));
-            return { list, eaOpen };
+            return { list, byKind, hidden };
+        }
+        const etHiddenLabels = () => ET_KINDS.filter(x => ET.hide[x.k]).map(x => x.label);
+        // The "Show" chips: every kind this employee has, plus any kind hidden (so it can be shown again); Show all while any is hidden.
+        function etFreqBarPaint(r) {
+            const bar = document.getElementById('etFreqBar'); if (!bar) return;
+            const kinds = ET_KINDS.filter(x => r.byKind[x.k] || ET.hide[x.k]);
+            bar.innerHTML = (kinds.length ? kinds.map(x => {
+                const on = !ET.hide[x.k], n = r.byKind[x.k] || 0;
+                return '<button type="button" onclick="etToggleKind(\'' + x.k + '\')" aria-pressed="' + on + '" title="' + (on ? 'Hide' : 'Show') + ' the ' + esc(x.label) + (x.k === 'ea' ? ' (open ones and those planned from today)' : ' tasks') + '" class="et-fq ' + etKindCls(x.k) + '">'
+                    + '<i class="ph-bold ' + (on ? 'ph-eye' : 'ph-eye-slash') + '"></i><span class="lb">' + esc(x.label) + '</span><span class="n">' + n + '</span></button>';
+            }).join('') : '<span class="text-xs font-bold text-slate-400">No task</span>')
+                + (etHiddenLabels().length ? '<button type="button" onclick="etShowAllKinds()" class="text-xs font-extrabold text-sky-700 hover:underline px-1">Show all</button>' : '');
         }
         // Hour bands from the first task's hour to the last one's (free hours in between only when asked), then All day.
         function etGroups(list) {
@@ -3419,11 +3480,8 @@
             document.getElementById('etNext').disabled = i < 0 || i >= all.length - 1;
             document.getElementById('etPos').textContent = emp ? (i + 1) + ' of ' + all.length : '';
             document.getElementById('etPdfBtn').disabled = !emp;
-            const r = emp ? etRows(emp) : { list: [], eaOpen: 0 };
-            const eaBtn = document.getElementById('etEaBtn');
-            eaBtn.setAttribute('aria-pressed', ET.ea ? 'true' : 'false');
-            eaBtn.title = (ET.ea ? 'Hide' : 'Show') + ' the EA tasks (open ones and those planned from today)';
-            eaBtn.innerHTML = '<span class="dot"></span>EA Tasks: ' + (ET.ea ? 'Shown' : 'Hidden') + (r.eaOpen ? ' <span class="text-[11px] font-extrabold opacity-70">(' + r.eaOpen + ')</span>' : '');
+            const r = emp ? etRows(emp) : { list: [], byKind: {}, hidden: 0 };
+            etFreqBarPaint(r);
             const fBtn = document.getElementById('etFreeBtn');
             fBtn.setAttribute('aria-pressed', ET.free ? 'true' : 'false');
             fBtn.innerHTML = '<span class="dot"></span>Free hours';
@@ -3435,13 +3493,14 @@
                 + '<div class="flex flex-wrap gap-1.5 md:ml-auto">'
                 + chip(r.list.length + (r.list.length === 1 ? ' task' : ' tasks'), 'bg-slate-900 text-white border-slate-900')
                 + Object.keys(k.c).filter(n => k.c[n]).map(n => chip(esc(n) + ' ' + k.c[n], 'bg-white text-slate-600 border-slate-200')).join('')
-                + (!ET.ea && r.eaOpen ? chip('EA hidden ' + r.eaOpen, 'bg-white text-slate-400 border-dashed border-slate-300') : '')
+                + (r.hidden ? chip(r.hidden + ' hidden', 'bg-white text-slate-400 border-dashed border-slate-300') : '')
                 + (k.first ? chip('Day ' + esc(k.first) + (k.last !== k.first ? ' – ' + esc(k.last) : ''), 'bg-sky-100 text-sky-800 border-sky-200') : '')
                 + '</div></div>';
             const groups = etGroups(r.list);
             if (!groups.length) {
-                body.innerHTML = '<tr><td colspan="4" class="p-8 text-center"><div class="font-bold text-slate-400">No active task for ' + esc(emp.empName) + '.</div>'
-                    + (!ET.ea && r.eaOpen ? '<button type="button" onclick="etToggleEa()" class="mt-3 text-sm font-extrabold text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-xl px-3 py-2">Show ' + r.eaOpen + ' EA task' + (r.eaOpen > 1 ? 's' : '') + '</button>' : '')
+                body.innerHTML = '<tr><td colspan="4" class="p-8 text-center"><div class="font-bold text-slate-400">'
+                    + (r.hidden ? 'All ' + r.hidden + ' task' + (r.hidden > 1 ? 's' : '') + ' of ' + esc(emp.empName) + ' are hidden (' + esc(etHiddenLabels().join(', ')) + ').' : 'No active task for ' + esc(emp.empName) + '.') + '</div>'
+                    + (r.hidden ? '<button type="button" onclick="etShowAllKinds()" class="mt-3 text-sm font-extrabold text-sky-700 bg-sky-50 border border-sky-200 rounded-xl px-3 py-2">Show all tasks</button>' : '')
                     + '</td></tr>';
                 return;
             }
@@ -3458,7 +3517,8 @@
                 }).join('');
             }).join('');
         }
-        window.etToggleEa = function() { ET.ea = !ET.ea; etKeep(); etRender(); };
+        window.etToggleKind = function(k) { if (!ET_KINDS.some(x => x.k === k)) return; if (ET.hide[k]) delete ET.hide[k]; else ET.hide[k] = true; etKeep(); etRender(); };
+        window.etShowAllKinds = function() { ET.hide = {}; etKeep(); etRender(); };
         window.etToggleFree = function() { ET.free = !ET.free; etKeep(); etRender(); };
         window.etStep = function(d) {
             const all = etEmps(), cur = etCur(all), j = all.indexOf(cur) + d;
@@ -3542,7 +3602,8 @@
                 doc.text(P([emp.empCode, emp.dept, emp.desig].filter(Boolean).join('  |  ')), M, 26.5);
                 const sum = [r.list.length + (r.list.length === 1 ? ' task' : ' tasks')].concat(Object.keys(k.c).filter(n => k.c[n]).map(n => n + ' ' + k.c[n]))
                     .concat(k.first ? ['Day ' + k.first + (k.last !== k.first ? ' - ' + k.last : '')] : [])
-                    .concat([ET.ea ? 'EA tasks shown (open / from today)' : 'EA tasks hidden' + (r.eaOpen ? ' (' + r.eaOpen + ')' : '')]);
+                    .concat(r.hidden ? ['Hidden: ' + etHiddenLabels().join(', ') + ' (' + r.hidden + ')'] : [])
+                    .concat(!ET.hide.ea && r.byKind.ea ? ['EA = open / from today'] : []);
                 doc.setFontSize(8.5); doc.text(doc.splitTextToSize(P(sum.join('   |   ')), W - 2 * M), M, 31.5);
                 const body = []; let n = 0;
                 groups.forEach(g => {
@@ -5916,8 +5977,10 @@
             SQ.masters = m.data; SQ.items = new Map((m.data.items || []).map(i => [sqItemLabel(i), i]));
             return true;
         }
-        /* Issue from stock: the Item Master lines actually handed over (1 to 30, "+ Add item"), and separately how
-           much of the REQUEST this supplies (it is free text, so only that number moves its balance). */
+        /* Issue from stock: the Item Master lines actually handed over (1 to 30, "+ Add item"). There is no "Qty against
+           this request" box any more: the Store typed the items' total there (3 items = 3) while the server compares it with
+           the REQUEST's balance (free text, e.g. 1 set), so the save was refused. An issue now supplies the whole balance
+           (p_qty = r.balance) and the request counts as supplied. */
         window.sqIssue = async function(id) {
             const r = sqFind(id); if (!r) return sqBoot();
             if (!(await sqMasters())) return;
@@ -5927,8 +5990,6 @@
                 + `<div>${sqLbl('Items handed over (Item Master)')}<div id="sqIssLines" class="space-y-2"></div>`
                 + `<button type="button" onclick="sqIssAddLine()" class="mt-2 w-full py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50/50 text-amber-800 text-sm font-extrabold"><i class="ph-bold ph-plus"></i> Add item</button>`
                 + `<datalist id="sqIssItems">${[...SQ.items.keys()].map(k => `<option value="${esc(k)}"></option>`).join('')}</datalist></div>`
-                + `<div>${sqLbl('Qty against this request')}<input id="sqIssQty" type="number" min="0" step="any" inputmode="decimal" value="${esc(r.balance)}" class="${SQ_IN}">`
-                + `<div class="text-[11px] font-bold text-slate-400 mt-1">Balance ${esc(r.balance)}. When this reaches the balance the request counts as supplied.</div></div>`
                 + `<div>${sqLbl('Remarks')}<input id="sqIssRem" type="text" maxlength="500" class="${SQ_IN}"></div>`
                 + `<div>${sqLbl('Photo proof')}<label class="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 font-extrabold text-sm text-slate-700 cursor-pointer"><i class="ph-bold ph-camera text-lg"></i> Take photo<input type="file" accept="image/*" capture="environment" class="hidden" onchange="sqPickPhoto(this)"></label><div id="sqIssPrev"></div></div>`
                 + `<button id="sqIssBtn" onclick="sqIssueSave(${r.id})" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-xl">Save issue</button>`);
@@ -5961,8 +6022,9 @@
             if (!lines.length) return showCustomModal('Items', 'Add at least one item from the Item Master.', true);
             const badIt = lines.findIndex(l => !l.it); if (badIt >= 0) return showCustomModal('Items', 'Item ' + (badIt + 1) + ': choose it from the Item Master list.', true);
             const badQ = lines.findIndex(l => !(l.q > 0)); if (badQ >= 0) return showCustomModal('Items', 'Item ' + (badQ + 1) + ': enter a quantity more than 0.', true);
-            const qty = Number(document.getElementById('sqIssQty').value);
-            if (!(qty > 0)) return showCustomModal('Qty against the request', 'Enter how much of the request this supplies.', true);
+            // the whole balance of the request (the server still checks it against its own balance)
+            const r = sqFind(id), qty = r ? Number(r.balance) : 0;
+            if (!(qty > 0)) { sqClose(); sqBoot(); return showCustomModal('Not saved', 'This request has nothing left to supply. The list has been refreshed.', true); }
             if (!SQ.photo) return showCustomModal('Photo proof', 'Take the photo of the item being issued.', true);
             setBusy('sqIssBtn', true);
             const res = await tmRpc('scr_issue_save', { p_request_id: id, p_qty: qty, p_remarks: document.getElementById('sqIssRem').value.trim(), p_photo: SQ.photo,
@@ -6862,6 +6924,7 @@
                 else if (viaEa && appState.dbReady && can('TM_EA')) eaReturnFromTracker();
                 // Points on open cards drop in real time while a task is overdue.
                 setInterval(liveTick, 15000);
+                setInterval(tmAutoSync, TM_AUTO_SYNC_MS);
             } catch (e) {
                 appState.dbReady = false; appState.dbError = (e && e.message) || 'UNKNOWN';
                 navigate('home');

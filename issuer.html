@@ -565,7 +565,7 @@ document.addEventListener('keydown', e => {
   finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
   // New Issues show up on their own; never while one is open, so photos being taken are not disturbed.
   const idle = () => !$('reqOv').classList.contains('on') && document.visibilityState === 'visible';
-  setInterval(() => { if (idle()) load(); }, 30000);
+  setInterval(() => { if (idle() && navigator.onLine !== false) load(); }, 5000);   // data sync every 5 s
   document.addEventListener('visibilitychange', () => { if (idle()) load(); });
 })();
 </script>

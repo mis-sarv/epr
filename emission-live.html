@@ -205,8 +205,8 @@ const normParam = p => PARAM_ALIAS[String(p || '').trim().toUpperCase()] || Stri
 const DEFAULT_BANDS = { PM: { low: 25, high: 48, min_minutes: 1 } };
 
 /* ── Timing ───────────────────────────────────────────────────────── */
-const LIVE_EVERY_MS   = 10000;    // latest reading (the portal's own screen polls every 5 s)
-const STATUS_EVERY_MS = 60000;    // logger online / last received
+const LIVE_EVERY_MS   = 5000;     // latest reading (the portal's own screen polls every 5 s)
+const STATUS_EVERY_MS = 5000;     // logger online / last received
 const DELAY_MIN       = 15;       // no reading for this long → "Delayed"
 const OFFLINE_MIN     = 60;       // … for this long → "Offline"
 const MAX_DAYS        = 31;

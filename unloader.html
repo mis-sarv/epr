@@ -645,7 +645,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { if ($('pin
   finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
   // New submissions show up on their own; never while a request is open, so
   // photos being taken are not disturbed.
-  setInterval(() => { if (!OPEN && !GOPEN && document.visibilityState === 'visible') load(); }, 30000);
+  setInterval(() => { if (!OPEN && !GOPEN && document.visibilityState === 'visible' && navigator.onLine !== false) load(); }, 5000);   // data sync every 5 s
   document.addEventListener('visibilitychange', () => { if (!OPEN && !GOPEN && document.visibilityState === 'visible') load(); });
 })();
 </script>

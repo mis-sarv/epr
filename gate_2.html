@@ -182,6 +182,8 @@
                         </button>
                     </div>
                     <p id="liveClockSub" class="text-[11px] font-medium text-gray-500 truncate">Loading time...</p>
+                    <!-- the register's last good sync with the server (auto every 5 s, gateRegUi) -->
+                    <p id="gateLastSync" class="text-[10px] font-bold text-gray-400 truncate" title="Last sync with the server">Last sync: -</p>
                 </div>
             </div>
 
@@ -2311,10 +2313,12 @@
             gateSync(false);
             visLoadHosts();
             clearInterval(gateRegTimer);
-            gateRegTimer = setInterval(() => gateSync(false), GATE_REG_REFRESH_MS);
+            gateRegTimer = setInterval(gateAutoTick, GATE_REG_REFRESH_MS);
             if (!gateStart._online) {
                 gateStart._online = true;
                 window.addEventListener('online', () => { GATE_OFFLINE = false; gateLoadMasters(false); gateSync(false); });
+                // back on the screen (phone unlocked / tab shown): sync at once instead of waiting for the next tick
+                document.addEventListener('visibilitychange', () => { if (!document.hidden) gateAutoTick(); });
             }
         }
 
@@ -2497,7 +2501,8 @@
         /* The register is kept on the phone first (the gate must work with no net) and mirrored to the server:
              - every entry has a uid; one that is new or changed is marked _dirty (with _rev counting the changes)
                and pushed by gate_entry_save, which is an upsert on uid, so a retry never makes a duplicate;
-             - every few minutes, on "Sync now" and when the net comes back, the phone also PULLS what other
+             - every 5 seconds (gateAutoTick, only while the page is on screen), right after an approval arrives, on
+               "Sync now" and when the net comes back, the phone also PULLS what other
                phones / guards saved (gate_entries_list, from a cursor), so a Dharam Kanta slip made on one phone
                is found on another;
              - photos go with the push, and after GATE_TRIM_DAYS the copy on the phone is dropped (they stay on the
@@ -2508,10 +2513,12 @@
         const GATE_PHOTO_FIELDS = ['billPhoto', 'itemPhoto', 'passPhoto', 'visitorPhoto', 'vehiclePhoto', 'inwardPhoto', 'stopPhoto', 'outPhoto'];
         const GATE_CURSOR_KEY = 'gate2_cursor_v1', GATE_DELQ_KEY = 'gate2_delq_v1';
         const GATE_TRIM_DAYS = 3;
-        const GATE_REG_REFRESH_MS = 3 * 60 * 1000;
+        // Auto sync every 5 s: the pull reads only what changed since the cursor, so a tick with nothing new is one small call
+        const GATE_REG_REFRESH_MS = 5 * 1000;
+        const GATE_LAST_SYNC_KEY = 'gate2_last_sync_v1';   // the last good sync, shown in the header (also after a reload / offline)
         let gateDeleteQueue = readLS(GATE_DELQ_KEY, []);
         if (!Array.isArray(gateDeleteQueue)) gateDeleteQueue = [];
-        let gateRegState_ = { state: 'idle', at: null, err: '' }, gateRegBusy = false, gateRegSoonTimer = null, gateRegTimer = null;
+        let gateRegState_ = { state: 'idle', at: readLS(GATE_LAST_SYNC_KEY, null), err: '' }, gateRegBusy = false, gateRegSoonTimer = null, gateRegTimer = null;
         const GATE_PHOTO_CACHE = {};   // uid -> { field: dataUrl, _loaded: true } fetched from the server (memory only)
         const GATE_PHOTO_INFLIGHT = {}; // uid -> the call on its way
 
@@ -2542,8 +2549,22 @@
         const gatePendingCount = () => gateEntries.filter(e => e._dirty).length + gateDeleteQueue.length;
         function gateSyncSoon() {
             clearTimeout(gateRegSoonTimer);
-            gateRegSoonTimer = setTimeout(() => gateSync(false), 1500);
+            gateRegSoonTimer = setTimeout(() => gateSync(false), 400);
             gateRegUi();
+        }
+        // The 5-second tick: send / pull the register, then ask for the decisions of the entries still waiting.
+        // Skipped while the page is hidden (screen off / another app); visibilitychange runs it again on return.
+        async function gateAutoTick() {
+            if (document.hidden) return;
+            await gateSync(false);
+            await visPollNow(false);
+        }
+        // "10:42:15 am" today, "23 Nov, 10:42:15 am" on an older day
+        function gateSyncStamp(iso) {
+            const d = iso ? new Date(iso) : null;
+            if (!d || isNaN(d.getTime())) return '-';
+            const t = d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+            return d.toDateString() === new Date().toDateString() ? t : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', ' + t;
         }
 
         function gateRegUi() {
@@ -2552,8 +2573,16 @@
             const n = gatePendingCount(), st = gateRegState_.state;
             const badge = document.getElementById('gatePendingBadge'), txt = document.getElementById('gateRegText');
             if (badge) { badge.textContent = n; badge.classList.toggle('hidden', !n); }
+            const when = gateRegState_.at ? gateSyncStamp(gateRegState_.at) : '';
+            // header line: the time stays steady while a sync runs (no flicker every 5 s); the colour tells the state
+            const ls = document.getElementById('gateLastSync');
+            if (ls) {
+                const bad = st === 'offline' || st === 'error' || st === 'nomig';
+                ls.textContent = (st === 'offline' ? 'Offline · ' : st === 'error' || st === 'nomig' ? 'Sync problem · ' : '') + 'Last sync: ' + (when || '-') + (n ? ' · ' + n + ' waiting' : '');
+                ls.className = 'text-[10px] font-bold truncate ' + (bad ? 'text-red-600' : n ? 'text-amber-600' : when ? 'text-emerald-600' : 'text-gray-400');
+                ls.title = st === 'error' ? 'Sync problem: ' + gateRegState_.err : 'Last sync with the server (auto every 5 seconds)';
+            }
             if (!txt) return;
-            const when = gateRegState_.at ? formatDateTimeShort(gateRegState_.at) : '';
             txt.textContent = st === 'syncing' ? 'Syncing...'
                 : st === 'nomig' ? 'Server needs GATE2_REGISTER_MIGRATION.sql (Admin). ' + n + ' waiting on this phone'
                 : st === 'offline' ? 'Offline. ' + n + ' waiting on this phone' + (when ? ' · last sync ' + when : '')
@@ -2621,6 +2650,7 @@
                 : fatal === 'NO_MIGRATION' ? { state: 'nomig', at: gateRegState_.at, err: '' }
                 : fatal ? { state: 'error', at: gateRegState_.at, err: fatal.replace(/^ERR:/, '') }
                 : { state: 'ok', at: new Date().toISOString(), err: '' };
+            if (gateRegState_.state === 'ok') writeLS(GATE_LAST_SYNC_KEY, gateRegState_.at);
             gateRegUi();
             if (changed) gateRefreshViews();
             if (manual) showIosBanner(gateRegState_.state === 'ok' ? 'Register synced' : gateRegState_.state === 'offline' ? 'No internet: will sync later' : gateRegState_.state === 'nomig' ? 'Server needs GATE2_REGISTER_MIGRATION.sql' : 'Sync problem: ' + gateRegState_.err, gateRegState_.state === 'ok' ? 'success' : 'error');
@@ -2635,9 +2665,12 @@
                 if (gateDeleteQueue.some(d => d.uid === uid)) return;
                 const data = x.data || {};
                 if (local) {
+                    // the 5-second pull may bring the host's decision before the approval poll does: say so here too
+                    const was = visAprStatus(local);
                     // a row changed here and not sent yet keeps its own data, but the approval belongs to the server
-                    if (local._dirty) { if (data.visApproval) { local.visApproval = data.visApproval; local.photoKeys = x.photoKeys || local.photoKeys; changed = true; } return; }
+                    if (local._dirty) { if (data.visApproval) { local.visApproval = data.visApproval; local.photoKeys = x.photoKeys || local.photoKeys; changed = true; visDecisionNote(local, was); } return; }
                     Object.assign(local, data); local.photoKeys = x.photoKeys || []; local._syncedAt = x.updatedAt; changed = true;
+                    visDecisionNote(local, was);
                 } else {
                     gateEntries.push(Object.assign({}, data, { uid, photoKeys: x.photoKeys || [], _syncedAt: x.updatedAt })); changed = true;
                 }
@@ -4558,11 +4591,10 @@
            approves it on the launcher with his own PIN (or rejects with a reason) -> his ERP signature comes back as the
            photo 'hostSign' and prints on the Digital Visitor Pass -> here the guard prints the pass and presses Done ->
            Existing Visitor -> Out with an out photo + remarks.
-           The decision (entry.visApproval) is SERVER-OWNED: it comes with the normal sync (gate_entries_list) and, while
-           Approval Pending is open, from a quick poll (gate_vis_status). The guard's own steps (visDoneAt, Out) are
+           The decision (entry.visApproval) is SERVER-OWNED: it comes with the normal sync (gate_entries_list) and from the
+           approval poll (gate_vis_status), both every 5 s (gateAutoTick); a decision triggers a full sync at once. The guard's own steps (visDoneAt, Out) are
            ordinary entry fields. Visitors from before this flow (no needApproval) are treated as already done. */
         const VIS_HOSTS_KEY = 'gate2_vis_hosts_v1';
-        const VIS_POLL_MS = 15000;
         const VIS_OUT_DAYS = 2;                   // Existing Visitor › Out shows the last 2 days
         let VIS_HOSTS = readLS(VIS_HOSTS_KEY, null);
         let VIS_NOMIG = false, visPollTimer = null, visPollBusy = false, VIS_EXIST_TAB = 'in', VIS_OUT_ID = null;
@@ -4604,8 +4636,15 @@
             }));
         }
 
-        // ── fast poll while Approval Pending is open ──
-        function visPollStart() { visPollStop(); visPollNow(false); visPollTimer = setInterval(() => visPollNow(false), VIS_POLL_MS); }
+        // A decision just arrived (PENDING -> APPROVED / REJECTED): banner once. Returns true when it did.
+        function visDecisionNote(e, was) {
+            const apr = visApr(e) || {};
+            if (was !== 'PENDING' || (apr.status !== 'APPROVED' && apr.status !== 'REJECTED')) return false;
+            showIosBanner(`${e.name}: ${apr.status === 'APPROVED' ? 'approved' : 'rejected'} by ${apr.decidedBy || apr.host}`, apr.status === 'APPROVED' ? 'success' : 'error');
+            return true;
+        }
+        // ── approval poll: gateAutoTick runs it every 5 s on every screen; opening Approval Pending checks at once ──
+        function visPollStart() { visPollStop(); visPollNow(false); }
         function visPollStop() { clearInterval(visPollTimer); visPollTimer = null; }
         async function visPollNow(manual) {
             if (visPollBusy) return;
@@ -4620,7 +4659,7 @@
             visPollBusy = false; icons.forEach(i => i.classList.remove('fa-spin'));
             if (!r.ok) { if (r.error === 'NO_MIGRATION') { VIS_NOMIG = true; renderVisitorPending(); renderHydraPending(); renderSamplePending(); renderInwardPending(); renderDispatchPending(); } return; }
             VIS_NOMIG = false;
-            let changed = false;
+            let changed = false, decided = false;
             const rows = r.data.rows || {};
             gateEntries.forEach(e => {
                 const a = rows[e.uid]; if (!a) return;
@@ -4629,10 +4668,11 @@
                 if (JSON.stringify(apr) !== JSON.stringify(e.visApproval || null)) { e.visApproval = apr; changed = true; }
                 if (isHydra(e) || isSample(e) || isInward(e)) HYD_NOSRV = false;
                 if (Array.isArray(photoKeys) && photoKeys.join(',') !== (e.photoKeys || []).join(',')) { e.photoKeys = photoKeys; changed = true; }
-                if (was === 'PENDING' && apr.status === 'APPROVED') showIosBanner(`${e.name}: approved by ${apr.decidedBy || apr.host}`, 'success');
-                if (was === 'PENDING' && apr.status === 'REJECTED') showIosBanner(`${e.name}: rejected by ${apr.decidedBy || apr.host}`, 'error');
+                if (visDecisionNote(e, was)) decided = true;
             });
             if (changed) { saveEntries(); visRefreshUi(); }
+            // approval done: sync the whole register at once (the entry, the host's signature photo, other phones' changes)
+            if (decided) gateSyncSoon();
         }
 
         // ── badges + whichever visitor list is open ──
@@ -6755,6 +6795,7 @@
             const o = SarvQR.parse(text);
             if (!o) return;
             if (o.t === 'PKS') return gateScanPackingSlip(o);
+            if (o.t === 'TB') return gateScanTempoBill(o);
             if (o.t === 'OUT') return gateScanStoreOut(o);
             if (o.t === 'IN') return gateScanInward(o);
             if (o.t === 'GATE') return gateScanGateEntry(o.id);
@@ -6858,6 +6899,32 @@
                 showView('outwardDispatchForm');
                 dispScanSet(o);
             }
+        }
+
+        /* Packing › Tempo-Bill (saved, printed with this QR: t TB, no, veh, d, dk = its Dharam Kanta slips, n / pk / wt / fr):
+           the tempo's Dispatch Packing entries are found by those DK slips ("DK: <slip>" in their host). One still IN ->
+           its pass (Mark Out from there); all out -> the newest one's pass + a note; none yet -> what to do next.
+           Slips of the other gate (G1- = Gate-1) belong to that gate. */
+        function gateScanTempoBill(o) {
+            const no = String(o.no || '').trim(), veh = String(o.veh || '').toUpperCase();
+            const dks = String(o.dk || '').split(',').map(s => s.trim()).filter(Boolean);
+            const isG1 = s => /^G1-/i.test(s), mine = s => GATE_ID === 'G1' ? isG1(s) : !isG1(s);
+            const info = `Tempo-Bill ${no} · ${veh}` + (o.n ? ` · ${o.n} slip(s)` : '') + (o.wt ? ` · ${o.wt} Kg` : '');
+            if (dks.length && !dks.some(mine)) { showIosBanner(`${info}: its Dharam Kanta slips are of ${GATE_OTHER_NAME} (${GATE_OTHER_UNIT}).`, 'error'); return; }
+            const keys = new Set(dks.map(normKey));
+            const dkOf = e => { const m = /DK: ([^ |]+)/.exec(e.host || ''); return m ? normKey(m[1]) : ''; };
+            const disp = gateEntries.filter(e => e.category === 'DISPATCH PACKING' && keys.has(dkOf(e)))
+                .sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            const inside = disp.find(e => e.status === 'IN');
+            if (inside) { openPassModal(inside.id); showIosBanner(`${info}: Dispatch ${inside.id} is inside. Mark Out when it leaves.`, 'success'); return; }
+            if (disp.length) { openPassModal(disp[0].id); showIosBanner(`${info}: already out (${disp[0].id}).`, 'info'); return; }
+            const k = dkVehKey(veh), dk = k ? dkAwaitingDispatch().find(d => dkVehKey(d.vehicle) === k) : null;
+            if (dk) {
+                showView('outwardDispatchForm'); selectDispatchDkChip(dk.id);
+                showIosBanner(`${info}: no Dispatch Packing entry yet. Dharam Kanta ${dk.id} picked: weigh the Gross + take the photo.`, 'info');
+                return;
+            }
+            showIosBanner(`${info}: no Dispatch Packing entry for ${dks.join(', ') || 'its Dharam Kanta slip'} on this phone. Sync and scan again.`, 'error');
         }
 
         // Store Outward Receiver Copy -> Out From Store with the pass chosen
@@ -7182,7 +7249,7 @@
         }
     </script>
     <!-- Between Gate-1 and Gate-2 (unit transfer, visitor moving units, vehicle cross-check): shared by both gates -->
-    <script src="gate-link.js?v=20261121e"></script>
+    <script src="gate-link.js?v=20261124a"></script>
     <script src="app-back.js"></script>
 </body>
 </html>

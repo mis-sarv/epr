@@ -2440,7 +2440,7 @@ async function saveData(){
    The table is NOT redrawn while the cursor is in a box (it would throw away the
    typing / the open item list): the redraw waits until the box is left
    (_autoPending). The banner's ⟳ Refresh (loud: toasts) stays for "update now". */
-const AUTO_STORE_MS=60000;
+const AUTO_STORE_MS=5000;   // data sync every 5 s
 let _autoBusy=false, _autoPending=false;
 function editingNow_(){
   const a=document.activeElement;

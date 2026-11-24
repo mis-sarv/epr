@@ -1285,10 +1285,16 @@ function editEvents(pr, add, q) {
 }
 
 /* ── Load / boot ──────────────────────────────────────────────────────── */
-async function load(showSkel) {
+let LOAD_SIG = '';
+// auto = the 5-second data sync: silent, and the list is redrawn only when something changed
+async function load(showSkel, auto) {
   if (showSkel) $('list').innerHTML = '<div class="skel"></div><div class="skel"></div>';
   const res = await rpc('mr_my_requests');
+  if (auto && !res.ok) return;   // a failed background read keeps the list on screen
   if (!res.ok) { $('banner').innerHTML = `<div class="note n-bad">${errText(res)}</div>`; $('list').innerHTML = ''; $('tabs').innerHTML = ''; return; }
+  const sig = JSON.stringify(res.data);
+  if (auto && sig === LOAD_SIG) return;
+  LOAD_SIG = sig;
   $('banner').innerHTML = '';
   DATA = res.data.requests || [];
   ME = res.data.me || null;
@@ -1308,6 +1314,17 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') { ['msgSheet
     // A link with #PR/26-27/814 opens that request straight away.
     const h = decodeURIComponent(location.hash.slice(1)); if (h && DATA.some(p => p.reqNo === h)) openDetail(h);
   } finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  /* Data sync every 5 s. Never while a request / the PR form / a sheet is open or a box has the cursor:
+     load() clears the Field Boy choices (FBDEC) and redraws the list, which would undo what is being done. */
+  let autoBusy = false;
+  setInterval(async () => {
+    const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
+    if (autoBusy || document.visibilityState !== 'visible' || navigator.onLine === false || typing
+      || document.querySelector('.panel.open, .sheet.open')) return;
+    autoBusy = true;
+    try { await load(false, true); } catch (e) { } finally { autoBusy = false; }
+  }, 5000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !document.querySelector('.panel.open, .sheet.open')) load(false, true).catch(() => {}); });
 })();
 </script>
 <!-- Floating "← Apps" button (hidden inside iframes / without a session). See app-back.js. -->

@@ -357,6 +357,17 @@
         .tb-wt .v { font-size: 15px; font-weight: 800; color: #0f172a; }
         .tb-wt .ok { background: #f0fdf4; border-color: #86efac; } .tb-wt .ok .v { color: #15803d; }
         .tb-wt .bad { background: #fffbeb; border-color: #fcd34d; } .tb-wt .bad .v { color: #b45309; }
+        /* the tempo picker (tempos weighed at the Dharam Kanta, bill not saved yet) */
+        .tb-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; margin-top: 10px; }
+        .tb-pick button { text-align: left; background: #fff; border: 1.5px solid var(--border); border-radius: 12px; padding: 9px 11px; cursor: pointer; font: inherit; color: inherit; }
+        .tb-pick button:hover { border-color: #94a3b8; }
+        .tb-pick button.on { border-color: #0f766e; background: #f0fdfa; box-shadow: 0 0 0 2px #99f6e4; }
+        .tb-pick .veh { font-family: ui-monospace, Consolas, monospace; font-weight: 800; font-size: 15px; color: #0f172a; }
+        .tb-pick .sub { font-size: 11.5px; color: #475569; font-weight: 600; line-height: 1.45; }
+        .tb-pill { display: inline-block; margin-top: 4px; font-size: 10px; font-weight: 800; padding: 2px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
+        .tb-pill.ok { background: #dcfce7; color: #166534; }
+        .tb-pill.wait { background: #fef3c7; color: #92400e; }
+        .tb-pill.none { background: #f1f5f9; color: #475569; }
         .tb-sum { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
         .tb-sum span { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px 9px; font-size: 12px; font-weight: 700; color: #334155; }
         .fr-filters .form-group { margin-bottom: 0; flex: 1; min-width: 130px; }
@@ -1441,26 +1452,47 @@
     <div id="fr-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and press Generate Report.</p></div>
 </div>
 
-<!-- Tempo-Bill Panel (Admin / MD / Packing Incharge; TEMPO BILL section, sql/PACKING_TEMPO_BILL_MIGRATION.sql):
-     one bill per Dharam Kanta trip of a tempo = the packing slips loaded between the gate's Tare
-     weighing and its Dispatch Packing entry, priced with Settings › Freight Rates; under it Tare +
-     loaded weight vs the Gross weighed at the gate. Read only; computed in the page. -->
+<!-- Tempo-Bill Panel (Admin / MD / Packing Incharge; TEMPO BILL section, sql/PACKING_TEMPO_BILL_MIGRATION.sql +
+     PACKING_TEMPO_BILL_PER_TRIP_MIGRATION.sql): one bill per Dharam Kanta TRIP (the packing slips loaded between
+     the gate's Tare weighing and its Dispatch Packing entry), priced with Settings › Freight Rates; under it Tare +
+     loaded weight vs the Gross weighed at the gate. A trip saves its bill by itself once the Kanta Gross is weighed
+     and the trip is closed (TEMPO BILL AUTO SAVE).
+     Top: every Dharam Kanta trip (Gate-1 / Gate-2) of the last days whose bill is NOT saved yet; pick ONE, its
+     bill opens under the list (Save by hand too). Bottom: the SAVED Tempo-Bills only,
+     filtered by date (and tempo), printed from what was saved. -->
 <div class="container" id="tempo-bill-panel">
     <div class="card">
-        <div class="card-title">Tempo-Bill · Dharam Kanta trip-wise</div>
+        <div class="card-title">Tempo-Bill · Dharam Kanta trips not billed yet</div>
+        <p class="pm-hint" style="margin:0 0 8px;">Each trip saves its Tempo-Bill by itself once the gate weighs the Kanta Gross and the trip is closed (30 min after the Dispatch Packing entry, or the next Dharam Kanta slip of the tempo).</p>
+        <div class="fr-filters">
+            <div class="form-group"><label>Weighed in the last</label>
+                <select id="tb-pick-days" onchange="tbLoadPick()">
+                    <option value="3">3 days</option><option value="7" selected>7 days</option><option value="15">15 days</option><option value="30">30 days</option>
+                </select></div>
+            <div class="form-group fr-grow"><label>Search tempo</label><input type="text" id="tb-pick-q" autocomplete="off" placeholder="Tempo No" oninput="this.value=this.value.toUpperCase();tbPaintPick()"></div>
+        </div>
+        <div class="fr-actions">
+            <button type="button" class="fr-btn" id="tb-pick-btn" onclick="tbLoadPick()">Refresh list</button>
+        </div>
+        <div id="tb-banner"></div>
+        <div id="tb-pick"><p style="text-align:center;color:var(--text-muted);padding:14px;">Loading the Dharam Kanta trips...</p></div>
+    </div>
+    <div id="tb-bill"></div>
+
+    <div class="card" style="margin-top:16px;">
+        <div class="card-title">Saved Tempo-Bills</div>
         <div class="fr-filters">
             <div class="form-group"><label>From</label><input type="date" id="tb-from"></div>
             <div class="form-group"><label>To</label><input type="date" id="tb-to"></div>
             <div class="form-group fr-grow"><label>Tempo No (empty = all)</label><input type="text" id="tb-tempo" list="dl-tempo" autocomplete="off" placeholder="All tempos" oninput="this.value=this.value.toUpperCase();"></div>
         </div>
         <div class="fr-actions">
-            <button type="button" class="fr-btn" id="tb-run-btn" onclick="tbRun()">Generate Tempo-Bill</button>
-            <button type="button" class="fr-btn ghost" onclick="tbPrint()">Print / PDF</button>
+            <button type="button" class="fr-btn" id="tb-run-btn" onclick="tbLoadSavedList()">Show saved bills</button>
+            <button type="button" class="fr-btn ghost" onclick="tbPrint()">Print list</button>
             <button type="button" class="fr-btn ghost" onclick="tbCsv()">CSV</button>
         </div>
-        <div id="tb-banner"></div>
     </div>
-    <div id="tb-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates (and a tempo) and press Generate Tempo-Bill.</p></div>
+    <div id="tb-out"><p style="text-align:center;color:var(--text-muted);padding:20px;">Choose the dates and press Show saved bills.</p></div>
 </div>
 
 <!-- Party Master Panel — packing.party_master (sql/PACKING_PARTY_MASTER_MIGRATION.sql
@@ -4198,6 +4230,7 @@ function enterApp() {
     }
 
     showPackingForm();
+    tbAutoStart();   // TEMPO BILL AUTO SAVE (Admin / MD / Packing Incharge only)
 }
 
 function showPackingForm() {
@@ -4849,11 +4882,11 @@ function startSlipNumberSync() {
     // Initial fetch immediately (full load — brands, vehicles, etc.)
     fetchSlipNumber(true);
 
-    // Poll every 60 seconds (reduces server load + session validation calls)
+    // Poll every 5 seconds (data sync every 5 s); paused while this user saves / the tab is hidden
     slipSyncInterval = setInterval(function () {
-        if (slipSyncPaused || document.hidden) return;
+        if (slipSyncPaused || document.hidden || navigator.onLine === false) return;
         fetchSlipNumber(false);
-    }, 60000);
+    }, 5000);
 
     // Register visibilitychange listener ONCE (prevents leak on repeated calls)
     if (!visibilityListenerAdded) {
@@ -13963,11 +13996,18 @@ async function skDeleteCount(id) {
 // Dispatch To + item type; inside one trip that is the same). No rate row = '-'.
 // Under it: Tare (the trip's Dharam Kanta slip) + loaded weight = Expected
 // Gross vs the Kanta Gross of the Dispatch Packing entry; within TB_TOL Kg =
-// green. Packing slips of the range that fall in no trip are listed at the end,
-// so none disappears. Nothing here writes anything.
+// green. Packing slips of the range that fall in no trip are listed under the
+// tempo list, so none disappears.
+// SCREEN (2026-11-24): top = every Dharam Kanta trip (Gate-1 / Gate-2,
+// pk_tempo_trips) of the last 3 / 7 / 15 / 30 days whose bill is NOT saved yet
+// (tbLoadPick / tbPaintPick); pick ONE (tbPick) and its bill opens under the
+// list with Save Tempo-Bill No. (tbSaveDay). ONE BILL PER TRIP, saved by itself
+// when the trip is closed (TEMPO BILL AUTO SAVE, tbAutoRun_). Bottom = the SAVED
+// Tempo-Bills only, by date range (+ tempo), from list_tempo_bills
+// (tbLoadSavedList). Print bill = the saved snapshot + a gate QR (tbQrHtml_).
 // ══════════════════════════════════════════════════════════════════════
 var TB_GRACE_MIN = 30, TB_TOL = 25;
-var _tb = { report: null };
+var _tb = { report: null, pickKey: '', list: null, savedByKey: {} };
 function tbToken_() { try { return localStorage.getItem(SARV_SSO_KEY) || ''; } catch (e) { return ''; } }
 function tbWhen_(iso) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
 function tbKg_(n) { return n === null || n === undefined || !isFinite(Number(n)) ? '-' : frNum(n) + ' Kg'; }
@@ -13982,6 +14022,10 @@ async function showTempoBillPanel() {
     var f = document.getElementById('tb-from'), t = document.getElementById('tb-to');
     if (!t.value) t.value = frDateInput(new Date());
     if (!f.value) { var d = new Date(); d.setDate(d.getDate() - 6); f.value = frDateInput(d); }
+    // the QR encoder is loaded now, so Print bill can draw the gate QR at once (window.open must stay in the click)
+    if (window.SarvQR && SarvQR.ready) SarvQR.ready();
+    tbLoadPick();
+    tbLoadSavedList(true);
 }
 // The trips of the range (server: the gate register)
 async function tbTrips_(from, to, tempo) {
@@ -14007,45 +14051,114 @@ async function tbSlips_(fromIso, toIso, from, to) {
     await pull(function () { return supabaseClient.from('packing_slips').select(cols).gte('slip_date', from).lte('slip_date', to).order('slip_date'); });
     return Object.keys(byId).map(function (k) { return byId[k]; });
 }
-async function tbRun() {
-    var from = document.getElementById('tb-from').value, to = document.getElementById('tb-to').value;
-    var tempo = String(document.getElementById('tb-tempo').value || '').trim().toUpperCase();
-    var out = document.getElementById('tb-out'), btn = document.getElementById('tb-run-btn'), ban = document.getElementById('tb-banner');
-    if (!from || !to) { alert('Choose both dates.'); return; }
-    if (from > to) { var tmp = from; from = to; to = tmp; document.getElementById('tb-from').value = from; document.getElementById('tb-to').value = to; }
-    btn.disabled = true; btn.textContent = 'Generating...'; ban.innerHTML = '';
-    out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Reading the Dharam Kanta trips and packing slips...</p>';
+// Trips + slips + rates of a date range → the report (tbCompute). Throws with a readable message.
+async function tbBuild_(from, to, tempo) {
+    var trips;
+    try { trips = await tbTrips_(from, to, tempo); }
+    catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        if (/pk_tempo_trips|schema cache|PGRST202|42883|Could not find the function/i.test(m))
+            throw new Error('The Tempo-Bill needs sql/PACKING_TEMPO_BILL_MIGRATION.sql (Admin, in the Supabase SQL Editor).');
+        throw e;
+    }
+    await frLoadRates();
+    var now = Date.now(), minT = null, maxT = null;
+    trips.forEach(function (t) {
+        var st = Date.parse(t.inTime) || 0, nx = t.nextAt ? Date.parse(t.nextAt) : null;
+        var end = t.dispatch && t.dispatch.at ? Date.parse(t.dispatch.at) + TB_GRACE_MIN * 60000 : now;
+        if (nx !== null && nx < end) end = nx;
+        t._k = frVehKey(t.vehicle); t._start = st; t._end = end;
+        if (minT === null || st < minT) minT = st;
+        if (maxT === null || end > maxT) maxT = end;
+    });
+    var slips = await tbSlips_(minT ? new Date(minT).toISOString() : null, maxT ? new Date(maxT + 1000).toISOString() : null, from, to);
+    var items = slips.length ? await pkSelectIn('packing_slip_items', 'id, slip_id, quality, item_type, pcs, weight', 'slip_id', slips.map(function (x) { return x.id; })) : [];
+    var rep = tbCompute(trips, slips, items, _fr.rates, { from: from, to: to, tempo: tempo });
+    rep.meta = { from: from, to: to, tempo: tempo, at: new Date(), by: (session && (session.fullName || session.username)) || '', ratesFromDb: _fr.ratesFromDb };
+    return rep;
+}
+// ── TOP: the tempos weighed at the Dharam Kanta whose bill is not saved yet ──
+var tbPickBusy = false;
+async function tbLoadPick() {
+    if (tbPickBusy) return;
+    tbPickBusy = true;
+    var btn = document.getElementById('tb-pick-btn'), box = document.getElementById('tb-pick'), ban = document.getElementById('tb-banner');
+    var days = Number((document.getElementById('tb-pick-days') || {}).value) || 7, d = new Date();
+    var to = frDateInput(d); d.setDate(d.getDate() - (days - 1)); var from = frDateInput(d);
+    btn.disabled = true; btn.textContent = 'Reading...';
+    if (!_tb.report) box.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:14px;">Reading the Dharam Kanta trips and packing slips...</p>';
     try {
-        var trips;
-        try { trips = await tbTrips_(from, to, tempo); }
-        catch (e) {
-            var m = String((e && (e.message || e.details)) || e);
-            if (/pk_tempo_trips|schema cache|PGRST202|42883|Could not find the function/i.test(m))
-                throw new Error('The Tempo-Bill needs sql/PACKING_TEMPO_BILL_MIGRATION.sql (Admin, in the Supabase SQL Editor).');
-            throw e;
-        }
-        await frLoadRates();
-        var now = Date.now(), minT = null, maxT = null;
-        trips.forEach(function (t) {
-            var st = Date.parse(t.inTime) || 0, nx = t.nextAt ? Date.parse(t.nextAt) : null;
-            var end = t.dispatch && t.dispatch.at ? Date.parse(t.dispatch.at) + TB_GRACE_MIN * 60000 : now;
-            if (nx !== null && nx < end) end = nx;
-            t._k = frVehKey(t.vehicle); t._start = st; t._end = end;
-            if (minT === null || st < minT) minT = st;
-            if (maxT === null || end > maxT) maxT = end;
-        });
-        var slips = await tbSlips_(minT ? new Date(minT).toISOString() : null, maxT ? new Date(maxT + 1000).toISOString() : null, from, to);
-        var items = slips.length ? await pkSelectIn('packing_slip_items', 'id, slip_id, quality, item_type, pcs, weight', 'slip_id', slips.map(function (x) { return x.id; })) : [];
-        _tb.report = tbCompute(trips, slips, items, _fr.rates, { from: from, to: to, tempo: tempo });
-        _tb.report.meta = { from: from, to: to, tempo: tempo, at: new Date(), by: (session && (session.fullName || session.username)) || '', ratesFromDb: _fr.ratesFromDb };
-        await tbLoadSaved_();   // the Tempo Bill Nos. already saved in the range
-        if (!_fr.ratesFromDb) ban.innerHTML = '<div class="fr-note warn">Freight Rates are not set up on the server (run PACKING_FREIGHT_RATES_MIGRATION.sql): the built-in rates are used.</div>';
-        out.innerHTML = tbHtml(_tb.report);
+        var rep = await tbBuild_(from, to, '');
+        await tbLoadSaved_(rep);   // which tempo-days of the range are saved already
+        _tb.report = rep;
+        ban.innerHTML = rep.meta.ratesFromDb ? '' : '<div class="fr-note warn">Freight Rates are not set up on the server (run PACKING_FREIGHT_RATES_MIGRATION.sql): the built-in rates are used.</div>';
+        tbPaintPick(); tbPaintBill();
+        // TEMPO BILL AUTO SAVE: the closed trips of this list get their number now
+        if (await tbAutoSaveReady_(rep)) { tbPaintPick(); tbPaintBill(); tbLoadSavedList(true); }
     } catch (e) {
         console.error('[Tempo-Bill]', e);
-        out.innerHTML = '<div class="fr-note bad">The Tempo-Bill could not be made: ' + escapeHtmlJs(e.message || String(e)) + '</div>';
+        box.innerHTML = '<div class="fr-note bad">The tempo list could not be read: ' + escapeHtmlJs(e.message || String(e)) + '</div>';
+    } finally { tbPickBusy = false; btn.disabled = false; btn.textContent = 'Refresh list'; }
+}
+// Still to save: every tempo-day of the range without a saved bill (all of them when the saved list could not be
+// read; the server refuses a second save anyway).
+function tbPickDays_(rep) { return (rep.days || []).filter(function (g) { return !(rep.saved && rep.saved[g.key]); }); }
+function tbDayState_(g) { return tbTripState_(g); }
+function tbPaintPick() {
+    var box = document.getElementById('tb-pick'), rep = _tb.report; if (!box || !rep) return;
+    var e = escapeHtmlJs, m = rep.meta, q = frVehKey((document.getElementById('tb-pick-q') || {}).value || '');
+    var all = tbPickDays_(rep), list = all.filter(function (g) { return !q || g.vehKey.indexOf(q) >= 0; });
+    var nReady = all.filter(function (g) { return tbDayState_(g).cls === 'ok'; }).length;
+    var h = '<div class="tb-sum" style="margin-top:10px;"><span>' + all.length + ' trip(s) not billed yet</span><span>' + nReady + ' ready (saving by itself)</span>'
+        + '<span>Weighed ' + e(frDmy(m.from)) + ' to ' + e(frDmy(m.to)) + '</span><span>Read ' + e(tbWhen_(m.at)) + '</span></div>'
+        + (rep.savedOk === 'error' ? '<div class="fr-note bad">The saved Tempo-Bills could not be read (' + e(rep.savedErr) + '): saved ones may show here too.</div>' : '')
+        + (rep.savedOk === false ? '<div class="fr-note warn">Tempo Bill No.: run sql/PACKING_TEMPO_BILL_MIGRATION.sql again (Admin) to save bills.</div>' : '');
+    if (!all.length) h += '<div class="fr-note info">Every Dharam Kanta trip of these days already has its Tempo-Bill saved.</div>';
+    else if (!list.length) h += '<div class="fr-note info">No tempo matches the search.</div>';
+    else h += '<div class="tb-pick">' + list.map(function (g) {
+        var st = tbDayState_(g);
+        return '<button type="button" class="' + (g.key === _tb.pickKey ? 'on' : '') + '" onclick="tbPick(\'' + e(g.key) + '\')">'
+            + '<div class="veh">' + e(g.vehicle) + '</div>'
+            + '<div class="sub">' + e(frDmy(g.date)) + ' · Trip ' + e(g.dk) + ' · ' + e(new Date(g.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })) + '</div>'
+            + '<div class="sub">' + g.tot.slipIds.length + ' packing slip(s)</div>'
+            + '<div class="sub">Loaded ' + tbKg_(g.tot.weight) + ' · Freight ' + frMoney(g.tot.freight) + '</div>'
+            + '<span class="tb-pill ' + st.cls + '">' + e(st.txt) + '</span></button>';
+    }).join('') + '</div>';
+    if (rep.loose.length) {
+        h += '<details style="margin-top:10px;"><summary style="cursor:pointer;font-size:12px;font-weight:700;color:#475569;">' + rep.loose.length + ' packing slip(s) of these days on no Dharam Kanta trip</summary>'
+            + '<div style="font-size:12px;color:#64748b;margin:6px 0;">Their tempo had no Dharam Kanta slip before them (SELF, an old slip, or one saved before the gate weighed the vehicle).</div>'
+            + '<div class="tb-wrap"><table class="tb-table"><thead><tr><th>Date</th><th>Packing Slip No.</th><th>Tempo</th><th>Party</th><th>Shift To</th><th>Saved</th></tr></thead><tbody>'
+            + rep.loose.map(function (x) { return '<tr><td>' + e(frDmy(x.slip_date)) + '</td><td><b>' + e(x.slip_no) + '</b></td><td>' + e(x.tempo_no || '-') + '</td><td>' + e(x.party_name || '') + '</td><td>' + e(x.dispatch_to || '-') + '</td><td>' + e(tbWhen_(x.created_at)) + '</td></tr>'; }).join('')
+            + '</tbody></table></div></details>';
     }
-    btn.disabled = false; btn.textContent = 'Generate Tempo-Bill';
+    box.innerHTML = h;
+}
+function tbPick(key) {
+    _tb.pickKey = _tb.pickKey === key ? '' : key;   // a second tap closes it again
+    tbPaintPick(); tbPaintBill();
+    var b = document.getElementById('tb-bill');
+    if (_tb.pickKey && b && b.scrollIntoView) b.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+// The chosen tempo's bill (one tempo, one day). After a save it stays here with its Tempo Bill No.
+function tbPaintBill() {
+    var box = document.getElementById('tb-bill'), rep = _tb.report; if (!box) return;
+    var g = rep && _tb.pickKey ? (rep.days || []).find(function (x) { return x.key === _tb.pickKey; }) : null;
+    if (!g) {
+        if (_tb.pickKey && rep) _tb.pickKey = '';
+        box.innerHTML = rep && tbPickDays_(rep).length ? '<p style="text-align:center;color:var(--text-muted);padding:10px;font-size:13px;">Select a tempo above to see its Tempo-Bill and save it.</p>' : '';
+        return;
+    }
+    var sv = rep.saved && rep.saved[g.key];
+    box.innerHTML = tbDayHtml_(g, rep)
+        + '<div class="fr-actions" style="margin-top:8px;"><button type="button" class="fr-btn ghost" onclick="tbPrintDay()">' + (sv ? 'Print saved bill (with gate QR)' : 'Print / PDF preview') + '</button></div>';
+}
+// A saved one prints its saved snapshot with the gate QR; an unsaved one is only a preview (no number, no QR yet).
+function tbPrintDay() {
+    var rep = _tb.report, g = rep && (rep.days || []).find(function (x) { return x.key === _tb.pickKey; });
+    if (!g) { alert('Select a tempo first.'); return; }
+    if (rep.saved && rep.saved[g.key]) return tbPrintSaved(rep.saved[g.key].bill_no);
+    tbPrintWin_('Tempo-Bill ' + g.vehicle + ' ' + frDmy(g.date) + ' (preview)',
+        '<div class="fr-note warn">PREVIEW · not saved: no Tempo Bill No. and no gate QR yet.</div>' + tbDayHtml_(g, rep));
 }
 // Pure: trips + slips + slip rows + rates → one bill per trip (+ the slips on no trip)
 function tbCompute(trips, slips, items, rates, opt) {
@@ -14129,29 +14242,33 @@ function tbTripHtml_(b) {
         + '</div></div>';
     return h;
 }
-/* TEMPO BILL No. (sql/PACKING_TEMPO_BILL_MIGRATION.sql, second part). The
-   trips of ONE tempo on ONE day (each trip's Dharam Kanta date, IST) make one
-   Tempo-Bill; "Save Tempo-Bill No." stores it ONCE (packing.save_tempo_bill:
-   number SIHF-TB-<financial year>-0001, a series per financial year, one bill
-   per tempo + date, never changed or deleted afterwards). The bill keeps a
-   snapshot of what was saved (trips, rows, totals, weights), so "Print saved"
-   always prints the saved bill; the live view shows a note when the slips have
-   changed since. Saving waits until every trip of that day has its Kanta Gross
-   at the gate (a trip still loading would be left out). Saved bills of the
-   range that the view does not show (another tempo filter, trips changed) are
-   listed at the end. Admin / MD / Packing Incharge (the server checks it). */
+/* TEMPO BILL No. — ONE BILL PER DHARAM KANTA TRIP (sql/PACKING_TEMPO_BILL_PER_TRIP_MIGRATION.sql, run after
+   PACKING_TEMPO_BILL_MIGRATION.sql). Each trip (the gate's Tare slip → its Dispatch Packing entry with the Kanta
+   Gross) is its own Tempo-Bill: packing.save_tempo_trip_bill stores it ONCE (number SIHF-TB-<financial year>-0001,
+   one series per financial year, never changed or deleted afterwards; a trip or a packing slip already on any bill
+   is refused, also one on an older day bill of PACKING_TEMPO_BILL_MIGRATION.sql, whose trips are in dk_slips).
+   The bill keeps a snapshot of what was saved, so Print bill always prints the saved bill; the live view shows a
+   note when the slips have changed since.
+   AUTO SAVE (TEMPO BILL AUTO SAVE below): a trip is saved by itself once it is CLOSED = the Kanta Gross is weighed
+   at the gate AND the trip window is over (its Dispatch Packing entry + TB_GRACE_MIN, or the vehicle's next
+   Dharam Kanta slip, whichever is first: a packing slip saved inside the window still belongs to the trip) and it
+   has at least one packing slip. It runs in every open packing.html of an Admin / MD / Packing Incharge (any tab)
+   every TB_AUTO_MS over the last TB_AUTO_DAYS, and when the Tempo-Bill tab reads its list. Two open apps saving
+   the same trip: the server answers ALREADY_SAVED to the second, which is taken quietly. A trip can still be saved
+   by hand before its window is over (Save Tempo-Bill No., with a warning). */
 function tbIstDate_(iso) {
     try { return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); } catch (e) { return String(iso || '').slice(0, 10); }
 }
+var tbTripKey_ = function (dk) { return 'T|' + String(dk || '').trim().toUpperCase(); };
+// One bill group per trip (kept as "days" / g.bills so the totals, snapshot and print code stay one shape)
 function tbDays_(bills) {
-    var map = {}, list = [];
-    bills.forEach(function (b) {
-        var d = tbIstDate_(b.trip.inTime), k = b.trip._k + '|' + d, g = map[k];
-        if (!g) { g = map[k] = { key: k, vehKey: b.trip._k, vehicle: String(b.trip.vehicle || '').toUpperCase(), date: d, bills: [] }; list.push(g); }
-        g.bills.push(b);
+    var list = bills.map(function (b) {
+        var g = { key: tbTripKey_(b.trip.slipNo), dk: String(b.trip.slipNo || ''), vehKey: b.trip._k, vehicle: String(b.trip.vehicle || '').toUpperCase(),
+                  date: tbIstDate_(b.trip.inTime), at: b.trip._start, bills: [b] };
+        g.tot = tbDayTotals_(g.bills);
+        return g;
     });
-    list.forEach(function (g) { g.bills.sort(function (a, b) { return a.trip._start - b.trip._start; }); g.tot = tbDayTotals_(g.bills); });
-    return list.sort(function (a, b) { return b.date.localeCompare(a.date) || a.vehicle.localeCompare(b.vehicle); });
+    return list.sort(function (a, b) { return b.at - a.at || a.vehicle.localeCompare(b.vehicle); });
 }
 function tbDayTotals_(bills) {
     var r2 = function (n) { return Math.round(n * 100) / 100; };
@@ -14168,10 +14285,21 @@ function tbDayTotals_(bills) {
     if (t.allWeighed && t.kanta !== null) t.diff = r2(t.kanta - t.expected);
     return t;
 }
-// What is saved: the day's trips as shown, without the page's working fields
-function tbSnapshot_(g) {
-    return { v: 1, vehicle: g.vehicle, date: g.date, tot: g.tot,
-        madeBy: (session && (session.fullName || session.username)) || '', madeAt: new Date().toISOString(),
+// Where a trip stands: wait (no Kanta Gross yet) / none (no packing slip) / soon (weighed, window still open) / ok
+function tbTripState_(g, now) {
+    var b = g.bills[0], t = b.trip;
+    if (!t.dispatch || b.kanta === null || b.kanta === undefined) return { cls: 'wait', txt: 'Waiting: Kanta Gross' };
+    if (!g.tot.slipIds.length) return { cls: 'none', txt: 'No packing slip' };
+    if ((now || Date.now()) < t._end) {
+        var hm = new Date(t._end).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+        return { cls: 'wait', txt: 'Auto save at ' + hm, soon: true, at: t._end };
+    }
+    return { cls: 'ok', txt: 'Ready · saves itself' };
+}
+// What is saved: the trip as shown, without the page's working fields
+function tbSnapshot_(g, auto) {
+    return { v: 2, perTrip: true, dkSlip: g.dk, vehicle: g.vehicle, date: g.date, tot: g.tot, auto: !!auto,
+        madeBy: (auto ? 'AUTO · ' : '') + ((session && (session.fullName || session.username)) || ''), madeAt: new Date().toISOString(),
         bills: g.bills.map(function (b) {
             var t = b.trip;
             return { trip: { slipNo: t.slipNo, gate: t.gate, vehicle: t.vehicle, inTime: t.inTime, tare: t.tare, stdTare: t.stdTare, diff: t.diff, guard: t.guard, dispatch: t.dispatch || null },
@@ -14179,61 +14307,83 @@ function tbSnapshot_(g) {
                      lines: b.lines, tot: b.tot, drivers: b.drivers, tare: b.tare, expected: b.expected, kanta: b.kanta, diff: b.diff };
         }) };
 }
-async function tbLoadSaved_() {
-    var rep = _tb.report; if (!rep) return;
-    rep.saved = {}; rep.savedOk = true; rep.savedErr = '';
+// The saved bills of the report's range: by trip (every Dharam Kanta slip a bill lists, so an older day bill counts too)
+async function tbLoadSaved_(rep) {
+    rep = rep || _tb.report; if (!rep) return;
+    var saved = {}, ok = true, err = '';
     try {
         var r = await supabaseClient.rpc('list_tempo_bills', { p_from: rep.meta.from, p_to: rep.meta.to });
         if (r.error) throw r.error;
         var d = r.data || {};
         if (d.success === false) throw new Error(d.error || 'FAILED');
-        (d.rows || []).forEach(function (x) { rep.saved[x.vehicle_key + '|' + String(x.bill_date).slice(0, 10)] = x; });
+        (d.rows || []).forEach(function (x) {
+            _tb.savedByKey[x.bill_no] = x;
+            [].concat(x.dk_slip ? [x.dk_slip] : [], x.dk_slips || []).forEach(function (dk) { saved[tbTripKey_(dk)] = x; });
+        });
     } catch (e) {
         var m = String((e && (e.message || e.details)) || e);
-        rep.savedOk = /list_tempo_bills|schema cache|PGRST202|42883|Could not find the function/i.test(m) ? false : 'error';
-        rep.savedErr = m;
+        ok = /list_tempo_bills|schema cache|PGRST202|42883|Could not find the function/i.test(m) ? false : 'error';
+        err = m;
     }
+    rep.saved = saved; rep.savedOk = ok; rep.savedErr = err;
 }
-function tbRepaint_() { var out = document.getElementById('tb-out'); if (out && _tb.report) out.innerHTML = tbHtml(_tb.report); }
+function tbRepaint_() { tbPaintPick(); tbPaintBill(); }
 var tbSaving = {};
+var tbNoTripFn = false;   // the server has no save_tempo_trip_bill yet (per-trip migration not run)
+// One trip → its Tempo Bill No. {ok, billNo} | {already, billNo, by} | {err, fatal}
+async function tbSaveTrip_(g, auto) {
+    if (tbSaving[g.key]) return { err: 'BUSY' };
+    tbSaving[g.key] = true;
+    try {
+        var r = await supabaseClient.rpc('save_tempo_trip_bill', { p_vehicle: g.vehicle, p_date: g.date, p_dk_slip: g.dk, p_snapshot: tbSnapshot_(g, auto), p_totals: g.tot });
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) {
+            if (d.error === 'ALREADY_SAVED' || d.error === 'SLIP_ON_BILL') return { already: true, code: d.error, billNo: d.billNo, by: d.by };
+            return { err: d.error || 'FAILED', fatal: /^NOT_ALLOWED/.test(d.error || '') };
+        }
+        return { ok: true, billNo: d.billNo };
+    } catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        if (/save_tempo_trip_bill|schema cache|PGRST202|42883|Could not find the function/i.test(m)) { tbNoTripFn = true; return { err: 'NO_MIGRATION', fatal: true }; }
+        return { err: m, fatal: navigator.onLine === false };
+    } finally { delete tbSaving[g.key]; }
+}
+// Save Tempo-Bill No. by hand (also before the trip window is over, with a warning)
 async function tbSaveDay(key) {
     var rep = _tb.report, g = rep && (rep.days || []).find(function (x) { return x.key === key; });
     if (!g || tbSaving[key]) return;
     var sv = rep.saved && rep.saved[key];
-    if (sv) { alert('This Tempo-Bill is already saved as ' + sv.bill_no + '.'); return; }
-    if (rep.savedOk === false) { alert('Saving a Tempo-Bill No. needs sql/PACKING_TEMPO_BILL_MIGRATION.sql to be run again (Admin, Supabase SQL Editor).'); return; }
-    var pend = g.bills.filter(function (b) { return !b.trip.dispatch || b.kanta === null || b.kanta === undefined; });
-    if (pend.length) { alert('Trip ' + pend.map(function (b) { return b.trip.slipNo; }).join(', ') + ' of ' + g.vehicle + ' has no Kanta Gross at the gate yet.\n\nSave the Tempo-Bill once every trip of ' + frDmy(g.date) + ' is dispatched and weighed.'); return; }
-    if (!g.tot.slipIds.length) { alert('There is no packing slip on ' + g.vehicle + ' for ' + frDmy(g.date) + '.'); return; }
-    var today = g.date === frDateInput(new Date());
-    if (!confirm('Save the Tempo-Bill of ' + g.vehicle + ' · ' + frDmy(g.date) + '?\n\n' + g.tot.trips + ' trip(s) · ' + g.tot.slipIds.length + ' packing slip(s) · Freight ' + frMoney(g.tot.freight) + ' · Loaded ' + tbKg_(g.tot.weight)
-        + '\n\nIt gets its Tempo Bill No. now and cannot be changed later.' + (today ? '\nA trip this tempo makes later today will NOT be on this bill.' : ''))) return;
-    tbSaving[key] = true; tbRepaint_();
-    try {
-        var r = await supabaseClient.rpc('save_tempo_bill', { p_vehicle: g.vehicle, p_date: g.date, p_snapshot: tbSnapshot_(g), p_totals: g.tot });
-        if (r.error) throw r.error;
-        var d = r.data || {};
-        if (d.success === false) {
-            if (d.error === 'ALREADY_SAVED') alert('This tempo-day was already saved as ' + d.billNo + (d.by ? ' by ' + d.by : '') + '.');
-            else throw new Error(d.error || 'FAILED');
-        } else showToast('Tempo-Bill ' + d.billNo + ' saved');
-        await tbLoadSaved_();
-    } catch (e) {
-        var m = String((e && (e.message || e.details)) || e);
-        alert('The Tempo-Bill was not saved:\n' + (/save_tempo_bill|schema cache|PGRST202|42883|Could not find the function/i.test(m) ? 'run sql/PACKING_TEMPO_BILL_MIGRATION.sql again (Admin).' : m));
-    } finally { delete tbSaving[key]; tbRepaint_(); }
+    if (sv) { alert('This trip is already on Tempo-Bill ' + sv.bill_no + '.'); return; }
+    if (rep.savedOk === false || tbNoTripFn) { alert('Saving a Tempo-Bill needs sql/PACKING_TEMPO_BILL_PER_TRIP_MIGRATION.sql (Admin, Supabase SQL Editor).'); return; }
+    var st = tbTripState_(g);
+    if (st.cls === 'wait' && !st.soon) { alert('Trip ' + g.dk + ' of ' + g.vehicle + ' has no Kanta Gross at the gate yet.\n\nIt is saved by itself once the gate weighs the loaded vehicle.'); return; }
+    if (st.cls === 'none') { alert('There is no packing slip on trip ' + g.dk + ' of ' + g.vehicle + '.'); return; }
+    if (!confirm('Save the Tempo-Bill of ' + g.vehicle + ' · trip ' + g.dk + ' · ' + frDmy(g.date) + '?\n\n' + g.tot.slipIds.length + ' packing slip(s) · Freight ' + frMoney(g.tot.freight) + ' · Loaded ' + tbKg_(g.tot.weight)
+        + '\n\nIt gets its Tempo Bill No. now and cannot be changed later.'
+        + (st.soon ? '\nA packing slip saved on this tempo until ' + new Date(st.at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }) + ' still belongs to this trip but will NOT be on this bill (it saves itself then).' : ''))) return;
+    tbRepaint_();
+    var p = tbSaveTrip_(g, false);
+    tbRepaint_();   // shows Saving...
+    var res = await p;
+    if (res.ok) showToast('Tempo-Bill ' + res.billNo + ' saved');
+    else if (res.already) alert('This trip ' + (res.code === 'SLIP_ON_BILL' ? 'has a packing slip already on' : 'is already on') + ' Tempo-Bill ' + res.billNo + (res.by ? ' (saved by ' + res.by + ')' : '') + '.');
+    else alert('The Tempo-Bill was not saved:\n' + (res.err === 'NO_MIGRATION' ? 'run sql/PACKING_TEMPO_BILL_PER_TRIP_MIGRATION.sql (Admin).' : res.err));
+    await tbLoadSaved_(rep);
+    tbRepaint_();
+    tbLoadSavedList(true);   // the saved list below gets it too
 }
-// The live day differs from its saved bill (a slip edited / added / removed since)
+// The live trip differs from its saved bill (a slip edited / added / removed since)
 function tbChangedSince_(g, sv) {
     var live = g.tot.slipIds.slice().sort().join(','), was = (sv.slip_ids || []).map(String).sort().join(',');
     var out = [];
-    if (live !== was) out.push('packing slips ' + (sv.slip_ids || []).length + ' → ' + g.tot.slipIds.length);
-    if (Math.abs((Number(sv.freight) || 0) - g.tot.freight) > 0.009) out.push('freight ' + frMoney(sv.freight) + ' → ' + frMoney(g.tot.freight));
-    if (Math.abs((Number(sv.weight) || 0) - g.tot.weight) > 0.0009) out.push('loaded ' + tbKg_(sv.weight) + ' → ' + tbKg_(g.tot.weight));
+    if (sv.dk_slip && live !== was) out.push('packing slips ' + (sv.slip_ids || []).length + ' → ' + g.tot.slipIds.length);
+    if (sv.dk_slip && Math.abs((Number(sv.freight) || 0) - g.tot.freight) > 0.009) out.push('freight ' + frMoney(sv.freight) + ' → ' + frMoney(g.tot.freight));
+    if (sv.dk_slip && Math.abs((Number(sv.weight) || 0) - g.tot.weight) > 0.0009) out.push('loaded ' + tbKg_(sv.weight) + ' → ' + tbKg_(g.tot.weight));
     return out;
 }
 function tbDayTotHtml_(t) {
-    return '<div class="tb-sum" style="margin-top:8px;"><span>Day total · ' + t.trips + ' trip(s)</span><span>Qty ' + frNum(t.packs) + '</span><span>Pcs ' + frNum(t.pcs) + '</span>'
+    return '<div class="tb-sum" style="margin-top:8px;"><span>Total · ' + t.trips + ' trip(s)</span><span>Qty ' + frNum(t.packs) + '</span><span>Pcs ' + frNum(t.pcs) + '</span>'
         + '<span>Loaded ' + tbKg_(t.weight) + '</span><span>Freight ' + frMoney(t.freight) + '</span><span>Tare ' + tbKg_(t.tare) + '</span><span>Expected Gross ' + tbKg_(t.expected) + '</span>'
         + '<span>Kanta Gross ' + (t.kanta === null ? '-' : tbKg_(t.kanta)) + (t.allWeighed ? '' : ' (not all weighed)') + '</span>'
         + (t.diff === null ? '' : '<span style="' + (Math.abs(t.diff) <= TB_TOL * t.trips ? 'color:#15803d;' : 'color:#b45309;') + '">Difference ' + (t.diff > 0 ? '+' : '') + tbKg_(t.diff) + '</span>') + '</div>';
@@ -14241,16 +14391,17 @@ function tbDayTotHtml_(t) {
 function tbDayHtml_(g, rep) {
     var e = escapeHtmlJs, sv = rep.saved && rep.saved[g.key], busy = !!tbSaving[g.key];
     var right;
-    if (sv) right = '<div style="text-align:right;"><span class="tb-no">' + e(sv.bill_no) + '</span><div class="sub">Saved ' + e(tbWhen_(sv.created_at)) + (sv.created_by ? ' by ' + e(sv.created_by) : '') + '</div>'
-        + '<button type="button" class="fr-btn ghost" style="margin-top:4px;padding:5px 10px;font-size:12px;" onclick="tbPrintSaved(\'' + e(g.key) + '\')">Print saved bill</button></div>';
-    else if (rep.savedOk === false) right = '<div class="sub" style="text-align:right;color:#b45309;">Tempo Bill No.: run PACKING_TEMPO_BILL_MIGRATION.sql again</div>';
+    if (sv) right = '<div style="text-align:right;"><span class="tb-no">' + e(sv.bill_no) + '</span><div class="sub">Saved ' + e(tbWhen_(sv.created_at)) + (sv.created_by ? ' by ' + e(sv.created_by) : '')
+        + (sv.dk_slip ? '' : ' · day bill') + '</div>'
+        + '<button type="button" class="fr-btn ghost" style="margin-top:4px;padding:5px 10px;font-size:12px;" onclick="tbPrintSaved(\'' + e(sv.bill_no) + '\')">Print saved bill</button></div>';
+    else if (rep.savedOk === false || tbNoTripFn) right = '<div class="sub" style="text-align:right;color:#b45309;">Tempo Bill No.: run PACKING_TEMPO_BILL_PER_TRIP_MIGRATION.sql (Admin)</div>';
     else {
-        var pend = g.bills.some(function (b) { return !b.trip.dispatch || b.kanta === null || b.kanta === undefined; });
-        right = '<div style="text-align:right;"><button type="button" class="fr-btn" ' + (busy ? 'disabled' : '') + ' onclick="tbSaveDay(\'' + e(g.key) + '\')">' + (busy ? 'Saving...' : 'Save Tempo-Bill No.') + '</button>'
-            + '<div class="sub" style="color:' + (pend ? '#b45309' : '#64748b') + ';">' + (pend ? 'Wait: a trip has no Kanta Gross yet' : 'Not saved yet · saved once, then fixed') + '</div></div>';
+        var st = tbTripState_(g), can = st.cls === 'ok' || st.soon;
+        right = '<div style="text-align:right;"><button type="button" class="fr-btn" ' + (busy || !can ? 'disabled' : '') + ' onclick="tbSaveDay(\'' + e(g.key) + '\')">' + (busy ? 'Saving...' : 'Save Tempo-Bill No.') + '</button>'
+            + '<div class="sub" style="color:' + (st.cls === 'ok' ? '#15803d' : '#b45309') + ';">' + e(st.cls === 'ok' ? 'Ready: saves itself in a moment' : st.txt) + '</div></div>';
     }
     var h = '<div class="tb-day"><div class="tb-head"><div><div class="veh">' + e(g.vehicle) + ' · ' + e(frDmy(g.date)) + '</div>'
-        + '<div class="sub">' + g.tot.trips + ' trip(s) · ' + g.tot.slipIds.length + ' packing slip(s) · Freight ' + frMoney(g.tot.freight) + '</div></div>' + right + '</div>';
+        + '<div class="sub">Trip ' + e(g.dk) + ' · ' + g.tot.slipIds.length + ' packing slip(s) · Freight ' + frMoney(g.tot.freight) + '</div></div>' + right + '</div>';
     if (sv) {
         var ch = tbChangedSince_(g, sv);
         if (ch.length) h += '<div class="fr-note warn" style="margin-top:0;">Changed since this bill was saved: ' + e(ch.join(' · ')) + '. The saved bill keeps what was saved (Print saved bill).</div>';
@@ -14259,34 +14410,89 @@ function tbDayHtml_(g, rep) {
     if (g.bills.length > 1) h += tbDayTotHtml_(g.tot);
     return h + '</div>';
 }
-function tbHtml(rep) {
-    var e = escapeHtmlJs, m = rep.meta || {}, days = rep.days || [];
-    var nSaved = days.filter(function (g) { return rep.saved && rep.saved[g.key]; }).length;
-    var h = '<div class="card"><div class="card-title">TEMPO-BILL ' + e(frDmy(m.from)) + ' TO ' + e(frDmy(m.to)) + (m.tempo ? ' · ' + e(m.tempo) : '') + '</div>'
-        + '<div class="tb-sum"><span>' + days.length + ' tempo-day bill(s)</span><span>' + nSaved + ' saved</span><span>' + rep.sum.trips + ' trip(s)</span><span>' + rep.sum.slips + ' packing slip(s)</span><span>Loaded ' + tbKg_(rep.sum.weight) + '</span><span>Freight ' + frMoney(rep.sum.freight) + '</span></div>'
-        + (rep.savedOk === 'error' ? '<div class="fr-note bad">The saved Tempo-Bills could not be read: ' + e(rep.savedErr) + '</div>' : '')
-        + (m.at ? '<div class="muted" style="font-size:11px;color:#94a3b8;margin-top:6px;">Made ' + e(tbWhen_(m.at)) + (m.by ? ' by ' + e(m.by) : '') + '</div>' : '') + '</div>';
-    if (!days.length) h += '<div class="fr-note info">No Dharam Kanta trip in this range' + (m.tempo ? ' for ' + e(m.tempo) : '') + '.</div>';
-    days.forEach(function (g) { h += tbDayHtml_(g, rep); });
-    // saved bills of the range the view does not show
-    var shown = {}; days.forEach(function (g) { shown[g.key] = true; });
-    var other = Object.keys(rep.saved || {}).filter(function (k) { return !shown[k] && (!m.tempo || rep.saved[k].vehicle_key === frVehKey(m.tempo)); }).map(function (k) { return rep.saved[k]; });
-    if (other.length) {
-        h += '<div class="tb-day"><div class="tb-head"><div><div class="veh" style="font-family:inherit;font-size:14px;">Saved Tempo-Bills not in the view above</div>'
-            + '<div class="sub">Saved earlier; their trips are not found now (changed at the gate) or not in this filter.</div></div></div>'
-            + '<div class="tb-wrap"><table class="tb-table"><thead><tr><th>Tempo Bill No.</th><th>Tempo</th><th>Date</th><th class="n">Trips</th><th class="n">Slips</th><th class="n">Loaded</th><th class="n">Freight</th><th></th></tr></thead><tbody>'
-            + other.map(function (x) { var k = x.vehicle_key + '|' + String(x.bill_date).slice(0, 10);
-                return '<tr><td><b>' + e(x.bill_no) + '</b></td><td>' + e(x.vehicle) + '</td><td>' + e(frDmy(x.bill_date)) + '</td><td class="n">' + e(x.trips) + '</td><td class="n">' + (x.slip_ids || []).length + '</td>'
-                    + '<td class="n">' + tbKg_(x.weight) + '</td><td class="n">' + frMoney(x.freight) + '</td><td><button type="button" class="fr-btn ghost" style="padding:4px 9px;font-size:12px;" onclick="tbPrintSaved(\'' + e(k) + '\')">Print</button></td></tr>'; }).join('')
-            + '</tbody></table></div></div>';
+/* ── TEMPO BILL AUTO SAVE (see the TEMPO BILL No. note above) ── */
+var TB_AUTO_MS = 5 * 60000, TB_AUTO_DAYS = 3, tbAutoBusy = false, tbAutoTimer = null;
+function tbAutoAllowed_() {
+    return !!(session && ['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(session.role) >= 0 && supabaseClient && navigator.onLine !== false && !tbNoTripFn);
+}
+// Saves every closed, unsaved trip of the report one by one. Returns how many got a number.
+async function tbAutoSaveReady_(rep) {
+    if (!rep || rep.savedOk !== true || !tbAutoAllowed_()) return 0;
+    var now = Date.now(), n = 0, touched = false;
+    var due = tbPickDays_(rep).filter(function (g) { return tbTripState_(g, now).cls === 'ok' && !tbSaving[g.key]; });
+    for (var i = 0; i < due.length; i++) {
+        var g = due[i], res = await tbSaveTrip_(g, true);
+        if (res.ok) { n++; touched = true; showToast('Tempo-Bill ' + res.billNo + ' saved automatically · ' + g.vehicle + ' · trip ' + g.dk); }
+        else if (res.already) touched = true;   // another open packing app saved it a moment ago
+        else { console.warn('[Tempo-Bill auto save]', g.key, res.err); if (res.fatal) break; }
     }
-    if (rep.loose.length) {
-        h += '<div class="tb-trip"><div class="tb-head"><div><div class="veh" style="font-family:inherit;font-size:14px;">Packing slips on no Dharam Kanta trip</div>'
-            + '<div class="sub">Dated in the range, but their tempo had no Dharam Kanta slip before them (SELF, an old slip, or one saved before the gate weighed the vehicle).</div></div></div>'
-            + '<div class="tb-wrap"><table class="tb-table"><thead><tr><th>Date</th><th>Packing Slip No.</th><th>Tempo</th><th>Party</th><th>Shift To</th><th>Saved</th></tr></thead><tbody>'
-            + rep.loose.map(function (x) { return '<tr><td>' + e(frDmy(x.slip_date)) + '</td><td><b>' + e(x.slip_no) + '</b></td><td>' + e(x.tempo_no || '-') + '</td><td>' + e(x.party_name || '') + '</td><td>' + e(x.dispatch_to || '-') + '</td><td>' + e(tbWhen_(x.created_at)) + '</td></tr>'; }).join('')
-            + '</tbody></table></div></div>';
-    }
+    if (touched) await tbLoadSaved_(rep);
+    return n;
+}
+async function tbAutoRun_() {
+    if (tbAutoBusy || !tbAutoAllowed_()) return;
+    tbAutoBusy = true;
+    try {
+        var panel = document.getElementById('tempo-bill-panel');
+        if (panel && panel.style.display === 'block') { await tbLoadPick(); return; }   // the tab reads its list and saves itself
+        var d = new Date(), to = frDateInput(d); d.setDate(d.getDate() - (TB_AUTO_DAYS - 1));
+        var rep = await tbBuild_(frDateInput(d), to, '');
+        await tbLoadSaved_(rep);
+        await tbAutoSaveReady_(rep);
+    } catch (e) { console.warn('[Tempo-Bill auto save]', e && (e.message || e)); }
+    finally { tbAutoBusy = false; }
+}
+function tbAutoStart() {
+    if (tbAutoTimer || !session || ['ADMIN', 'MD', 'PACKING_INCHARGE'].indexOf(session.role) < 0) return;
+    setTimeout(tbAutoRun_, 20000);   // after the first screen has its data
+    tbAutoTimer = setInterval(tbAutoRun_, TB_AUTO_MS);
+}
+// ── BOTTOM: the saved Tempo-Bills of a date range (+ tempo) ──
+async function tbLoadSavedList(quiet) {
+    var fe = document.getElementById('tb-from'), te = document.getElementById('tb-to'), from = fe.value, to = te.value;
+    var tempo = String(document.getElementById('tb-tempo').value || '').trim().toUpperCase();
+    var out = document.getElementById('tb-out'), btn = document.getElementById('tb-run-btn');
+    if (!from || !to) { if (!quiet) alert('Choose both dates.'); return; }
+    if (from > to) { var tmp = from; from = to; to = tmp; fe.value = from; te.value = to; }
+    btn.disabled = true; btn.textContent = 'Reading...';
+    if (!quiet) out.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px;">Reading the saved Tempo-Bills...</p>';
+    try {
+        var r = await supabaseClient.rpc('list_tempo_bills', { p_from: from, p_to: to });
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) throw new Error(d.error === 'NOT_ALLOWED' ? 'Admin / MD / Packing Incharge only.' : (d.error || 'FAILED'));
+        var tk = frVehKey(tempo), rows = (d.rows || []).filter(function (x) { return !tk || String(x.vehicle_key || frVehKey(x.vehicle)).indexOf(tk) >= 0; });
+        rows.forEach(function (x) { _tb.savedByKey[x.bill_no] = x; });
+        _tb.list = { from: from, to: to, tempo: tempo, rows: rows, at: new Date() };
+        out.innerHTML = tbSavedHtml_(_tb.list);
+    } catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        out.innerHTML = '<div class="fr-note bad">The saved Tempo-Bills could not be read: ' + escapeHtmlJs(/list_tempo_bills|schema cache|PGRST202|42883|Could not find the function/i.test(m) ? 'run sql/PACKING_TEMPO_BILL_MIGRATION.sql (Admin, Supabase SQL Editor).' : m) + '</div>';
+    } finally { btn.disabled = false; btn.textContent = 'Show saved bills'; }
+}
+function tbSavedHtml_(L) {
+    var e = escapeHtmlJs, rows = L.rows || [], sum = { trips: 0, slips: 0, packs: 0, weight: 0, freight: 0 };
+    rows.forEach(function (x) { sum.trips += Number(x.trips) || 0; sum.slips += (x.slip_ids || []).length; sum.packs += Number(x.packs) || 0; sum.weight += Number(x.weight) || 0; sum.freight += Number(x.freight) || 0; });
+    sum.weight = Math.round(sum.weight * 1000) / 1000; sum.freight = Math.round(sum.freight * 100) / 100;
+    var h = '<div class="card"><div class="card-title">SAVED TEMPO-BILLS ' + e(frDmy(L.from)) + ' TO ' + e(frDmy(L.to)) + (L.tempo ? ' · ' + e(L.tempo) : '') + '</div>'
+        + '<div class="tb-sum"><span>' + rows.length + ' bill(s)</span><span>' + sum.trips + ' trip(s)</span><span>' + sum.slips + ' packing slip(s)</span><span>Qty ' + frNum(sum.packs) + '</span><span>Loaded ' + tbKg_(sum.weight) + '</span><span>Freight ' + frMoney(sum.freight) + '</span></div>'
+        + '<div style="font-size:11px;color:#94a3b8;margin-top:6px;">Read ' + e(tbWhen_(L.at)) + '</div></div>';
+    if (!rows.length) return h + '<div class="fr-note info">No Tempo-Bill saved in this range' + (L.tempo ? ' for ' + e(L.tempo) : '') + '.</div>';
+    h += '<div class="tb-day"><div class="tb-wrap"><table class="tb-table"><thead><tr><th>Tempo Bill No.</th><th>Tempo</th><th>Bill Date</th><th>Dharam Kanta</th><th class="n">Slips</th><th class="n">Qty</th>'
+        + '<th class="n">Loaded</th><th class="n">Freight</th><th class="n">Kanta Gross</th><th class="n">Difference</th><th>Saved</th><th></th></tr></thead><tbody>'
+        + rows.map(function (x) {
+            var k = x.bill_no, df = x.diff === null || x.diff === undefined ? null : Number(x.diff);
+            var dOk = df !== null && Math.abs(df) <= TB_TOL * (Number(x.trips) || 1);
+            return '<tr><td><span class="tb-no" style="font-size:12px;">' + e(x.bill_no) + '</span></td><td><b>' + e(x.vehicle) + '</b></td><td>' + e(frDmy(x.bill_date)) + '</td>'
+                + '<td>' + e(x.dk_slip || (x.dk_slips || []).join(', ') || '-') + (x.dk_slip ? '' : '<div class="muted">day bill · ' + e(x.trips) + ' trip(s)</div>') + '</td>'
+                + '<td class="n">' + (x.slip_ids || []).length + '</td><td class="n">' + frNum(Number(x.packs) || 0) + '</td>'
+                + '<td class="n">' + tbKg_(x.weight) + '</td><td class="n">' + frMoney(x.freight) + '</td><td class="n">' + (x.kanta === null || x.kanta === undefined ? '-' : tbKg_(x.kanta)) + '</td>'
+                + '<td class="n" style="color:' + (df === null ? 'inherit' : dOk ? '#15803d' : '#b45309') + ';">' + (df === null ? '-' : (df > 0 ? '+' : '') + tbKg_(df)) + '</td>'
+                + '<td><div class="muted" style="color:#475569;">' + e(tbWhen_(x.created_at)) + (x.created_by ? '<br>' + e(x.created_by) : '') + '</div></td>'
+                + '<td><button type="button" class="fr-btn ghost" style="padding:4px 9px;font-size:12px;" onclick="tbPrintSaved(\'' + e(k) + '\')">Print bill</button></td></tr>';
+        }).join('')
+        + '<tr class="tot"><td colspan="3">TOTAL</td><td>' + sum.trips + ' trip(s)</td><td class="n">' + sum.slips + '</td><td class="n">' + frNum(sum.packs) + '</td><td class="n">' + tbKg_(sum.weight) + '</td><td class="n">' + frMoney(sum.freight) + '</td><td colspan="4"></td></tr>'
+        + '</tbody></table></div></div>';
     return h;
 }
 function tbPrintWin_(title, body) {
@@ -14300,40 +14506,58 @@ function tbPrintWin_(title, body) {
     setTimeout(function () { w.focus(); w.print(); }, 400);
 }
 function tbPrint() {
-    if (!_tb.report) { alert('Generate the Tempo-Bill first.'); return; }
-    tbPrintWin_('Tempo-Bill ' + frDmy(_tb.report.meta.from) + ' to ' + frDmy(_tb.report.meta.to), tbHtml(_tb.report));
+    if (!_tb.list) { alert('Press Show saved bills first.'); return; }
+    tbPrintWin_('Saved Tempo-Bills ' + frDmy(_tb.list.from) + ' to ' + frDmy(_tb.list.to), tbSavedHtml_(_tb.list));
 }
-// The saved bill exactly as it was saved (its snapshot)
+/* GATE QR on a saved Tempo-Bill (sarv-qr.js, read by gate_1 / gate_2 › Scan QR, gateScanTempoBill there):
+   t TB, no = Tempo Bill No., veh = tempo, d = bill date, dk = its Dharam Kanta slips (the gate finds the tempo's
+   Dispatch Packing entries by them), n = packing slips, pk / wt / fr = packs / loaded Kg / freight.
+   Drawn as a PNG in the print page; the encoder is loaded when the tab opens (showTempoBillPanel), so the
+   pop-up still opens inside the click. No QR (bill still printed) when the encoder could not load. */
+function tbQrText_(sv) {
+    return SarvQR.encode({ t: 'TB', no: sv.bill_no, veh: sv.vehicle, d: String(sv.bill_date || '').slice(0, 10), dk: (sv.dk_slips || []).join(','),
+                           n: (sv.slip_ids || []).length, pk: Number(sv.packs) || 0, wt: Number(sv.weight) || 0, fr: Number(sv.freight) || 0 });
+}
+function tbQrHtml_(sv) {
+    var url = '';
+    try { if (window.SarvQR && SarvQR.dataUrl) url = SarvQR.dataUrl(tbQrText_(sv), 360); } catch (e) { url = ''; }
+    if (!url) { if (window.SarvQR && SarvQR.ready) SarvQR.ready(); return ''; }
+    return '<div style="text-align:center;flex:0 0 auto;"><img src="' + url + '" alt="Gate QR" style="width:30mm;height:30mm;display:block;border:1px solid #cbd5e1;border-radius:4px;">'
+        + '<div style="font-size:9px;font-weight:700;color:#475569;margin-top:2px;">SCAN AT THE GATE</div></div>';
+}
+// The saved bill exactly as it was saved (its snapshot), with the gate QR
 function tbPrintSaved(key) {
-    var sv = _tb.report && _tb.report.saved && _tb.report.saved[key];
-    if (!sv || !sv.snapshot) { alert('The saved bill was not found. Generate the Tempo-Bill again.'); return; }
-    var e = escapeHtmlJs, sn = sv.snapshot, bills = sn.bills || [];
-    var h = '<div class="tb-day"><div class="tb-head"><div><div class="veh">TEMPO-BILL · ' + e(sv.vehicle) + ' · ' + e(frDmy(sv.bill_date)) + '</div>'
-        + '<div class="sub">' + bills.length + ' trip(s) · ' + (sv.slip_ids || []).length + ' packing slip(s)</div></div>'
-        + '<div style="text-align:right;"><span class="tb-no">' + e(sv.bill_no) + '</span><div class="sub">Saved ' + e(tbWhen_(sv.created_at)) + (sv.created_by ? ' by ' + e(sv.created_by) : '') + '</div></div></div>';
+    var sv = _tb.savedByKey[key] || (_tb.report && _tb.report.saved && _tb.report.saved[key]);   // key = Tempo Bill No.
+    if (!sv || !sv.snapshot) { alert('The saved bill was not found. Press Show saved bills again.'); return; }
+    var e = escapeHtmlJs, sn = sv.snapshot, bills = sn.bills || [], qr = tbQrHtml_(sv);
+    var h = '<div class="tb-day"><div class="tb-head" style="align-items:flex-start;"><div><div class="veh">TEMPO-BILL · ' + e(sv.vehicle) + ' · ' + e(frDmy(sv.bill_date)) + '</div>'
+        + '<div class="sub">' + (sv.dk_slip ? 'Trip ' + e(sv.dk_slip) : bills.length + ' trip(s)' + ((sv.dk_slips || []).length ? ' · Dharam Kanta ' + e(sv.dk_slips.join(', ')) : '')) + ' · ' + (sv.slip_ids || []).length + ' packing slip(s)' + ((sv.snapshot || {}).auto ? ' · saved automatically' : '') + '</div></div>'
+        + '<div style="display:flex;gap:10px;align-items:flex-start;"><div style="text-align:right;"><span class="tb-no">' + e(sv.bill_no) + '</span><div class="sub">Saved ' + e(tbWhen_(sv.created_at)) + (sv.created_by ? ' by ' + e(sv.created_by) : '') + '</div></div>'
+        + qr + '</div></div>';
+    if (!qr) h += '<div class="fr-note warn">The gate QR could not be drawn (no internet for the QR library): print again in a moment.</div>';
     bills.forEach(function (b) { h += tbTripHtml_(b); });
     if (sn.tot) h += tbDayTotHtml_(sn.tot);
     tbPrintWin_(sv.bill_no, h + '</div>');
 }
+// CSV of the saved bills in the list, line by line from their snapshots
 function tbCsv() {
-    var rep = _tb.report; if (!rep) { alert('Generate the Tempo-Bill first.'); return; }
+    var L = _tb.list; if (!L) { alert('Press Show saved bills first.'); return; }
     var rows = [['Tempo Bill No', 'Tempo', 'Bill Date', 'Dharam Kanta Slip', 'DK Time', 'Dispatch No', 'Date', 'Packing Slip No', 'Party', 'Shift To', 'Quality', 'Item Type', 'Qty', 'Pcs', 'Weight', 'Rate', 'Freight',
-                 'Tare Wt', 'Loaded Wt', 'Expected Gross', 'Kanta Gross', 'Difference']];
-    (rep.days || []).forEach(function (g) {
-        var no = rep.saved && rep.saved[g.key] ? rep.saved[g.key].bill_no : '';
-        g.bills.forEach(function (b) {
-            var t = b.trip, dno = t.dispatch ? t.dispatch.id : '';
-            b.lines.forEach(function (l) { rows.push([no, t.vehicle, frDmy(g.date), t.slipNo, tbWhen_(t.inTime), dno, frDmy(l.date), l.slipNo, l.party, l.shiftTo, l.quality, l.itemType, l.packs, l.pcs, l.weight, l.rate === null ? '' : l.rate, l.freight, '', '', '', '', '']); });
-            rows.push([no, t.vehicle, frDmy(g.date), t.slipNo, tbWhen_(t.inTime), dno, '', 'TRIP TOTAL', '', '', '', '', b.tot.packs, b.tot.pcs, b.tot.weight, '', b.tot.freight,
-                       b.tare, b.tot.weight, b.expected, b.kanta === null ? '' : b.kanta, b.diff === null ? '' : b.diff]);
+                 'Tare Wt', 'Loaded Wt', 'Expected Gross', 'Kanta Gross', 'Difference', 'Saved At', 'Saved By']];
+    var nz = function (v) { return v === null || v === undefined ? '' : v; };
+    (L.rows || []).forEach(function (sv) {
+        var no = sv.bill_no, veh = sv.vehicle, bd = frDmy(sv.bill_date), sn = sv.snapshot || {}, at = tbWhen_(sv.created_at), by = sv.created_by || '';
+        (sn.bills || []).forEach(function (b) {
+            var t = b.trip || {}, dno = t.dispatch ? t.dispatch.id : '', tot = b.tot || {};
+            (b.lines || []).forEach(function (l) { rows.push([no, veh, bd, t.slipNo, tbWhen_(t.inTime), dno, frDmy(l.date), l.slipNo, l.party, l.shiftTo, l.quality, l.itemType, l.packs, l.pcs, l.weight, nz(l.rate), l.freight, '', '', '', '', '', at, by]); });
+            rows.push([no, veh, bd, t.slipNo, tbWhen_(t.inTime), dno, '', 'TRIP TOTAL', '', '', '', '', tot.packs, tot.pcs, tot.weight, '', tot.freight, b.tare, tot.weight, b.expected, nz(b.kanta), nz(b.diff), at, by]);
         });
-        var d = g.tot;
-        rows.push([no, g.vehicle, frDmy(g.date), '', '', '', '', 'DAY TOTAL', '', '', '', '', d.packs, d.pcs, d.weight, '', d.freight, d.tare, d.weight, d.expected, d.kanta === null ? '' : d.kanta, d.diff === null ? '' : d.diff]);
+        rows.push([no, veh, bd, '', '', '', '', 'BILL TOTAL', '', '', '', '', sv.packs, sv.pcs, sv.weight, '', sv.freight, nz(sv.tare), sv.weight, nz(sv.expected), nz(sv.kanta), nz(sv.diff), at, by]);
     });
     var csv = '﻿' + rows.map(function (r) { return r.map(frCsvCell).join(','); }).join('\r\n');
     var a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
-    a.download = 'Tempo_Bill_' + rep.meta.from + '_to_' + rep.meta.to + (rep.meta.tempo ? '_' + frVehKey(rep.meta.tempo) : '') + '.csv';
+    a.download = 'Saved_Tempo_Bills_' + L.from + '_to_' + L.to + (L.tempo ? '_' + frVehKey(L.tempo) : '') + '.csv';
     document.body.appendChild(a); a.click(); a.remove();
 }
 

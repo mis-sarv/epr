@@ -4395,9 +4395,10 @@ function App(){
     loadFabricMasters();
     loadHosts();
     loadUnits();
+    // data sync every 5 s; offline it waits (loadRows would toast an error on every tick). The notice board stays on Realtime.
     const iv = setInterval(()=>{
-      if (document.visibilityState === "visible" && !detail && !showNew) loadRows(false);
-    }, 60000);
+      if (document.visibilityState === "visible" && navigator.onLine !== false && !detail && !showNew) loadRows(false);
+    }, 5000);
     return ()=> clearInterval(iv);
   },[profile, loadRows, loadMachines, loadProcesses]);   // eslint-disable-line
 

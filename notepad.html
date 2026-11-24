@@ -1675,7 +1675,7 @@ window.addEventListener('pagehide', () => { if (ED) { if (ED.flush) ED.flush(); 
   if (TOOL(h)) S.view = h;
   S.loaded = true; render(); paintSync();
   await sync();
-  setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 60000);
+  setInterval(() => { if (document.visibilityState === 'visible') sync(); }, 5000);   // data sync every 5 s (changes since the cursor only)
 })();
 </script>
 </body>
