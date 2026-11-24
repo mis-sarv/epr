@@ -18474,6 +18474,9 @@ async function loadInwardForEdit(id,no){
      back as the ticked Cost on Yarn checkbox, whose row works its figures out
      again from the items (inwCostYarn_). */
   const coyAt=lines.findIndex(inwIsCostYarnLine_),hadCoy=coyAt>=0;
+  // ROUND OFF: a saved rate with more than 2 decimals was not rounded
+  if(hadCoy){const rr=Number(lines[coyAt].rate);sarvCoyRound=!(isFinite(rr)&&Math.abs(rr*100-Math.round(rr*100))>1e-6);}
+  else sarvCoyRound=true;
   if(hadCoy)lines.splice(coyAt,1);
   setTimeout(()=>inwCostYarnToggle_(hadCoy),0);
   const tb=byId('itemTableBody');if(tb)tb.innerHTML='';
@@ -24583,6 +24586,7 @@ let PR_TEAL=[13,92,83];
    };
  }
  function clearInwardForm(forEdit){
+   sarvCoyRound=true;            // ROUND OFF: a new entry starts with the rate rounded, as before
    inwCostYarnToggle_(false);   // the Cost on Yarn row belongs to the entry just left
    inwYarnUlReset_();           // so does its Yarn Unloading No.
    inwGateReset_();             // and its Gate Entry No.
@@ -32168,6 +32172,15 @@ function sarvPdfMarkFill_(){document.querySelectorAll('#ap_pdfEdit .pdffill').fo
    The PDF prints it as the last row, as it is on the form; the TOTAL row there
    counts Qty / Weight of the items only, the amount including it. */
 const INW_COY_NAME='COST ON YARN';
+/* ROUND OFF (2026-11-24): the row's own checkbox "Round off rate" decides how the Cost on Yarn / Kg of the Freight
+   Calculator (Freight Amt ÷ Net Weight) is used:
+     ticked (default, as before)  the rate is rounded to 2 decimals (2.0512 → 2.05) and the amount = that rate × Qty / Wt
+     not ticked                   the rate is used as it comes (kept to 6 decimals, shown with 4), so on a WEIGHT basis
+                                  the amount is the Freight Amt itself, with no paise lost to the rounding
+   It is saved through the line's rate: a saved rate with more than 2 decimals comes back unticked on an edit.
+   var (not let): clearInwardForm, earlier in this file, sets it back for a new entry. */
+var sarvCoyRound=true;
+function inwCostYarnRound_(on){sarvCoyRound=!!on;if(typeof updateStoreTotals==='function')updateStoreTotals();}
 const inwIsCostYarnLine_=l=>String((l&&l.items&&l.items.name)||(l&&l.item_name)||'').trim().toUpperCase()===INW_COY_NAME;
 function inwCostYarnToggle_(on){
   const body=byId('inwCostYarnBody'),chk=byId('inwCostYarnChk');if(!body)return;
@@ -32178,7 +32191,9 @@ function inwCostYarnToggle_(on){
     const ro=(cls,val,extra)=>'<td><input type="text" class="table-input '+cls+'" value="'+val+'" readonly tabindex="-1" style="background:#ecfdf5;color:#065f46;font-weight:700;cursor:default;'+(extra||'')+'"></td>';
     tr.innerHTML=ro('coy-name',INW_COY_NAME)
       +ro('coy-desc','FREIGHT COST SPREAD PER KG (AUTO)','font-weight:600;')
-      +'<td></td><td></td>'
+      // ROUND OFF: round the Cost on Yarn / Kg to 2 decimals, or use it as it comes
+      +'<td colspan="2" style="white-space:nowrap;"><label title="Ticked: Cost on Yarn / Kg rounded to 2 decimals. Not ticked: the exact rate of the Freight Calculator (the amount = the Freight Amt on a WEIGHT basis)." style="display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;color:#065f46;cursor:pointer;">'
+      +'<input type="checkbox" class="coy-round" '+(sarvCoyRound?'checked':'')+' onchange="inwCostYarnRound_(this.checked)" style="width:15px;height:15px;accent-color:#047857;"> Round off rate</label></td>'
       +ro('coy-qty','0')+ro('coy-uom','')+ro('coy-wt','0')+ro('coy-wunit','KGS')+ro('coy-basis','QTY')
       +ro('coy-lp','0')+ro('coy-disc','0')+ro('coy-rate','0')+ro('coy-gst','0')
       +'<td class="coy-total" style="font-weight:800;color:#065f46;">₹0.00</td>'
@@ -32196,16 +32211,19 @@ function inwCostYarnUpdate_(rows,qty,netWt,weightedGst,totalGstWt){
   const uom=(first&&first.querySelector('.item-uom')?.value)||'';
   const gst=totalGstWt>0?weightedGst/totalGstWt:(+(first&&first.querySelector('.item-gst-field')?.value)||0);
   const grossWt=+byId('calcGrossWeight')?.value||0,freightRate=+byId('calcFreightRate')?.value||0;
-  /* Cost on Yarn / Kg, the Freight Calculator's own figure, rounded to 2 decimals
-     (2.0512 → 2.05, 2.056 → 2.06): the List Price / Rate shown is exactly the one
-     the Item Total is worked out from, with nothing hidden past the paise. */
-  const cost=netWt>0?Math.round(grossWt*freightRate/netWt*100)/100:0;
+  /* Cost on Yarn / Kg, the Freight Calculator's own figure. Round off ticked: rounded to 2 decimals (2.0512 → 2.05,
+     2.056 → 2.06); not ticked: as it comes, kept to 6 decimals (ROUND OFF above). Either way the List Price / Rate shown
+     is exactly the one the Item Total is worked out from. */
+  const exact=netWt>0?grossWt*freightRate/netWt:0;
+  const cost=sarvCoyRound?Math.round(exact*100)/100:Math.round(exact*1e6)/1e6;
   const total=Math.round(cost*(basis==='WEIGHT'?netWt:qty)*100)/100;
   const set=(c,v)=>{const e=tr.querySelector('.'+c);if(e)e.value=v;};
+  const shown=sarvCoyRound?cost.toFixed(2):String(Math.round(cost*10000)/10000);
+  const rb=tr.querySelector('.coy-round');if(rb&&rb.checked!==sarvCoyRound)rb.checked=sarvCoyRound;
   set('coy-qty',Math.round(qty*1000)/1000);set('coy-uom',uom);set('coy-wt',netWt.toFixed(2));set('coy-basis',basis);
-  set('coy-lp',cost.toFixed(2));set('coy-rate',cost.toFixed(2));set('coy-gst',(Math.round(gst*100)/100).toString());
+  set('coy-lp',shown);set('coy-rate',shown);set('coy-gst',(Math.round(gst*100)/100).toString());
   const tc=tr.querySelector('.coy-total');if(tc)tc.textContent='₹'+total.toFixed(2);
-  tr._coy={qty,weight:netWt,uom,basis,cost,gst,total};
+  tr._coy={qty,weight:netWt,uom,basis,cost,gst,total,round:sarvCoyRound};
   return {total,tax:gst};
 }
 /* The row as an Inward line for the preview / PDF / save (rowDataInward's
@@ -33684,6 +33702,50 @@ async function sarvUpSave_(){
 var SARV_YUL_CAT='WEAVING YARN';
 var sarvInwYarnUl={list:null,unit:'',at:0,busy:null,noMig:false,want:'',editHad:false,editStore:'',sig:''};
 var sarvInwYarnUlChosen='';
+/* YARN UL REQUIRED (2026-11-24): whether the Yarn Unloading No. is compulsory for a WEAVING YARN Inward is set PER
+   STORE by the Admin with the checkbox in the box (app_settings 'yarn_ul_required' = {"STORE 1": bool, "STORE 2": bool},
+   saved by admin_save_setting with the Admin PIN, no migration). A store not set = compulsory, as before. Off = the
+   box still shows and an unused report is still offered; Submit only asks once before saving without one. */
+var sarvYulReq={map:null,at:0,busy:null};
+function inwYarnUlStoreKey_(){return ((sarvInwYarnUl&&sarvInwYarnUl.editStore)||sarvStore||'STORE 2')==='STORE 1'?'STORE 1':'STORE 2';}
+function inwYarnUlRequired_(){const m=sarvYulReq.map,k=inwYarnUlStoreKey_();return !(m&&m[k]===false);}
+async function inwYarnUlReqLoad_(force){
+  if(!force&&sarvYulReq.map&&Date.now()-sarvYulReq.at<60000)return sarvYulReq.map;
+  if(sarvYulReq.busy)return sarvYulReq.busy;
+  sarvYulReq.busy=(async()=>{
+    try{const q=await SB.from('app_settings').select('value').eq('key','yarn_ul_required').maybeSingle();
+      if(!q.error){sarvYulReq.map=(q.data&&q.data.value&&typeof q.data.value==='object')?q.data.value:{};sarvYulReq.at=Date.now();}}
+    catch(e){console.warn('[SARV] yarn_ul_required not read:',e.message||e);}
+    finally{sarvYulReq.busy=null;}
+    return sarvYulReq.map;
+  })();
+  return sarvYulReq.busy;
+}
+function inwYarnUlReqPaint_(){
+  const req=inwYarnUlRequired_(), k=inwYarnUlStoreKey_();
+  const tag=byId('inwYarnUlReqTag');
+  if(tag){tag.textContent=req?'★ MANDATORY FOR WEAVING YARN':'(optional for '+k+', set by the Admin)';tag.style.color=req?'#dc2626':'#64748b';}
+  const wrap=byId('inwYarnUlReqWrap');
+  if(wrap){wrap.style.display=(typeof isAdmin==='function'&&isAdmin())?'inline-flex':'none';
+    const ck=byId('inwYarnUlReqChk');if(ck)ck.checked=req;const lb=byId('inwYarnUlReqLbl');if(lb)lb.textContent='Compulsory for '+k;}
+}
+// Admin: compulsory on / off for the store on screen (Admin PIN)
+async function inwYarnUlSetRequired_(on){
+  const ck=byId('inwYarnUlReqChk'), k=inwYarnUlStoreKey_();
+  if(!isAdmin()){if(ck)ck.checked=inwYarnUlRequired_();return showToast('Admin login only','warn');}
+  const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:(on?'Make':'Stop making')+' the Yarn Unloading No. compulsory',
+    recordInfo:'Every Inward / Inward NB of '+k+' with a WEAVING YARN item',label:'Admin PIN',confirmText:'Save'});
+  if(pin==null||!pin.trim()){if(ck)ck.checked=inwYarnUlRequired_();return;}
+  try{
+    const cur=await SB.from('app_settings').select('value').eq('key','yarn_ul_required').maybeSingle();
+    const val=Object.assign({},(cur.data&&cur.data.value)||{});val[k]=!!on;
+    const r=await SB.rpc('admin_save_setting',{p_key:'yarn_ul_required',p_value:val,p_admin_pin:pin.trim()});
+    if(r.error)throw r.error;
+    if(r.data===false){if(ck)ck.checked=inwYarnUlRequired_();return showToast('Wrong Admin PIN','error');}
+    sarvYulReq.map=val;sarvYulReq.at=Date.now();inwYarnUlReqPaint_();
+    showToast('Yarn Unloading No. is now '+(on?'COMPULSORY':'optional')+' for WEAVING YARN in '+k);
+  }catch(e){if(ck)ck.checked=inwYarnUlRequired_();showToast('Not saved: '+escText(e.message||e),'error');}
+}
 function yulNorm_(t){return String(t||'').trim().toUpperCase().replace(/\s+/g,' ');}
 function yulKey_(t){return String(t||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}
 function inwYarnUlUnit_(){return (((sarvInwYarnUl&&sarvInwYarnUl.editStore)||sarvStore||'STORE 2')==='STORE 1')?'UNIT-1':'UNIT-2';}
@@ -33772,7 +33834,8 @@ async function inwYarnUlRefresh_(force){
   g.style.display=need?'':'none';
   if(!need)return;
   const before=sarvInwYarnUl.list;
-  await inwYarnUlLoad_(force);
+  await Promise.all([inwYarnUlLoad_(force),inwYarnUlReqLoad_(force)]);
+  inwYarnUlReqPaint_();
   if(force||before!==sarvInwYarnUl.list||!byId('inwYarnUlNo').options.length)inwYarnUlRender_();
   else inwYarnUlInfo_();
 }
@@ -33786,11 +33849,19 @@ setInterval(()=>{
 async function inwYarnUlGate_(rows){
   sarvInwYarnUlChosen='';
   if(!rows.some(r=>yulNorm_(r.cat)===SARV_YUL_CAT))return true;
-  const list=await inwYarnUlLoad_(true);inwYarnUlRender_();
+  const [list]=await Promise.all([inwYarnUlLoad_(true),inwYarnUlReqLoad_(true)]);inwYarnUlRender_();inwYarnUlReqPaint_();
   if(sarvInwYarnUl.noMig){showToast('WEAVING YARN: the Yarn Unloading link is not set up on the server yet (YARN_UNLOADING_SERIAL_MIGRATION.sql); saved without it','warn');return true;}
   const g=byId('inwYarnUlGroup');if(g)g.style.display='';
   const v=pVal('inwYarnUlNo');
-  if(!v){highlightRequiredField('inwYarnUlNo');byId('inwYarnUlNo')?.scrollIntoView({behavior:'smooth',block:'center'});
+  if(!v){
+    // YARN UL REQUIRED off for this store: saved without one, asked once while unused reports exist
+    if(!inwYarnUlRequired_()){
+      const n=(list||[]).filter(x=>!x.usedBy).length;
+      if(n&&!confirm('No Yarn Unloading No. is chosen for the WEAVING YARN item(s), while '+n+' report(s) of '+inwYarnUlUnitLabel_()+' are not used yet.\n\nSave this Inward WITHOUT a Yarn Unloading No.?')){
+        byId('inwYarnUlNo')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
+      return true;
+    }
+    highlightRequiredField('inwYarnUlNo');byId('inwYarnUlNo')?.scrollIntoView({behavior:'smooth',block:'center'});
     showToast('A WEAVING YARN item is on this Inward: choose its Yarn Unloading No. ('+inwYarnUlUnitLabel_()+')','warn');return false;}
   const r=list.find(x=>x.serial_no===v);
   const mine=String(sarvEditingInwardId||'');
