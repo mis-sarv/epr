@@ -276,6 +276,10 @@
     <div class="dash-container">
         <h2 style="text-align:center; color:#1e3a8a; margin-top:0; font-weight:900; letter-spacing:1px;">SARV INDIA DASHBOARD</h2>
         <div style="display:flex; align-items:center; gap:8px; margin-top:-10px; font-size:13px; font-weight:700; color:#475569;">
+            <!-- Back to the launcher: on the Dashboard only (it lives in #dashboard-screen, so the entry / report screens never show it);
+                 the open draft is written to the phone first -->
+            <a href="launcher.html" onclick="try{flushToLocal();}catch(e){}" title="Back to the apps (launcher)"
+               style="flex:none; display:inline-flex; align-items:center; gap:4px; background:#fff; color:#1e3a8a; border:1px solid #93c5fd; border-radius:8px; padding:6px 12px; font-weight:800; text-decoration:none;">← Apps</a>
             <span id="yuWho" style="flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">—</span>
             <button type="button" onclick="yuAskLogout()" style="background:#fff; color:#b91c1c; border:1px solid #fca5a5; border-radius:8px; padding:6px 12px; font-weight:800; cursor:pointer;">Log out</button>
         </div>
@@ -357,7 +361,9 @@
     <button class="no-print back-btn" style="position:fixed; top:20px; left:20px; z-index:1002;" onclick="showDashboard()">⬅ Dashboard</button>
 
     <div id="errorToast" class="error-toast">⚠️ कृपया वेट DATA एंटर करे</div>
-    <div class="no-print floating-total-box">
+    <!-- The floating TOTAL WEIGHT card (top right) is hidden on purpose (2026-11-24); its boxes stay, because
+         the page still writes the live total and the cloud status into them -->
+    <div class="no-print floating-total-box" style="display:none;" aria-hidden="true">
         <small>TOTAL WEIGHT</small><br>
         <span id="liveTotalDisplay" style="font-size: 22px; color: #38bdf8;">0.00 kg</span>
         <div id="cloudStatus" style="font-size: 10px; font-weight: 700; margin-top: 4px; color: #94a3b8; letter-spacing: 0.3px;">☁️ —</div>

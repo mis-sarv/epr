@@ -402,10 +402,14 @@
                 <div id="inwYarnUlGroup" style="display:none; margin-bottom:12px; background:#eff6ff; border:2px solid #3b82f6; border-radius:8px; padding:12px 16px;">
                     <div style="display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px;">
                         <div class="form-group" style="margin:0; flex:1; min-width:260px;">
-                            <label>Yarn Unloading No. <span style="color:#dc2626;font-weight:700;font-size:10px;">★ MANDATORY FOR WEAVING YARN</span></label>
+                            <label>Yarn Unloading No. <span id="inwYarnUlReqTag" style="color:#dc2626;font-weight:700;font-size:10px;">★ MANDATORY FOR WEAVING YARN</span></label>
                             <select class="form-control" id="inwYarnUlNo" onchange="inwYarnUlPicked_()"></select>
                         </div>
                         <button type="button" onclick="inwYarnUlRefresh_(true)" style="padding:8px 14px; border:1.5px solid #3b82f6; background:#fff; color:#1d4ed8; border-radius:6px; font-weight:700; cursor:pointer;">↻ Refresh</button>
+                        <!-- Admin only: Compulsory on / off for this store (YARN UL REQUIRED in store-core.js; app_settings 'yarn_ul_required', Admin PIN) -->
+                        <label id="inwYarnUlReqWrap" style="display:none; align-items:center; gap:6px; font-size:11px; font-weight:700; color:#1e3a8a; cursor:pointer; padding-bottom:6px;" title="Admin: make the Yarn Unloading No. compulsory on every Inward with a WEAVING YARN item of this store">
+                            <input type="checkbox" id="inwYarnUlReqChk" onchange="inwYarnUlSetRequired_(this.checked)"> <span id="inwYarnUlReqLbl">Compulsory</span>
+                        </label>
                     </div>
                     <div id="inwYarnUlInfo" style="margin-top:8px; font-size:12px;"></div>
                 </div>
@@ -4139,7 +4143,7 @@
      </section>
 
 
-<script src="store-core.js?v=20261124e"></script>
+<script src="store-core.js?v=20261124f"></script>
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PRODUCTION › DESIGN MASTER — styles, edit modal, datalists, logic
      The DESIGN MASTER V18.html interface, inside Store.html and on Supabase
