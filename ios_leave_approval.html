@@ -627,7 +627,11 @@ function paintAdminSteps() {
     + '<div style="flex-basis:100%">' + (st.depts || []).map((d, k) => '<span class="uchip">' + esc(d) + '<button type="button" data-dd="' + k + '" aria-label="Remove">✕</button></span>').join('')
     + '<select class="inp" data-adddept style="margin-top:4px"><option value="">+ Only for a department…</option>' + (A.depts || []).filter(d => (st.depts || []).indexOf(d) < 0).map(d => '<option value="' + esc(d) + '">' + esc(d) + '</option>').join('') + '</select></div></div>'
     + '<div class="row" style="flex-wrap:wrap"><span class="l">Approvers</span><span class="v" style="font-size:12px">' + ((st.users || []).length ? (st.users.length === 1 ? 'picked by itself' : 'the employee chooses one of these') : '<span style="color:var(--red)">none yet</span>') + '</span>'
-    + '<div style="flex-basis:100%">' + (st.users || []).map((id, k) => { const u = userById(id) || { name:'(inactive user)' }; return '<span class="uchip">' + esc(u.name) + (u.empCode ? ' · ' + esc(u.empCode) : '') + '<button type="button" data-du="' + k + '" aria-label="Remove">✕</button></span>'; }).join('')
+    // every active user picked (the All option): one chip instead of a chip per user
+    + '<div style="flex-basis:100%">' + (allUsersIn(st)
+        ? '<span class="uchip">All users (' + A.users.length + ')<button type="button" data-dall aria-label="Remove all">✕</button></span>'
+          + '<div class="v" style="font-size:11px;margin-top:2px">A login made later is not in it: open Choose approvers and tick All again.</div>'
+        : (st.users || []).map((id, k) => { const u = userById(id) || { name:'(inactive user)' }; return '<span class="uchip">' + esc(u.name) + (u.empCode ? ' · ' + esc(u.empCode) : '') + '<button type="button" data-du="' + k + '" aria-label="Remove">✕</button></span>'; }).join(''))
     + '<button type="button" class="mini" data-addu style="margin-top:4px">+ Choose approvers</button></div></div>'
     + '</div>').join('') || '<div class="empty">No step: add one.</div>';
   box.querySelectorAll('[data-i]').forEach(card => {
@@ -639,25 +643,44 @@ function paintAdminSteps() {
     card.querySelectorAll('[data-dd]').forEach(b => b.addEventListener('click', () => { st.depts.splice(Number(b.getAttribute('data-dd')), 1); A.dirty = true; paintAdminSteps(); }));
     card.querySelector('[data-adddept]').addEventListener('change', e => { if (!e.target.value) return; st.depts = (st.depts || []).concat([e.target.value]); A.dirty = true; paintAdminSteps(); });
     card.querySelectorAll('[data-du]').forEach(b => b.addEventListener('click', () => { st.users.splice(Number(b.getAttribute('data-du')), 1); A.dirty = true; paintAdminSteps(); }));
+    const dall = card.querySelector('[data-dall]');
+    if (dall) dall.addEventListener('click', () => { if (!confirm('Remove all ' + st.users.length + ' approvers of "' + (st.label || 'this step') + '"?')) return; st.users = []; A.dirty = true; paintAdminSteps(); });
     card.querySelector('[data-addu]').addEventListener('click', () => pickUsers(st));
   });
 }
-// Approvers of a step: a search list of the active ERP users, ticked ones kept
+// Every active login is an approver of this step (the picker's All option)
+function allUsersIn(st) {
+  const A = S.admin, have = new Set((st.users || []).map(String));
+  return A.users.length > 1 && A.users.every(u => have.has(String(u.id)));
+}
+/* Approvers of a step: a search list of the active ERP users, ticked ones kept. The first row, All, ticks every
+   user of the list on screen (every active login when nothing is searched; only the matches while searching), and
+   untick clears them; it shows ticked while all of those are ticked. The employee then chooses any one of them
+   when applying (never himself: lv_save). */
 function pickUsers(st) {
   const A = S.admin, sel = new Set((st.users || []).map(String));
-  const sh = sheet('<h3>Approvers · ' + esc(st.label || 'step') + '</h3><div class="sub">Only these users may approve this step. Tick one or more.</div>'
+  const sh = sheet('<h3>Approvers · ' + esc(st.label || 'step') + '</h3><div class="sub">Only these users may approve this step. Tick one or more, or All.</div>'
     + '<div class="search" style="margin-bottom:6px">' + ico('search', 16) + '<input class="inp" id="uQ" placeholder="Search name, Emp Code, department…"></div>'
     + '<div class="ulist" id="uList"></div>'
     + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px"><button type="button" class="btn gray" data-x>Cancel</button><button type="button" class="btn blue" id="uOk">Use</button></div>');
-  const q = sh.el.querySelector('#uQ'), listEl = sh.el.querySelector('#uList');
+  const q = sh.el.querySelector('#uQ'), listEl = sh.el.querySelector('#uList'), okBtn = sh.el.querySelector('#uOk');
+  const paintOk = () => { okBtn.textContent = sel.size ? 'Use (' + sel.size + ')' : 'Use'; };
   const draw = () => {
     const words = (q.value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
     const list = A.users.filter(u => { const h = [u.name, u.empCode, u.dept, u.desig].join(' ').toUpperCase(); return words.every(w => h.indexOf(w) >= 0); });
-    listEl.innerHTML = list.map(u => '<label><input type="checkbox" data-u="' + esc(u.id) + '"' + (sel.has(String(u.id)) ? ' checked' : '') + '><span><b>' + esc(u.name) + '</b><small>' + esc([u.empCode, u.desig, u.dept].filter(Boolean).join(' · ')) + '</small></span></label>').join('') || '<div class="empty">Nobody matches.</div>';
-    listEl.querySelectorAll('[data-u]').forEach(cb => cb.addEventListener('change', () => { if (cb.checked) sel.add(cb.getAttribute('data-u')); else sel.delete(cb.getAttribute('data-u')); }));
+    const allOn = list.length > 0 && list.every(u => sel.has(String(u.id)));
+    const allRow = list.length ? '<label style="background:var(--fill,#f2f2f7);border-radius:10px;padding:9px 8px"><input type="checkbox" data-all' + (allOn ? ' checked' : '') + '><span><b>All' + (words.length ? ' shown' : ' users') + ' (' + list.length + ')</b><small>'
+        + (words.length ? 'Every user matching this search' : 'Every active login: the employee may send the leave to anyone') + '</small></span></label>' : '';
+    const top = listEl.scrollTop;   // a tick redraws the list (the All row follows it): stay where the finger was
+    listEl.innerHTML = allRow + (list.map(u => '<label><input type="checkbox" data-u="' + esc(u.id) + '"' + (sel.has(String(u.id)) ? ' checked' : '') + '><span><b>' + esc(u.name) + '</b><small>' + esc([u.empCode, u.desig, u.dept].filter(Boolean).join(' · ')) + '</small></span></label>').join('') || '<div class="empty">Nobody matches.</div>');
+    listEl.querySelectorAll('[data-u]').forEach(cb => cb.addEventListener('change', () => { if (cb.checked) sel.add(cb.getAttribute('data-u')); else sel.delete(cb.getAttribute('data-u')); draw(); }));
+    const all = listEl.querySelector('[data-all]');
+    if (all) all.addEventListener('change', () => { list.forEach(u => { if (all.checked) sel.add(String(u.id)); else sel.delete(String(u.id)); }); draw(); });
+    listEl.scrollTop = top;
+    paintOk();
   };
   q.addEventListener('input', draw); draw();
-  sh.el.querySelector('#uOk').addEventListener('click', () => { st.users = [...sel]; A.dirty = true; sh.close(); paintAdminSteps(); });
+  okBtn.addEventListener('click', () => { st.users = [...sel]; A.dirty = true; sh.close(); paintAdminSteps(); });
 }
 function listEditor(title, key, ph) {
   return '<h2 class="sec">' + esc(title) + '</h2><div class="card" data-lst="' + key + '">'

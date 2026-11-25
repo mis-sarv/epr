@@ -34128,12 +34128,18 @@ function inwGateRender_(){
       +(r.invoice_no?' · Challan '+escText(r.invoice_no):'')+' · '+escText(due.txt)+'</option>';}).join('')+'</optgroup>':'';
   const grp=inpHtml||ulHtml||chlHtml;
   sel.innerHTML='<option value="">-- Select the gate\'s Inward entry / Store Inward No. --</option>'+inpHtml+chlHtml+ulHtml+(grp?'<optgroup label="Gate Inward entries">':'')+opts.map(r=>
-    '<option value="'+escText(r.no)+'">'+escText(r.no)+(r.kind==='VISITOR'?' · Working visitor '+escText(r.visitor||'-')+' of':'')+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
+    '<option value="'+escText(r.no)+'">'+escText(r.no)+(r.kind==='VISITOR'?' · Working visitor '+escText(r.visitor||'-')+' of':'')
+      +(inwGateIsSmp_(r)?' · Sample / Other ('+escText(r.returnType==='RETURNABLE'?'Returnable':'Non-Returnable')+')'+(r.item?' '+escText(r.item):'')+' from':'')+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
       +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+' · '+escText(inwGateStepTxt_(r))+'</option>').join('')+(grp?'</optgroup>':'');
   if(cur&&(opts.some(r=>r.no===cur)||ulOpts.some(r=>INW_UL_PFX+r.no===cur)||inp.some(p=>INP_PFX+p.id===cur)||chl.some(r=>CHL_PFX+r.id===cur)))sel.value=cur;
   else if(cur&&S.want===cur&&mine){sel.insertAdjacentHTML('beforeend','<option value="'+escText(cur)+'">'+escText(cur)+' (this record)</option>');sel.value=cur;}
   inwGateInfo_();
 }
+/* A gate SAMPLE / OTHER entry (gate_1.html / gate_2.html › Sample & Other, listed once APPROVED by
+   GATE_VISITOR_WORKING_MIGRATION.sql): an inward of the gate's IN series, party = its Supplier, with person, mobile,
+   item, Returnable / Non-Returnable and Bill + Item photos; no PO / PR and no Unloader on it. Booked like a Working
+   visitor's firm: Supplier Name = its party, the Unloader Supervisor checks it on Submit. */
+const inwGateIsSmp_=r=>!!r&&r.kind==='SAMPLE / OTHER';
 // The party of the picked gate entry (capitals), '' when none is picked
 function inwGateParty_(){
   if(typeof sarvInwGate==='undefined'||!sarvInwGate)return '';
@@ -34160,7 +34166,7 @@ function inwGateCheck_(){
   let refChange=null;
   if(pos.length&&!(/^PO$/i.test(r.refType||'')&&same(pos,refs)))refChange={type:'PO',no:pos.join(', ')};
   else if(!pos.length&&prs.length&&!(/^PR$/i.test(r.refType||'')&&same(prs,refs)))refChange={type:'PR',no:prs.join(', ')};
-  if(r.kind==='VISITOR')refChange=null;   // a Working visitor: nothing to write back (gate_inward_set_ref knows Inward entries only)
+  if(r.kind==='VISITOR'||inwGateIsSmp_(r))refChange=null;   // a Working visitor / Sample: nothing to write back (gate_inward_set_ref knows Inward entries only)
   if(refChange)warns.push('Gate '+(r.refType||'Ref')+' '+(refs.join(', ')||'-')+' → this Inward '+refChange.type+' '+refChange.no+': the gate entry is updated to it on Save');
   return {row:r,errs,warns,refChange};
 }
@@ -34549,6 +34555,22 @@ function inwGatePipeHtml_(row){
   };
   const arrow='<div style="align-self:center;color:#94a3b8;font-weight:800;flex:none;">→</div>';
   const steps=[];
+  // a Sample / Other entry: Gate In · Sample → Approved → Store entry
+  if(inwGateIsSmp_(row)){
+    steps.push(step('done','Gate In · Sample / Other',inwGateDmyT_(row.inTime),[
+      '<b>'+escText(row.returnType==='RETURNABLE'?'Returnable':'Non-Returnable')+'</b>'+(row.item?' · '+escText(row.item):''),
+      'From <b>'+escText(row.party||'-')+'</b>',
+      row.person?'Person: <b>'+escText(row.person)+'</b>'+(row.mobile?' · '+escText(row.mobile):''):'',
+      row.guard?'Guard: '+escText(row.guard):''
+    ]));
+    steps.push(ap&&ap.status==='APPROVED'
+      ?step('done','Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.approver||'-')+'</b>'])
+      :step('off','Approval','',['No approval on this entry']));
+    steps.push(step('off','Unloader','',['Sample / Other: no Unloader. The Unloader Supervisor checks this Inward on Submit']));
+    steps.push(step('done','Store Entry','Ready to Submit',['The Supplier is the Supplier Name of this Inward'
+      +(row.returnType==='RETURNABLE'?' · it is RETURNABLE: the gate sends it back with an Outward later':'')]));
+    return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
+  }
   // a Working visitor of the firm (GATE_VISITOR_WORKING_MIGRATION.sql): Gate In → Host approved → Store entry
   if(row.kind==='VISITOR'){
     steps.push(step('done','Gate In · Visitor',inwGateDmyT_(row.inTime),[
@@ -34679,7 +34701,7 @@ async function inwGateUlGate_(){
   if(!r||!Object.prototype.hasOwnProperty.call(r,'unload'))return null;
   // a Working visitor's firm (GATE_VISITOR_WORKING_MIGRATION.sql): no Unloader is ever assigned to a visitor, so the
   // Unloader Supervisor checks it on Submit like an Inward without a Gate Entry No.
-  if(r.kind==='VISITOR')return null;
+  if(r.kind==='VISITOR'||inwGateIsSmp_(r))return null;   // a Sample / Other entry: the same (no Unloader on it)
   if(!ul){
     // an old gate Inward that never asked for approval has no approver to assign one: the Unloader Supervisor as before
     if(!r.approval)return null;
@@ -34778,7 +34800,7 @@ function inpState_(p){
 }
 // the Gate Entry No. option's step words (the same rule as the pipeline's Store Entry step)
 function inwGateStepTxt_(r){
-  if(!r||r.kind==='VISITOR')return 'Ready for Store entry';
+  if(!r||r.kind==='VISITOR'||inwGateIsSmp_(r))return 'Ready for Store entry';
   if(!Object.prototype.hasOwnProperty.call(r,'unload'))return 'Ready for Store entry';
   const ul=inwGateUlOf_(r);
   if(!ul)return r.approval?'Waiting: Unloader to be assigned':'Ready for Store entry';
