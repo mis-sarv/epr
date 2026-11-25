@@ -14,7 +14,7 @@
     <!-- The fixed company logo (logo-removebg.png as a data URL), printed on the cover, product pages and album. -->
     <script src="catalog-logo.js"></script>
     <!-- Facebook / Instagram QR codes (fb.png / insta.png as data URLs), on the Back Cover. -->
-    <script src="catalog-social.js"></script>
+    <script src="catalog-social.js?v=20261125"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@300;400;600;700&family=Montserrat:wght@300;400;700;900&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
@@ -709,7 +709,7 @@
                     <div class="p-3 border border-gray-200 rounded bg-gray-50 space-y-2">
                         <label class="flex items-center gap-2 text-xs font-bold text-gray-800 uppercase tracking-wide cursor-pointer">
                             <input type="checkbox" id="input-back-social" onchange="updateCurrentPage('backSocial', this.checked ? 'Y' : 'N')" class="w-4 h-4 accent-indigo-600">
-                            Follow Us: Facebook &amp; Instagram QR
+                            Follow Us: Facebook, Instagram &amp; WhatsApp QR
                         </label>
                         <div class="flex items-center gap-2">
                             <span class="text-xs font-semibold text-gray-500 w-20"><i class="fab fa-facebook text-blue-600"></i> Facebook</span>
@@ -719,7 +719,11 @@
                             <span class="text-xs font-semibold text-gray-500 w-20"><i class="fab fa-instagram text-pink-600"></i> Instagram</span>
                             <input type="text" id="input-back-instaUrl" oninput="updateCurrentPage('instaUrl', this.value)" placeholder="https://www.instagram.com/sarvindia/" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         </div>
-                        <p class="text-[10px] text-gray-400 leading-snug">The QR codes are fixed (fb.png / insta.png). Each link is printed under its QR and is clickable in the PDF; left blank, the SARV INDIA page is used.</p>
+                        <div class="flex items-center gap-2">
+                            <span class="text-xs font-semibold text-gray-500 w-20"><i class="fab fa-whatsapp text-green-600"></i> WhatsApp</span>
+                            <input type="text" id="input-back-waUrl" oninput="updateCurrentPage('waUrl', this.value)" placeholder="https://whatsapp.com/channel/0029Vb7L814GZNCniWrTpX3D" class="flex-1 border border-gray-300 rounded p-1.5 text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <p class="text-[10px] text-gray-400 leading-snug">The QR codes are fixed (fb.png / insta.png / wb chanel.PNG), all three in one row. Each link is printed under its QR and is clickable in the PDF; left blank, the SARV INDIA page is used.</p>
                     </div>
                     <div class="p-4 bg-indigo-50 border border-indigo-100 rounded-lg">
                         <label class="block text-xs font-bold text-indigo-800 uppercase tracking-wide mb-3"><i class="fas fa-palette"></i> Page Colors</label>
@@ -1520,10 +1524,11 @@
             backTitle: 'THANK\nYOU',
             backSub: 'for your interest in our collection',
             backMessage: 'We would be glad to send samples, rates and delivery schedules for any design in this catalog. Reach us any time.',
-            // No mobile number on the back cover: the Facebook / Instagram QR codes take its place.
+            // No mobile number on the back cover: the Facebook / Instagram / WhatsApp channel QR codes take its place.
             backSocial: 'Y',
             fbUrl: '',
             instaUrl: '',
+            waUrl: '',
             website: 'www.sarvindia.com',
             email: 'sales@sarvindia.com',
             address: 'Panipat, Haryana, India',
@@ -1894,6 +1899,7 @@
                 document.getElementById('input-back-social').checked = page.backSocial !== 'N';
                 document.getElementById('input-back-fbUrl').value = page.fbUrl || CM_LINKS.fb;
                 document.getElementById('input-back-instaUrl').value = page.instaUrl || CM_LINKS.insta;
+                document.getElementById('input-back-waUrl').value = page.waUrl || CM_LINKS.wa;
                 document.getElementById('input-back-website').value = v('website');
                 document.getElementById('input-back-email').value = v('email');
                 document.getElementById('input-back-address').value = v('address');
@@ -2173,12 +2179,13 @@
         function fixedLogoSrc() { return window.SARV_CATALOG_LOGO || 'logo-removebg.png'; }
         /* Clickable links in the exported PDF (buildPdf turns every element with
            data-pdf-link into a link area). The logo on every page opens the
-           website; the back cover's QR cards open Facebook / Instagram, unless
+           website; the back cover's QR cards open Facebook / Instagram / the WhatsApp channel, unless
            the back cover editor has another link typed in. */
         const CM_LINKS = {
             site:  'https://www.sarvindia.com',
             fb:    'https://www.facebook.com/sarvindiahome/',
-            insta: 'https://www.instagram.com/sarvindia/'
+            insta: 'https://www.instagram.com/sarvindia/',
+            wa:    'https://whatsapp.com/channel/0029Vb7L814GZNCniWrTpX3D'
         };
 
         function handleImageUpload(event) {
@@ -3039,7 +3046,8 @@
            cover; opts.wavesSrc is its PNG for the PDF). Left column (20mm to 54%
            of the width), one top-to-bottom flex column so nothing can overlap:
            big title, sub title, message, website / email rows, the FOLLOW US
-           QR cards (Facebook / Instagram, catalog-social.js), and the address /
+           QR cards (Facebook / Instagram / WhatsApp channel, catalog-social.js, all
+           in ONE row: each card shares the column's width, max 34 mm), and the address /
            GSTIN block pushed to the foot. The logo sits top left, as on the cover.
            A QR card with a link carries data-pdf-link, which buildPdf turns into
            a clickable area of the PDF page. (No mobile number here any more;
@@ -3058,15 +3066,15 @@
             const shortUrl = u => String(u || '').trim().replace(/^https?:\/\//i, '').replace(/^www\./i, '').replace(/\/$/, '');
             const pdfUrl = u => { const s = String(u || '').trim(); return !s ? '' : (/^https?:\/\//i.test(s) ? s : 'https://' + s); };
             const qrCard = (src, url) => src ? `
-                            <div ${pdfUrl(url) ? `data-pdf-link="${esc(pdfUrl(url))}"` : ''} style="flex: 0 0 auto; width: 34mm; background-color: #ffffff; border: 1px solid ${hexA(accC, 0.14)}; border-radius: 2.5mm; padding: 2.5mm; box-shadow: 0 1.2mm 3.5mm rgba(15,23,42,0.08);">
+                            <div ${pdfUrl(url) ? `data-pdf-link="${esc(pdfUrl(url))}"` : ''} style="flex: 1 1 0; min-width: 0; max-width: 34mm; background-color: #ffffff; border: 1px solid ${hexA(accC, 0.14)}; border-radius: 2.5mm; padding: 2.5mm; box-shadow: 0 1.2mm 3.5mm rgba(15,23,42,0.08);">
                                 <img src="${src}" alt="QR" style="width: 100%; height: auto; display: block;">
-                                ${shortUrl(url) ? `<div style="margin-top: 1.5mm; font-size: 9px; line-height: 1.3; color: ${accC}; font-weight: 600; text-align: center; overflow-wrap: anywhere;">${esc(shortUrl(url))}</div>` : ''}
+                                ${shortUrl(url) ? `<div style="margin-top: 1.5mm; font-size: 8px; line-height: 1.3; color: ${accC}; font-weight: 600; text-align: center; overflow-wrap: anywhere;">${esc(shortUrl(url))}</div>` : ''}
                             </div>` : '';
-            const social = page.backSocial !== 'N' && (window.SARV_FB_QR || window.SARV_INSTA_QR) ? `
+            const social = page.backSocial !== 'N' && (window.SARV_FB_QR || window.SARV_INSTA_QR || window.SARV_WA_QR) ? `
                         <div style="margin-top: 9mm;">
                             <div style="font-size: 11px; font-weight: 700; letter-spacing: 0.3em; text-transform: uppercase; color: ${accC}; margin-bottom: 3.5mm; font-family: ${hFont};">Follow Us</div>
-                            <div style="display: flex; gap: 6mm; align-items: flex-start;">
-                                ${qrCard(window.SARV_FB_QR, page.fbUrl || CM_LINKS.fb)}${qrCard(window.SARV_INSTA_QR, page.instaUrl || CM_LINKS.insta)}
+                            <div style="display: flex; flex-wrap: nowrap; gap: 4mm; align-items: flex-start;">
+                                ${qrCard(window.SARV_FB_QR, page.fbUrl || CM_LINKS.fb)}${qrCard(window.SARV_INSTA_QR, page.instaUrl || CM_LINKS.insta)}${qrCard(window.SARV_WA_QR, page.waUrl || CM_LINKS.wa)}
                             </div>
                         </div>` : '';
             const addr = String(pick('address') || '').trim(), gst = String(pick('gstin') || '').trim();
