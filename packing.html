@@ -1098,6 +1098,13 @@
                     <div class="veh-hint" id="veh-tempo-hint">Any format, no spaces (e.g. HR06AB1234, 22BH1234A or SELF)</div>
                 </div>
                 <div class="form-group">
+                    <!-- packing.vehicle_photos (sql/PACKING_VEHICLE_PHOTO_MIGRATION.sql): compulsory for EVERY Logistic Type;
+                         the gates' Dharam Kanta slip takes it by itself (gate_vehicle_photo) -->
+                    <label>Vehicle Photo <span class="required-star">*</span></label>
+                    <div class="veh-doc" data-doc="vehicle_photo"></div>
+                    <div class="veh-hint" id="veh-photo-hint">Compulsory for every Logistic Type. The gate's Dharam Kanta slip takes this photo by itself.</div>
+                </div>
+                <div class="form-group">
                     <label>Registration Certificate (RC) Photo <span class="required-star veh-req-c">*</span></label>
                     <div class="veh-doc" data-doc="rc_photo"></div>
                 </div>
@@ -11489,6 +11496,9 @@ function renderVehicleList() {
             if (d && d.insurance_valid_till && String(d.insurance_valid_till).slice(0, 10) < frDateInput(new Date())) {
                 docTxt += ' <span class="veh-badge bad">Insurance expired</span>';
             }
+            if (_vehPhotos.ok && vehCleanTempo(v.tempoNo) !== 'SELF') {
+                docTxt += _vehPhotos.ids[String(v.id)] ? ' <span class="veh-badge ok">Photo</span>' : ' <span class="veh-badge bad" title="Vehicle Photo is compulsory: open with Edit and add it">No photo</span>';
+            }
             var off = v.isActive === false;
             return '<tr' + (off ? ' style="opacity:.55;background:#f8fafc;"' : '') + '>' +
                 '<td style="font-weight:700;color:var(--primary);">' + vehMark(v.tempoNo, words) +
@@ -11548,6 +11558,8 @@ function editVehicle(tempoNo) {
     document.getElementById('veh-save-btn').textContent = 'Update Tempo';
     document.getElementById('veh-cancel-btn').style.display = '';
     vehResetDocsForm(_vehDocs.byId[String(v.id)]);
+    _vehForm.vid = v.id;
+    vehLoadPhoto(v.id);   // the saved Vehicle Photo (read only for the vehicle opened)
     // Flag an old entry that does not fit the format, so it gets fixed on save
     vehShowFieldState('tempo', true);
     vehShowFieldState('mobile', true);
@@ -11685,6 +11697,12 @@ var VEH_DOC_PHOTOS = [
 var VEH_TYPES = { CONTRACTOR: 'Contractor', TEMPORARY: 'Temporary', TRANSPORT: 'Transport' };
 var VEH_DOC_MAX_BYTES = 5 * 1024 * 1024;
 var _vehDocs = { byId: {}, ok: null };          // vehicle id → docs row; ok = table readable
+/* VEHICLE PHOTO (sql/PACKING_VEHICLE_PHOTO_MIGRATION.sql): one photo per vehicle, compulsory for EVERY Logistic Type
+   (only SELF is left out), kept as a small JPEG in packing.vehicle_photos (not the private document bucket) so the
+   gates can read it with their own login (gate_vehicle_photo) and fill their Dharam Kanta slip's Vehicle Photo by
+   themselves. The list reads only which vehicles have one; the photo itself is read when a vehicle is opened. */
+var VEH_PHOTO_KEY = 'vehicle_photo';
+var _vehPhotos = { ids: {}, ok: null };           // vehicle id → updated_at; ok = table readable
 var _vehForm = { files: {}, saved: {} };        // the open form: new files / saved paths per photo
 
 function vehIsContractor() { return (document.getElementById('veh-type') || {}).value === 'CONTRACTOR'; }
@@ -11708,9 +11726,20 @@ async function vehLoadDocs() {
         console.warn('[Vehicles] vehicle_docs not readable (run PACKING_VEHICLE_DOCS_MIGRATION.sql):', e.message || e);
         _vehDocs.ok = false;
     }
+    try {
+        var pr = await supabaseClient.from('vehicle_photos').select('vehicle_id, updated_at');
+        if (pr.error) throw pr.error;
+        _vehPhotos.ids = {};
+        (pr.data || []).forEach(function(x) { _vehPhotos.ids[String(x.vehicle_id)] = x.updated_at; });
+        _vehPhotos.ok = true;
+    } catch (e) {
+        console.warn('[Vehicles] vehicle_photos not readable (run PACKING_VEHICLE_PHOTO_MIGRATION.sql):', e.message || e);
+        _vehPhotos.ok = false;
+    }
     var b = document.getElementById('veh-docs-banner');
-    if (b) b.innerHTML = _vehDocs.ok ? '' :
-        '<div class="veh-hint bad" style="margin-top:6px;">Documents cannot be saved yet: run PACKING_VEHICLE_DOCS_MIGRATION.sql in Supabase.</div>';
+    if (b) b.innerHTML = (_vehDocs.ok ? '' :
+        '<div class="veh-hint bad" style="margin-top:6px;">Documents cannot be saved yet: run PACKING_VEHICLE_DOCS_MIGRATION.sql in Supabase.</div>')
+        + (_vehPhotos.ok === false ? '<div class="veh-hint bad" style="margin-top:6px;">The Vehicle Photo cannot be saved yet: run PACKING_VEHICLE_PHOTO_MIGRATION.sql in Supabase.</div>' : '');
 }
 
 // What is missing for a Contractor (the docs row + what the form has)
@@ -11728,9 +11757,22 @@ function vehMissingDocs(d, type) {
 function vehRenderDocBoxes() {
     var contractor = vehIsContractor();
     document.querySelectorAll('#veh-form-container .veh-doc').forEach(function(box) {
-        var key = box.getAttribute('data-doc');
+        var key = box.getAttribute('data-doc'), isVP = key === VEH_PHOTO_KEY;
         var f = _vehForm.files[key], saved = _vehForm.saved[key];
         var thumb = '', txt;
+        if (isVP) {
+            var self = vehCleanTempo((document.getElementById('veh-tempo') || {}).value || '') === 'SELF';
+            if (f) { thumb = '<img src="' + f._url + '" alt="" onclick="window.open(this.src)">'; txt = '<b>New:</b> ' + escapeHtmlJs(f.name) + ' · saved on Save'; }
+            else if (saved) { thumb = '<img src="' + saved + '" alt="" onclick="vehViewPhoto()">'; txt = '<b>Saved</b> · tap to view'; }
+            else txt = _vehForm.photoLoading ? 'Loading the saved photo…' : self ? 'Not needed for SELF' : 'Required for every type';
+            box.classList.toggle('missing', !f && !saved && !self && !_vehForm.photoLoading);
+            box.innerHTML = thumb + '<span class="vd-txt">' + txt + '</span>' +
+                '<button type="button" onclick="vehOpenCamera(\'' + key + '\')" title="Take the photo now with the camera">Camera</button>' +
+                '<button type="button" onclick="this.nextElementSibling.click()" title="Choose a photo from the device">' + (f || saved ? 'Replace' : 'Upload') + '</button>' +
+                '<input type="file" accept="image/*" onchange="vehPickDoc(\'' + key + '\', this)">' +
+                (f ? '<button type="button" onclick="vehClearDoc(\'' + key + '\')" title="Remove the new photo">✕</button>' : '');
+            return;
+        }
         if (f) {
             thumb = /pdf/i.test(f.type) ? '<span class="vd-pdf">PDF</span>' : '<img src="' + f._url + '" alt="" onclick="window.open(this.src)">';
             txt = '<b>New:</b> ' + escapeHtmlJs(f.name) + ' (' + Math.round(f.size / 1024) + ' KB) · saved on Save';
@@ -11759,7 +11801,7 @@ var _vehCam = { stream: null, key: '', facing: 'environment' };
 function vehOpenCamera(key) {
     _vehCam.key = key;
     _vehCam.facing = key === 'driver_photo' ? 'user' : 'environment';
-    var label = (VEH_DOC_PHOTOS.filter(function(p) { return p.key === key; })[0] || {}).label || 'Photo';
+    var label = key === VEH_PHOTO_KEY ? 'Vehicle Photo' : (VEH_DOC_PHOTOS.filter(function(p) { return p.key === key; })[0] || {}).label || 'Photo';
     var m = document.getElementById('veh-cam-modal');
     if (!m) {
         m = document.createElement('div');
@@ -11844,6 +11886,7 @@ function vehPickDoc(key, input) {
 }
 // One way in for a new document file (upload or camera)
 function vehSetDocFile(key, file) {
+    if (key === VEH_PHOTO_KEY && !/^image\//.test(file.type)) { alert('The Vehicle Photo must be a photo (JPG / PNG).'); return; }
     if (!/^image\//.test(file.type) && file.type !== 'application/pdf') { alert('Choose a photo (JPG / PNG) or a PDF.'); return; }
     if (file.type === 'application/pdf' && file.size > VEH_DOC_MAX_BYTES) { alert('The PDF is larger than 5 MB.'); return; }
     if (_vehForm.files[key] && _vehForm.files[key]._url) URL.revokeObjectURL(_vehForm.files[key]._url);
@@ -11856,6 +11899,49 @@ function vehClearDoc(key) {
     if (f && f._url) URL.revokeObjectURL(f._url);
     delete _vehForm.files[key];
     vehRenderDocBoxes();
+}
+
+// The saved Vehicle Photo of the vehicle being edited (a data URL in packing.vehicle_photos)
+async function vehLoadPhoto(vid) {
+    if (_vehPhotos.ok === false || !_vehPhotos.ids[String(vid)]) { vehRenderDocBoxes(); return; }
+    _vehForm.photoLoading = true; vehRenderDocBoxes();
+    try {
+        var r = await supabaseClient.from('vehicle_photos').select('photo').eq('vehicle_id', vid).maybeSingle();
+        if (r.error) throw r.error;
+        if (_vehForm.vid !== vid) return;   // another vehicle was opened meanwhile
+        if (r.data && r.data.photo) _vehForm.saved[VEH_PHOTO_KEY] = r.data.photo;
+    } catch (e) { console.warn('[Vehicles] vehicle photo:', e.message || e); }
+    if (_vehForm.vid === vid) { _vehForm.photoLoading = false; vehRenderDocBoxes(); }
+}
+function vehViewPhoto() {
+    var p = _vehForm.saved[VEH_PHOTO_KEY]; if (!p) return;
+    var w = window.open('', '_blank');
+    if (w) w.document.write('<title>Vehicle Photo</title><body style="margin:0;background:#111;display:flex;align-items:center;justify-content:center;min-height:100vh"><img src="' + p + '" style="max-width:100%;max-height:100vh"></body>');
+}
+// Saved on Save: a JPEG (longest side 1000 px) in packing.vehicle_photos, one row per vehicle
+function vehPhotoDataUrl(file) {
+    return new Promise(function(resolve, reject) {
+        var img = new Image();
+        img.onload = function() {
+            var sc = Math.min(1, 1000 / Math.max(img.width, img.height));
+            var cv = document.createElement('canvas');
+            cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+            var cx = cv.getContext('2d'); cx.fillStyle = '#fff'; cx.fillRect(0, 0, cv.width, cv.height);
+            cx.drawImage(img, 0, 0, cv.width, cv.height);
+            resolve(cv.toDataURL('image/jpeg', 0.72));
+        };
+        img.onerror = function() { reject(new Error('The Vehicle Photo could not be opened.')); };
+        img.src = file._url || URL.createObjectURL(file);
+    });
+}
+async function vehSavePhoto(vehicleId) {
+    var f = _vehForm.files[VEH_PHOTO_KEY]; if (!f) return;
+    setOrderSavingStage('saving', 'Saving the Vehicle Photo');
+    var photo = await vehPhotoDataUrl(f);
+    var { error } = await supabaseClient.from('vehicle_photos').upsert({ vehicle_id: vehicleId, photo: photo,
+        updated_by: (session && (session.fullName || session.username)) || '', updated_at: new Date().toISOString() }, { onConflict: 'vehicle_id' });
+    if (error) throw new Error('Vehicle Photo not saved: ' + error.message);
+    _vehPhotos.ids[String(vehicleId)] = new Date().toISOString();
 }
 
 async function vehViewDoc(path) {
@@ -11926,7 +12012,7 @@ function vehShowInsState() {
 
 function vehResetDocsForm(docs) {
     Object.keys(_vehForm.files).forEach(vehClearDoc);
-    _vehForm = { files: {}, saved: {} };
+    _vehForm = { files: {}, saved: {}, vid: null, photoLoading: false };
     docs = docs || {};
     VEH_DOC_PHOTOS.forEach(function(p) { if (docs[p.key]) _vehForm.saved[p.key] = docs[p.key]; });
     document.getElementById('veh-aadhar').value = docs.aadhar_no || '';
@@ -11980,7 +12066,15 @@ async function handleSaveVehicle() {
     var aErr = vehShowDocState('aadhar', true), lErr = vehShowDocState('licence', true);
     if (aErr) { alert(aErr); aEl.focus(); return; }
     if (lErr) { alert(lErr); lEl.focus(); return; }
-    var docsTouched = !!(docVals.aadhar || docVals.licence || docVals.insDate || Object.keys(_vehForm.files).length);
+    // VEHICLE PHOTO: compulsory for every Logistic Type, on Add and on Edit (a SELF entry is not a vehicle)
+    var vpNeed = vehCleanTempo(tempoNo) !== 'SELF', vpNew = !!_vehForm.files[VEH_PHOTO_KEY];
+    if (vpNeed && !vpNew && !_vehForm.saved[VEH_PHOTO_KEY]) {
+        if (_vehForm.photoLoading) { alert('The saved Vehicle Photo is still loading. Try again in a moment.'); return; }
+        if (_vehPhotos.ok === false) {
+            if (!confirm('The Vehicle Photo cannot be saved yet (run PACKING_VEHICLE_PHOTO_MIGRATION.sql in Supabase). Save the vehicle without it?')) return;
+        } else { vehRenderDocBoxes(); alert('Vehicle Photo is compulsory for every Logistic Type: take it with Camera or Upload it.'); return; }
+    }
+    var docsTouched = !!(docVals.aadhar || docVals.licence || docVals.insDate || Object.keys(_vehForm.files).filter(function(k) { return k !== VEH_PHOTO_KEY; }).length);
     if (logisticType === 'CONTRACTOR') {
         var probe = { aadhar_no: docVals.aadhar, licence_no: docVals.licence, insurance_valid_till: docVals.insDate };
         VEH_DOC_PHOTOS.forEach(function(p) { probe[p.key] = _vehForm.files[p.key] || _vehForm.saved[p.key] || ''; });
@@ -12040,6 +12134,13 @@ async function handleSaveVehicle() {
                 else {
                     try { await vehSaveDocs(result.id, docVals); }
                     catch (de) { docWarn = 'The vehicle is saved, but: ' + (de.message || de) + '\n\nOpen it with Edit and save again.'; }
+                }
+            }
+            if (vpNew && _vehPhotos.ok !== false) {
+                if (!result.id) docWarn = (docWarn ? docWarn + '\n' : '') + 'The vehicle is saved' + (result.queued ? ' offline' : '') + ', but the Vehicle Photo was NOT saved. Open it with Edit when online and save the photo.';
+                else {
+                    try { await vehSavePhoto(result.id); }
+                    catch (pe) { docWarn = (docWarn ? docWarn + '\n' : '') + 'The vehicle is saved, but: ' + (pe.message || pe) + '\n\nOpen it with Edit and save again.'; }
                 }
             }
             if (docWarn) {

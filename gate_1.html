@@ -1242,7 +1242,7 @@
                         </div>
                         <div>
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle No *</label>
-                            <input type="text" id="dkVehicleNo" list="gateVehicleList" autocomplete="off" required oninput="dkVehicleCheck(); dkTareCheck()" onchange="dkTareCheck()" placeholder="HR20AB1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <input type="text" id="dkVehicleNo" list="gateVehicleList" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" pattern="[A-Z0-9]+" title="Letters and numbers only, no space or special character" required oninput="dkVehClean(this); dkVehicleCheck(); dkTareCheck(); dkVehPhotoAuto()" onchange="dkVehClean(this); dkTareCheck(); dkVehPhotoAuto(true)" placeholder="HR20AB1234" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
                         </div>
                     </div>
 
@@ -1302,11 +1302,13 @@
                         <label class="ios-btn flex flex-col items-center justify-center p-3.5 bg-cyan-50/70 border-2 border-dashed border-cyan-200 rounded-2xl cursor-pointer text-center">
                             <i class="fa-solid fa-truck-front text-cyan-600 text-xl mb-1"></i>
                             <span id="dkVehicleLabel" class="text-[11px] font-semibold text-cyan-800 truncate w-full">Capture / Upload Vehicle Photo</span>
-                            <input type="file" id="dkVehiclePhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'dkVehicleLabel', 'dkVehiclePreview', 'dkVehicle', 'dkPreviewBox')">
+                            <input type="file" id="dkVehiclePhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'dkVehicleLabel', 'dkVehiclePreview', 'dkVehicle', 'dkPreviewBox').then(() => { if (tempPhotos.dkVehicle && (!DK_VPH.auto || tempPhotos.dkVehicle !== DK_VPH.auto.photo)) { DK_VPH.auto = null; dkVehPhotoNote('Your own photo is used.'); } })">
                         </label>
                         <div id="dkPreviewBox" class="hidden mt-2.5 rounded-xl overflow-hidden border border-cyan-200 h-28 bg-gray-50">
                             <img id="dkVehiclePreview" class="gp-fit" alt="Vehicle Preview">
                         </div>
+                        <!-- DK VEHICLE PHOTO: where the photo came from (Packing › Vehicles, by itself) -->
+                        <p id="dkVehPhotoNote" class="hidden text-[10.5px] font-semibold mt-1"></p>
                     </div>
 
                     <button type="submit" class="ios-btn w-full bg-cyan-600 text-white font-bold py-3.5 rounded-2xl shadow-lg shadow-cyan-500/30 flex items-center justify-center gap-2 text-sm mt-2">
@@ -5475,6 +5477,69 @@
         function dkBlockText(p) {
             return `Vehicle ${p.slip.vehicle} already has Slip ${p.slip.id}: ${p.disp ? 'Dispatch Packing entry made, vehicle not out yet' : 'Dispatch Packing slip pending'}. A new slip is possible after its Dispatch Packing entry is Out, or if that slip is deleted.`;
         }
+        /* Dharam Kanta › Vehicle No.: letters and numbers only (A-Z, 0-9, capitals). A space, dash, dot or any other
+           character is dropped the moment it is typed, pasted or comes from the vehicle list ("HR 58 G-9222" →
+           "HR58G9222"); the cursor stays where it was. The same as dkVehKey, so the slip's vehicle always matches the
+           Dispatch / Packing / Tempo-Bill keys. Save cleans it once more. */
+        const dkVehOnly = v => String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        let dkVehCleanNoteAt = 0;
+        function dkVehClean(el) {
+            if (!el) return;
+            const v = el.value, c = dkVehOnly(v);
+            if (v === c) return;
+            let pos = null;
+            try { pos = dkVehOnly(v.slice(0, el.selectionStart || 0)).length; } catch (e) { }
+            el.value = c;
+            try { if (pos != null && document.activeElement === el) el.setSelectionRange(pos, pos); } catch (e) { }
+            // a word now and then, not on every key
+            if (v.toUpperCase() !== c && Date.now() - dkVehCleanNoteAt > 4000) {
+                dkVehCleanNoteAt = Date.now();
+                showIosBanner('Vehicle No.: only letters and numbers (no space or special character)', 'info');
+            }
+        }
+        /* DK VEHICLE PHOTO (sql/PACKING_VEHICLE_PHOTO_MIGRATION.sql): the Vehicle Photo saved in Packing › Vehicles (compulsory
+           there for every Logistic Type) is put in this slip's Vehicle Photo by itself as soon as the Vehicle No. is known
+           (gate_vehicle_photo, read once per vehicle per page visit), so the guard does not take it again. A photo the guard
+           took or uploaded himself is never replaced; choosing another vehicle swaps / clears only a photo that came from
+           Packing. No photo saved / offline / server not set up = he takes it as before. */
+        const DK_VPH = { cache: {}, auto: null, t: null, seq: 0 };   // cache: vehicle key -> photo ('' = none); auto: {key, photo}
+        function dkVehPhotoNote(txt, cls) {
+            const n = document.getElementById('dkVehPhotoNote'); if (!n) return;
+            n.textContent = txt || ''; n.className = 'text-[10.5px] font-semibold mt-1 ' + (cls || 'text-gray-500'); n.classList.toggle('hidden', !txt);
+        }
+        function dkVehPhotoSet(photo, key) {
+            tempPhotos.dkVehicle = photo || null;
+            DK_VPH.auto = photo ? { key, photo } : null;
+            const img = document.getElementById('dkVehiclePreview'), box = document.getElementById('dkPreviewBox'), lbl = document.getElementById('dkVehicleLabel');
+            if (photo) { img.src = photo; img.classList.remove('hidden'); box.classList.remove('hidden'); lbl.textContent = 'Saved vehicle photo · tap to take a new one'; }
+            else { img.removeAttribute('src'); box.classList.add('hidden'); lbl.textContent = 'Capture / Upload Vehicle Photo'; }
+        }
+        function dkVehPhotoAuto(now) {
+            clearTimeout(DK_VPH.t);
+            DK_VPH.t = setTimeout(dkVehPhotoLoad, now ? 0 : 600);   // wait for the typing to stop
+        }
+        async function dkVehPhotoLoad() {
+            const key = dkVehKey((document.getElementById('dkVehicleNo') || {}).value || '');
+            const ours = !!DK_VPH.auto && tempPhotos.dkVehicle === DK_VPH.auto.photo;   // the photo in the box came from Packing
+            if (tempPhotos.dkVehicle && !ours) { dkVehPhotoNote(''); return; }        // the guard's own photo: left alone
+            if (ours && DK_VPH.auto.key === key) return;                              // already this vehicle's
+            if (ours) dkVehPhotoSet(null);                                            // another vehicle now
+            if (key.length < 4) { dkVehPhotoNote(''); return; }
+            let photo = DK_VPH.cache[key];
+            if (photo === undefined) {
+                if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) { dkVehPhotoNote('Offline: take the Vehicle Photo (the saved one cannot be read now).', 'text-amber-700'); return; }
+                const seq = ++DK_VPH.seq;
+                dkVehPhotoNote('Looking for the saved vehicle photo…');
+                const r = await gateRpc('gate_vehicle_photo', { p_vehicle: key });
+                if (seq !== DK_VPH.seq) return;
+                if (!r.ok) { dkVehPhotoNote(r.error === 'NO_MIGRATION' ? '' : 'The saved vehicle photo could not be read: take it.', 'text-amber-700'); return; }
+                photo = DK_VPH.cache[key] = (r.data && r.data.photo) || '';
+            }
+            // the guard may have taken one meanwhile, or changed the vehicle again
+            if (tempPhotos.dkVehicle || dkVehKey(document.getElementById('dkVehicleNo').value) !== key) return;
+            if (photo) { dkVehPhotoSet(photo, key); dkVehPhotoNote('Vehicle Photo taken from Packing › Vehicles. Take a new one only if the vehicle looks different.', 'text-emerald-700'); }
+            else dkVehPhotoNote('No Vehicle Photo saved in Packing › Vehicles for ' + key + ': take it now.', 'text-amber-700');
+        }
         function dkVehicleCheck() {
             const w = document.getElementById('dkVehicleWarn'), inp = document.getElementById('dkVehicleNo');
             if (!inp) return;
@@ -5560,7 +5625,14 @@
                 return;
             }
 
-            const vehicleNo = document.getElementById('dkVehicleNo').value.trim().toUpperCase();
+            const vbox = document.getElementById('dkVehicleNo');
+            vbox.value = dkVehOnly(vbox.value);   // letters and numbers only (dkVehClean), once more before saving
+            const vehicleNo = vbox.value;
+            if (!/^[A-Z0-9]{4,15}$/.test(vehicleNo)) {
+                showIosBanner('Vehicle No. must be 4 to 15 letters / numbers only, with no space or special character (e.g. HR20AB1234)', 'error');
+                vbox.focus();
+                return;
+            }
             if (isVehInactive(vehicleNo)) {
                 showIosBanner('Vehicle ' + vehicleNo + ' is deactivated in Packing › Vehicles: it cannot get a Dharam Kanta slip. Ask the Packing Incharge / Admin to activate it.', 'error');
                 document.getElementById('dkVehicleNo').focus();
@@ -5609,6 +5681,7 @@
                 stdTare: tc.std, tareDiff: tc.diff, tareCheck: tareCheck,
                 itemPhoto: itemPhoto,
                 vehiclePhoto: tempPhotos.dkVehicle,
+                vehiclePhotoSrc: DK_VPH.auto && tempPhotos.dkVehicle === DK_VPH.auto.photo ? 'PACKING' : 'GATE',   // DK VEHICLE PHOTO
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
                 inTime: new Date().toISOString(),
                 outTime: null,
@@ -5620,7 +5693,7 @@
             pinLock('dkGrossWeight');   // the next slip starts locked again
             dkTareExtraReset();
             dkVehicleCheck();
-            tempPhotos.dkVehicle = null;
+            tempPhotos.dkVehicle = null; DK_VPH.auto = null; dkVehPhotoNote('');
             document.getElementById('dkVehicleLabel').textContent = 'Capture / Upload Vehicle Photo';
             document.getElementById('dkPreviewBox').classList.add('hidden');
 
@@ -7295,7 +7368,7 @@
                 : 'dk';
             if (pick === 'dk') {
                 showView('dharamKantaForm');
-                const vb = document.getElementById('dkVehicleNo'); if (vb && o.veh) { vb.value = String(o.veh).toUpperCase(); dkVehicleCheck(); }
+                const vb = document.getElementById('dkVehicleNo'); if (vb && o.veh) { vb.value = dkVehOnly(o.veh); dkVehicleCheck(); dkVehPhotoAuto(true); }
             } else if (pick === 'disp') {
                 showView('outwardDispatchForm');
                 dispScanSet(o);
