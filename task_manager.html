@@ -3172,8 +3172,28 @@
             r.querySelector('.task-desc').value = desc || (out ? LIVE_DEF.outDesc || 'LIVE PHOTO CHECK-OUT' : LIVE_DEF.desc || 'LIVE PHOTO CHECK-IN');
             const f = r.querySelector('.task-freq'); f.value = out ? 'liveout' : 'live'; handleFreqChange(f);
             setHour(r.querySelector('.task-time'), to24(time12 || (out ? LIVE_DEF.outTime || '06:00 PM' : LIVE_DEF.time)) || (out ? '18:00' : '10:00'));   // to24: PC Follow-up's helper
-            updateSrNos(); return r;
+            updateSrNos(); liveShiftHint(); return r;
         };
+        /* NIGHT SHIFT hint in Add / Update task list: a check-out earlier than every check-in is marked "next morning". */
+        function liveShiftHint() {
+            const rows = [...document.querySelectorAll('#taskInputBody tr')].filter(r => isLiveFreq((r.querySelector('.task-freq') || {}).value));
+            const tmOf = r => { const v = (r.querySelector('.task-time') || {}).value || ''; const [h, m] = v.split(':').map(Number); return isFinite(h) && isFinite(m) ? h * 60 + m : null; };
+            const ins = rows.filter(r => r.querySelector('.task-freq').value === 'live').map(tmOf).filter(x => x != null);
+            const firstIn = ins.length ? Math.min(...ins) : null;
+            rows.forEach(r => {
+                let n = r.querySelector('.live-night-tag');
+                const night = r.querySelector('.task-freq').value === 'liveout' && firstIn != null && tmOf(r) != null && tmOf(r) < firstIn;
+                if (night && !n) {
+                    n = document.createElement('div');
+                    n.className = 'live-night-tag text-[10px] font-extrabold text-indigo-700 mt-1';
+                    n.textContent = 'Night shift: next morning';
+                    const box = r.querySelector('.task-time'); if (box) box.insertAdjacentElement('afterend', n);
+                } else if (!night && n) n.remove();
+            });
+        }
+        // the hint follows every time change / frequency change of the task list
+        document.addEventListener('input', e => { if (e.target && e.target.closest && e.target.closest('#taskInputBody') && /task-time|task-freq/.test(e.target.className)) liveShiftHint(); });
+        document.addEventListener('change', e => { if (e.target && e.target.closest && e.target.closest('#taskInputBody') && /task-time|task-freq/.test(e.target.className)) liveShiftHint(); });
         // The last check-in / check-out row cannot be removed while it is compulsory.
         window.removeTaskRow = function(btn) {
             const r = btn.closest('tr'), tb = document.getElementById('taskInputBody'), k = r.querySelector('.task-freq').value;
@@ -3241,9 +3261,19 @@
             if (LIVE_DEF.on !== false && !ins.length) return showCustomModal('Live Photo timing needed', TM_ERR.LIVE_REQUIRED, true);
             if (outs.length && !liveOutReady()) return showCustomModal('Server update needed', TM_ERR.CHECKOUT_MIGRATION, true);
             if (liveOutNeeded() && !outs.length) return showCustomModal('Check-out timing needed', TM_ERR.LIVE_OUT_REQUIRED, true);
-            // A check-out before the first check-in of the day would be a mistake in the times.
-            const hm = t => to24(t.time) || '';
-            if (ins.length && outs.some(o => hm(o) <= ins.map(hm).sort()[0])) return showCustomModal('Please check', 'The Check-out time must be later than the Check-in time.', true);
+            /* Day shift: the check-out later than the first check-in. NIGHT SHIFT: a check-out EARLIER than every check-in
+               = the next morning (In 6:00 PM → Out 6:00 AM); it must still be at least LIVE_OUT_MIN_HOURS after the
+               evening's check-in, or it would be due before it opens. A check-out between two check-ins is a mistake. */
+            const hm = t => to24(t.time) || '', mins = t => { const [h, m] = hm(t).split(':').map(Number); return h * 60 + m; };
+            if (ins.length && outs.length) {
+                const firstIn = Math.min(...ins.map(mins)), lastIn = Math.max(...ins.map(mins));
+                for (const o of outs) {
+                    const om = mins(o);
+                    if (om < firstIn) {
+                        if (om + 24 * 60 - lastIn < LIVE_OUT_MIN_HOURS * 60) return showCustomModal('Please check', 'Night shift: the Check-out ' + esc(o.time) + ' (next morning) must be at least ' + LIVE_OUT_MIN_HOURS + ' hours after the last Check-in ' + esc(to12h(hm(ins.find(x => mins(x) === lastIn)))) + '.', true);
+                    } else if (om <= lastIn) return showCustomModal('Please check', 'The Check-out time must be later than the Check-in time (day shift), or earlier than every Check-in for a night shift (e.g. In 6:00 PM, Out 6:00 AM next morning).', true);
+                }
+            }
             if (new Set(lives.map(t => t.time)).size < lives.length) return showCustomModal('Please check', 'Two Live Photo rows have the same time. Give each timing its own time.', true);
             const res = await tmRpc('tm_save_employee', { p_emp: { empCode: c, empName: n, dept: d, desig: de }, p_tasks: tasks, p_is_new: !currentAddingOrEditingEmpCode });
             if (!res.ok) return tmErr(res);
@@ -3981,6 +4011,15 @@
             if (isSelfCarried(t, ds)) { const o = ownerOf(t); return !(o && selfDoneRec(o, t, ds)); }
             if (!(taskAppliesToDate(t, y, m, d) || isR)) return false;
             if (t.frequency === 'ea' && t.isPostponed && ds !== t.freqValue && !isR) return false;
+            // NIGHT SHIFT: the morning check-out closes the shift of the evening before; with no check-in that evening
+            // (the first day of the list, a day off) there is nothing to close, so it is not a task that morning
+            if (t.liveOut && !isR) {
+                const o = ownerOf(t);
+                if (o && isNightOut(t, o)) {
+                    const pd = prevDayOf(ds);
+                    if (dayOffOf(o.empCode, pd) || !liveInsOf(o).some(x => occursOn({ ...x, ownerCode: o.empCode }, pd, o.records[pd] && o.records[pd][x.id]))) return false;
+                }
+            }
             return true;
         }
         const recOf = (t, ds) => { const o = appState.employees.find(e => e.empCode === t.ownerCode); return o && o.records[ds] ? o.records[ds][t.id] : undefined; };
@@ -3994,13 +4033,28 @@
            (tm_mark_live) does not check the gap. */
         const LIVE_OUT_MIN_HOURS = 4;
         const LIVE_OUT_NEVER = new Date(8640000000000000);
+        /* NIGHT SHIFT (2026-11-25). A Check-out timing EARLIER than every Check-in timing of the employee (e.g. In 6:00 PM,
+           Out 6:00 AM) is a night shift: the check-out on a morning closes the shift that began the evening before. So it
+           opens LIVE_OUT_MIN_HOURS after the PREVIOUS day's first check-in was done (not the same day's, which comes in the
+           evening), and on a morning after an evening with no check-in (the list's first day, a day off) it is not a task at
+           all (occursOn). No setting and no server change: the times decide, and tm_mark_live already takes today's record. */
+        const liveTimeMin = tm => { const p = parse12h(tm); return p ? p.h * 60 + p.m : null; };
+        const prevDayOf = ds => { const d = dateAt(ds); d.setDate(d.getDate() - 1); return ymd(d); };
+        const liveInsOf = o => o.tasks.filter(x => x.live && !x.liveOut && x.active !== false);
+        function isNightOut(t, o) {
+            if (!t || !t.liveOut) return false;
+            o = o || ownerOf(t); if (!o) return false;
+            const out = liveTimeMin(t.time), ins = liveInsOf(o).map(x => liveTimeMin(x.time)).filter(x => x != null);
+            return out != null && ins.length > 0 && out < Math.min(...ins);
+        }
         function liveOutUnlockAt(t, ds) {
             if (!t || !t.liveOut) return null;
             const o = ownerOf(t); if (!o) return null;
-            const ins = o.tasks.filter(x => x.live && !x.liveOut && x.active !== false && occursOn({ ...x, ownerCode: o.empCode }, ds, o.records[ds] && o.records[ds][x.id]));
+            const day = isNightOut(t, o) ? prevDayOf(ds) : ds;   // NIGHT SHIFT: the check-in of the evening before
+            const ins = liveInsOf(o).filter(x => occursOn({ ...x, ownerCode: o.empCode }, day, o.records[day] && o.records[day][x.id]));
             if (!ins.length) return null;
             let first = null;
-            ins.forEach(x => { const r = o.records[ds] && o.records[ds][x.id]; if (r && r.checked) { const w = doneMomentOf(r, ds); if (!first || w < first) first = w; } });
+            ins.forEach(x => { const r = o.records[day] && o.records[day][x.id]; if (r && r.checked) { const w = doneMomentOf(r, day); if (!first || w < first) first = w; } });
             return first ? new Date(first.getTime() + LIVE_OUT_MIN_HOURS * 3600000) : LIVE_OUT_NEVER;
         }
         // The unlock moment while the check-out is still hidden at `now`, else null.
@@ -4304,7 +4358,7 @@
             return true;
         }
 
-        function getFrequencyText(t) { const f=t.frequency||'daily'; if(t.live)return t.liveOut?'Daily · Live photo check-out':'Daily · Live photo'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
+        function getFrequencyText(t) { const f=t.frequency||'daily'; if(t.live)return t.liveOut?(isNightOut(t)?'Daily · Live photo check-out (night shift, next morning)':'Daily · Live photo check-out'):'Daily · Live photo'; if(f==='daily')return 'Daily'; if(f==='weekly'){ const days=["Sun","Mon","Tue","Wed","Thu","Fri","Sat"]; return `Weekly (${days[parseInt(t.freqValue)]})`; } if(f==='monthly')return `Monthly (${t.freqValue})`; if(f==='yearly'||f==='ea'||f==='self'){ if(f==='ea'&&t.isPostponed) return `EA (Postponed to ${t.freqValue})`; return `${f.toUpperCase()} (${t.freqValue})`; } return 'Daily'; }
         function getCombinedTasks(emp) { let c=emp.tasks.map(t=>({...t,ownerCode:emp.empCode})); appState.buddyDelegations.forEach(bd=>{ if(bd.buddyEmpCode===emp.empCode){ const p=appState.employees.find(e=>e.empCode===bd.primaryEmpCode); if(p) p.tasks.forEach(t=>{ c.push({...t,ownerCode:p.empCode,doerCode:emp.empCode,isBuddyTask:true,buddyStart:bd.startDate,buddyEnd:bd.endDate,primaryName:p.empName}); }); } }); return c.sort((a,b)=>(b.live?1:0)-(a.live?1:0)); }
 
         // --- My Tasks dashboard ---

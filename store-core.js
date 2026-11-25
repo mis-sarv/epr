@@ -6759,7 +6759,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1','HOME_WASTE_SALE'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1','HOME_WASTE_SALE','HOME_FMS_TRACKING'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -7805,6 +7805,9 @@ const SARV_TABS=[
   /* Waste Sale Entry (WasteEntry.html, opens from the launcher): scrap / waste sale bills with Gate Pass photo,
      Bank / Cash split and reports, in Supabase (sql/WASTE_SALE_MIGRATION.sql; ws_ctx_ checks this key).
      Admin only by default, the same as the launcher tile's defRoles; change both together. */
+  /* FMS Tracking (fms-tracking.html, opens from the launcher): Inward and Dispatch step by step, read only
+     (sql/FMS_TRACKING_MIGRATION.sql; fmt_ctx_ checks this key). Same default as the launcher tile's defRoles. */
+  {key:'HOME_FMS_TRACKING',label:'FMS Tracking',hint:'Every Inward (Gate In, approvals, Unloader, Store, MD, GM / EA / MD-1 / Debit / Accounts checks) and every Dispatch (Dharam Kanta, loading, Outward Dharam Kanta, approval, Gate Out) step by step: planned / actual time, who, delay; filters, CSV (fms-tracking.html, opens from the launcher)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
   {key:'HOME_WASTE_SALE',label:'Waste Sale Entry',hint:'Waste / scrap sale bills: party, items, GST + TCS, Bank / Cash split, compulsory Gate Pass photo, date / month / item / party / slip reports (WasteEntry.html, opens from the launcher)',def:['ADMIN_PIN']},
   {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
   /* emission-live.html: the boiler stack's online monitoring readings (PM,
@@ -8605,9 +8608,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)',HOME_GATE1:'Gate-1 (Security Gate)',HOME_WASTE_SALE:'Waste Sale Entry'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)',HOME_GATE1:'Gate-1 (Security Gate)',HOME_WASTE_SALE:'Waste Sale Entry',HOME_FMS_TRACKING:'FMS Tracking'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1,HOME_GATE1:1,HOME_WASTE_SALE:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1,HOME_GATE1:1,HOME_WASTE_SALE:1,HOME_FMS_TRACKING:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8827,7 +8830,7 @@ const SARV_ACCESS_AREAS=[
   {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE1','HOME_GATE2']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
-  {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
+  {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER','HOME_FMS_TRACKING']},
   {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_WASTE_SALE','HOME_SHEET_LINKS']}
 ];
 /* Store access + Complaint registers: user-only keys that are NOT rows of
@@ -34274,6 +34277,25 @@ async function inwGatePicked_(){
           showToast('Gate '+escText(r.no)+': PO '+escText(missing.join(', '))+' is not in the open PO list of '+escText(inwGateStoreOf_())+' (received in full, cancelled or not of this store).','warn');
       }catch(e){console.warn('[SARV] gate PO not loaded:',e.message||e);}
     }
+    /* PENDING RETURNABLE (gate › Inward Material › Pending Returnable, GATE_REPAIR_RETURN_MIGRATION.sql): the gate entry
+       names Repair Outward No(s) (refType REPAIR): Nature of Inward = Repaired and those outwards ticked, as the Repair
+       Return dropdown would (only those still pending in this store; one already back is named). */
+    else if(refs.length&&/^REPAIR$/i.test(r.refType||'')&&!filled&&!sarvInwDraftActive){
+      try{
+        const nat=byId('inwNatureOfInward');
+        if(nat&&nat.value!=='Repaired'){
+          if(nat.disabled)showToast('Gate '+escText(r.no)+' is a Repair Return, but the Nature of Inward is fixed to '+escText(nat.value)+' for this entry. Open Material Inward as Repaired to book it.','warn');
+          else{nat.value='Repaired';nat.dispatchEvent(new Event('change'));}
+        }
+        if(nat&&nat.value==='Repaired'){
+          await loadRepairOutwardDropdown();
+          const hit=refs.filter(x=>sarvRepairOutwardCatalog.some(o=>yulKey_(o.document_no)===yulKey_(x)));
+          const missing=refs.filter(x=>!hit.includes(x));
+          if(hit.length){setSelectedRepairOutNos(sarvRepairLineLinkSupported===true?hit:hit.slice(0,1));await loadRepairOutwardIntoInward();showToast('Gate '+escText(r.no)+': Repair Outward '+escText(hit.join(', '))+' selected');}
+          if(missing.length)showToast('Gate '+escText(r.no)+': Repair Outward '+escText(missing.join(', '))+' is not pending in '+escText(inwGateStoreOf_())+' (already back, or of the other store).','warn');
+        }
+      }catch(e){console.warn('[SARV] gate repair outwards not loaded:',e.message||e);}
+    }
     else if(refs.length&&!filled&&!sarvInwDraftActive&&!getSelectedPoNos().length&&!getSelectedPrNos().length){
       try{
         if(/^PR$/i.test(r.refType||'')){
@@ -34561,14 +34583,21 @@ function inwGatePipeHtml_(row){
       '<b>'+escText(row.returnType==='RETURNABLE'?'Returnable':'Non-Returnable')+'</b>'+(row.item?' · '+escText(row.item):''),
       'From <b>'+escText(row.party||'-')+'</b>',
       row.person?'Person: <b>'+escText(row.person)+'</b>'+(row.mobile?' · '+escText(row.mobile):''):'',
+      // its Dharam Kanta slip (gate Sample form, 2026-11-25), the same text as an Inward's
+      dk?'Dharam Kanta'+(dk.slip?' <b>'+escText(dk.slip)+'</b>':'')+': Gross <b>'+escText(kg(dk.gross))+'</b> · Tare <b>'+escText(dk.tare>0?kg(dk.tare):'at Done')+'</b>'+(dk.net!=null&&dk.tare>0?' · Net <b>'+escText(kg(dk.net))+'</b>':''):'',
       row.guard?'Guard: '+escText(row.guard):''
     ]));
     steps.push(ap&&ap.status==='APPROVED'
       ?step('done','Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.approver||'-')+'</b>'])
       :step('off','Approval','',['No approval on this entry']));
-    steps.push(step('off','Unloader','',['Sample / Other: no Unloader. The Unloader Supervisor checks this Inward on Submit']));
-    steps.push(step('done','Store Entry','Ready to Submit',['The Supplier is the Supplier Name of this Inward'
-      +(row.returnType==='RETURNABLE'?' · it is RETURNABLE: the gate sends it back with an Outward later':'')]));
+    // its Unloader, as for an Inward (the approver assigns one; the Store books it after the upload)
+    {const ul=inwGateUlOf_(row);
+     steps.push(!ul?step(ap&&ap.status==='APPROVED'?'miss':'off','Unloader','',[ap&&ap.status==='APPROVED'?'No Unloader assigned yet: the approver assigns one on the launcher':'Assigned at approval'])
+       :step(ul.status==='DONE'?'done':'wait','Unloader '+(ul.status==='DONE'?'Done':'Assigned'),inwGateDmyT_(ul.status==='DONE'?ul.doneAt:ul.at),
+          ['<b>'+escText(ul.to||ul.doneBy||'-')+'</b>'+(ul.chargeType?' · '+escText(ul.chargeType):''),ul.status==='DONE'?pNum(ul.photoCount)+' photo(s)':'To upload the Photos / Original Invoice']));
+     const ready=ul&&ul.status==='DONE';
+     steps.push(step(ready?'done':'off','Store Entry',ready?'Ready to Submit':'Waits for the Unloader',['The Supplier is the Supplier Name of this Inward'
+       +(row.returnType==='RETURNABLE'?' · it is RETURNABLE: the gate sends it back with an Outward later':'')]));}
     return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
   }
   // a Working visitor of the firm (GATE_VISITOR_WORKING_MIGRATION.sql): Gate In → Host approved → Store entry
@@ -34701,7 +34730,7 @@ async function inwGateUlGate_(){
   if(!r||!Object.prototype.hasOwnProperty.call(r,'unload'))return null;
   // a Working visitor's firm (GATE_VISITOR_WORKING_MIGRATION.sql): no Unloader is ever assigned to a visitor, so the
   // Unloader Supervisor checks it on Submit like an Inward without a Gate Entry No.
-  if(r.kind==='VISITOR'||inwGateIsSmp_(r))return null;   // a Sample / Other entry: the same (no Unloader on it)
+  if(r.kind==='VISITOR')return null;   // (a Sample / Other entry now has its Unloader like an Inward: the rules below apply)
   if(!ul){
     // an old gate Inward that never asked for approval has no approver to assign one: the Unloader Supervisor as before
     if(!r.approval)return null;
@@ -34800,7 +34829,7 @@ function inpState_(p){
 }
 // the Gate Entry No. option's step words (the same rule as the pipeline's Store Entry step)
 function inwGateStepTxt_(r){
-  if(!r||r.kind==='VISITOR'||inwGateIsSmp_(r))return 'Ready for Store entry';
+  if(!r||r.kind==='VISITOR')return 'Ready for Store entry';
   if(!Object.prototype.hasOwnProperty.call(r,'unload'))return 'Ready for Store entry';
   const ul=inwGateUlOf_(r);
   if(!ul)return r.approval?'Waiting: Unloader to be assigned':'Ready for Store entry';

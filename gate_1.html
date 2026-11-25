@@ -355,6 +355,16 @@
                         </div>
                         <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
                     </button>
+                    <!-- 5B PENDING RETURNABLE: the same Inward form against the store's Repair Outwards still out (gate_repair_pending) -->
+                    <button onclick="inwOpenReturnable()" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-violet-500/10 border border-violet-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-violet-600 text-white flex items-center justify-center text-xl shadow-md shadow-violet-500/30 shrink-0"><i class="fa-solid fa-screwdriver-wrench"></i></div>
+                        <div class="min-w-0 flex-1">
+                            <span class="block text-[13px] font-extrabold text-violet-800 uppercase tracking-wide">Pending Returnable</span>
+                            <span id="inwRetSub" class="block text-[11px] font-semibold text-violet-700/80">Repair items coming back: Outward No. (Nature of Dispatch Repair)</span>
+                        </div>
+                        <span id="inwRetBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-violet-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
+                        <i class="fa-solid fa-chevron-right text-violet-500 text-xs"></i>
+                    </button>
                     <button onclick="showView('inwardPending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-orange-500/10 border border-orange-500/25 rounded-[20px] text-left">
                         <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl shadow-md shadow-orange-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
                         <div class="min-w-0 flex-1">
@@ -1445,6 +1455,57 @@
                             </div>
                         </div>
 
+                        <!-- 8C DHARAM KANTA: the same weighbridge toggle as the Inward form (Gross now, Tare at Done · Inward) -->
+                        <div class="pt-0.5">
+                            <button type="button" id="toggleSmpDkBtn" onclick="smpToggleDk()" class="ios-btn w-full py-3 px-4 bg-cyan-500/10 border border-cyan-500/25 rounded-2xl flex items-center justify-between text-cyan-800">
+                                <span class="flex items-center gap-2.5 text-xs font-extrabold uppercase tracking-wide">
+                                    <span class="w-7 h-7 rounded-lg bg-cyan-600 text-white flex items-center justify-center text-xs shadow-sm"><i class="fa-solid fa-weight-scale"></i></span>
+                                    <span>Dharam Kanta (Weighbridge)</span>
+                                </span>
+                                <span id="smpDkToggleBadge" class="text-[10px] font-bold bg-cyan-600 text-white px-2.5 py-1 rounded-full">+ Add Slip</span>
+                            </button>
+                            <div id="smpDkFields" class="hidden mt-2.5 p-3.5 bg-cyan-50/60 border border-cyan-200/80 rounded-2xl space-y-3 ios-spring">
+                                <div>
+                                    <label class="block text-[11px] font-bold text-cyan-800 uppercase mb-1">Vehicle No *</label>
+                                    <input type="text" id="smpDkVehicle" list="gateVehicleList" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="15" oninput="dkVehClean(this)" onchange="dkVehClean(this)" placeholder="HR20AB1234" class="w-full px-3.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-sm font-bold uppercase focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                </div>
+                                <div>
+                                    <div class="flex items-center justify-between mb-1">
+                                        <label class="block text-[11px] font-bold text-cyan-800 uppercase">Dharam Kanta Slip No *</label>
+                                        <span id="smpDkSlipNoHint" class="text-[10px] font-semibold text-cyan-600">Auto · next serial</span>
+                                    </div>
+                                    <input type="text" id="smpDkSlipNo" readonly tabindex="-1" placeholder="Getting next no..." class="w-full px-3.5 py-2.5 bg-gray-100 border border-cyan-200 rounded-xl text-sm font-mono font-bold uppercase text-gray-900 cursor-not-allowed select-none">
+                                </div>
+                                <div class="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Gross Wt (Kg) *</label>
+                                        <input type="number" step="0.01" id="smpDkGross" placeholder="0.00" class="w-full px-2.5 py-2.5 bg-white border border-cyan-200 rounded-xl text-xs font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500">
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Tare Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                                        <input type="number" id="smpDkTare" readonly tabindex="-1" onclick="showIosBanner('Vehicle ka Tare Weight Goods Unload karne ke baad Done · Inward karte time save karna hai !', 'info')" placeholder="At Done" class="w-full px-2.5 py-2.5 bg-gray-200/80 border border-cyan-200 rounded-xl text-xs font-bold text-gray-500 cursor-not-allowed">
+                                        <p class="text-[9.5px] font-semibold text-gray-400 mt-1 leading-tight">Locked · entered at Done</p>
+                                    </div>
+                                    <div>
+                                        <label class="block text-[10px] font-bold text-cyan-700 uppercase mb-1">Net Wt (Kg) <i class="fa-solid fa-lock text-[9px] ml-0.5"></i></label>
+                                        <input type="number" id="smpDkNet" readonly tabindex="-1" placeholder="Auto" class="w-full px-2.5 py-2.5 bg-cyan-100/90 border border-cyan-300 rounded-xl text-xs font-extrabold text-cyan-950 cursor-not-allowed">
+                                    </div>
+                                </div>
+                                <p class="text-[10px] font-semibold text-cyan-800/80 -mt-1">The loaded vehicle is weighed now (Gross). The Tare is locked here: the empty vehicle is weighed after unloading and its Tare is entered at Approval Pending › Done · Inward.</p>
+                                <div>
+                                    <label class="block text-[10px] font-bold text-gray-500 uppercase mb-1">Vehicle Photo (Weighbridge)</label>
+                                    <label class="ios-btn flex items-center justify-center gap-2 p-2.5 bg-white border-2 border-dashed border-cyan-300 rounded-xl cursor-pointer text-center">
+                                        <i class="fa-solid fa-truck-front text-cyan-600 text-sm"></i>
+                                        <span id="smpDkPhotoLabel" class="text-[11px] font-semibold text-cyan-800 truncate">Upload Vehicle Photo</span>
+                                        <input type="file" id="smpDkVehiclePhoto" data-up="gate-sample-dk-vehicle" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'smpDkPhotoLabel', 'smpDkPreviewImg', 'smpDkVehicle', 'smpDkPhotoBox')">
+                                    </label>
+                                    <div id="smpDkPhotoBox" class="hidden mt-2 rounded-xl overflow-hidden border border-cyan-200 h-20 bg-white">
+                                        <img id="smpDkPreviewImg" class="gp-fit" alt="Sample Weighbridge Vehicle">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- Whom to Approve: only an ERP user (gateCombo over visHostOptions), he approves it on the launcher with his PIN -->
                         <div>
                             <div class="flex items-center justify-between mb-1">
@@ -2505,8 +2566,9 @@
         function refDetailSoon() { clearTimeout(refDetailTimer); refDetailTimer = setTimeout(loadRefDetail, 350); }
         async function loadRefDetail() {
             const box = document.getElementById('inRefDetail'); if (!box) return;
-            const type = (document.getElementById('inRefType') || {}).value === 'PR' ? 'PR' : 'PO', nos = refNosTyped();
+            const rtv = (document.getElementById('inRefType') || {}).value, type = rtv === 'PR' ? 'PR' : 'PO', nos = refNosTyped();
             if (!nos.length) { clearRefDetail(); return; }
+            if (rtv === 'REPAIR') { box.classList.remove('hidden'); box.innerHTML = nos.map(repairDocHtml).join(''); return; }   // 5B: from the list
             const gen = ++refDetailGen, need = nos.filter(n => !REF_DOCS[type + '|' + n]);
             box.classList.remove('hidden');
             let err = '';
@@ -2551,6 +2613,12 @@
             const type = (document.getElementById('inRefType') || {}).value || 'PO';
             const party = (document.getElementById('inPartyName') || {}).value || '';
             let opts = [], text = '';
+            if (type === 'REPAIR') {   // 5B
+                const rows = refPickerRows().rows;
+                if (hint) hint.textContent = REPAIR.nomig ? 'Server not set up (GATE_REPAIR_RETURN_MIGRATION.sql)' : rows.length ? rows.length + ' Repair Outward(s) waiting' + (party ? ' for this party' : '') + ': tap the box to choose' : (REPAIR.at ? 'No Repair Outward waiting' + (party ? ' for this party' : '') : 'Loading the Repair Outwards…');
+                dl.innerHTML = '';
+                return;
+            }
             if (type === 'PO') {
                 const all = GATE_MASTERS.pos || [], mine = party ? all.filter(p => normKey(p.vendor) === normKey(party)) : all;
                 opts = mine.slice(0, 200).map(p => ({ v: p.poNo, t: [p.vendor, p.date, p.status].filter(Boolean).join(' · ') }));
@@ -3108,6 +3176,7 @@
         function inwardPartyPicked(party) {
             const rt = document.getElementById('inRefType');
             if (!party) { refreshRefNoList(); return; }
+            if (INW_RET) { document.getElementById('inRefNo').value = ''; clearRefDetail(); refreshRefNoList(); openRefPicker(); return; }   // 5B
             rt.value = isFieldBoyName(party) ? 'PR' : 'PO';
             document.getElementById('inRefNo').value = '';
             clearRefDetail();
@@ -3119,6 +3188,12 @@
         function refPickerRows() {
             const type = (document.getElementById('inRefType') || {}).value || 'PO';
             const party = (document.getElementById('inPartyName') || {}).value || '';
+            if (type === 'REPAIR') {   // 5B: the store's Repair Outwards still out (of the party, when one is chosen)
+                const rows = repairOpen().filter(r => !party || normKey(r.party) === normKey(party));
+                return { type, party, rows: rows.map(r => ({ no: r.no, title: r.no, party: r.party,
+                    line: [r.party, refDate(r.date), 'Pending ' + refNum(r.balance) + ' of ' + refNum(r.sent), (r.items || []).length + ' item(s)', r.receiver ? 'Receiver ' + r.receiver : ''].filter(Boolean).join(' · '),
+                    badge: Number(r.received) > 0 ? 'Partly back' : 'Repair', cls: Number(r.received) > 0 ? 'b-part' : 'b-pend' })) };
+            }
             if (type === 'PR') {
                 // a Field Boy's own open PRs; another party = the recent PRs of the ERP (what the PR list offered before)
                 const fbp = party ? fbPrsFor(party) : [], rows = fbp.length ? fbp : (GATE_MASTERS.prs || []).filter(gatePrOpen).slice(0, 200);
@@ -3137,11 +3212,11 @@
         let REF_PICK = new Set();
         function openRefPicker() {
             const { type, party, rows } = refPickerRows();
-            if (!party) return showIosBanner('Choose the Party Name first', 'info');
+            if (!party && type !== 'REPAIR') return showIosBanner('Choose the Party Name first', 'info');
             REF_PICK = new Set();
             const noList = !(GATE_MASTERS.at);
-            document.getElementById('refPickTitle').textContent = type === 'PR' ? 'Pending PRs (Field Boy) for ' + party : 'Pending POs of ' + party;
-            document.getElementById('refPickSub').textContent = type === 'PR' ? 'Open PRs of the Field Boy purchaser. Tap one or more.' : 'Pending and Partially Received POs of this party. Tap one or more.';
+            document.getElementById('refPickTitle').textContent = type === 'REPAIR' ? 'Pending Returnable · Repair Outwards' + (party ? ' of ' + party : '') : type === 'PR' ? 'Pending PRs (Field Boy) for ' + party : 'Pending POs of ' + party;
+            document.getElementById('refPickSub').textContent = type === 'REPAIR' ? 'Outwards with Nature of Dispatch "Repair" not back yet. Tap one or more, of ONE party.' : type === 'PR' ? 'Open PRs of the Field Boy purchaser. Tap one or more.' : 'Pending and Partially Received POs of this party. Tap one or more.';
             const cur = String((document.getElementById('inRefNo') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
             cur.forEach(n => { if (rows.some(r => r.no === n)) REF_PICK.add(n); });
             document.getElementById('refPickList').innerHTML = rows.length ? rows.map(r => `
@@ -3150,6 +3225,7 @@
                     <span class="min-w-0 flex-1 text-left"><span class="t">${esc(r.title)}</span><span class="l">${esc(r.line)}</span></span>
                     <span class="bdg ${r.cls}">${esc(r.badge)}</span>
                 </button>`).join('')
+                : type === 'REPAIR' ? `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${REPAIR.nomig ? 'The server is not set up for this yet: the Admin must run GATE_REPAIR_RETURN_MIGRATION.sql.' : !REPAIR.at ? 'The Repair Outward list has not loaded yet. Check the internet and try again.' : 'No Repair Outward of ' + (party ? esc(party) : 'this store') + ' is waiting to come back.'}</p>`
                 : `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${noList ? 'The ERP list has not loaded yet. Check the internet and tap the refresh button at the top.' : (type === 'PR' ? 'No open PR in the ERP for this party.' : 'No pending or partially received PO of this party in the ERP. A new PO must be made / approved in the ERP first; then tap the refresh button at the top.')}</p>`;
             refPickCount();
             document.getElementById('refPickModal').classList.remove('hidden');
@@ -3166,6 +3242,16 @@
         }
         function refPickUse() {
             if (!REF_PICK.size) return;
+            if ((document.getElementById('inRefType') || {}).value === 'REPAIR') {   // 5B: one party only; the party box takes it
+                const picked = (REPAIR.rows || []).filter(r => REF_PICK.has(r.no)), parties = [...new Set(picked.map(r => normKey(r.party)))];
+                if (parties.length > 1) { showIosBanner('Choose Repair Outwards of ONE party only (' + [...new Set(picked.map(r => r.party))].join(', ') + ')', 'error'); return; }
+                const pName = picked[0] && picked[0].party;
+                if (pName) {
+                    const box = document.getElementById('inPartyName');
+                    if (GATE_COMBOS.inPartyName && GATE_COMBOS.inPartyName.match(pName)) GATE_COMBOS.inPartyName.set(pName, true);
+                    else box.value = pName;
+                }
+            }
             document.getElementById('inRefNo').value = [...REF_PICK].join(', ');
             closeRefPicker();
             loadRefDetail();
@@ -3345,8 +3431,10 @@
                 inwSetType(INW_ENTRY_TYPE);
                 if (isInwardDkActive) gateFillNo('DK', 'inDkSlipNo', 'inDkSlipNoHint');
                 if (!pinLockAuth('inDkTare')) pinLock('inDkTare');   // the weighbridge Tare stays locked unless opened with a PIN
+                inwApplyRetMode();   // 5B: Pending Returnable or the PO / PR form
             }
-            if (viewId === 'inwardMenu') inwResetType();   // left the form: the next entry asks its type (and NB PIN) again
+            if (viewId !== 'inwardForm' && INW_RET) { INW_RET = false; inwApplyRetMode(); }   // left the returnable form
+            if (viewId === 'inwardMenu') { inwResetType(); repairLoad(false); repairBadge(); }   // left the form: the next entry asks its type (and NB PIN) again
 
             if (viewId === 'inwardPending') renderInwardPending();
             if (viewId === 'inwardExisting') renderInwardExisting();
@@ -3417,6 +3505,97 @@
            logged-in user's own ERP PIN (gate_pin_check, like Delete; offline this phone's Delete PIN, logged as LOCAL_PIN).
            The form itself has no type box: an NB form shows the maroon theme + band instead (inwSetType). The PIN holds for
            this one form; a save or going back to the menu drops it (inwResetType). Kept as `nbAuth` {by, empCode, via, at}. */
+        /* 5B PENDING RETURNABLE (sql/GATE_REPAIR_RETURN_MIGRATION.sql): Inward Material › Pending Returnable opens the SAME
+           Inward Material Entry form (party, vehicle, bill + item photo, Dharam Kanta, approver: the same workflow after it)
+           with, in place of the PO / PR list, the store's Outwards of Nature of Dispatch "Repair" that have not come back yet
+           (gate_repair_pending: this gate's store only; sent − received by the ERP's own rule). One or more can be ticked, of
+           ONE party (the party box takes the outwards' party). Saved as an Inward entry with refType REPAIR, refNo the outward
+           numbers, inReturnable true. An outward leaves the list as soon as an Inward names it: a live returnable gate entry
+           on this register (not sent back / rejected), and for good once the ERP books its Repair Return (balance 0). The
+           list is kept on the phone (gate2_repair_v1) for an offline gate. */
+        let INW_RET = false;
+        const REPAIR_KEY = 'gate1_repair_v1';
+        let REPAIR = readLS(REPAIR_KEY, null) || { rows: [], at: 0 }, repairBusy = null;
+        if (!Array.isArray(REPAIR.rows)) REPAIR = { rows: [], at: 0 };
+        // outward numbers already named by a live returnable gate Inward of this register
+        function repairUsedNos() {
+            const used = new Set();
+            gateEntries.forEach(e => {
+                if (e.deleted_at || e.category !== 'INWARD' || String(e.refType || '').toUpperCase() !== 'REPAIR') return;
+                if (String(e.inStage || '').toUpperCase() === 'SENT_BACK' || visAprStatus(e) === 'REJECTED') return;
+                String(e.refNo || '').split(',').map(x => x.trim()).filter(Boolean).forEach(n => used.add(normKey(n)));
+            });
+            return used;
+        }
+        const repairOpen = () => { const used = repairUsedNos(); return (REPAIR.rows || []).filter(r => !used.has(normKey(r.no))); };
+        function repairLoad(force) {
+            if (!force && Date.now() - (REPAIR.at || 0) < 60000) return Promise.resolve(REPAIR);
+            if (!GATE_USER || GATE_OFFLINE || navigator.onLine === false) return Promise.resolve(REPAIR);
+            if (repairBusy) return repairBusy;
+            repairBusy = gateRpc('gate_repair_pending', { p_gate: GATE_ID }).then(r => {
+                repairBusy = null;
+                if (r.ok) { REPAIR = { rows: r.data.rows || [], at: Date.now() }; writeLS(REPAIR_KEY, REPAIR); REPAIR.nomig = false; }
+                else if (r.error === 'NO_MIGRATION') REPAIR.nomig = true;
+                repairBadge();
+                return REPAIR;
+            });
+            return repairBusy;
+        }
+        function repairBadge() {
+            const n = repairOpen().length, b = document.getElementById('inwRetBadge'), sub = document.getElementById('inwRetSub');
+            if (b) { b.textContent = n; b.classList.toggle('hidden', !n); }
+            if (sub) sub.textContent = REPAIR.nomig ? 'Server not set up yet (Admin: GATE_REPAIR_RETURN_MIGRATION.sql)'
+                : n ? n + ' Repair Outward' + (n > 1 ? 's' : '') + ' still out · tap to receive' : 'Repair items coming back: Outward No. (Nature of Dispatch Repair)';
+        }
+        function inwOpenReturnable() {
+            inwResetType();
+            INW_RET = true;
+            showView('inwardForm');   // the Inward form; inwApplyRetMode switches it to the Repair outwards
+            repairLoad(true).then(() => { if (INW_RET) { refreshRefNoList(); repairBadge(); } });
+        }
+        // The form in returnable mode (INW_RET) or back to the PO / PR one
+        function inwApplyRetMode() {
+            const rt = document.getElementById('inRefType'), no = document.getElementById('inRefNo');
+            let opt = rt.querySelector('option[value="REPAIR"]');
+            if (INW_RET) {
+                if (!opt) { opt = document.createElement('option'); opt.value = 'REPAIR'; opt.textContent = 'Outward No'; rt.appendChild(opt); }
+                if (rt.value !== 'REPAIR') { rt.value = 'REPAIR'; no.value = ''; clearRefDetail(); }
+                rt.disabled = true;
+            } else {
+                if (rt.value === 'REPAIR') { rt.value = 'PO'; no.value = ''; clearRefDetail(); }
+                if (opt) opt.remove();
+                rt.disabled = false;
+            }
+            const lbl = no.parentElement && no.parentElement.querySelector('label');
+            if (lbl) lbl.textContent = INW_RET ? 'Outward No. (Repair) *' : 'PO / PR Number *';
+            no.placeholder = INW_RET ? 'Tap to choose the Repair Outward(s)' : 'Tap to choose from the list';
+            document.getElementById('view-inwardForm').classList.toggle('inw-ret', INW_RET);
+            let band = document.getElementById('inwRetBand');
+            if (!band) {
+                band = document.createElement('div'); band.id = 'inwRetBand';
+                band.className = 'hidden rounded-2xl bg-violet-50 border border-violet-200 px-3.5 py-2.5 mb-3 text-[11.5px] font-bold text-violet-800';
+                band.innerHTML = '<i class="fa-solid fa-screwdriver-wrench mr-1"></i> Pending Returnable: repaired items coming back against their Repair Outward No. (one or more of one party).';
+                const form = document.getElementById('formInward'); form.parentNode.insertBefore(band, form);
+            }
+            band.classList.toggle('hidden', !INW_RET);
+            if (INW_RET) document.getElementById('inwFormTitle').textContent = 'Returnable Inward (Repair)';
+            refreshRefNoList();
+        }
+        // The details of the ticked Repair Outwards (from the list, no server call)
+        function repairDocHtml(no) {
+            const d = (REPAIR.rows || []).find(r => normKey(r.no) === normKey(no));
+            if (!d) return `<div class="rounded-2xl border border-gray-200 bg-white p-3 text-xs font-semibold text-gray-500"><b class="font-mono text-gray-800">${esc(no)}</b>: not a pending Repair Outward of this store.</div>`;
+            const kv = (k, v) => v === null || v === undefined || v === '' ? '' : `<div class="min-w-0"><div class="text-[9.5px] font-bold text-gray-400 uppercase">${esc(k)}</div><div class="text-[12px] font-bold text-gray-900 break-words">${esc(v)}</div></div>`;
+            const items = d.items || [];
+            return `<div class="rounded-2xl border border-violet-200 bg-white overflow-hidden">
+                <div class="flex items-center justify-between gap-2 px-3 py-2 bg-violet-50/70 border-b border-violet-100"><span class="font-mono text-[12px] font-extrabold text-violet-700">${esc(d.no)}</span><span class="text-[9.5px] font-extrabold px-2 py-0.5 rounded-full bg-violet-100 text-violet-800 uppercase">${Number(d.received) > 0 ? 'Partly back' : 'Repair · out'}</span></div>
+                <div class="grid grid-cols-2 gap-x-3 gap-y-2 p-3">${[kv('Party', d.party), kv('Outward Date', refDate(d.date)), kv('Nature of Dispatch', d.nature), kv('Receiver', d.receiver), kv('Target Return', d.targetReturn ? refDate(d.targetReturn) : ''), kv('Sent / Back', refNum(d.sent) + ' / ' + refNum(d.received))].join('')}</div>
+                <div class="px-3 pb-1 text-[10px] font-extrabold text-gray-400 uppercase">Items (${items.length})</div>
+                <div class="overflow-x-auto px-1 pb-2"><table class="w-full text-[11px]"><thead><tr class="bg-gray-100 text-gray-500 uppercase text-[9.5px]"><th class="p-1.5 text-left">Sr</th><th class="p-1.5 text-left">Item</th><th class="p-1.5 text-center">UOM</th><th class="p-1.5 text-right">Sent</th><th class="p-1.5 text-right">Back</th><th class="p-1.5 text-right">Pending</th></tr></thead><tbody>`
+                + items.map((it, i) => `<tr class="border-t border-gray-100"><td class="p-1.5 text-gray-400">${i + 1}</td><td class="p-1.5 font-bold text-gray-900">${esc(it.name)}</td><td class="p-1.5 text-center">${esc(it.uom || '-')}</td><td class="p-1.5 text-right">${esc(refNum(it.sent))}</td><td class="p-1.5 text-right">${esc(refNum(it.received))}</td><td class="p-1.5 text-right font-extrabold text-amber-600">${esc(refNum(it.pending))}</td></tr>`).join('')
+                + '</tbody></table></div></div>';
+        }
+
         const INW_SERIES = { 'INWARD': 'IN', 'INWARD NB': 'INNB' };
         let INW_ENTRY_TYPE = 'INWARD', INW_NB_AUTH = null;
         const inwEntryTypeOf = e => e.inEntryType || (String(e.id || '').indexOf(GATE_SERIES.INNB) === 0 ? 'INWARD NB' : 'INWARD');
@@ -3602,6 +3781,22 @@
                 : ` | DK Slip: ${d.slip} (G:${d.gross} Kg, Tare at Out)`;
         }
 
+        /* DHARAM KANTA ASK (2026-11-25): Inward Material Entry / Sample & Other Entry sent WITHOUT the Dharam Kanta slip:
+           "Dharam Kanta details Bharni hai ?" once every other check has passed. Yes = the toggle opens (scrolled to, the
+           first box focused) and nothing is sent yet; No = sent without it, as before. Asked on every Send while the
+           toggle is closed. */
+        async function gateAskDk(open, toggleId, focusId) {
+            const msg = 'Dharam Kanta details Bharni hai ?';
+            const pick = window.IosDialog && IosDialog.choose
+                ? await IosDialog.choose(msg, [{ label: 'Yes, fill it', value: 'yes', bold: true }, { label: 'No, send without it', value: 'no', cancel: true }], { title: 'Dharam Kanta' })
+                : ((window.IosDialog && IosDialog.native && IosDialog.native.confirm) ? IosDialog.native.confirm(msg) : confirm(msg)) ? 'yes' : 'no';
+            if (pick !== 'yes') return false;
+            open();
+            const t = document.getElementById(toggleId); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(() => { const el = document.getElementById(focusId); if (el) el.focus(); }, 350);
+            showIosBanner('Fill the Dharam Kanta details, then send for approval again', 'info');
+            return true;
+        }
         document.getElementById('formInward').addEventListener('submit', async function(e) {
             e.preventDefault();
             if (gateSaving.IN) return;
@@ -3609,14 +3804,17 @@
                 showIosBanner('Both the Bill Photo and the Item Photo are required!', 'error');
                 return;
             }
-            if (!GATE_COMBOS.inPartyName.match(document.getElementById('inPartyName').value)) {
-                showIosBanner('Please choose the Party Name from the list!', 'error');
+            // 5B: a returnable inward's party is its Repair Outwards' party (it may be a buyer not in the supplier list)
+            const retParty = INW_RET ? ((REPAIR.rows || []).find(r => refNosTyped().some(n => normKey(n) === normKey(r.no))) || {}).party : null;
+            if (!GATE_COMBOS.inPartyName.match(document.getElementById('inPartyName').value)
+                && !(INW_RET && retParty && normKey(retParty) === normKey(document.getElementById('inPartyName').value))) {
+                showIosBanner(INW_RET ? 'Choose the Repair Outward No. first: the party comes from it' : 'Please choose the Party Name from the list!', 'error');
                 return;
             }
             { const vv = document.getElementById('inVehicle').value.trim(); if (vv && !GATE_COMBOS.inVehicle.match(vv)) { showIosBanner('Choose the Vehicle Number from the list!', 'error'); return; } }
             // PO / PR Number: only numbers of the party's list (the box is read-only, filled by the Pending list)
             {
-                const rt0 = document.getElementById('inRefType').value === 'PR' ? 'PR' : 'PO';
+                const rt0 = document.getElementById('inRefType').value === 'PR' ? 'PR' : document.getElementById('inRefType').value === 'REPAIR' ? 'Repair Outward' : 'PO';
                 if (!refNosTyped().length) { showIosBanner('Choose the ' + rt0 + ' Number from the list (tap the box)', 'error'); openRefPicker(); return; }
                 const bad = refNosInvalid();
                 if (bad.length) { showIosBanner(rt0 + ' ' + bad.join(', ') + ' is not in the pending list of this party. Choose from the list.', 'error'); openRefPicker(); return; }
@@ -3649,6 +3847,14 @@
                     tareAuth: tareVal > 0 ? pinLockAuth('inDkTare') : null };   // who unlocked the Tare with their PIN
             }
 
+            // DHARAM KANTA ASK: no weighbridge slip on this Inward yet
+            if (!isInwardDkActive) {
+                gateSaving.IN = true;   // no second press while the question is open
+                let opened = false;
+                try { opened = await gateAskDk(() => { if (!isInwardDkActive) toggleInwardDharamKanta(); }, 'toggleInwardDkBtn', 'inDkGross'); }
+                finally { gateSaving.IN = false; }
+                if (opened) return;
+            }
             // Everything checked: now TAKE the Inward No. of the type's series (the Store ref follows its digits) and the DK Slip No.
             gateSaving.IN = true;
             let customInwardNo;
@@ -3672,8 +3878,9 @@
                 vehicle: vehicle,
                 host: `${refType}: ${refNo} | ${generatedStoreNo}`,
                 refType: refType, refNo: refNo, storeRef: generatedStoreNo, inwardType: inwardType,   // read by the ERP Inward (gate_inward_list)
+                inReturnable: refType === 'REPAIR' || undefined,   // 5B PENDING RETURNABLE: repaired items back on their Repair Outward(s)
                 // the first part (before •) is what the launcher's approval card shows: the type goes there
-                purpose: `${inEntryType} · ${inwardType} • Bill & Item Photo Attached${dkSummary}`,
+                purpose: `${inEntryType} · ${refType === 'REPAIR' ? 'Repair Return · ' : ''}${inwardType} • Bill & Item Photo Attached${dkSummary}`,
                 dk: dk,
                 billPhoto: tempPhotos.inBill,
                 itemPhoto: tempPhotos.inItem,
@@ -6465,8 +6672,28 @@
                 : 'Non-Returnable: the inward is closed once approved; nothing goes back.';
             document.getElementById('smpFields').classList.remove('hidden');
         }
+        /* 8C DHARAM KANTA (2026-11-25): the Sample / Other form has the same Dharam Kanta (Weighbridge) toggle as the Inward
+           form: Vehicle No, Slip No. of the DK series (shown now, taken on Save after the Inward No.), Gross compulsory,
+           Tare LOCKED (the empty vehicle is weighed after unloading: asked at Done · Inward), Vehicle Photo. Kept on the
+           entry as `dk` {slip, auto, gross, tare, net}, read by inwDkOf like an Inward's. */
+        let SMP_DK = false;
+        function smpToggleDk(on) {
+            SMP_DK = on === undefined ? !SMP_DK : !!on;
+            document.getElementById('smpDkFields').classList.toggle('hidden', !SMP_DK);
+            const b = document.getElementById('smpDkToggleBadge');
+            b.textContent = SMP_DK ? '✓ Added' : '+ Add Slip';
+            b.className = 'text-[10px] font-bold ' + (SMP_DK ? 'bg-emerald-500' : 'bg-cyan-600') + ' text-white px-2.5 py-1 rounded-full';
+            if (SMP_DK) gateFillNo('DK', 'smpDkSlipNo', 'smpDkSlipNoHint');
+            else {
+                ['smpDkSlipNo', 'smpDkGross', 'smpDkTare', 'smpDkNet', 'smpDkVehicle'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+                tempPhotos.smpDkVehicle = null;
+                document.getElementById('smpDkPhotoLabel').textContent = 'Upload Vehicle Photo';
+                document.getElementById('smpDkPhotoBox').classList.add('hidden');
+            }
+        }
         function smpResetForm() {
             document.getElementById('formSample').reset();
+            smpToggleDk(false);
             SMP_TYPE = '';
             const off = 'py-2.5 rounded-lg text-xs font-extrabold text-gray-500 transition-all';
             document.getElementById('smpTypeRET').className = off;
@@ -6501,11 +6728,35 @@
             const apOpt = GATE_COMBOS.smpApprover ? GATE_COMBOS.smpApprover.match(document.getElementById('smpApprover').value) : null;
             if (!apOpt) { showIosBanner('Choose Whom to Approve from the list (an ERP user)', 'error'); document.getElementById('smpApprover').focus(); return; }
             const item = document.getElementById('smpItem').value.trim() || 'Sample / Other';
+            // DHARAM KANTA ASK: no weighbridge slip on this entry yet
+            if (!SMP_DK) {
+                gateSaving.SMP = true;
+                let opened = false;
+                try { opened = await gateAskDk(() => smpToggleDk(true), 'toggleSmpDkBtn', 'smpDkVehicle'); }
+                finally { gateSaving.SMP = false; }
+                if (opened) return;
+            }
+            // 8C DHARAM KANTA: vehicle + Gross compulsory when the slip is added (the Tare comes at Done)
+            let dk = null, dkVeh = 'N/A';
+            if (SMP_DK) {
+                const vb = document.getElementById('smpDkVehicle'); vb.value = dkVehOnly(vb.value);
+                if (!/^[A-Z0-9]{4,15}$/.test(vb.value)) { showIosBanner('Dharam Kanta: enter the Vehicle No. (letters and numbers only)', 'error'); vb.focus(); return; }
+                const gross = parseFloat(document.getElementById('smpDkGross').value) || 0;
+                if (!(gross > 0)) { showIosBanner('Enter the Gross Weight of the Dharam Kanta slip', 'error'); document.getElementById('smpDkGross').focus(); return; }
+                dkVeh = vb.value;
+                dk = { slip: '', auto: true, gross: +gross.toFixed(2), tare: null, net: null };
+            }
 
-            // Everything checked: now TAKE the Inward No. (the entry is an inward of the IN series)
+            // Everything checked: now TAKE the Inward No. (the entry is an inward of the IN series) and the DK Slip No.
             gateSaving.SMP = true;
             let inNo;
-            try { inNo = await gateTakeNo('IN', 'smpInwardNo'); } finally { gateSaving.SMP = false; }
+            try {
+                inNo = await gateTakeNo('IN', 'smpInwardNo');
+                if (inNo && dk) {
+                    dk.slip = await gateTakeNo('DK', 'smpDkSlipNo');
+                    if (!dk.slip) { showIosBanner('Could not get a Dharam Kanta Slip No. Try again.', 'error'); return; }
+                }
+            } finally { gateSaving.SMP = false; }
             if (!inNo) { showIosBanner('Could not get an Inward No. Try again.', 'error'); return; }
             const typeLbl = SMP_TYPE === 'RETURNABLE' ? 'Returnable' : 'Non-Returnable';
 
@@ -6516,10 +6767,12 @@
                 name: supplier,
                 personName: person,
                 mobile,
-                vehicle: 'N/A',
+                vehicle: dkVeh,
                 approver: apOpt.value,
                 host: `Approver: ${apOpt.value} • Approval Pending`,
-                purpose: `${item} • ${typeLbl} • Bill & Item Photo Attached`,
+                purpose: `${item} • ${typeLbl} • Bill & Item Photo Attached${dk ? inwDkSummary(dk) : ''}`,
+                dk: dk,   // 8C DHARAM KANTA (inwDkOf reads it like an Inward's)
+                vehiclePhoto: dk ? tempPhotos.smpDkVehicle : null,
                 billPhoto: tempPhotos.smpBill,
                 itemPhoto: tempPhotos.smpItem,
                 guard: `${appSettings.guardName} (${appSettings.shiftName})`,
@@ -6565,7 +6818,9 @@
                     line = a.hostFound ? 'Waiting for ' + esc(a.host || e.approver) + ' (PIN on the launcher)' : esc(e.approver) + ' has no ERP login: the Admin can approve it.';
                 } else if (st === 'APPROVED') {
                     badge = visBadge('Approved', 'bg-emerald-100 text-emerald-800');
-                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '');
+                    line = 'By <b>' + esc(a.decidedBy || a.host) + '</b> · ' + esc(formatDateTimeShort(a.decidedAt)) + (a.via === 'ADMIN' ? ' (Admin)' : '')
+                        // the Unloader the approver picked, as for an Inward (GATE_INWARD_UL_PAYABLE_MIGRATION.sql allows Sample / Other)
+                        + (a.unloader ? '<br>Unloader: <b>' + esc(a.unloader.to || '-') + '</b>' + (a.unloader.chargeType ? ' · ' + esc(a.unloader.chargeType) : '') + (a.unloader.status === 'DONE' ? ' · photos uploaded' : ' · to upload the photos') : '<br>No Unloader assigned yet: the approver assigns one on the launcher');
                 } else if (st === 'REJECTED') {
                     badge = visBadge('Rejected', 'bg-red-100 text-red-700');
                     line = 'By <b>' + esc(a.decidedBy || a.host) + '</b>: ' + esc(a.remarks || '-');
@@ -6593,10 +6848,24 @@
         }
 
         // Approved -> the inward is complete: non-returnable = closed, returnable = waits in Return Pending
-        function smpMarkDone(id) {
+        async function smpMarkDone(id) {
             const e = gateEntries.find(x => x.id === id);
             if (!e || !isSmpPending(e)) return;
             if (!(visAprStatus(e) === 'APPROVED' || (hydNoApproval() && !visApr(e)))) { showIosBanner('Done only after the approver approves', 'error'); return; }
+            // 8C DHARAM KANTA: a slip weighed at In (Gross) gets the empty vehicle's Tare now, as an Inward does at Out
+            if (inwDkNeedsTare(e)) {
+                const d = inwDkOf(e);
+                const ask = 'Dharam Kanta ' + d.slip + ': Tare Weight (Kg) of the empty vehicle ' + (e.vehicle || '') + ' (Gross ' + d.gross + ' Kg)';
+                const v = (window.IosDialog && IosDialog.prompt) ? await IosDialog.prompt(ask, '') : prompt(ask, '');
+                if (v === null || v === undefined) return;
+                const tare = parseFloat(String(v).replace(',', '.')) || 0;
+                if (!(tare > 0)) { showIosBanner('Enter the Tare Weight of the empty vehicle', 'error'); return; }
+                if (tare > d.gross) { showIosBanner('Tare Weight cannot exceed Gross Weight (' + d.gross + ' Kg)!', 'error'); return; }
+                e.dk = Object.assign({}, d, { tare: +tare.toFixed(2), net: +(d.gross - tare).toFixed(2), tareAt: new Date().toISOString(),
+                    tareBy: `${appSettings.guardName} (${appSettings.shiftName})`, tareAtDone: true });
+                const sum = inwDkSummary(e.dk);
+                e.purpose = /\s*\|\s*DK Slip:[^|•]*/.test(e.purpose || '') ? e.purpose.replace(/\s*\|\s*DK Slip:[^|•]*/, sum) : (e.purpose || '') + sum;
+            }
             const now = new Date().toISOString();
             e.smpDoneAt = now;
             e.smpDoneBy = `${appSettings.guardName} (${appSettings.shiftName})`;

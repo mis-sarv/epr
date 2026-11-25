@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>FMS Tracking</title>
+<script src="date-dmy.js"></script>
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
+<!--
+  FMS TRACKING (launcher app HOME_FMS_TRACKING; server sql/FMS_TRACKING_MIGRATION.sql, read only)
+    Two flows, one row per document, every step with PLANNED time, ACTUAL time, who did it / who has to, and delay:
+      INWARD    Gate In → Gate Approval → Unloader → Store Inward → MD Approval (if asked) → GM Bill Check →
+                EA Bill Check → MD-1 Bill Check → Debit Note (if raised; the Accounts Check waits for it) → Accounts Check        (fmt_inward)
+      DISPATCH  Dharam Kanta (Tare) → Loading (every packing slip / waste bill with its time) → Outward Dharam
+                Kanta (Gross) → Dispatch Approval (if asked) → Gate Out                            (fmt_dispatch)
+    A step COMPLETES BY ITSELF: the server reads the ERP / gate / packing records; nothing is typed here.
+    Planned = the previous step's actual + the step's TAT (hours; Admin › TAT settings, fmt_tat_save with the Admin
+    PIN, defaults in TAT_DEF). A step not recorded while a later one is done = "Skipped" (old records, a route
+    without it), so it never blocks the row. Filters: dates, unit, status, "waiting at" step, search; list or table;
+    CSV. Re-read every 60 s while on screen (a report, not on the 5 s timer). Without the migration: a note only.
+-->
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--text:#000;--muted:#8e8e93;--sep:rgba(60,60,67,.18);--fill:#e9e9ee;--fill2:#f7f7fa;
+  --blue:#007aff;--green:#34c759;--orange:#ff9500;--red:#ff3b30;--indigo:#5856d6;--teal:#30b0c7;--gray:#aeaeb2;
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 2px 10px rgba(0,0,0,.04)}
+@media (prefers-color-scheme: dark){:root{--bg:#000;--card:#1c1c1e;--text:#fff;--muted:#98989f;--sep:rgba(84,84,88,.55);--fill:#2c2c2e;--fill2:#242426;
+  --blue:#0a84ff;--green:#30d158;--orange:#ff9f0a;--red:#ff453a;--indigo:#5e5ce6;--teal:#40c8e0;--gray:#636366;--shadow:none}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.35 -apple-system,BlinkMacSystemFont,"SF Pro Text","Inter","Segoe UI",system-ui,Roboto,sans-serif;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:0 16px calc(28px + env(safe-area-inset-bottom))}
+/* nav bar: frosted, large title */
+.nav{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--bg) 82%,transparent);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid transparent;transition:border-color .2s}
+.nav.scrolled{border-bottom-color:var(--sep)}
+.nav-in{max-width:1180px;margin:0 auto;padding:calc(8px + env(safe-area-inset-top)) 16px 8px;display:flex;align-items:center;gap:8px}
+.nav-in h1{font-size:30px;font-weight:800;letter-spacing:-.5px;margin:0;flex:1}
+.nav-sub{font-size:12px;color:var(--muted);margin:-2px 16px 6px;max-width:1180px}
+@media(min-width:1180px){.nav-sub{margin:-2px auto 6px;padding:0 16px}}
+.icon-btn{width:36px;height:36px;border-radius:50%;border:0;background:var(--fill);color:var(--blue);display:flex;align-items:center;justify-content:center;cursor:pointer}
+.icon-btn svg{width:19px;height:19px}
+/* segmented control */
+.seg{display:flex;background:var(--fill);border-radius:9px;padding:2px;position:relative;margin:6px 0 10px}
+.seg button{flex:1;border:0;background:transparent;font:600 13px/1 inherit;font-family:inherit;padding:8px 6px;border-radius:7px;color:var(--text);cursor:pointer;position:relative;z-index:1}
+.seg .thumb{position:absolute;top:2px;bottom:2px;border-radius:7px;background:var(--card);box-shadow:0 3px 8px rgba(0,0,0,.12),0 1px 1px rgba(0,0,0,.04);transition:left .28s cubic-bezier(.3,.8,.3,1),width .28s}
+/* filters */
+.card{background:var(--card);border-radius:12px;box-shadow:var(--shadow)}
+.filters{padding:10px 12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;align-items:end}
+.fl label{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin:0 0 3px 2px}
+.inp{width:100%;font:inherit;font-size:15px;color:var(--text);background:var(--fill2);border:0;border-radius:9px;padding:9px 11px;outline:none}
+.inp:focus{box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 30%,transparent)}
+select.inp{-webkit-appearance:none;appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 14px) 52%,calc(100% - 9px) 52%;background-size:5px 5px;background-repeat:no-repeat;padding-right:26px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:0;background:var(--card);color:var(--text);font:600 13px/1 inherit;font-family:inherit;padding:8px 12px;border-radius:999px;cursor:pointer;box-shadow:var(--shadow);display:flex;gap:6px;align-items:center}
+.chip b{font-weight:700;color:var(--muted)}
+.chip.on{background:var(--blue);color:#fff}.chip.on b{color:rgba(255,255,255,.85)}
+.chip.warn.on{background:var(--red)}
+.sec{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.3px;margin:14px 4px 6px;display:flex;align-items:center;gap:8px}
+.sec .r{margin-left:auto;text-transform:none;letter-spacing:0;display:flex;gap:6px}
+.mini{border:0;background:var(--fill);color:var(--blue);font:600 12px/1 inherit;font-family:inherit;padding:7px 10px;border-radius:8px;cursor:pointer}
+.mini.on{background:var(--blue);color:#fff}
+/* stat tiles */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:4px}
+.stat{padding:10px 12px;cursor:pointer}
+.stat .n{font-size:24px;font-weight:800;letter-spacing:-.4px}
+.stat .l{font-size:12px;color:var(--muted)}
+.stat.sel{outline:2px solid var(--blue)}
+/* rows */
+.list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+.row{padding:12px 14px;cursor:pointer;transition:transform .12s}
+.row:active{transform:scale(.985)}
+.row .t1{display:flex;gap:8px;align-items:baseline}
+.row .no{font-weight:700;font-size:15px}
+.row .tm{margin-left:auto;font-size:12px;color:var(--muted);white-space:nowrap}
+.row .party{font-size:14px;color:var(--text);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .meta{font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.dots{display:flex;align-items:center;margin:10px 0 8px}
+.dot{width:12px;height:12px;border-radius:50%;flex:none;background:var(--fill);border:2px solid var(--fill)}
+.line{flex:1;height:2px;background:var(--fill);min-width:6px}
+.dot.done{background:var(--green);border-color:var(--green)}.dot.late{background:var(--orange);border-color:var(--orange)}
+.dot.cur{background:var(--card);border-color:var(--blue);box-shadow:0 0 0 3px color-mix(in srgb,var(--blue) 25%,transparent)}
+.dot.over{background:var(--card);border-color:var(--red);box-shadow:0 0 0 3px color-mix(in srgb,var(--red) 25%,transparent)}
+.dot.hold{background:var(--orange);border-color:var(--orange);border-style:dashed}.dot.rej{background:var(--red);border-color:var(--red)}
+.dot.na,.dot.skip{width:8px;height:8px;background:var(--gray);border-color:var(--gray);opacity:.55}
+.line.done{background:var(--green)}
+.now{font-size:13px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pill{font-size:11px;font-weight:700;padding:3px 8px;border-radius:999px;background:var(--fill);color:var(--muted);white-space:nowrap}
+.p-blue{background:color-mix(in srgb,var(--blue) 14%,transparent);color:var(--blue)}
+.p-green{background:color-mix(in srgb,var(--green) 16%,transparent);color:color-mix(in srgb,var(--green) 80%,var(--text))}
+.p-orange{background:color-mix(in srgb,var(--orange) 16%,transparent);color:color-mix(in srgb,var(--orange) 85%,var(--text))}
+.p-red{background:color-mix(in srgb,var(--red) 14%,transparent);color:var(--red)}
+.p-gray{background:var(--fill);color:var(--muted)}
+.empty{padding:40px 16px;text-align:center;color:var(--muted)}
+/* table view */
+.tblwrap{overflow:auto;max-height:70vh}
+table.tb{border-collapse:separate;border-spacing:0;width:100%;font-size:12px}
+.tb th{position:sticky;top:0;background:var(--card);z-index:1;text-align:left;font-weight:700;color:var(--muted);padding:8px;border-bottom:.5px solid var(--sep);white-space:nowrap}
+.tb td{padding:7px 8px;border-bottom:.5px solid var(--sep);vertical-align:top;white-space:nowrap}
+.tb tr:hover td{background:var(--fill2);cursor:pointer}
+.tb .c-done{color:color-mix(in srgb,var(--green) 80%,var(--text))}.tb .c-late{color:var(--orange)}.tb .c-over{color:var(--red);font-weight:700}
+.tb .c-cur{color:var(--blue);font-weight:700}.tb .c-na{color:var(--gray)}
+.tb small{display:block;color:var(--muted);font-size:11px}
+/* sheet */
+.dim{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:50;opacity:0;transition:opacity .25s}
+.dim.show{opacity:1}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:51;background:var(--bg);border-radius:14px 14px 0 0;max-height:92vh;overflow:auto;transform:translateY(100%);transition:transform .34s cubic-bezier(.2,.9,.25,1);padding:6px 16px calc(20px + env(safe-area-inset-bottom))}
+.sheet.show{transform:none}
+@media(min-width:768px){.sheet{left:50%;right:auto;width:620px;bottom:auto;top:50%;border-radius:14px;transform:translate(-50%,-46%) scale(.96);opacity:0;transition:transform .28s,opacity .2s}.sheet.show{transform:translate(-50%,-50%);opacity:1}}
+.grab{width:36px;height:5px;border-radius:3px;background:var(--gray);opacity:.6;margin:4px auto 8px}
+.sh-h{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sh-h h3{margin:0;font-size:20px;font-weight:800;flex:1}
+.kv{padding:4px 14px}
+.kv .r{display:flex;gap:10px;padding:9px 0;border-bottom:.5px solid var(--sep);font-size:14px}
+.kv .r:last-child{border-bottom:0}.kv .r span:first-child{color:var(--muted);flex:none;min-width:96px}.kv .r span:last-child{text-align:right;margin-left:auto}
+.tl{padding:6px 14px}
+.st{display:flex;gap:12px;position:relative;padding:10px 0}
+.st:not(:last-child)::after{content:"";position:absolute;left:9px;top:30px;bottom:-10px;width:2px;background:var(--fill)}
+.st.done:not(:last-child)::after{background:var(--green)}
+.st .b{width:20px;height:20px;border-radius:50%;flex:none;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;background:var(--fill);margin-top:1px}
+.st.done .b{background:var(--green)}.st.late .b{background:var(--orange)}.st.cur .b{background:var(--blue)}.st.over .b{background:var(--red)}.st.hold .b{background:var(--orange)}.st.rej .b{background:var(--red)}.st.na .b,.st.skip .b{background:var(--gray)}
+.st .x{flex:1;min-width:0}
+.st .nm{font-weight:700;font-size:15px;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.st .ln{font-size:13px;color:var(--muted);margin-top:2px}
+.st .ln b{color:var(--text);font-weight:600}
+.sub-list{margin:6px 0 0;padding:0;list-style:none}
+.sub-list li{font-size:12.5px;padding:5px 8px;background:var(--fill2);border-radius:8px;margin-top:4px}
+.btn{width:100%;border:0;border-radius:12px;padding:13px;font:600 16px/1 inherit;font-family:inherit;cursor:pointer}
+.btn.blue{background:var(--blue);color:#fff}.btn.gray{background:var(--fill);color:var(--blue)}
+.note{margin:10px 0;padding:12px 14px;border-radius:12px;font-size:14px;background:color-mix(in srgb,var(--orange) 14%,var(--card));color:var(--text)}
+.toast{position:fixed;left:50%;top:calc(10px + env(safe-area-inset-top));transform:translate(-50%,-140%);background:color-mix(in srgb,var(--card) 92%,transparent);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);padding:11px 16px;border-radius:14px;box-shadow:0 8px 30px rgba(0,0,0,.18);font-size:14px;font-weight:600;z-index:80;transition:transform .35s cubic-bezier(.2,.9,.25,1);max-width:calc(100vw - 32px)}
+.toast.show{transform:translate(-50%,0)}.toast.bad{color:var(--red)}
+.spin{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+</style>
+<link rel="stylesheet" href="ios-ui.css?v=20261118a">
+<link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+<link rel="stylesheet" href="ios-dialog.css?v=20261120a">
+<script src="ios-ui.js?v=20261118a" defer></script>
+<script src="ios-dropdown.js?v=20261120a" defer></script>
+<script src="ios-dialog.js?v=20261120a"></script>
+</head>
+<body>
+<div class="nav" id="nav"><div class="nav-in">
+  <h1>FMS Tracking</h1>
+  <button class="icon-btn" id="bCsv" title="Download CSV" aria-label="Download CSV"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg></button>
+  <button class="icon-btn" id="bTat" title="TAT settings (Admin)" aria-label="TAT settings" style="display:none"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>
+  <button class="icon-btn" id="bRefresh" title="Refresh" aria-label="Refresh"><svg id="refIco" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg></button>
+</div><div class="nav-sub" id="navSub">Loading…</div></div>
+
+<div class="wrap">
+  <div class="seg" id="flowSeg"><span class="thumb"></span><button data-flow="inward">Inward &amp; Bill Check</button><button data-flow="dispatch">Dispatch &amp; Dharam Kanta</button></div>
+  <div id="noMig" class="note" style="display:none"></div>
+
+  <div class="card filters">
+    <div class="fl"><label for="fFrom">From</label><input type="date" class="inp" id="fFrom"></div>
+    <div class="fl"><label for="fTo">To</label><input type="date" class="inp" id="fTo"></div>
+    <div class="fl"><label for="fUnit">Unit</label><select class="inp" id="fUnit"><option value="">Both units</option><option value="1">Unit 1 (Gate-1 / Store 1)</option><option value="2">Unit 2 (Gate-2 / Store 2)</option></select></div>
+    <div class="fl"><label for="fStep">Waiting at</label><select class="inp" id="fStep"><option value="">Any step</option></select></div>
+    <div class="fl"><label for="fSort">Sort</label><select class="inp" id="fSort"><option value="new">Newest first</option><option value="delay">Most delayed first</option><option value="old">Oldest first</option></select></div>
+    <div class="fl" style="grid-column:1/-1"><label for="fQ">Search</label><input class="inp" id="fQ" placeholder="Number, party, vehicle, person…" autocomplete="off"></div>
+  </div>
+  <div class="chips" id="quick" style="margin-top:10px"></div>
+  <div class="stats" id="stats"></div>
+
+  <div class="sec"><span id="countTxt">Rows</span><span class="r"><button class="mini" data-view="list">List</button><button class="mini" data-view="table">Table</button></span></div>
+  <div id="out"></div>
+</div>
+
+<div class="dim" id="dim" style="display:none"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true" style="display:none"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const SUPABASE_URL = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const APP_KEY = 'HOME_FMS_TRACKING';
+const REFRESH_MS = 60000;   // a report: every minute while on screen (not the 5 s timer)
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+/* ── THE TWO FLOWS ───────────────────────────────────────────────────────────────────────────────
+   Each step: code, label, who works on it (doer), default TAT hours (planned = previous actual + TAT) and
+   read(row) → { st, at, by, lines[], need } from the server's row:
+     st: 'done' | 'wait' (not done yet) | 'na' (not needed for this row) | 'hold' | 'rej'   (late / overdue / skipped
+     are worked out after, from the planned time and the later steps). */
+const TAT_DEF = {
+  inward:   { GATE_APPR: 1, UNLOADER: 2, STORE: 4, MD_APPR: 4, GM: 24, EA: 24, MD1: 24, AC: 24, DEBIT: 48 },
+  dispatch: { LOADING: 6, DK_GROSS: 2, DISP_APPR: 1, GATE_OUT: 1 }
+};
+const tim = v => v ? new Date(v) : null;
+const chk = (r, k) => ((r.steps || {}).CHECK || {})[k] || null;
+const checkStep = (code, label, doer) => ({ code, label, doer, read: r => {
+  if (r.cancelled) return { st: 'na', lines: ['Record cancelled'] };
+  if (!r.docId) return { st: 'wait' };
+  const c = chk(r, code);
+  if (!c) return { st: 'wait' };
+  if (c.status === 'OKAY') return { st: 'done', at: tim(c.at), by: c.by, lines: c.remarks ? ['Remarks: ' + c.remarks] : [] };
+  if (c.status === 'HOLD') return { st: 'hold', at: tim(c.at), by: c.by, lines: ['On HOLD' + (c.remarks ? ': ' + c.remarks : '')] };
+  return { st: 'wait', lines: [c.status] };
+} });
+const FLOWS = {
+  inward: {
+    label: 'Inward',
+    steps: [
+      { code: 'GATE_IN', label: 'Gate Inward', doer: 'Gate guard', read: r => {
+          const s = r.steps.GATE_IN; if (!s) return { st: 'na', lines: ['No gate entry (Store Inward without one)'] };
+          return { st: 'done', at: tim(s.at), by: s.by, lines: [r.gateNo + (r.gateKind === 'SAMPLE / OTHER' ? ' · Sample / Other' : '') + (r.vehicle ? ' · ' + r.vehicle : '')] }; } },
+      { code: 'GATE_APPR', label: 'Gate Approval', doer: 'Approver', read: r => {
+          const s = r.steps.GATE_APPR; if (!s || s.na) return { st: 'na' };
+          if (s.status === 'APPROVED') return { st: 'done', at: tim(s.at), by: s.by };
+          if (s.status === 'REJECTED') return { st: 'rej', at: tim(s.at), by: s.by, lines: ['Rejected' + (s.remarks ? ': ' + s.remarks : '')] };
+          return { st: 'wait', who: s.by }; } },
+      { code: 'UNLOADER', label: 'Unloader Approval', doer: 'Unloader', read: r => {
+          const s = r.steps.UNLOADER;
+          if (!s) return { st: 'wait' };
+          const ls = [s.assignedTo ? 'Assigned to ' + s.assignedTo + (s.assignedBy ? ' by ' + s.assignedBy : '') + (s.assignedAt ? ' · ' + fmt(tim(s.assignedAt)) : '') : '',
+                      s.charge ? 'Unloading ' + s.charge : '', s.via === 'SUPERVISOR' ? 'Unloader Supervisor' : ''].filter(Boolean);
+          if (s.at && /DONE|APPROVED/.test(String(s.status || 'DONE'))) return { st: 'done', at: tim(s.at), by: s.by, lines: ls };
+          if (/REJECTED/.test(String(s.status))) return { st: 'rej', at: tim(s.at), by: s.by, lines: ls };
+          return { st: 'wait', who: s.assignedTo, lines: ls }; } },
+      { code: 'STORE', label: 'Store Gate Entry', doer: 'Store', read: r => {
+          const s = r.steps.STORE; if (!s) return { st: 'wait' };
+          return { st: r.cancelled ? 'rej' : 'done', at: tim(s.at), by: s.by, lines: [(r.entryType || 'Inward') + ' ' + (s.docNo || '') + (r.cancelled ? ' · CANCELLED' : '') + (r.invoiceNo ? ' · Bill ' + r.invoiceNo : '')] }; } },
+      { code: 'MD_APPR', label: 'MD Approval', doer: 'MD', read: r => {
+          const s = r.steps.MD_APPR; if (!s || s.na) return { st: 'na' };
+          if (/APPROVED/.test(s.status)) return { st: 'done', at: tim(s.at), by: s.by, lines: ['Asked ' + fmt(tim(s.askedAt))] };
+          if (/REJECTED/.test(s.status)) return { st: 'rej', at: tim(s.at), by: s.by, lines: [s.remarks || 'Rejected'] };
+          if (/INACTIVE/.test(s.status)) return { st: 'na', lines: ['Request inactive'] };
+          return { st: 'wait', lines: ['Asked ' + fmt(tim(s.askedAt))] }; } },
+      checkStep('GM', 'GM Bill Check', 'GM'),
+      checkStep('EA', 'EA Bill Check', 'EA'),
+      checkStep('MD1', 'MD Bill Check', 'MD-1'),
+      { code: 'DEBIT', label: 'Debit Note', doer: 'Accountant', read: r => {
+          const d = r.steps.DEBIT; if (!d) return { st: 'na' };
+          const ls = ['Raised by ' + (d.raisedBy || '-') + ' · ' + fmt(tim(d.raisedAt)), d.amount != null ? 'Amount Rs ' + d.amount : '', d.reason ? 'Reason: ' + d.reason : '', d.debitNo ? 'Debit No ' + d.debitNo : ''].filter(Boolean);
+          if (d.verifiedAt) return { st: 'done', at: tim(d.verifiedAt), by: d.verifiedBy, lines: ls };
+          return { st: 'wait', lines: ls, startAt: tim(d.raisedAt) }; } },
+      checkStep('AC', 'Account Bill Check', 'Accounts')
+    ],
+    title: r => r.docNo || r.gateNo || '-',
+    sub: r => [r.gateNo && r.docNo ? 'Gate ' + r.gateNo : '', r.store, r.ref ? 'Ref ' + r.ref : '', r.vehicle].filter(Boolean).join(' · '),
+    party: r => r.party || '-',
+    unit: r => r.store === 'STORE 1' ? '1' : r.store === 'STORE 2' ? '2' : r.gate === 'G1' ? '1' : '2',
+    hay: r => [r.docNo, r.gateNo, r.party, r.vehicle, r.ref, r.invoiceNo, r.entryType, r.store]
+  },
+  dispatch: {
+    label: 'Dispatch',
+    steps: [
+      { code: 'DK_TARE', label: 'Dharam Kanta (Tare)', doer: 'Gate guard', read: r => {
+          const s = r.steps.DK_TARE; return { st: 'done', at: tim(s.at), by: s.by, lines: ['Slip ' + r.dkNo + ' · Tare ' + num(s.tare) + ' Kg'] }; } },
+      { code: 'LOADING', label: 'Loading (Packing / Waste)', doer: 'Packing', read: r => {
+          const L = r.steps.LOADING || {}, slips = L.slips || [], waste = L.waste || [];
+          const items = slips.map(x => ({ at: tim(x.at), txt: 'Packing slip ' + x.no + ' · ' + (x.party || '-') + (x.to ? ' → ' + x.to : '') + ' · ' + num(x.qty) + ' packs · ' + num(x.weight) + ' Kg', by: x.by }))
+            .concat(waste.map(x => ({ at: tim(x.at), txt: 'Waste Sale ' + x.no + ' · ' + (x.party || '-') + ' · ' + num(x.kg) + ' Kg', by: x.by })))
+            .sort((a, b) => a.at - b.at);
+          const last = items.length ? items[items.length - 1] : null, gross = r.steps.DK_GROSS;
+          const lines = items.length ? [items.length + ' loading entr' + (items.length === 1 ? 'y' : 'ies')] : [];
+          if (gross && !items.length) return { st: 'na', lines: ['Nothing booked on this trip'], items };
+          if (gross) return { st: 'done', at: last.at, by: [...new Set(items.map(x => x.by).filter(Boolean))].join(', '), lines, items };
+          return { st: 'wait', running: !!items.length, lines: items.length ? lines.concat(['Last at ' + fmt(last.at)]) : [], items }; } },
+      { code: 'DK_GROSS', label: 'Outward Dharam Kanta', doer: 'Gate guard', read: r => {
+          const s = r.steps.DK_GROSS; if (!s) return { st: 'wait' };
+          return { st: 'done', at: tim(s.at), by: s.by, lines: [(r.dispNo || '') + (r.outwardNo ? ' · ' + r.outwardNo : '') + ' · Gross ' + num(s.gross) + ' · Net ' + num(s.net) + ' Kg' + (s.diff != null ? ' · Diff ' + num(s.diff) + ' Kg' : '')] }; } },
+      { code: 'DISP_APPR', label: 'Dispatch Approval', doer: 'Approver group', read: r => {
+          const s = r.steps.DISP_APPR; if (!s) return { st: r.steps.DK_GROSS ? 'na' : 'wait' }; if (s.na) return { st: 'na' };
+          if (s.status === 'APPROVED') return { st: 'done', at: tim(s.at), by: s.by };
+          if (s.status === 'REJECTED') return { st: 'rej', at: tim(s.at), by: s.by, lines: ['Rejected' + (s.remarks ? ': ' + s.remarks : '')] };
+          return { st: 'wait', who: s.by }; } },
+      { code: 'GATE_OUT', label: 'Gate Out', doer: 'Gate guard', read: r => {
+          const s = r.steps.GATE_OUT; return s ? { st: 'done', at: tim(s.at), by: s.by } : { st: 'wait' }; } }
+    ],
+    title: r => r.vehicle || '-',
+    sub: r => ['DK ' + r.dkNo, r.gate === 'G1' ? 'Gate-1' : 'Gate-2', r.dispNo ? 'Dispatch ' + r.dispNo : ''].filter(Boolean).join(' · '),
+    party: r => { const L = (r.steps.LOADING || {}); const p = [...new Set([...(L.slips || []), ...(L.waste || [])].map(x => x.party).filter(Boolean))]; return p.length ? p.join(', ') : 'No loading yet'; },
+    unit: r => r.gate === 'G1' ? '1' : '2',
+    hay: r => { const L = (r.steps.LOADING || {}); return [r.vehicle, r.dkNo, r.dispNo, r.outwardNo].concat([...(L.slips || []), ...(L.waste || [])].flatMap(x => [x.no, x.party, x.to, x.by])); }
+  }
+};
+
+/* ── the row's steps with planned time, state and delay ── */
+function evalRow(flow, r, now) {
+  const F = FLOWS[flow], tat = Object.assign({}, TAT_DEF[flow], (S.cfg && S.cfg[flow]) || {});
+  const steps = F.steps.map(s => Object.assign({ code: s.code, label: s.label, doer: s.doer }, s.read(r) || { st: 'wait' }));
+  // a step not recorded while a later one is done: Skipped (old record / a route without it), never blocking
+  let lastDone = -1; steps.forEach((s, i) => { if (s.st === 'done') lastDone = i; });
+  steps.forEach((s, i) => { if (s.st === 'wait' && i < lastDone) s.st = 'skip'; });
+  let prevAt = null, cur = null, lateAny = false, stop = false, nextPlan = null;
+  steps.forEach(s => {
+    if (s.st === 'na' || s.st === 'skip') return;
+    // a step after the waiting one: its planned time follows the waiting step's plan (or now)
+    if (stop) { s.st = 'later'; const hh = tat[s.code]; if (nextPlan && hh != null) { s.plan = new Date(nextPlan.getTime() + hh * 3600000); nextPlan = s.plan; } return; }
+    const h = tat[s.code];
+    s.plan = prevAt && h != null ? new Date(prevAt.getTime() + h * 3600000) : null;
+    if (s.st === 'done') {
+      if (s.plan && s.at && s.at > s.plan) { s.late = s.at - s.plan; lateAny = true; }
+      prevAt = s.at || prevAt;
+      return;
+    }
+    // the first step not done is the one the row waits at
+    cur = s; stop = true;
+    if (s.startAt && !s.plan && h != null) s.plan = new Date(s.startAt.getTime() + h * 3600000);
+    if (s.st === 'wait' && s.plan && now > s.plan) { s.over = now - s.plan; }
+    nextPlan = s.plan && s.plan > now ? s.plan : now;
+  });
+  const done = !cur && lastDone >= 0;
+  const cancelled = !!r.cancelled;
+  const rejected = cur && cur.st === 'rej';
+  const status = cancelled ? 'cancel' : done ? 'done' : rejected ? 'rej' : cur && cur.st === 'hold' ? 'hold' : cur && cur.over ? 'over' : 'run';
+  const startAt = steps.find(s => s.at) ? steps.find(s => s.at).at : null;
+  return { r, steps, cur, done, status, lateAny, startAt, endAt: done ? prevAt : null, delay: cur && cur.over ? cur.over : 0 };
+}
+
+/* ── formatting ── */
+const p2 = n => String(n).padStart(2, '0');
+const fmt = d => !d || isNaN(d) ? '' : p2(d.getDate()) + '-' + p2(d.getMonth() + 1) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes());
+const dur = ms => { const m = Math.round(ms / 60000); if (m < 60) return m + ' min'; const h = Math.floor(m / 60), r = m % 60; if (h < 48) return h + 'h' + (r ? ' ' + r + 'm' : ''); const d = Math.floor(h / 24); return d + 'd ' + (h % 24) + 'h'; };
+const num = v => v == null || v === '' ? '-' : (Math.round(Number(v) * 100) / 100).toLocaleString('en-IN');
+const today = () => { const t = new Date(); return t.getFullYear() + '-' + p2(t.getMonth() + 1) + '-' + p2(t.getDate()); };
+const addDays = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate()); };
+function toast(m, bad) { const t = $('toast'); t.textContent = m; t.className = 'toast show' + (bad ? ' bad' : ''); clearTimeout(toast.t); toast.t = setTimeout(() => t.className = 'toast', 2800); }
+
+/* ── server ── */
+const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1, NO_APP_ACCESS:1 };
+async function rpc(fn, args) {
+  let r;
+  try { r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method: 'POST', headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+      body: JSON.stringify(Object.assign({ p_token: SARV_GATE.token }, args || {})) }); }
+  catch (e) { const er = new Error('No internet connection.'); er.net = true; throw er; }
+  const d = await r.json().catch(() => null);
+  if (!r.ok) { const e = new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status)); e.code = d && d.code; e.missing = e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01'; throw e; }
+  if (d && d.success === false) {
+    if (SESSION_ERR[d.error]) { location.replace('launcher.html?why=' + d.error); return new Promise(() => {}); }
+    const e = new Error({ BAD_DATES: 'Choose a date range of at most 62 days', WRONG_PIN: 'Incorrect PIN', NOT_ALLOWED: 'Admin only', BAD_DATA: 'A value is not valid' }[d.error] || d.error); e.code = d.error; throw e;
+  }
+  return d;
+}
+
+/* ── state ── */
+const LS = 'fmt_ui_v1';
+const lsGet = () => { try { return JSON.parse(localStorage.getItem(LS) || '{}') || {}; } catch (e) { return {}; } };
+const lsSet = v => { try { localStorage.setItem(LS, JSON.stringify(v)); } catch (e) {} };
+const S = { flow: 'inward', view: 'list', quick: 'all', rows: { inward: null, dispatch: null }, ev: [], cfg: null, me: null, busy: false, at: 0, sig: '' };
+
+/* ── load ── */
+async function load(quiet) {
+  if (S.busy) return; S.busy = true; $('refIco').classList.add('spin');
+  const from = $('fFrom').value, to = $('fTo').value, unit = $('fUnit').value;
+  try {
+    const d = S.flow === 'inward'
+      ? await rpc('fmt_inward', { p_from: from, p_to: to, p_store: unit ? 'STORE ' + unit : null })
+      : await rpc('fmt_dispatch', { p_from: from, p_to: to, p_gate: unit ? 'G' + unit : null });
+    S.me = d.me; S.cfg = d.cfg || null; S.at = Date.now();
+    $('bTat').style.display = S.me && S.me.admin ? '' : 'none';
+    const sig = JSON.stringify(d.rows || []).length + ':' + (d.rows || []).length + ':' + JSON.stringify(d.rows || []).slice(0, 200);
+    S.rows[S.flow] = d.rows || [];
+    $('noMig').style.display = 'none';
+    if (!quiet || sig !== S.sig) { S.sig = sig; paint(); } else paintSub();
+  } catch (e) {
+    if (e.missing) { $('noMig').style.display = ''; $('noMig').textContent = 'FMS Tracking is not set up on the server yet. Admin: run sql/FMS_TRACKING_MIGRATION.sql in the Supabase SQL Editor.'; S.rows[S.flow] = []; paint(); }
+    else if (!quiet) toast(e.message, true);
+  } finally { S.busy = false; $('refIco').classList.remove('spin'); }
+}
+function paintSub() {
+  $('navSub').textContent = (S.me ? S.me.name + ' · ' : '') + (S.at ? 'Updated ' + fmt(new Date(S.at)).slice(6) : '') + ' · ' + FLOWS[S.flow].label + ' flow';
+}
+
+/* ── filters + paint ── */
+const QUICK = [['all', 'All'], ['run', 'Running'], ['over', 'Delayed now'], ['late', 'Done late'], ['done', 'Completed'], ['hold', 'On Hold / Rejected'], ['cancel', 'Cancelled']];
+function matchQuick(e) {
+  switch (S.quick) {
+    case 'run': return e.status === 'run' || e.status === 'over';
+    case 'over': return e.status === 'over';
+    case 'late': return e.done && e.lateAny;
+    case 'done': return e.status === 'done';
+    case 'hold': return e.status === 'hold' || e.status === 'rej';
+    case 'cancel': return e.status === 'cancel';
+    default: return true;
+  }
+}
+function filtered() {
+  const now = new Date(), F = FLOWS[S.flow];
+  const all = (S.rows[S.flow] || []).map(r => evalRow(S.flow, r, now));
+  const step = $('fStep').value, words = $('fQ').value.trim().toUpperCase().split(/\s+/).filter(Boolean);
+  let list = all.filter(e => (!step || (e.cur && e.cur.code === step)) && matchQuick(e)
+    && (!words.length || (() => { const h = F.hay(e.r).concat(e.steps.map(s => s.by)).filter(Boolean).join(' ').toUpperCase(); return words.every(w => h.indexOf(w) >= 0); })()));
+  const so = $('fSort').value;
+  list.sort((a, b) => so === 'delay' ? (b.delay - a.delay) || ((b.startAt || 0) - (a.startAt || 0))
+    : so === 'old' ? (a.startAt || 0) - (b.startAt || 0) : (b.startAt || 0) - (a.startAt || 0));
+  return { all, list };
+}
+function paint() {
+  paintSub();
+  const F = FLOWS[S.flow];
+  const stepSel = $('fStep'), keep = stepSel.value;
+  stepSel.innerHTML = '<option value="">Any step</option>' + F.steps.map(s => '<option value="' + s.code + '">' + esc(s.label) + '</option>').join('');
+  stepSel.value = F.steps.some(s => s.code === keep) ? keep : '';
+  const { all, list } = filtered();
+  S.ev = list;
+  // quick chips with their counts (over every row of the dates)
+  const cnt = k => { const was = S.quick; S.quick = k; const n = all.filter(matchQuick).length; S.quick = was; return n; };
+  $('quick').innerHTML = QUICK.map(([k, l]) => '<button class="chip' + (S.quick === k ? ' on' : '') + (k === 'over' ? ' warn' : '') + '" data-q="' + k + '">' + esc(l) + ' <b>' + cnt(k) + '</b></button>').join('');
+  // tiles: where the running rows wait
+  const wait = {}; all.forEach(e => { if (e.cur && !e.done && e.status !== 'cancel') { const k = e.cur.code; wait[k] = wait[k] || { n: 0, over: 0 }; wait[k].n++; if (e.cur.over) wait[k].over++; } });
+  $('stats').innerHTML = F.steps.filter(s => wait[s.code]).map(s => '<div class="card stat' + ($('fStep').value === s.code ? ' sel' : '') + '" data-step="' + s.code + '"><div class="n">' + wait[s.code].n + '</div><div class="l">Waiting · ' + esc(s.label) + (wait[s.code].over ? ' · <span style="color:var(--red);font-weight:700">' + wait[s.code].over + ' delayed</span>' : '') + '</div></div>').join('');
+  $('countTxt').textContent = list.length + ' of ' + all.length + ' ' + (S.flow === 'inward' ? 'inwards' : 'vehicles');
+  document.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('on', b.getAttribute('data-view') === S.view));
+  $('out').innerHTML = !list.length ? '<div class="card empty">' + (all.length ? 'Nothing matches these filters.' : 'No ' + (S.flow === 'inward' ? 'inward' : 'Dharam Kanta slip') + ' in these dates.') + '</div>'
+    : S.view === 'table' ? tableHtml(list) : '<div class="list">' + list.map((e, i) => cardHtml(e, i)).join('') + '</div>';
+}
+function stCls(s) { return s.st === 'done' ? (s.late ? 'late' : 'done') : s.st === 'na' ? 'na' : s.st === 'skip' ? 'skip' : s.st === 'hold' ? 'hold' : s.st === 'rej' ? 'rej' : s.over ? 'over' : s.st === 'later' ? '' : 'cur'; }
+function statusPill(e) {
+  return { done: '<span class="pill p-green">Completed' + (e.lateAny ? ' · late' : '') + '</span>', over: '<span class="pill p-red">Delayed ' + dur(e.delay) + '</span>',
+    run: '<span class="pill p-blue">Running</span>', hold: '<span class="pill p-orange">On Hold</span>', rej: '<span class="pill p-red">Rejected</span>', cancel: '<span class="pill p-gray">Cancelled</span>' }[e.status] || '';
+}
+function cardHtml(e, i) {
+  const F = FLOWS[S.flow], r = e.r;
+  const vis = e.steps.filter(s => s.st !== 'na');
+  const dots = vis.map((s, k) => (k ? '<span class="line' + (vis[k - 1].st === 'done' ? ' done' : '') + '"></span>' : '') + '<span class="dot ' + stCls(s) + '" title="' + esc(s.label) + '"></span>').join('');
+  let now = '';
+  if (e.cur) {
+    const who = e.cur.who || e.cur.doer;
+    now = '<span class="pill ' + (e.cur.over ? 'p-red' : e.cur.st === 'hold' ? 'p-orange' : e.cur.st === 'rej' ? 'p-red' : 'p-blue') + '">' + esc(e.cur.st === 'hold' ? 'On hold: ' : e.cur.st === 'rej' ? 'Rejected: ' : e.cur.running ? 'Loading: ' : 'Waiting: ') + esc(e.cur.label) + '</span>'
+      + '<span style="color:var(--muted)">' + esc(who) + (e.cur.plan ? ' · plan ' + fmt(e.cur.plan) : '') + (e.cur.over ? ' · <b style="color:var(--red)">' + dur(e.cur.over) + ' late</b>' : '') + '</span>';
+  } else if (e.done) now = '<span class="pill p-green">All steps done</span><span style="color:var(--muted)">' + (e.endAt ? 'at ' + fmt(e.endAt) : '') + (e.startAt && e.endAt ? ' · total ' + dur(e.endAt - e.startAt) : '') + '</span>';
+  return '<div class="card row" data-i="' + i + '"><div class="t1"><span class="no">' + esc(F.title(r)) + '</span>' + statusPill(e) + '<span class="tm">' + esc(fmt(e.startAt)) + '</span></div>'
+    + '<div class="party">' + esc(F.party(r)) + '</div><div class="meta">' + esc(F.sub(r)) + '</div>'
+    + '<div class="dots">' + dots + '</div><div class="now">' + now + '</div></div>';
+}
+function tableHtml(list) {
+  const F = FLOWS[S.flow];
+  const head = '<tr><th>' + (S.flow === 'inward' ? 'Inward / Gate' : 'Vehicle / DK') + '</th><th>Party</th><th>Status</th>' + F.steps.map(s => '<th>' + esc(s.label) + '</th>').join('') + '</tr>';
+  const cell = s => {
+    if (s.st === 'na') return '<td class="c-na">n/a</td>';
+    if (s.st === 'skip') return '<td class="c-na">skipped</td>';
+    if (s.st === 'later') return '<td class="c-na">' + (s.plan ? 'plan ' + esc(fmt(s.plan)) : '-') + '</td>';
+    if (s.st === 'done') return '<td class="' + (s.late ? 'c-late' : 'c-done') + '">' + esc(fmt(s.at)) + '<small>' + esc(s.by || '') + (s.late ? ' · +' + dur(s.late) : '') + '</small></td>';
+    return '<td class="' + (s.over || s.st === 'rej' ? 'c-over' : 'c-cur') + '">' + esc(s.st === 'hold' ? 'HOLD' : s.st === 'rej' ? 'REJECTED' : 'waiting') + '<small>' + (s.plan ? 'plan ' + esc(fmt(s.plan)) : '') + (s.over ? ' · ' + dur(s.over) + ' late' : '') + '</small></td>';
+  };
+  return '<div class="card tblwrap"><table class="tb"><thead>' + head + '</thead><tbody>' + list.map((e, i) => '<tr data-i="' + i + '"><td><b>' + esc(F.title(e.r)) + '</b><small>' + esc(F.sub(e.r)) + '</small></td><td>' + esc(F.party(e.r)) + '</td><td>' + statusPill(e) + '</td>' + e.steps.map(cell).join('') + '</tr>').join('') + '</tbody></table></div>';
+}
+
+/* ── sheet: one row's full timeline ── */
+function openSheet(html) {
+  const sh = $('sheet'), dim = $('dim');
+  sh.innerHTML = '<div class="grab"></div>' + html; sh.style.display = ''; dim.style.display = '';
+  requestAnimationFrame(() => { sh.classList.add('show'); dim.classList.add('show'); });
+  sh.querySelectorAll('[data-x]').forEach(b => b.addEventListener('click', closeSheet));
+  return sh;
+}
+function closeSheet() {
+  const sh = $('sheet'), dim = $('dim'); sh.classList.remove('show'); dim.classList.remove('show');
+  setTimeout(() => { sh.style.display = 'none'; dim.style.display = 'none'; sh.innerHTML = ''; }, 300);
+}
+const sheetOpen = () => $('sheet').style.display !== 'none';
+function showRow(e) {
+  const F = FLOWS[S.flow], r = e.r;
+  const info = S.flow === 'inward'
+    ? [['Inward No.', r.docNo || 'Not booked yet'], ['Gate Entry', r.gateNo || '-'], ['Unit', r.store || '-'], ['Party', r.party || '-'], ['Bill / Invoice', r.invoiceNo || '-'], ['PO / Ref', r.ref || '-'], ['Vehicle', r.vehicle || '-']]
+    : [['Vehicle', r.vehicle || '-'], ['Dharam Kanta slip', r.dkNo], ['Gate', r.gate === 'G1' ? 'Gate-1' : 'Gate-2'], ['Tare', num(r.tare) + ' Kg'], ['Dispatch entry', (r.dispNo || '-') + (r.outwardNo ? ' · ' + r.outwardNo : '')], ['Next DK slip of the vehicle', r.nextDkAt ? fmt(tim(r.nextDkAt)) : '-']];
+  const tl = e.steps.map((s, k) => {
+    const c = stCls(s) || 'later', icon = s.st === 'done' ? '✓' : s.st === 'rej' ? '✕' : s.st === 'na' || s.st === 'skip' ? '–' : String(k + 1);
+    const tag = s.st === 'done' ? (s.late ? '<span class="pill p-orange">+' + dur(s.late) + ' late</span>' : '<span class="pill p-green">On time</span>')
+      : s.st === 'na' ? '<span class="pill p-gray">Not needed</span>' : s.st === 'skip' ? '<span class="pill p-gray">Skipped</span>'
+      : s.st === 'later' ? '<span class="pill p-gray">Later</span>' : s.st === 'hold' ? '<span class="pill p-orange">On hold</span>' : s.st === 'rej' ? '<span class="pill p-red">Rejected</span>'
+      : s.over ? '<span class="pill p-red">' + dur(s.over) + ' late</span>' : '<span class="pill p-blue">' + (s.running ? 'Loading' : 'Waiting') + '</span>';
+    const ln = [];
+    if (s.plan) ln.push('Planned <b>' + esc(fmt(s.plan)) + '</b>');
+    if (s.at) ln.push('Actual <b>' + esc(fmt(s.at)) + '</b>');
+    if (s.by) ln.push('By <b>' + esc(s.by) + '</b>');
+    else if (s.st === 'wait' || s.st === 'hold') ln.push('To do: <b>' + esc(s.who || s.doer) + '</b>');
+    const sub = (s.items || []).length ? '<ul class="sub-list">' + s.items.map(x => '<li>' + esc(fmt(x.at)) + ' · ' + esc(x.txt) + (x.by ? ' · ' + esc(x.by) : '') + '</li>').join('') + '</ul>' : '';
+    return '<div class="st ' + c + '"><div class="b">' + icon + '</div><div class="x"><div class="nm">' + esc(s.label) + ' ' + tag + '</div>'
+      + (ln.length ? '<div class="ln">' + ln.join(' · ') + '</div>' : '') + (s.lines || []).map(l => '<div class="ln">' + esc(l) + '</div>').join('') + sub + '</div></div>';
+  }).join('');
+  openSheet('<div class="sh-h"><h3>' + esc(F.title(r)) + '</h3>' + statusPill(e) + '<button class="icon-btn" data-x aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>'
+    + '<div class="card kv">' + info.map(([k, v]) => '<div class="r"><span>' + esc(k) + '</span><span>' + esc(v) + '</span></div>').join('') + '</div>'
+    + '<div class="sec">Steps</div><div class="card tl">' + tl + '</div>'
+    + (e.startAt && (e.endAt || e.cur) ? '<div class="sec">Time</div><div class="card kv"><div class="r"><span>Started</span><span>' + esc(fmt(e.startAt)) + '</span></div><div class="r"><span>' + (e.endAt ? 'Completed' : 'Running for') + '</span><span>' + esc(e.endAt ? fmt(e.endAt) + ' · ' + dur(e.endAt - e.startAt) : dur(Date.now() - e.startAt)) + '</span></div></div>' : ''));
+}
+
+/* ── TAT settings (Admin) ── */
+function openTat() {
+  const tat = f => Object.assign({}, TAT_DEF[f], (S.cfg && S.cfg[f]) || {});
+  const block = f => '<div class="sec">' + esc(FLOWS[f].label) + ' · hours after the previous step</div><div class="card kv">'
+    + FLOWS[f].steps.filter(s => TAT_DEF[f][s.code] != null).map(s => '<div class="r"><span style="flex:1">' + esc(s.label) + '</span><input class="inp" style="width:90px;text-align:right" type="number" min="0" max="720" step="0.5" data-tat="' + f + ':' + s.code + '" value="' + esc(tat(f)[s.code]) + '"></div>').join('') + '</div>';
+  const sh = openSheet('<div class="sh-h"><h3>TAT settings</h3><button class="icon-btn" data-x aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button></div>'
+    + '<div style="font-size:13px;color:var(--muted);margin:0 4px 6px">Planned time of a step = the previous step\'s actual time + these hours. A row is <b>Delayed</b> while its waiting step is past its planned time.'
+    + (S.cfg && S.cfg.savedAt ? ' Last saved ' + esc(fmt(tim(S.cfg.savedAt))) + ' by ' + esc(S.cfg.savedBy || '-') + '.' : '') + '</div>'
+    + block('inward') + block('dispatch')
+    + '<div class="sec">Your PIN</div><div class="card kv"><div class="r"><input class="inp" type="password" inputmode="numeric" id="tatPin" name="pin" autocomplete="off" placeholder="Admin PIN"></div></div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px"><button class="btn gray" data-x>Cancel</button><button class="btn blue" id="tatSave">Save</button></div>');
+  sh.querySelector('#tatSave').addEventListener('click', async () => {
+    const cfg = { inward: {}, dispatch: {} };
+    sh.querySelectorAll('[data-tat]').forEach(i => { const [f, k] = i.getAttribute('data-tat').split(':'); if (i.value !== '') cfg[f][k] = Number(i.value); });
+    const pin = sh.querySelector('#tatPin').value.trim();
+    if (!/^\d{4,}$/.test(pin)) return toast('Type your PIN', true);
+    try { const d = await rpc('fmt_tat_save', { p_cfg: cfg, p_pin: pin }); S.cfg = d.cfg; closeSheet(); paint(); toast('TAT saved'); }
+    catch (e) { toast(e.missing ? 'Server not set up: run sql/FMS_TRACKING_MIGRATION.sql' : e.message, true); }
+  });
+}
+
+/* ── CSV of what is on screen ── */
+function csv() {
+  const F = FLOWS[S.flow], rows = [[S.flow === 'inward' ? 'Inward / Gate' : 'Vehicle / DK', 'Details', 'Party', 'Status', 'Waiting at', 'Delay']
+    .concat(F.steps.flatMap(s => [s.label + ' planned', s.label + ' actual', s.label + ' by']))];
+  S.ev.forEach(e => rows.push([F.title(e.r), F.sub(e.r), F.party(e.r), e.status, e.cur ? e.cur.label : '', e.delay ? dur(e.delay) : '']
+    .concat(e.steps.flatMap(s => [s.plan ? fmt(s.plan) : '', s.st === 'na' ? 'n/a' : s.st === 'skip' ? 'skipped' : s.at ? fmt(s.at) : '', s.by || '']))));
+  const txt = rows.map(r => r.map(v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"').join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + txt], { type: 'text/csv' }));
+  a.download = 'FMS_Tracking_' + S.flow + '_' + $('fFrom').value + '_to_' + $('fTo').value + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ── wiring ── */
+function segPaint() {
+  const seg = $('flowSeg'), b = seg.querySelector('[data-flow="' + S.flow + '"]'), th = seg.querySelector('.thumb');
+  seg.querySelectorAll('button').forEach(x => x.style.fontWeight = x === b ? '700' : '600');
+  th.style.left = b.offsetLeft + 'px'; th.style.width = b.offsetWidth + 'px';
+}
+function saveUi() { lsSet({ flow: S.flow, view: S.view, unit: $('fUnit').value, sort: $('fSort').value }); }
+(async function boot() {
+  try { await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'FMS Tracking' }); }
+  finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  const u = lsGet();
+  S.flow = u.flow === 'dispatch' ? 'dispatch' : 'inward'; S.view = u.view === 'table' ? 'table' : (window.innerWidth >= 1100 && !u.view ? 'table' : 'list');
+  $('fUnit').value = u.unit || ''; $('fSort').value = u.sort || 'new';
+  $('fTo').value = today(); $('fFrom').value = addDays(today(), -6);
+  segPaint(); window.addEventListener('resize', segPaint);
+  $('flowSeg').addEventListener('click', ev => { const b = ev.target.closest('[data-flow]'); if (!b || b.getAttribute('data-flow') === S.flow) return; S.flow = b.getAttribute('data-flow'); S.quick = 'all'; $('fStep').value = ''; segPaint(); saveUi(); if (S.rows[S.flow]) paint(); load(); });
+  ['fFrom', 'fTo', 'fUnit'].forEach(id => $(id).addEventListener('change', () => { saveUi(); S.rows = { inward: null, dispatch: null }; load(); }));
+  ['fStep', 'fSort'].forEach(id => $(id).addEventListener('change', () => { saveUi(); paint(); }));
+  $('fQ').addEventListener('input', () => { clearTimeout(boot.t); boot.t = setTimeout(paint, 200); });
+  $('quick').addEventListener('click', ev => { const b = ev.target.closest('[data-q]'); if (!b) return; S.quick = b.getAttribute('data-q'); paint(); });
+  $('stats').addEventListener('click', ev => { const t = ev.target.closest('[data-step]'); if (!t) return; $('fStep').value = $('fStep').value === t.getAttribute('data-step') ? '' : t.getAttribute('data-step'); paint(); });
+  document.querySelectorAll('[data-view]').forEach(b => b.addEventListener('click', () => { S.view = b.getAttribute('data-view'); saveUi(); paint(); }));
+  $('out').addEventListener('click', ev => { const t = ev.target.closest('[data-i]'); if (t) showRow(S.ev[Number(t.getAttribute('data-i'))]); });
+  $('dim').addEventListener('click', closeSheet);
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && sheetOpen()) closeSheet(); });
+  $('bRefresh').addEventListener('click', () => load());
+  $('bCsv').addEventListener('click', csv);
+  $('bTat').addEventListener('click', openTat);
+  window.addEventListener('scroll', () => $('nav').classList.toggle('scrolled', window.scrollY > 4), { passive: true });
+  await load();
+  setInterval(() => { if (!document.hidden && !sheetOpen() && navigator.onLine !== false && !(document.activeElement && document.activeElement.id === 'fQ')) load(true); }, REFRESH_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden && Date.now() - S.at > REFRESH_MS) load(true); });
+})();
+</script>
+<!-- Floating "← Apps" button back to the launcher (hidden inside iframes / without a session). See app-back.js. -->
+<script src="app-back.js"></script>
+</body>
+</html>
