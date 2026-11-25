@@ -1980,6 +1980,19 @@
     </div>
 
     <!-- Pending POs / Field Boy PRs of the chosen Party (Inward form) -->
+    <!-- DHARAM KANTA ASK: full-screen Yes / No before an Inward / Sample & Other entry is sent without a weighbridge slip (dkAskScreen) -->
+    <div id="dkAskModal" class="fixed inset-0 z-[80] hidden bg-white flex flex-col" role="dialog" aria-modal="true" aria-labelledby="dkAskTitle">
+        <div class="flex-1 flex flex-col items-center justify-center text-center px-6 py-8 overflow-y-auto">
+            <div class="w-24 h-24 rounded-[28px] bg-cyan-50 border border-cyan-100 text-cyan-600 flex items-center justify-center text-5xl mb-6"><i class="fa-solid fa-weight-scale"></i></div>
+            <h2 id="dkAskTitle" class="text-[26px] leading-tight font-extrabold text-gray-900">Dharam Kanta karna hai<br>ya nahi ?</h2>
+            <p id="dkAskSub" class="mt-3 text-sm font-semibold text-gray-500 max-w-xs">Is entry me abhi Dharam Kanta (Weighbridge) ki details nahi bhari hain.</p>
+        </div>
+        <div class="shrink-0 px-5 pt-3 space-y-3 bg-white border-t border-gray-100" style="padding-bottom: max(20px, env(safe-area-inset-bottom));">
+            <button type="button" id="dkAskYes" onclick="dkAskAnswer('yes')" class="ios-btn w-full h-[68px] rounded-[22px] bg-emerald-600 text-white text-xl font-extrabold shadow-md flex items-center justify-center gap-3"><i class="fa-solid fa-check"></i> Yes <span class="text-sm font-bold opacity-90">· Dharam Kanta karna hai</span></button>
+            <button type="button" id="dkAskNo" onclick="dkAskAnswer('no')" class="ios-btn w-full h-[68px] rounded-[22px] bg-gray-100 border border-gray-200 text-gray-800 text-xl font-extrabold flex items-center justify-center gap-3"><i class="fa-solid fa-xmark"></i> No <span class="text-sm font-bold text-gray-500">· bina Dharam Kanta bhejo</span></button>
+        </div>
+    </div>
+
     <div id="refPickModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeRefPicker()"></div>
         <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[86vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
@@ -1989,6 +2002,11 @@
                     <p id="refPickSub" class="text-[11px] font-semibold text-gray-500"></p>
                 </div>
                 <button type="button" onclick="closeRefPicker()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs shrink-0"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <!-- 5B: Pending Returnable only: search + party filter over the Repair Outwards (refPickPaint) -->
+            <div id="refPickFilter" class="hidden px-3 pt-3 space-y-2 shrink-0">
+                <input id="refPickQ" type="search" autocomplete="off" oninput="refPickPaint()" placeholder="Search Outward No., party, item, receiver..." class="w-full px-3.5 py-2.5 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white">
+                <select id="refPickParty" onchange="refPickPaint()" class="w-full px-3.5 py-2.5 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-800 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:bg-white"></select>
             </div>
             <div id="refPickList" class="overflow-y-auto p-3 space-y-2"></div>
             <div class="p-3 border-t border-gray-100 shrink-0">
@@ -3142,6 +3160,7 @@
         }
         // Party options of the Inward form: every ERP supplier / local party, plus the Field Boys (their PRs are what they bring)
         function inwardPartyOptions() {
+            if (INW_RET) return repairPartyOptions();   // 5B: only parties with a Repair Outward still out
             const out = allParties().map(p => ({ value: p, sub: '' }));
             const seen = new Set(out.map(o => normKey(o.value)));
             (GATE_MASTERS.fieldBoys || []).concat(['DEEPAK VERMA']).forEach(n => { if (!seen.has(normKey(n))) { seen.add(normKey(n)); out.push({ value: n, sub: 'Field Boy' }); } });
@@ -3188,8 +3207,9 @@
             const type = (document.getElementById('inRefType') || {}).value || 'PO';
             const party = (document.getElementById('inPartyName') || {}).value || '';
             if (type === 'REPAIR') {   // 5B: the store's Repair Outwards still out (of the party, when one is chosen)
-                const rows = repairOpen().filter(r => !party || normKey(r.party) === normKey(party));
+                const rows = repairOpen();
                 return { type, party, rows: rows.map(r => ({ no: r.no, title: r.no, party: r.party,
+                    hay: [r.no, r.party, r.receiver, r.nature, refDate(r.date), (r.items || []).map(i => i.name).join(' ')].join(' ').toUpperCase(),
                     line: [r.party, refDate(r.date), 'Pending ' + refNum(r.balance) + ' of ' + refNum(r.sent), (r.items || []).length + ' item(s)', r.receiver ? 'Receiver ' + r.receiver : ''].filter(Boolean).join(' · '),
                     badge: Number(r.received) > 0 ? 'Partly back' : 'Repair', cls: Number(r.received) > 0 ? 'b-part' : 'b-pend' })) };
             }
@@ -3209,38 +3229,80 @@
             return { type, party, rows };
         }
         let REF_PICK = new Set();
-        function openRefPicker() {
+        /* REF_ROWS / REF_TYPE = what the open popup lists. REF_PICK_PRE (5B): the popup was opened by the Pending Returnable
+           button BEFORE the form: the guard first picks the party's Repair Outward(s) here (search + party filter), Use opens
+           the Returnable Inward form with the party and the numbers filled; closing it without Use goes back to the menu. */
+        let REF_ROWS = [], REF_TYPE = '', REF_PICK_PRE = false;
+        function openRefPicker(pre) {
             const { type, party, rows } = refPickerRows();
             if (!party && type !== 'REPAIR') return showIosBanner('Choose the Party Name first', 'info');
-            REF_PICK = new Set();
-            const noList = !(GATE_MASTERS.at);
-            document.getElementById('refPickTitle').textContent = type === 'REPAIR' ? 'Pending Returnable · Repair Outwards' + (party ? ' of ' + party : '') : type === 'PR' ? 'Pending PRs (Field Boy) for ' + party : 'Pending POs of ' + party;
-            document.getElementById('refPickSub').textContent = type === 'REPAIR' ? 'Outwards with Nature of Dispatch "Repair" not back yet. Tap one or more, of ONE party.' : type === 'PR' ? 'Open PRs of the Field Boy purchaser. Tap one or more.' : 'Pending and Partially Received POs of this party. Tap one or more.';
-            const cur = String((document.getElementById('inRefNo') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
-            cur.forEach(n => { if (rows.some(r => r.no === n)) REF_PICK.add(n); });
+            REF_PICK = new Set(); REF_ROWS = rows; REF_TYPE = type; REF_PICK_PRE = pre === true && type === 'REPAIR';
+            document.getElementById('refPickTitle').textContent = type === 'REPAIR' ? (REF_PICK_PRE ? 'Pending Returnable · choose the Outward' : 'Pending Returnable · Repair Outwards') : type === 'PR' ? 'Pending PRs (Field Boy) for ' + party : 'Pending POs of ' + party;
+            document.getElementById('refPickSub').textContent = type === 'REPAIR' ? 'Outwards with Nature of Dispatch "Repair" not back yet. Choose the party, then tap one or more of its Outward No.' : type === 'PR' ? 'Open PRs of the Field Boy purchaser. Tap one or more.' : 'Pending and Partially Received POs of this party. Tap one or more.';
+            document.getElementById('refPickFilter').classList.toggle('hidden', type !== 'REPAIR');
+            if (type === 'REPAIR') {
+                document.getElementById('refPickQ').value = '';
+                refPickPartyFill(REF_PICK_PRE ? '' : party);
+            }
+            if (!REF_PICK_PRE) {
+                const cur = String((document.getElementById('inRefNo') || {}).value || '').split(',').map(s => s.trim()).filter(Boolean);
+                cur.forEach(n => { if (rows.some(r => r.no === n)) REF_PICK.add(n); });
+            }
+            refPickPaint();
+            document.getElementById('refPickModal').classList.remove('hidden');
+        }
+        // 5B: the party filter = the parties of the pending Repair Outwards, with their counts
+        function refPickPartyFill(sel) {
+            const box = document.getElementById('refPickParty'), cnt = new Map();
+            REF_ROWS.forEach(r => { const k = normKey(r.party); const c = cnt.get(k) || { name: r.party, n: 0 }; c.n++; cnt.set(k, c); });
+            const list = [...cnt.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+            const keep = list.find(c => normKey(c.name) === normKey(sel));
+            box.innerHTML = '<option value="">All parties (' + REF_ROWS.length + ')</option>'
+                + list.map(c => '<option value="' + esc(c.name) + '">' + esc(c.name) + ' (' + c.n + ')</option>').join('');
+            box.value = keep ? keep.name : '';
+        }
+        // The list of the open popup, through the search / party filter (Repair only; POs / PRs are listed whole)
+        function refPickPaint() {
+            const type = REF_TYPE, noList = !(GATE_MASTERS.at);
+            let rows = REF_ROWS;
+            const party = type === 'REPAIR' ? ((document.getElementById('refPickParty') || {}).value || '') : '';
+            if (type === 'REPAIR') {
+                const words = String((document.getElementById('refPickQ') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
+                rows = rows.filter(r => (!party || normKey(r.party) === normKey(party)) && words.every(w => (r.hay || '').indexOf(w) >= 0));
+            }
             document.getElementById('refPickList').innerHTML = rows.length ? rows.map(r => `
                 <button type="button" class="ref-row${REF_PICK.has(r.no) ? ' on' : ''}" data-no="${esc(r.no)}" onclick="refPickToggle(this)">
                     <span class="chk"><i class="fa-solid fa-check"></i></span>
                     <span class="min-w-0 flex-1 text-left"><span class="t">${esc(r.title)}</span><span class="l">${esc(r.line)}</span></span>
                     <span class="bdg ${r.cls}">${esc(r.badge)}</span>
                 </button>`).join('')
-                : type === 'REPAIR' ? `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${REPAIR.nomig ? 'The server is not set up for this yet: the Admin must run GATE_REPAIR_RETURN_MIGRATION.sql.' : !REPAIR.at ? 'The Repair Outward list has not loaded yet. Check the internet and try again.' : 'No Repair Outward of ' + (party ? esc(party) : 'this store') + ' is waiting to come back.'}</p>`
+                : type === 'REPAIR' && REF_ROWS.length ? `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">No pending Outward matches the search${party ? ' for ' + esc(party) : ''}.</p>`
+                : type === 'REPAIR' ? `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${REPAIR.nomig ? 'The server is not set up for this yet: the Admin must run GATE_REPAIR_RETURN_MIGRATION.sql.' : !REPAIR.at ? 'The Repair Outward list has not loaded yet. Check the internet and try again.' : 'No Repair Outward of this store is waiting to come back.'}</p>`
                 : `<p class="text-center text-xs font-semibold text-gray-400 py-8 px-4">${noList ? 'The ERP list has not loaded yet. Check the internet and tap the refresh button at the top.' : (type === 'PR' ? 'No open PR in the ERP for this party.' : 'No pending or partially received PO of this party in the ERP. A new PO must be made / approved in the ERP first; then tap the refresh button at the top.')}</p>`;
             refPickCount();
-            document.getElementById('refPickModal').classList.remove('hidden');
         }
         function refPickCount() {
             const b = document.getElementById('refPickUse');
-            b.textContent = REF_PICK.size ? 'Use ' + REF_PICK.size + ' selected' : 'Select a number';
+            b.textContent = REF_PICK.size ? (REF_PICK_PRE ? 'Continue with ' + REF_PICK.size + ' selected' : 'Use ' + REF_PICK.size + ' selected') : (REF_TYPE === 'REPAIR' ? 'Select an Outward No.' : 'Select a number');
             b.disabled = !REF_PICK.size; b.classList.toggle('opacity-50', !REF_PICK.size);
         }
         function refPickToggle(btn) {
             const no = btn.dataset.no;
+            if (!REF_PICK.has(no) && REF_TYPE === 'REPAIR') {   // 5B: the outwards of ONE party; another party's starts again
+                const row = REF_ROWS.find(r => r.no === no);
+                const other = row ? [...REF_PICK].filter(n => { const o = REF_ROWS.find(r => r.no === n); return o && normKey(o.party) !== normKey(row.party); }) : [];
+                if (other.length) {
+                    other.forEach(n => REF_PICK.delete(n));
+                    document.querySelectorAll('#refPickList .ref-row.on').forEach(b => { if (!REF_PICK.has(b.dataset.no)) b.classList.remove('on'); });
+                    showIosBanner('Only one party at a time: now ' + row.party, 'info');
+                }
+            }
             if (REF_PICK.has(no)) REF_PICK.delete(no); else REF_PICK.add(no);
             btn.classList.toggle('on', REF_PICK.has(no)); refPickCount();
         }
         function refPickUse() {
             if (!REF_PICK.size) return;
+            if (REF_PICK_PRE) { REF_PICK_PRE = false; INW_RET = true; showView('inwardForm'); }   // 5B: the form opens with them
             if ((document.getElementById('inRefType') || {}).value === 'REPAIR') {   // 5B: one party only; the party box takes it
                 const picked = (REPAIR.rows || []).filter(r => REF_PICK.has(r.no)), parties = [...new Set(picked.map(r => normKey(r.party)))];
                 if (parties.length > 1) { showIosBanner('Choose Repair Outwards of ONE party only (' + [...new Set(picked.map(r => r.party))].join(', ') + ')', 'error'); return; }
@@ -3256,7 +3318,10 @@
             loadRefDetail();
             showIosBanner(REF_PICK.size + ' selected', 'success');
         }
-        function closeRefPicker() { document.getElementById('refPickModal').classList.add('hidden'); }
+        function closeRefPicker() {
+            document.getElementById('refPickModal').classList.add('hidden');
+            if (REF_PICK_PRE) { REF_PICK_PRE = false; INW_RET = false; }   // 5B: closed before choosing: stay on the menu, no form
+        }
         // The PO / PR numbers in the box that are NOT in the party's list (the box is list-only; a scan may bring one that is not)
         function refNosInvalid() {
             const { rows } = refPickerRows(), ok = new Set(rows.map(r => normKey(r.no)));
@@ -3546,11 +3611,30 @@
             if (sub) sub.textContent = REPAIR.nomig ? 'Server not set up yet (Admin: GATE_REPAIR_RETURN_MIGRATION.sql)'
                 : n ? n + ' Repair Outward' + (n > 1 ? 's' : '') + ' still out · tap to receive' : 'Repair items coming back: Outward No. (Nature of Dispatch Repair)';
         }
+        /* The menu button opens the Pending Outward list FIRST (party filter + search); the Returnable Inward form follows
+           once Outward No.(s) of one party are chosen (refPickUse). The list shown at once is the phone's copy; the fresh one
+           from the server repaints it while it is still open. */
         function inwOpenReturnable() {
             inwResetType();
-            INW_RET = true;
-            showView('inwardForm');   // the Inward form; inwApplyRetMode switches it to the Repair outwards
-            repairLoad(true).then(() => { if (INW_RET) { refreshRefNoList(); repairBadge(); } });
+            INW_RET = true;   // refPickerRows / the party list read the Repair outwards
+            inwApplyRetMode();   // the type box gets its REPAIR option, which refPickerRows reads
+            openRefPicker(true);
+            repairLoad(true).then(() => {
+                repairBadge();
+                const open = !document.getElementById('refPickModal').classList.contains('hidden');
+                if (open && REF_TYPE === 'REPAIR') {
+                    const p = (document.getElementById('refPickParty') || {}).value || '';
+                    REF_ROWS = refPickerRows().rows;
+                    [...REF_PICK].forEach(n => { if (!REF_ROWS.some(r => r.no === n)) REF_PICK.delete(n); });
+                    refPickPartyFill(p); refPickPaint();
+                } else if (INW_RET) refreshRefNoList();
+            });
+        }
+        // 5B: the Party Name list of the Returnable form = the parties with a Repair Outward still out
+        function repairPartyOptions() {
+            const m = new Map();
+            repairOpen().forEach(r => { const k = normKey(r.party); if (!k) return; const c = m.get(k) || { value: r.party, n: 0 }; c.n++; m.set(k, c); });
+            return [...m.values()].map(c => ({ value: c.value, sub: c.n + ' Repair Outward' + (c.n > 1 ? 's' : '') + ' pending' })).sort((a, b) => a.value.localeCompare(b.value));
         }
         // The form in returnable mode (INW_RET) or back to the PO / PR one
         function inwApplyRetMode() {
@@ -3781,14 +3865,39 @@
         }
 
         /* DHARAM KANTA ASK (2026-11-25): Inward Material Entry / Sample & Other Entry sent WITHOUT the Dharam Kanta slip:
-           "Dharam Kanta details Bharni hai ?" once every other check has passed. Yes = the toggle opens (scrolled to, the
+           "Dharam Kanta karna hai ya nahi ?" (full screen, dkAskScreen) once every other check has passed. Yes = the toggle opens (scrolled to, the
            first box focused) and nothing is sent yet; No = sent without it, as before. Asked on every Send while the
            toggle is closed. */
+        /* (2026-11-25) asked on a FULL-SCREEN page with two large buttons (#dkAskModal), not a small alert: the guard must
+           choose one of the two; there is no third way out (no backdrop, no Esc). Keys Y / N also answer. */
+        let DK_ASK = null;
+        function dkAskScreen() {
+            if (DK_ASK) return DK_ASK.p;   // already open (a second press): the same answer
+            const m = document.getElementById('dkAskModal');
+            if (!m) return Promise.resolve('no');
+            let done;
+            const p = new Promise(r => { done = r; });
+            DK_ASK = { p, done };
+            m.classList.remove('hidden');
+            document.addEventListener('keydown', dkAskKey, true);
+            try { if (navigator.vibrate) navigator.vibrate(40); } catch (e) {}
+            setTimeout(() => { const y = document.getElementById('dkAskYes'); if (y) y.focus(); }, 60);
+            return p;
+        }
+        function dkAskKey(e) {
+            const k = String(e.key || '').toLowerCase();
+            if (k === 'y' || k === 'n') { e.preventDefault(); dkAskAnswer(k === 'y' ? 'yes' : 'no'); }
+            else if (k === 'escape') e.preventDefault();   // a choice is needed
+        }
+        function dkAskAnswer(v) {
+            if (!DK_ASK) return;
+            const a = DK_ASK; DK_ASK = null;
+            document.getElementById('dkAskModal').classList.add('hidden');
+            document.removeEventListener('keydown', dkAskKey, true);
+            a.done(v === 'yes' ? 'yes' : 'no');
+        }
         async function gateAskDk(open, toggleId, focusId) {
-            const msg = 'Dharam Kanta details Bharni hai ?';
-            const pick = window.IosDialog && IosDialog.choose
-                ? await IosDialog.choose(msg, [{ label: 'Yes, fill it', value: 'yes', bold: true }, { label: 'No, send without it', value: 'no', cancel: true }], { title: 'Dharam Kanta' })
-                : ((window.IosDialog && IosDialog.native && IosDialog.native.confirm) ? IosDialog.native.confirm(msg) : confirm(msg)) ? 'yes' : 'no';
+            const pick = await dkAskScreen();
             if (pick !== 'yes') return false;
             open();
             const t = document.getElementById(toggleId); if (t) t.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -4497,9 +4606,14 @@
         const dispBandText = r => (Number(r.from) || 0) + (r.to == null || r.to === '' ? ' kg & above' : ' to ' + r.to + ' kg');
         const dispMembers = g => ((DISP_CFG.groups || {})[g] || []);
 
-        // The form's approval box, redrawn with the Net Wt (calcDispatchNetWeight); keeps the person picked while the group stays
+        /* The form's approval box. (2026-11-25) NOT shown any more: the guard sees nothing about the approval while typing the
+           Gross (no "Approval needed: ..." box); the band is still worked out at Submit (dispRuleFor / the server trigger) and
+           the popup after Verify and Submit says the difference and whether the request was sent. The old drawing is kept
+           below, unreachable, in case the box is wanted back (delete the early return). */
         function dispApPaint() {
             const box = document.getElementById('dispApBox'); if (!box) return;
+            box.classList.add('hidden'); box.dataset.grp = ''; box.innerHTML = '';
+            return;   // the box stays hidden
             const net = parseFloat(document.getElementById('dispNetWeight').value);
             if (!matchedDispatchDkEntry || !isFinite(net)) { box.classList.add('hidden'); box.dataset.grp = ''; return; }
             const wb = dispWtBasis(net), why = dispWtWhy(wb, net);
@@ -5169,8 +5283,16 @@
         const INW_APPROVER_KEY = 'gate2_inw_approver_v1';
         const isInward = e => !!e && e.category === 'INWARD';
         const isInwPending = e => isInward(e) && !!e.needApproval && e.status === 'IN' && !e.inDoneAt;
-        const isInwInside = e => isInward(e) && e.status === 'IN' && (!e.needApproval || !!e.inDoneAt);
-        const isInwRecentOut = e => isInward(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
+        /* (2026-11-25) a Field Boy party (FIELD BOY, DEEPAK VERMA or a user ticked Field Boy, isFieldBoyName) comes on foot with
+           what he bought: once inside (approved + Allow Unloading, or an older entry) there is nothing to send Out, so such an
+           Inward is never "Inside, pending Out" in Existing Inward / the badges. It is listed under the Out tab instead
+           (No Out needed) for VIS_OUT_DAYS from its Allow Unloading time; Mark Out from the pass / Verify still works. */
+        const inwNoOut = e => isInward(e) && (isFieldBoyName(e.name) || normKey(e.name) === 'FIELD BOY');
+        const inwDoneAt = e => e.inDoneAt || e.inTime;
+        const isInwInside = e => isInward(e) && e.status === 'IN' && (!e.needApproval || !!e.inDoneAt) && !inwNoOut(e);
+        const isInwFbDone = e => isInward(e) && e.status === 'IN' && (!e.needApproval || !!e.inDoneAt) && inwNoOut(e)
+            && (Date.now() - new Date(inwDoneAt(e)).getTime()) <= VIS_OUT_DAYS * 86400000;
+        const isInwRecentOut = e => (isInward(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000) || isInwFbDone(e);
         const isVisInside = e => isVisitor(e) && e.status === 'IN' && (!e.needApproval || !!e.visDoneAt);
         const isVisRecentOut = e => isVisitor(e) && e.status === 'OUT' && e.outTime && (Date.now() - new Date(e.outTime).getTime()) <= VIS_OUT_DAYS * 86400000;
         const visPurpose = e => String((e && e.purpose) || '').split('•')[0].trim();
@@ -6090,7 +6212,7 @@
             const words = String((document.getElementById('inwExistSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
             const hit = e => !words.length || words.every(w => [e.id, inwEntryTypeOf(e), e.name, e.vehicle, e.approver, inwRef(e), e.storeRef, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
             const inside = gateEntries.filter(isInwInside).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
-            const out = gateEntries.filter(isInwRecentOut).sort((a, b) => new Date(b.outTime) - new Date(a.outTime));
+            const out = gateEntries.filter(isInwRecentOut).sort((a, b) => new Date(b.outTime || inwDoneAt(b)) - new Date(a.outTime || inwDoneAt(a)));
             document.getElementById('inwTabInN').textContent = '(' + inside.length + ')';
             document.getElementById('inwTabOutN').textContent = '(' + out.length + ')';
             const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
@@ -6106,6 +6228,7 @@
                 const since = Math.max(0, Math.round((Date.now() - new Date(e.inDoneAt || e.inTime).getTime()) / 60000));
                 const dur = since >= 60 ? Math.floor(since / 60) + 'h ' + (since % 60) + 'm' : since + 'm';
                 const badge = inTab ? visBadge('Inside ' + dur, since > 1440 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')
+                    : e.status === 'IN' ? visBadge('Field Boy · No Out needed', 'bg-violet-100 text-violet-800')
                     : visBadge(e.inStage === 'SENT_BACK' ? 'Sent back' : 'Out', e.inStage === 'SENT_BACK' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700');
                 return `<div class="rounded-2xl border border-gray-200 bg-white p-3 space-y-2.5">
                     <div class="flex items-start gap-3">
@@ -6115,7 +6238,7 @@
                             <p class="text-[11px] font-semibold text-gray-500 truncate flex items-center gap-1.5">${inwTypeTag(e)}<span class="truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(e.storeRef || '')}</span></p>
                             <p class="text-[11px] font-semibold text-gray-600 truncate">${esc(inwRef(e))}${e.approver ? ' · Approved by ' + esc((a && a.decidedBy) || e.approver) : ''}</p>
                             ${a && a.unloader ? `<p class="text-[11px] font-bold ${a.unloader.status === 'DONE' ? 'text-emerald-700' : 'text-orange-700'} truncate">Unloader: ${esc(a.unloader.to || '-')} · ${a.unloader.status === 'DONE' ? esc(a.unloader.photoCount || 0) + ' photo(s) uploaded' : 'photos not uploaded yet'}</p>` : ''}
-                            <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${!inTab && e.outTime ? ' · Out ' + esc(formatDateTimeShort(e.outTime)) : ''}${!inTab && e.outRemarks ? ' · ' + esc(e.outRemarks) : ''}</p>
+                            <p class="text-[11px] font-semibold text-gray-500">In ${esc(formatDateTimeShort(e.inTime))}${!inTab && e.status === 'IN' && e.inDoneAt ? ' · Unloading allowed ' + esc(formatDateTimeShort(e.inDoneAt)) : ''}${!inTab && e.outTime ? ' · Out ' + esc(formatDateTimeShort(e.outTime)) : ''}${!inTab && e.outRemarks ? ' · ' + esc(e.outRemarks) : ''}</p>
                             ${(() => { const d = inwDkOf(e); if (!d || !(d.gross > 0)) return ''; return inwDkNeedsTare(e)
                                 ? `<p class="text-[11px] font-bold text-cyan-800">DK ${esc(d.slip)} · Gross ${esc(d.gross)} Kg · Tare at Out</p>`
                                 : `<p class="text-[11px] font-semibold text-cyan-800">DK ${esc(d.slip)} · G ${esc(d.gross)} · T ${esc(d.tare)} · Net ${esc(Number(d.net).toFixed(2))} Kg</p>`; })()}
