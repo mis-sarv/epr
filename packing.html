@@ -114,6 +114,60 @@
 
         /* Add item button */
         .add-item-wrap { margin-bottom: 10px; }
+        /* OTHER MATERIAL WEIGHT (rows under the Add New Item Block button) */
+        .pk-ow-wrap { margin: 0 0 10px; border: 1.5px dashed #94a3b8; border-radius: 10px; padding: 10px; background: #f8fafc; }
+        .pk-ow-title { font-size: 12px; font-weight: 800; color: #334155; text-transform: uppercase; letter-spacing: .03em; margin-bottom: 6px; }
+        .pk-ow-row, .pk-ow-headrow { display: grid; grid-template-columns: minmax(0, 2fr) minmax(64px, .8fr) minmax(76px, 1fr) minmax(86px, 1fr) 34px; gap: 8px; align-items: center; margin-bottom: 6px; }
+        .pk-ow-headrow { margin-bottom: 4px; font-size: 10.5px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: .03em; }
+        .pk-ow-headrow span:not(:first-child) { text-align: right; }
+        .pk-ow-row select { min-width: 0; width: 100%; padding: 8px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 600; }
+        .pk-ow-row input { min-width: 0; width: 100%; padding: 8px; border: 1.5px solid var(--border); border-radius: 8px; font-size: 13px; font-weight: 700; text-align: right; box-sizing: border-box; }
+        .pk-ow-row input.pk-ow-wt { background: #f1f5f9; color: #0f766e; font-weight: 800; }
+        @media (max-width: 560px) {
+            .pk-ow-headrow { display: none !important; }
+            .pk-ow-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) 34px; padding-bottom: 6px; border-bottom: 1px dashed #cbd5e1; }
+            .pk-ow-row select { grid-column: 1 / -1; }
+        }
+        .pk-ow-del { flex: none; width: 34px; height: 34px; border: 1px solid #fecaca; background: #fff; color: #b91c1c; border-radius: 8px; font-size: 15px; font-weight: 800; cursor: pointer; }
+        .pk-ow-btn { width: 100%; background: #fff; color: #0f766e; border: 1.5px solid #0f766e; border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 700; cursor: pointer; }
+        .pk-ow-tot { margin-top: 8px; font-size: 13px; font-weight: 700; color: #0f172a; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+        .pk-ow-tot b { color: #0f766e; }
+        .pk-ow-note { font-size: 11.5px; color: #64748b; margin: 0 0 6px; }
+        /* PS APPROVAL (Approve PS tab + checklist popup) */
+        .aps-badge { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 5px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; }
+        .aps-tabs { display: flex; gap: 6px; margin: 0 0 10px; }
+        .aps-tabs button { flex: 1; padding: 9px; border: 1.5px solid var(--border); background: #fff; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; color: #334155; }
+        .aps-tabs button.on { background: var(--primary); border-color: var(--primary); color: #fff; }
+        .aps-card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 10px 12px; margin-bottom: 8px; background: #fff; cursor: pointer; }
+        .aps-card:hover { border-color: #93c5fd; background: #f8fafc; }
+        .aps-card .t { display: flex; justify-content: space-between; gap: 8px; font-weight: 800; font-size: 14px; color: #0f172a; }
+        .aps-card .s { font-size: 12px; color: #475569; margin-top: 3px; line-height: 1.45; }
+        .aps-pill { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; font-weight: 800; }
+        .aps-pill.p { background: #fef3c7; color: #92400e; } .aps-pill.b { background: #dbeafe; color: #1e40af; } .aps-pill.d { background: #dcfce7; color: #166534; }
+        .aps-ov { position: fixed; inset: 0; z-index: 3000; background: rgba(15, 23, 42, .55); display: flex; align-items: center; justify-content: center; padding: 12px; }
+        .aps-sheet { background: #fff; border-radius: 14px; width: min(860px, 100%); max-height: calc(100vh - 24px); display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,.25); }
+        .aps-head { padding: 12px 16px; border-bottom: 1px solid #e2e8f0; }
+        .aps-head .t { font-size: 16px; font-weight: 800; color: #0f172a; }
+        .aps-head .s { font-size: 12px; color: #64748b; margin-top: 2px; }
+        .aps-body { padding: 10px 16px; overflow-y: auto; flex: 1; }
+        .aps-sec { font-size: 11px; font-weight: 800; color: #64748b; text-transform: uppercase; letter-spacing: .04em; margin: 10px 0 5px; }
+        .aps-ck { display: flex; align-items: flex-start; gap: 10px; padding: 8px 10px; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
+        .aps-ck.on { background: #f0fdf4; border-color: #86efac; }
+        .aps-ck input { width: 20px; height: 20px; margin: 1px 0 0; flex: none; cursor: pointer; }
+        .aps-ck .k { flex: none; width: 130px; font-size: 12px; font-weight: 700; color: #475569; }
+        .aps-ck .v { flex: 1; min-width: 0; font-size: 13px; font-weight: 700; color: #0f172a; word-break: break-word; }
+        .aps-ck table { width: 100%; border-collapse: collapse; margin-top: 5px; font-size: 11.5px; }
+        .aps-ck th, .aps-ck td { border: 1px solid #e2e8f0; padding: 3px 5px; text-align: left; }
+        .aps-ck th { background: #f1f5f9; font-size: 10.5px; color: #475569; }
+        .aps-ck td.n, .aps-ck th.n { text-align: right; }
+        .aps-tot { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12.5px; font-weight: 700; color: #0f172a; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; }
+        .aps-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-top: 1px solid #e2e8f0; }
+        .aps-foot .prog { flex: 1; min-width: 150px; font-size: 12.5px; font-weight: 700; color: #475569; }
+        .aps-foot button { padding: 10px 16px; border-radius: 8px; font-size: 14px; font-weight: 800; cursor: pointer; border: 1.5px solid var(--border); background: #fff; color: #334155; }
+        .aps-foot button.ok { background: #16a34a; border-color: #16a34a; color: #fff; }
+        .aps-foot button.ed { border-color: #7c3aed; color: #7c3aed; }
+        .aps-foot button:disabled { opacity: .45; cursor: not-allowed; }
+        @media (max-width: 560px) { .aps-ck { flex-wrap: wrap; } .aps-ck .k { width: auto; } .aps-ck .v { flex-basis: 100%; } .aps-ov { padding: 0; align-items: flex-end; } .aps-sheet { border-radius: 14px 14px 0 0; max-height: 94vh; } }
         .add-item-btn { width: 100%; background: #2563eb; color: #fff; border: none; border-radius: 8px; padding: 11px 18px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 7px; box-shadow: 0 2px 8px rgba(37,99,235,0.2); }
         .add-item-btn:active { opacity: 0.85; }
 
@@ -748,7 +802,7 @@
             .header { position: relative; box-shadow: none; padding: 2px 0; border-bottom: 2px solid #000; margin-bottom: 5px; }
             .header h1 { font-size: 16px; } .header h2 { font-size: 11px; }
             .card { box-shadow: none; border: none; padding: 0; margin-bottom: 6px; }
-            #items-container, .card-title, .add-item-wrap { display: none !important; }
+            #items-container, .card-title, .add-item-wrap, .pk-ow-wrap { display: none !important; }
             .print-only-table { display: table !important; width: 100%; border-collapse: collapse; margin-top: 2px; }
             .print-only-table th { background-color: #f1f5f9 !important; color: black !important; font-weight: 600; border: 1px solid black !important; padding: 5px !important; font-size: 11px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
             .print-only-table td { border: 1px solid black !important; padding: 4px 6px !important; font-size: 11px; }
@@ -786,6 +840,8 @@
     <div class="who"><span id="userBarName"></span><span class="role-tag" id="userBarRole"></span></div>
     <div class="actions">
         <button type="button" id="verifyNavBtn" style="display:none;" onclick="showVerificationPanel()">Verify</button>
+        <!-- PS APPROVAL: Packing Incharge / Admin / MD = Approve PS, Data Entry = their own requests -->
+        <button type="button" id="apsNavBtn" style="display:none;" onclick="showApprovePsPanel()"><span id="apsNavLbl">Approve PS</span><span id="apsBadge" class="aps-badge" style="display:none;"></span></button>
         <button type="button" id="orderNavBtn" onclick="showOrderPanel()">Orders</button>
             <button id="partyNavBtn" type="button" onclick="showPartyMasterPanel()" style="display:none;">Parties</button>
             <button id="packOrdersNavBtn" type="button" onclick="showPackOrdersPanel()" style="display:none;">Quick Pack</button>
@@ -960,6 +1016,16 @@
         <div class="add-item-wrap">
             <button type="button" class="add-item-btn" onclick="addItem()">＋ Add New Item Block</button>
         </div>
+        <!-- OTHER MATERIAL WEIGHT (sql/PACKING_OTHER_WEIGHT_MIGRATION.sql, section OTHER MATERIAL WEIGHT): weights that go on
+             the tempo with the packs but are no Sr. row (carton box, poly bag ...), label from Settings › Other Material
+             Weight Labels. Net Weight = Total Weight + these; printed under the Grand Total bar, counted by the gates. -->
+        <div class="pk-ow-wrap" id="pk-ow-wrap">
+            <div class="pk-ow-title">Other Material Weight</div>
+            <div class="pk-ow-headrow" id="pk-ow-headrow" style="display:none;"><span>Material</span><span>Qty</span><span>Avg Wt (Kg)</span><span>Weight (Kg)</span><span></span></div>
+            <div id="pk-ow-rows"></div>
+            <button type="button" class="pk-ow-btn" onclick="pkOwAdd()">＋ Add Other Material Weight</button>
+            <div class="pk-ow-tot" id="pk-ow-tot" style="display:none;"></div>
+        </div>
         <!-- Print-only table -->
         <table class="print-only-table">
             <thead>
@@ -995,6 +1061,8 @@
         <div class="totals-flex">
             <span>Grand Qty: <span id="bottom-total-qty">0</span></span>
             <span>Grand Wt: <span id="bottom-total-wt">0.00</span> Kg</span>
+            <span id="bottom-other-wrap" style="display:none;">Other Material: <span id="bottom-other-wt">0.00</span> Kg</span>
+            <span id="bottom-net-wrap" style="display:none;">Net Wt: <span id="bottom-net-wt">0.00</span> Kg</span>
         </div>
     </div>
 
@@ -1271,6 +1339,32 @@
         </div>
     </div>
 
+    <!-- Other Material Weight Labels: packing.other_weight_labels (sql/PACKING_OTHER_WEIGHT_MIGRATION.sql), the list the
+         packing slip form offers under "+ Add Other Material Weight". Saved only by save_other_weight_labels (Admin),
+         every change logged in other_weight_label_log. -->
+    <div class="card" id="ow-labels-card">
+        <div class="card-title">Settings · Other Material Weight Labels (Packing Slip)</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
+            The packing slip form has <b>+ Add Other Material Weight</b> under its Item Details: a label from this list + a weight in Kg
+            (carton box, poly bag, pallet ...). <b>Net Weight = Total Weight of the Sr. rows + every Other Material Weight</b>.
+            It prints under the Grand Total bar of the slip PDF and the gates count it in the Loaded Weight of the tempo.
+            A label removed here stays on the slips that already have it.
+        </p>
+        <div id="ow-labels-banner"></div>
+        <div id="ow-labels-list" style="overflow-x:auto;"><p style="text-align:center;color:var(--text-muted);">Loading...</p></div>
+        <div class="fr-actions">
+            <input type="text" id="ow-label-new" placeholder="New label, e.g. CARTON BOX" maxlength="60"
+                style="flex:2;min-width:180px;padding:8px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;"
+                onkeydown="if(event.key==='Enter'){event.preventDefault();pkOwEdAdd();}">
+            <button type="button" class="fr-btn ghost" onclick="pkOwEdAdd()">＋ Add Label</button>
+            <button type="button" class="fr-btn" id="ow-labels-save-btn" onclick="pkOwSaveLabels()">Save Labels</button>
+        </div>
+        <details class="fr-log" ontoggle="if(this.open) pkOwLoadLog()">
+            <summary>Change log (who added / moved / removed a label, when)</summary>
+            <div id="ow-log-list"><p style="color:var(--text-muted);font-size:12px;">Loading...</p></div>
+        </details>
+    </div>
+
     <!-- Freight Rates: packing.freight_rates (sql/PACKING_FREIGHT_RATES_MIGRATION.sql),
          used by the Freight tab. Saved only by save_freight_rates (Admin), every
          change logged in freight_rate_log. -->
@@ -1468,6 +1562,34 @@
      Top: every Dharam Kanta trip (Gate-1 / Gate-2) of the last days whose bill is NOT saved yet; pick ONE, its
      bill opens under the list (Save by hand too). Bottom: the SAVED Tempo-Bills only,
      filtered by date (and tempo), printed from what was saved. -->
+<!-- PS APPROVAL (sql/PACKING_PS_APPROVAL_MIGRATION.sql, section PS APPROVAL): requests a Data Entry login sent
+     with "Submit to Packing Incharge"; Pending opens the checklist popup (Approve / Edit), Done = approved ones -->
+<div class="container" id="approve-ps-panel" style="display:none;">
+    <div class="card">
+        <div class="card-title" id="aps-title">Approve PS · Packing Slip requests</div>
+        <div class="aps-tabs">
+            <button type="button" id="aps-tab-PENDING" class="on" onclick="apsTab('PENDING')">Pending <span id="aps-cnt"></span></button>
+            <button type="button" id="aps-tab-DONE" onclick="apsTab('DONE')">Done</button>
+        </div>
+        <div id="aps-note"></div>
+        <input type="text" id="aps-q" placeholder="Search PSR / party / tempo / slip no / made by" oninput="apsPaint()"
+            style="width:100%;padding:9px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:13px;margin-bottom:10px;box-sizing:border-box;">
+        <div id="aps-list"><p style="text-align:center;color:var(--text-muted);">Loading...</p></div>
+    </div>
+</div>
+<div class="aps-ov" id="aps-modal" style="display:none;" role="dialog" aria-modal="true" aria-labelledby="aps-m-title">
+    <div class="aps-sheet">
+        <div class="aps-head"><div class="t" id="aps-m-title"></div><div class="s" id="aps-m-sub"></div></div>
+        <div class="aps-body" id="aps-m-body"></div>
+        <div class="aps-foot">
+            <span class="prog" id="aps-m-prog"></span>
+            <button type="button" onclick="apsClose()">Close</button>
+            <button type="button" class="ed" id="aps-m-edit" disabled onclick="apsEdit()">Edit</button>
+            <button type="button" class="ok" id="aps-m-ok" disabled onclick="apsApprove()">Approve</button>
+        </div>
+    </div>
+</div>
+
 <div class="container" id="tempo-bill-panel">
     <div class="card">
         <div class="card-title">Tempo-Bill · Dharam Kanta trips not billed yet</div>
@@ -2559,8 +2681,9 @@ async function dispatchPost(payload) {
                 p_tempo_no: payload.dispatch?.tempoNo,
                 p_driver_name: payload.dispatch?.driverName,
                 p_driver_mobile: payload.dispatch?.driverMobile,
-                p_prepared_by: (await getCurrentUsername()),
-                p_prepared_by_name: (await getCurrentFullName()),
+                // an approved request (PS APPROVAL) is prepared by its Data Entry maker; the approver is Checked By
+                p_prepared_by: (payload.psReq && payload.psReq.preparedBy) || (await getCurrentUsername()),
+                p_prepared_by_name: (payload.psReq && payload.psReq.preparedByName) || (await getCurrentFullName()),
                 p_items: items,
                 p_dispatch_from: firstDispatchFrom,
                 p_private_marka: firstPrivateMarka,
@@ -2574,6 +2697,7 @@ async function dispatchPost(payload) {
             var { data, error } = await supabaseClient.rpc(rpcName, rpcParams);
             if (error) {
                 console.error('' + rpcName + ' RPC FAILED:', error.message, error.details, error.hint);
+                if (/DATA_ENTRY_SUBMIT/.test(error.message || '')) return { success: false, error: 'A Data Entry login cannot save a packing slip: use Submit to Packing Incharge (the slip is saved when the Packing Incharge approves it).' };
                 return { success: false, error: error.message + (error.hint ? ' | Hint: ' + error.hint : '') };
             }
             console.log('' + rpcName + ' RPC result:', data);
@@ -2590,7 +2714,8 @@ async function dispatchPost(payload) {
             // save error.
             if (data && data.success && data.slipNo) {
                 var supName = (payload.dispatch && payload.dispatch.supervisorName) || '';
-                if (!wasEdit || !supName) supName = (await getCurrentFullName()) || supName;   // generated by = logged-in user
+                if (payload.psReq) supName = payload.psReq.supervisorName || supName;   // the request's maker
+                else if (!wasEdit || !supName) supName = (await getCurrentFullName()) || supName;   // generated by = logged-in user
                 if (supName) {
                     try {
                         var { data: supRes, error: supErr } = await supabaseClient.rpc('set_slip_supervisor', {
@@ -2607,6 +2732,17 @@ async function dispatchPost(payload) {
                     } catch (supEx) {
                         console.error('supervisor_name save threw:', supEx.message);
                     }
+                }
+            }
+
+            // OTHER MATERIAL WEIGHT: written by its own setter (save_packing_slip / edit_packing_slip have no parameter
+            // for it). An edit always writes (an emptied list clears the old rows). Non-fatal: the slip is saved; a
+            // failure with rows comes back as otherWtError and handleFinish says so.
+            if (data && data.success && data.slipNo) {
+                var owList = pkOwNorm_((payload.dispatch && payload.dispatch.otherWeights) || []);
+                if (owList.length || wasEdit) {
+                    var owRes = await pkOwSave_(data.slipNo, payload.packingType || 'Billed', owList);
+                    if (!owRes.ok && owList.length) data.otherWtError = owRes.error;
                 }
             }
 
@@ -3431,6 +3567,16 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
     if (!String(header.shippingPartyName || '').trim()) {
         header.shippingPartyName = await resolveSlipOrderField(items, 'shippingPartyName', 'shipping_party_name');
     }
+    // Other Material Weight: the form's rows on a live save; a reprint (dispatch built from packing_slips by
+    // the caller, without them) reads the slip's saved rows, so every caller prints them.
+    // Checked By (PS APPROVAL): the approver's name / sign / time; a reprint reads them from the slip.
+    dispatch = Object.assign({}, dispatch || {});
+    if (!Array.isArray(dispatch.otherWeights) || dispatch.checkedBy === undefined) {
+        var _slx = await pkSlipExtra_(slipNo, packingType);
+        if (!Array.isArray(dispatch.otherWeights)) dispatch.otherWeights = _slx.otherWeights;
+        if (dispatch.checkedBy === undefined) dispatch.checkedBy = _slx.checkedBy;
+    }
+    var otherW = pkOwNorm_(dispatch.otherWeights), otherTot = pkOwTotal_(otherW);
 
     // 9 quality columns per page (all copies): 10 ran past the printer's margin
     var MAX_COLS = 9;
@@ -3661,7 +3807,8 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
             typePcsLine   += t + ': <strong>' + tm.totalPcs  + '</strong>' + sep;
             typeWtLine    += t + ': <strong>' + (Number(tm.totalWt)||0).toFixed(2) + '</strong>' + sep;
         });
-        typeLinesHtml = '<div>Packs: ' + typePacksLine + '</div><div>Pcs: ' + typePcsLine + '</div><div>Wt(Kg): ' + typeWtLine + '</div>';
+        typeLinesHtml = '<div>Packs: ' + typePacksLine + '</div><div>Pcs: ' + typePcsLine + '</div><div>Wt(Kg): ' + typeWtLine + '</div>' +
+            pkOwPdfLines_(otherW, tot.wt + pvc.wt);   // Other Material (Kg) + Net Weight, only when the slip has them
         typeBarHtml = '<div style="margin-top:3px;border:1.5px solid #000;padding:4px 8px;font-size:10px;font-weight:600;line-height:1.6;">' +
             typeLinesHtml + '</div>';
     }
@@ -3701,6 +3848,12 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
     } else {
         preparedBySign = '__________________';
     }
+    var checkedBySign = '__________________', _ck = dispatch.checkedBy;
+    if (_ck && _ck.name) {
+        var _ckTs = pkSlipTs_(_ck.at);
+        checkedBySign = (_ck.sign ? '<img src="' + _ck.sign + '" style="max-height:35px;max-width:120px;display:block;margin:0 auto 2px;" />' : '') +
+            '<span style="font-size:' + (_ck.sign ? 10 : 11) + 'px;font-weight:700;">' + escapeHtmlJs(_ck.name) + '</span>' + (_ckTs ? '<br><span style="font-size:8px;color:#555;">' + _ckTs + '</span>' : '');
+    }
 
     /* ── Gate-2 QR (sarv-qr.js), 25 mm x 25 mm on the Original and Duplicate Copy, RIGHT-aligned inside the box
        under the Grand Total bar (Packs / Pcs / Wt per type on the left, typeBarFor) ──
@@ -3712,7 +3865,7 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
         if (window.SarvQR && await SarvQR.ready()) {
             var qrUrl = SarvQR.dataUrl(SarvQR.encode({
                 t: 'PKS', no: slipNo, p: header.partyName, veh: dispatch && dispatch.tempoNo, drv: dispatch && dispatch.driverName,
-                d: header.date, to: header.dispatchTo, pk: tot.packs + pvc.packs, q: tot.qty + pvc.qty, wt: Number((tot.wt + pvc.wt).toFixed(2))
+                d: header.date, to: header.dispatchTo, pk: tot.packs + pvc.packs, q: tot.qty + pvc.qty, wt: Number((tot.wt + pvc.wt + otherTot).toFixed(2))   // Net Weight
             }), 580);
             if (qrUrl) gateQrHtml = '<img src="' + qrUrl + '" alt="Gate QR" style="width:91px;height:91px;display:block;margin:0 0 0 auto;image-rendering:pixelated;">' +
                 '<span style="display:block;font-size:7.5px;font-weight:700;color:#334155;margin-top:1px;text-align:center;">Scan at Gate-2</span>';
@@ -3743,11 +3896,11 @@ async function generatePackingSlipPdfClient(slipNo, header, items, dispatch, gra
             fullBody += '<div class="slip-footer">' +
                 '<div class="sign-box">' + preparedBySign + '<br>Signature &amp; Stamps<br>(Prepared By)</div>' +
                 '<div class="sign-box">__________________<br>Signature &amp; Stamps<br>(Received By)</div>' +
-                '<div class="sign-box">__________________<br>Signature &amp; Stamps<br>(Checked By)</div></div>';
+                '<div class="sign-box">' + checkedBySign + '<br>Signature &amp; Stamps<br>(Checked By)</div></div>';
         } else {
             fullBody += '<div class="slip-footer">' +
                 '<div class="sign-box">' + preparedBySign + '<br>Signature &amp; Stamps<br>(Prepared By)</div>' +
-                '<div class="sign-box">__________________<br>Signature &amp; Stamps<br>(Checked By)</div></div>';
+                '<div class="sign-box">' + checkedBySign + '<br>Signature &amp; Stamps<br>(Checked By)</div></div>';
         }
         fullBody += '</div>'; // .pdf-page
         // White spacer pushes any page-edge rendering line off the visible area
@@ -4240,6 +4393,7 @@ function enterApp() {
     showPackingForm();
     tbAutoStart();   // TEMPO BILL AUTO SAVE (Admin / MD / Packing Incharge only)
     tbcStart();      // DISPATCH CONFIRM popup (Packing Incharge only)
+    apsStart();      // PS APPROVAL: badge + Finish button wording
 }
 
 function showPackingForm() {
@@ -4257,6 +4411,7 @@ function showPackingForm() {
     if (!slipSyncInterval) startSlipNumberSync();
     startAutoSaveDraft();
     if (navigator.onLine) setTimeout(syncLocalDraftToDb, 3000);
+    apsPaintFinishBtn_();   // Finish / Submit to Packing Incharge / Update Request (PS APPROVAL)
 }
 
 // Fast direct slip number fetch — bypasses heavy gasGet init
@@ -5377,7 +5532,8 @@ async function pkDkPrevLoad_(S) {
         var items = list.length ? await pkSelectIn('packing_slip_items', 'slip_id, weight', 'slip_id', list.map(function (x) { return x.id; })) : [];
         var by = {};
         items.forEach(function (it) { var g = by[it.slip_id] || (by[it.slip_id] = { packs: 0, weight: 0 }); g.packs += 1; g.weight += Number(it.weight) || 0; });
-        list.forEach(function (x) { var g = by[x.id] || { packs: 0, weight: 0 }; x._packs = g.packs; x._weight = Math.round(g.weight * 1000) / 1000; });
+        await pkOwAttach_(list);   // + Other Material Weight = the slip's Net Weight (what the gate counts)
+        list.forEach(function (x) { var g = by[x.id] || { packs: 0, weight: 0 }; x._packs = g.packs; x._weight = Math.round((g.weight + (Number(x._ow) || 0)) * 1000) / 1000; });
         if (seq !== PK_DK.seq) return;
         PK_DK.prev = list;
     } catch (e) {
@@ -6308,6 +6464,726 @@ function renumberItems() {
     });
 }
 
+// ══════════════════════════════════════════════════════════════════════
+// OTHER MATERIAL WEIGHT (sql/PACKING_OTHER_WEIGHT_MIGRATION.sql)
+// Rows under "+ Add New Item Block": a label (Settings › Other Material Weight Labels, Admin), Qty and Avg Wt (Kg)
+// of one piece; the row's Weight = Qty x Avg Wt (read only), for what goes on the tempo with the packs but is
+// no Sr. row (carton box, poly bag ...). Saved rows are {label, qty, avg, weight}.
+//   Net Weight = Total Weight of the Sr. rows + every Other Material Weight.
+// Kept in dispatch.otherWeights of the form payload (so drafts, the offline queue and the PDF carry them),
+// written after the slip by packing.set_slip_other_weights (packing_slips.other_weights / other_weight),
+// printed in the box under the Grand Total bar (pkOwPdfLines_), counted by the gates' Loaded Weight
+// (gate_dk_loaded_), the Dharam Kanta panel here and the Tempo-Bill (pkOwAttach_).
+// ══════════════════════════════════════════════════════════════════════
+var PK_OW = { labels: null, fromDb: null, loading: null, itemWt: 0, edit: [], editFromDb: false };
+var PK_OW_LS = 'pk_ow_labels_v1';
+function pkOwName_(v) { return String(v == null ? '' : v).trim().replace(/\s+/g, ' ').toUpperCase(); }
+function pkOwNum_(v) { var n = parseFloat(String(v == null ? '' : v).replace(/[^0-9.\-]/g, '')); return isFinite(n) ? n : 0; }
+// Weight of one row = Qty x Avg Wt (Kg), 3 decimals. A row saved before Qty / Avg existed has only a weight:
+// it counts as Qty 1 x that weight.
+function pkOwRowWt_(qty, avg) { return Math.round(pkOwNum_(qty) * pkOwNum_(avg) * 1000) / 1000; }
+function pkOwQa_(r) {
+    var q = pkOwNum_(r && r.qty), a = pkOwNum_(r && r.avg);
+    if (!(q > 0) && !(a > 0) && pkOwNum_(r && r.weight) > 0) { q = 1; a = pkOwNum_(r.weight); }
+    return { qty: q, avg: a };
+}
+// [{label, qty, avg, weight}] with a label AND a weight above 0 (what is saved and printed)
+function pkOwNorm_(list) {
+    return (Array.isArray(list) ? list : []).map(function (r) {
+        var qa = pkOwQa_(r);
+        return { label: pkOwName_(r && r.label), qty: Math.round(qa.qty * 1000) / 1000, avg: Math.round(qa.avg * 1000) / 1000, weight: pkOwRowWt_(qa.qty, qa.avg) };
+    }).filter(function (r) { return r.label && r.weight > 0; });
+}
+function pkOwTotal_(list) { return Math.round((list || []).reduce(function (s, r) { return s + (Number(r.weight) || 0); }, 0) * 1000) / 1000; }
+// The Admin's labels (cached on the device for offline use). Never throws.
+function pkOwLoadLabels(force) {
+    if (PK_OW.labels && !force) return Promise.resolve(PK_OW.labels);
+    if (PK_OW.loading) return PK_OW.loading;
+    PK_OW.loading = (async function () {
+        try {
+            var { data, error } = await supabaseClient.from('other_weight_labels').select('label, sort_order').order('sort_order');
+            if (error) throw error;
+            PK_OW.labels = (data || []).map(function (r) { return pkOwName_(r.label); }).filter(Boolean);
+            PK_OW.fromDb = true;
+            try { localStorage.setItem(PK_OW_LS, JSON.stringify(PK_OW.labels)); } catch (e) {}
+        } catch (e) {
+            console.warn('[packing] Other Material Weight labels not read:', e && (e.message || e));
+            PK_OW.fromDb = /other_weight_labels|42P01|PGRST205|schema cache/i.test(String((e && (e.message || e.code)) || e)) ? false : PK_OW.fromDb;
+            var c = null; try { c = JSON.parse(localStorage.getItem(PK_OW_LS) || 'null'); } catch (e2) {}
+            PK_OW.labels = Array.isArray(c) ? c : (PK_OW.labels || []);
+        }
+        PK_OW.loading = null;
+        return PK_OW.labels;
+    })();
+    return PK_OW.loading;
+}
+function pkOwOptions_(sel) {
+    var list = (PK_OW.labels || []).slice(), v = pkOwName_(sel);
+    if (v && list.indexOf(v) < 0) list.push(v);   // a label removed since (draft / old slip) stays chosen
+    return '<option value="">— Select Label —</option>' + list.map(function (l) {
+        return '<option value="' + escapeHtmlAttr(l) + '"' + (l === v ? ' selected' : '') + '>' + escapeHtmlJs(l) + '</option>';
+    }).join('');
+}
+// Material | Qty | Avg Wt (Kg) | Weight (Kg) = Qty x Avg, worked out (read only) | ✕
+function pkOwRowHtml_(r) {
+    r = r || {};
+    var has = function (v) { return v !== undefined && v !== null && String(v) !== ''; };
+    var q = has(r.qty) ? String(r.qty) : '', a = has(r.avg) ? String(r.avg) : '';
+    if (!q && !a && pkOwNum_(r.weight) > 0) { q = '1'; a = String(pkOwNum_(r.weight)); }   // an older row: weight only
+    var w = (q && a) ? pkOwRowWt_(q, a).toFixed(2) : '';
+    return '<div class="pk-ow-row"><select class="pk-ow-label" onchange="pkOwPaint()" aria-label="Other material">' + pkOwOptions_(r.label) + '</select>'
+        + '<input type="number" class="pk-ow-qty" min="0" step="1" inputmode="decimal" placeholder="Qty" value="' + escapeHtmlAttr(q) + '" oninput="pkOwRowCalc(this)" aria-label="Qty">'
+        + '<input type="number" class="pk-ow-avg" min="0" step="0.001" inputmode="decimal" placeholder="Avg Wt" value="' + escapeHtmlAttr(a) + '" oninput="pkOwRowCalc(this)" aria-label="Average weight in Kg">'
+        + '<input type="text" class="pk-ow-wt" readonly tabindex="-1" placeholder="Weight" value="' + escapeHtmlAttr(w) + '" aria-label="Weight in Kg (Qty x Avg Wt)" title="Weight = Qty x Avg Wt">'
+        + '<button type="button" class="pk-ow-del" onclick="pkOwRemove(this)" title="Remove this row" aria-label="Remove">✕</button></div>';
+}
+// Qty or Avg Wt typed: the row's Weight box follows, then the totals
+function pkOwRowCalc(el) {
+    var row = el && el.closest('.pk-ow-row');
+    if (row) {
+        var q = row.querySelector('.pk-ow-qty').value, a = row.querySelector('.pk-ow-avg').value, w = row.querySelector('.pk-ow-wt');
+        w.value = (String(q).trim() && String(a).trim()) ? pkOwRowWt_(q, a).toFixed(2) : '';
+    }
+    pkOwPaint();
+}
+async function pkOwAdd() {
+    var labels = await pkOwLoadLabels();
+    if (!labels.length) {
+        alert(PK_OW.fromDb === false
+            ? 'Other Material Weight needs sql/PACKING_OTHER_WEIGHT_MIGRATION.sql (Admin, in the Supabase SQL Editor).'
+            : 'No Other Material Weight label is set yet.\n\nThe Admin adds them in Settings › Other Material Weight Labels.');
+        return;
+    }
+    var box = document.getElementById('pk-ow-rows'); if (!box) return;
+    box.insertAdjacentHTML('beforeend', pkOwRowHtml_({}));
+    var rows = box.querySelectorAll('.pk-ow-row'), sel = rows[rows.length - 1].querySelector('select');
+    if (sel) sel.focus();
+    pkOwPaint();
+    if (typeof triggerAutoSave === 'function') triggerAutoSave();
+}
+function pkOwRemove(btn) {
+    var row = btn && btn.closest('.pk-ow-row'); if (!row) return;
+    var l = row.querySelector('.pk-ow-label').value, w = row.querySelector('.pk-ow-wt').value,
+        typed = row.querySelector('.pk-ow-qty').value || row.querySelector('.pk-ow-avg').value;
+    if ((l || typed) && !confirm('Remove ' + (l || 'this row') + (w ? ' (' + w + ' Kg)' : '') + ' from the slip?')) return;
+    row.remove();
+    pkOwPaint();
+    if (typeof triggerAutoSave === 'function') triggerAutoSave();
+}
+// The rows as typed (half-filled ones too: drafts keep them; pkOwNorm_ makes the saved list)
+function pkOwRead() {
+    var out = [];
+    document.querySelectorAll('#pk-ow-rows .pk-ow-row').forEach(function (r) {
+        var l = r.querySelector('.pk-ow-label').value, q = r.querySelector('.pk-ow-qty').value, a = r.querySelector('.pk-ow-avg').value;
+        if (l || q || a) out.push({ label: pkOwName_(l), qty: q, avg: a, weight: (q && a) ? pkOwRowWt_(q, a) : '' });
+    });
+    return out;
+}
+function pkOwSetRows(list) {
+    var box = document.getElementById('pk-ow-rows'); if (!box) return;
+    var rows = Array.isArray(list) ? list : [];
+    box.innerHTML = rows.map(function (r) { return pkOwRowHtml_(r); }).join('');
+    pkOwPaint();
+    if (rows.length) pkOwLoadLabels().then(function () {   // fill the label lists, keep what is chosen
+        box.querySelectorAll('.pk-ow-label').forEach(function (sel) { var v = sel.value; sel.innerHTML = pkOwOptions_(v); sel.value = pkOwName_(v); });
+    });
+}
+// Other Material total + Net Wt (under the rows and in the summary card). itemWt = Grand Wt of the Sr. rows.
+function pkOwPaint(itemWt) {
+    if (!PK_OW) return;   // called by calculateTotals before this section has run
+    if (itemWt !== undefined) PK_OW.itemWt = Number(itemWt) || 0;
+    var list = pkOwNorm_(pkOwRead()), ow = pkOwTotal_(list), net = Math.round((PK_OW.itemWt + ow) * 1000) / 1000;
+    var hr = document.getElementById('pk-ow-headrow');
+    if (hr) hr.style.display = document.querySelector('#pk-ow-rows .pk-ow-row') ? '' : 'none';
+    var f2 = function (n) { return (Number(n) || 0).toFixed(2); };
+    var tot = document.getElementById('pk-ow-tot');
+    if (tot) {
+        tot.style.display = list.length ? '' : 'none';
+        tot.innerHTML = list.length ? '<span>Other Material: <b>' + f2(ow) + ' Kg</b></span><span>Total Wt ' + f2(PK_OW.itemWt) + ' + Other ' + f2(ow) + ' = Net Wt: <b>' + f2(net) + ' Kg</b></span>' : '';
+    }
+    var ow1 = document.getElementById('bottom-other-wrap'), nw = document.getElementById('bottom-net-wrap');
+    if (ow1) ow1.style.display = list.length ? '' : 'none';
+    if (nw) nw.style.display = list.length ? '' : 'none';
+    var a = document.getElementById('bottom-other-wt'), b = document.getElementById('bottom-net-wt');
+    if (a) a.textContent = f2(ow);
+    if (b) b.textContent = f2(net);
+}
+// Finish: a row needs both a label and a weight (an empty row is dropped)
+function pkOwValidate() {
+    var bad = null;
+    document.querySelectorAll('#pk-ow-rows .pk-ow-row').forEach(function (r) {
+        if (bad) return;
+        var sel = r.querySelector('.pk-ow-label'), qe = r.querySelector('.pk-ow-qty'), ae = r.querySelector('.pk-ow-avg');
+        var l = sel.value, q = pkOwNum_(qe.value), a = pkOwNum_(ae.value);
+        if (!l && !String(qe.value).trim() && !String(ae.value).trim()) return;   // an empty row is dropped
+        if (!l) bad = { el: sel, msg: 'Other Material Weight: choose the material of the row with Qty ' + (qe.value || '-') + ' (or remove the row).' };
+        else if (!(q > 0)) bad = { el: qe, msg: 'Other Material Weight: type the Qty of ' + l + ' (or remove the row).' };
+        else if (!(a > 0)) bad = { el: ae, msg: 'Other Material Weight: type the Avg Wt (Kg) of one ' + l + ' (or remove the row).' };
+    });
+    if (bad) { alert(bad.msg); bad.el.focus(); return false; }
+    return true;
+}
+async function pkOwSave_(slipNo, packingType, list) {
+    try {
+        var { data, error } = await supabaseClient.rpc('set_slip_other_weights', { p_slip_no: slipNo, p_packing_type: packingType || 'Billed', p_rows: list || [] });
+        if (error) throw error;
+        if (!data || data.success === false) throw new Error((data && data.error) || 'The slip was not found (0 rows).');
+        return { ok: true, total: data.otherWeight };
+    } catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        console.error('[packing] Other Material Weight not saved:', m);
+        if (/set_slip_other_weights|PGRST202|42883|Could not find the function|other_weight/i.test(m)) m = 'sql/PACKING_OTHER_WEIGHT_MIGRATION.sql has not been run (' + m + ')';
+        return { ok: false, error: m };
+    }
+}
+// A saved slip's Other Material rows + Checked By (PDF reprints): {otherWeights: [], checkedBy: null | {name, user, at, sign}}.
+// Empty when none / before the migrations (each column set is tried on its own).
+async function pkSlipExtra_(slipNo, packingType) {
+    var out = { otherWeights: [], checkedBy: null };
+    if (!slipNo) return out;
+    var read = async function (cols) {
+        var { data, error } = await supabaseClient.from('packing_slips').select(cols)
+            .eq('slip_no', slipNo).eq('packing_type', packingType || 'Billed').limit(1);
+        if (error) throw error;
+        return (data && data[0]) || null;
+    };
+    try { var a = await read('other_weights'); if (a && Array.isArray(a.other_weights)) out.otherWeights = a.other_weights; } catch (e) {}
+    try {
+        var b = await read('checked_by, checked_by_name, checked_at');
+        if (b && (b.checked_by_name || b.checked_by)) {
+            out.checkedBy = { name: b.checked_by_name || b.checked_by, user: b.checked_by || '', at: b.checked_at || null, sign: await getSignatureForUsername(b.checked_by) };
+        }
+    } catch (e) {}
+    return out;
+}
+// "25-Nov-26 6:05 PM" (the slip's own time format)
+function pkSlipTs_(iso) {
+    var d = iso ? new Date(iso) : null;
+    if (!d || isNaN(d.getTime())) return '';
+    var m = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'], h = d.getHours(), ap = h >= 12 ? 'PM' : 'AM';
+    return String(d.getDate()).padStart(2, '0') + '-' + m[d.getMonth()] + '-' + String(d.getFullYear()).slice(-2) + ' ' + (h % 12 || 12) + ':' + String(d.getMinutes()).padStart(2, '0') + ' ' + ap;
+}
+// packing_slips rows (with id) get x._ow (Kg) / x._owList; 0 / [] when not readable (before the migration)
+async function pkOwAttach_(rows) {
+    var todo = (rows || []).filter(function (x) { return x && x._ow === undefined; });
+    if (!todo.length) return;
+    var by = {};
+    try {
+        (await pkSelectIn('packing_slips', 'id, other_weight, other_weights', 'id', todo.map(function (x) { return x.id; })))
+            .forEach(function (g) { by[g.id] = g; });
+    } catch (e) { console.warn('[packing] Other Material Weight not read:', e && (e.message || e)); }
+    todo.forEach(function (x) {
+        var g = by[x.id];
+        x._ow = g ? (Number(g.other_weight) || 0) : 0;
+        x._owList = g && Array.isArray(g.other_weights) ? g.other_weights : [];
+    });
+}
+// PDF: two lines inside the box under the Grand Total bar (only when the slip has Other Material Weight)
+function pkOwPdfLines_(list, itemWt) {
+    if (!list || !list.length) return '';
+    var ow = pkOwTotal_(list), net = (Number(itemWt) || 0) + ow;
+    var n3 = function (v) { return String(Math.round((Number(v) || 0) * 1000) / 1000); };
+    return '<div>Other Material (Kg): ' + list.map(function (r) {
+            var qa = pkOwQa_(r);
+            return escapeHtmlJs(r.label) + ': ' + n3(qa.qty) + ' &times; ' + n3(qa.avg) + ' = <strong>' + (Number(r.weight) || 0).toFixed(2) + '</strong>';
+        }).join(' &nbsp;|&nbsp; ')
+        + (list.length > 1 ? ' &nbsp;=&nbsp; <strong>' + ow.toFixed(2) + '</strong>' : '') + '</div>'
+        + '<div style="font-size:11.5px;font-weight:800;">Net Weight (Kg): <strong>' + net.toFixed(2) + '</strong>'
+        + ' <span style="font-size:9.5px;font-weight:600;">(Total Wt ' + (Number(itemWt) || 0).toFixed(2) + ' + Other Material ' + ow.toFixed(2) + ')</span></div>';
+}
+
+// ── Settings › Other Material Weight Labels (Admin saves; MD sees it view only) ──
+async function pkOwLoadEditor() {
+    var el = document.getElementById('ow-labels-list'), ban = document.getElementById('ow-labels-banner');
+    if (!el) return;
+    el.innerHTML = '<p style="text-align:center;color:var(--text-muted);">Loading...</p>';
+    await pkOwLoadLabels(true);
+    PK_OW.editFromDb = PK_OW.fromDb === true;
+    PK_OW.edit = (PK_OW.labels || []).slice();
+    if (ban) ban.innerHTML = PK_OW.editFromDb ? '' : '<div class="fr-note warn">The labels are not on the server yet: run sql/PACKING_OTHER_WEIGHT_MIGRATION.sql (Admin, in the Supabase SQL Editor).</div>';
+    pkOwRenderEditor();
+}
+function pkOwRenderEditor() {
+    var el = document.getElementById('ow-labels-list'); if (!el) return;
+    var L = PK_OW.edit;
+    el.innerHTML = !L.length ? '<p style="color:var(--text-muted);font-size:13px;">No label yet. Add the first one below (e.g. CARTON BOX, POLY BAG).</p>'
+        : '<table class="fr-table"><thead><tr><th style="width:40px;">#</th><th>Label</th><th style="width:150px;"></th></tr></thead><tbody>'
+          + L.map(function (l, i) {
+              return '<tr><td>' + (i + 1) + '</td><td><b>' + escapeHtmlJs(l) + '</b></td><td style="white-space:nowrap;text-align:right;">'
+                  + '<button type="button" class="fr-btn ghost" style="padding:4px 9px;" onclick="pkOwEdMove(' + i + ',-1)" title="Move up"' + (i ? '' : ' disabled') + '>▲</button> '
+                  + '<button type="button" class="fr-btn ghost" style="padding:4px 9px;" onclick="pkOwEdMove(' + i + ',1)" title="Move down"' + (i < L.length - 1 ? '' : ' disabled') + '>▼</button> '
+                  + '<button type="button" class="fr-btn ghost" style="padding:4px 9px;color:#b91c1c;" onclick="pkOwEdDel(' + i + ')" title="Remove">✕</button></td></tr>';
+          }).join('') + '</tbody></table>';
+    var sb = document.getElementById('ow-labels-save-btn'); if (sb) sb.disabled = !PK_OW.editFromDb;
+}
+function pkOwEdAdd() {
+    var inp = document.getElementById('ow-label-new'), v = pkOwName_(inp && inp.value);
+    if (!v) { alert('Type the label first (e.g. CARTON BOX).'); if (inp) inp.focus(); return; }
+    if (PK_OW.edit.indexOf(v) >= 0) { alert(v + ' is already in the list.'); return; }
+    PK_OW.edit.push(v); inp.value = '';
+    pkOwRenderEditor(); inp.focus();
+}
+function pkOwEdMove(i, d) {
+    var j = i + d, L = PK_OW.edit;
+    if (j < 0 || j >= L.length) return;
+    var t = L[i]; L[i] = L[j]; L[j] = t;
+    pkOwRenderEditor();
+}
+function pkOwEdDel(i) {
+    if (!confirm('Remove ' + PK_OW.edit[i] + ' from the list?\n\nSlips that already have it keep it. (Takes effect on Save.)')) return;
+    PK_OW.edit.splice(i, 1);
+    pkOwRenderEditor();
+}
+async function pkOwSaveLabels() {
+    if (!session || session.role !== 'ADMIN') { alert('Admin only!'); return; }
+    var btn = document.getElementById('ow-labels-save-btn');
+    btn.disabled = true; btn.textContent = 'Saving...';
+    try {
+        var { data, error } = await supabaseClient.rpc('save_other_weight_labels', { p_labels: PK_OW.edit });
+        if (error) throw error;
+        if (!data || !data.success) throw new Error((data && data.error) || 'Not saved');
+        showToast('Other Material Weight labels saved: ' + data.added + ' added, ' + data.moved + ' moved, ' + data.removed + ' removed');
+        await pkOwLoadEditor();
+        var lg = document.querySelector('#ow-labels-card .fr-log'); if (lg && lg.open) pkOwLoadLog();
+    } catch (e) {
+        alert('The labels were not saved:\n\n' + (e.message || e));
+    }
+    btn.textContent = 'Save Labels'; btn.disabled = !PK_OW.editFromDb;
+}
+async function pkOwLoadLog() {
+    var el = document.getElementById('ow-log-list');
+    try {
+        var { data, error } = await supabaseClient.from('other_weight_label_log').select('*').order('changed_at', { ascending: false }).limit(100);
+        if (error) throw error;
+        if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No changes yet.</p>'; return; }
+        var o = function (n) { return n === null || n === undefined ? '—' : '#' + n; };
+        el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Action</th><th>Label</th><th>Old</th><th>New</th></tr></thead><tbody>' +
+            data.map(function (l) {
+                return '<tr><td class="fr-sub">' + escapeHtmlJs(new Date(l.changed_at).toLocaleString('en-IN')) + '</td><td>' + escapeHtmlJs(l.changed_by || '') + '</td><td>' + escapeHtmlJs(l.action) + '</td>'
+                    + '<td>' + escapeHtmlJs(l.label) + '</td><td>' + o(l.old_order) + '</td><td>' + o(l.new_order) + '</td></tr>';
+            }).join('') + '</tbody></table></div>';
+    } catch (e) {
+        el.innerHTML = '<p style="color:var(--text-muted);">The log is not available (' + escapeHtmlJs(e.message || String(e)) + ').</p>';
+    }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// PS APPROVAL (sql/PACKING_PS_APPROVAL_MIGRATION.sql)
+// A DATA_ENTRY login never saves a packing slip: the form's button is "Submit to Packing Incharge", which keeps
+// the whole form payload (buildFormPayload, the same thing Finish would save) as a request in packing.ps_requests
+// (PSR-0001). The Packing Incharge / Admin / MD see it in the "Approve PS" tab › Pending; the popup lists Party
+// Name, Ship To, Delivery Address, Dispatch To, Tempo No., Driver Name, Remarks, every item and every Other
+// Material Weight row with a tick box each. Only when every line is ticked are Approve and Edit enabled:
+//   Approve = claim the request (row locked; refused when it changed since the popup opened), save the slip with
+//             the usual save_packing_slip as the approver (Prepared By / Supervisor = the Data Entry maker), mark it
+//             APPROVED (ps_request_done also writes checked_by* on the slip), then the PDF (Prepared By = maker's
+//             name + sign, Checked By = approver's name + sign + time) is downloaded and uploaded as on Finish.
+//   Edit    = the request in the packing slip form; the button says "Update Request PSR-n" and saves it back
+//             (the checklist must be ticked again afterwards). No Reject, by choice.
+// The server refuses a slip insert by a DATA_ENTRY login (trigger ps_block_data_entry), so an old page or an
+// offline queue cannot skip it. A Data Entry login sees its own requests in the same tab ("My PS Requests").
+// ══════════════════════════════════════════════════════════════════════
+var APS = { tab: 'PENDING', rows: [], sig: '', canApprove: false, me: null, cur: null, ticks: {}, keys: [], edit: null,
+            timer: null, badgeTimer: null, busy: false, loaded: false, err: '', submitKey: '' };
+var APS_POLL_MS = 5000, APS_BADGE_MS = 30000;
+function apsRole_() { return session ? String(session.role || '').toUpperCase() : ''; }
+function apsIsApprover_() { return ['PACKING_INCHARGE', 'ADMIN', 'MD'].indexOf(apsRole_()) >= 0; }
+function apsIsMaker_() { return apsRole_() === 'DATA_ENTRY'; }
+// '' = normal Finish, 'SUBMIT' = Data Entry sends a new request, 'EDIT' = an approver updates a request
+function apsFormMode_() { return APS.edit ? 'EDIT' : (apsIsMaker_() ? 'SUBMIT' : ''); }
+function apsFinishLabel_() {
+    var m = apsFormMode_();
+    return m === 'EDIT' ? 'Update Request ' + APS.edit.reqNo : m === 'SUBMIT' ? 'Submit to Packing Incharge' : 'Finish Packing Slip';
+}
+function apsPaintFinishBtn_() {
+    var b = document.getElementById('finishBtn');
+    if (b && !isSubmitting) b.textContent = apsFinishLabel_();
+}
+function apsMissing_(m) { return /ps_request_|PGRST202|42883|Could not find the function|schema cache/i.test(String(m || '')); }
+function apsErr_(e) { return String((e && (e.message || e.details || e.error)) || e || 'unknown error'); }
+function apsWhen_(iso) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
+function apsKg_(n) { return (Number(n) || 0).toFixed(2); }
+
+// enterApp: Finish wording, badge, and a request still open in the form after a reload
+function apsStart() {
+    apsPaintFinishBtn_();
+    var open = false;
+    try { open = sessionStorage.getItem('pk_open_aps') === '1'; sessionStorage.removeItem('pk_open_aps'); } catch (e) {}
+    if (!apsIsApprover_() && !apsIsMaker_()) return;
+    apsBadge_();
+    if (!APS.badgeTimer) APS.badgeTimer = setInterval(apsBadge_, APS_BADGE_MS);
+    if (open) showApprovePsPanel();
+}
+async function apsBadge_() {
+    if (document.hidden || !navigator.onLine) return;
+    try {
+        var { data, error } = await supabaseClient.rpc('ps_request_count');
+        if (error) throw error;
+        var n = data && data.success ? Number(data.pending) || 0 : 0;
+        var b = document.getElementById('apsBadge');
+        if (b) { b.textContent = n > 99 ? '99+' : String(n); b.style.display = n ? '' : 'none'; }
+    } catch (e) { /* no migration yet / offline: no badge */ }
+}
+function showApprovePsPanel() {
+    if (!apsIsApprover_() && !apsIsMaker_()) { alert('Approve PS: Packing Incharge / Admin / MD (and Data Entry for their own requests) only'); return; }
+    hideAllPanels();
+    document.getElementById('approve-ps-panel').style.display = 'block';
+    updateNavButtons('approve-ps-panel');
+    if (slipSyncInterval) { clearInterval(slipSyncInterval); slipSyncInterval = null; }
+    stopAutoSaveDraft();
+    document.getElementById('aps-title').textContent = apsIsApprover_() ? 'Approve PS · Packing Slip requests' : 'My PS Requests · sent to the Packing Incharge';
+    apsTab(APS.tab);
+    if (!APS.timer) APS.timer = setInterval(apsTick_, APS_POLL_MS);
+}
+// every 5 s while the tab is on screen, online, no popup open and no box has the cursor
+function apsTick_() {
+    var p = document.getElementById('approve-ps-panel');
+    if (!p || p.style.display === 'none') { clearInterval(APS.timer); APS.timer = null; return; }
+    if (document.hidden || !navigator.onLine || APS.busy || APS.cur) return;
+    var a = document.activeElement;
+    if (a && a.id !== 'aps-q' && /INPUT|SELECT|TEXTAREA/.test(a.tagName)) return;
+    apsLoad(true);
+}
+function apsTab(t) {
+    APS.tab = t === 'DONE' ? 'DONE' : 'PENDING';
+    ['PENDING', 'DONE'].forEach(function (k) { var b = document.getElementById('aps-tab-' + k); if (b) b.classList.toggle('on', k === APS.tab); });
+    APS.sig = ''; APS.rows = []; APS.loaded = false;
+    document.getElementById('aps-list').innerHTML = '<p style="text-align:center;color:var(--text-muted);">Loading...</p>';
+    apsLoad(false);
+}
+async function apsLoad(quiet) {
+    if (APS.busy) return;
+    APS.busy = true;
+    var tab = APS.tab;
+    try {
+        var { data, error } = await supabaseClient.rpc('ps_request_list', { p_tab: tab, p_days: 30 });
+        if (error) throw error;
+        if (!data || data.success === false) throw new Error((data && data.error) || 'Not read');
+        if (tab !== APS.tab) return;
+        APS.canApprove = !!data.canApprove; APS.me = data.me || null; APS.err = '';
+        var sig = JSON.stringify(data.rows || []);
+        if (sig === APS.sig && APS.loaded) return;   // nothing changed: no redraw
+        APS.sig = sig; APS.rows = data.rows || []; APS.loaded = true;
+        if (tab === 'PENDING') { var c = document.getElementById('aps-cnt'); if (c) c.textContent = APS.rows.length ? '(' + APS.rows.length + ')' : ''; }
+        apsPaint();
+    } catch (e) {
+        var m = apsErr_(e);
+        APS.err = apsMissing_(m) ? 'Approve PS needs sql/PACKING_PS_APPROVAL_MIGRATION.sql (Admin, in the Supabase SQL Editor).' : 'The requests could not be read: ' + m;
+        if (!quiet || !APS.loaded) apsPaint();
+    } finally { APS.busy = false; }
+}
+function apsPaint() {
+    var e = escapeHtmlJs, el = document.getElementById('aps-list'), note = document.getElementById('aps-note');
+    if (!el) return;
+    note.innerHTML = APS.err ? '<div class="fr-note bad">' + e(APS.err) + '</div>' : '';
+    if (APS.err && !APS.loaded) { el.innerHTML = ''; return; }
+    var q = (document.getElementById('aps-q') || {}).value || '';
+    var words = q.toUpperCase().split(/\s+/).filter(Boolean);
+    var list = APS.rows.filter(function (r) {
+        if (!words.length) return true;
+        var hay = [r.reqNo, r.party, r.tempo, r.dispatchTo, r.slipNo, r.madeByName, r.madeBy, r.approvedByName].join(' ').toUpperCase();
+        return words.every(function (w) { return hay.indexOf(w) >= 0; });
+    });
+    if (!APS.rows.length) { el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:14px;">' + (APS.tab === 'DONE' ? 'No request approved in the last 30 days.' : (APS.canApprove ? 'No packing slip is waiting for approval.' : 'You have no request waiting.')) + '</p>'; return; }
+    if (!list.length) { el.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:14px;">No request matches the search.</p>'; return; }
+    el.innerHTML = list.map(function (r) {
+        var wt = apsKg_(r.weight) + ' Kg' + (Number(r.otherWeight) > 0 ? ' + Other ' + apsKg_(r.otherWeight) + ' = Net ' + apsKg_(Number(r.weight) + Number(r.otherWeight)) + ' Kg' : '');
+        var pill = APS.tab === 'DONE' ? '<span class="aps-pill d">Approved · ' + e(r.slipNo || '') + '</span>'
+            : r.status === 'APPROVING' ? '<span class="aps-pill b">Being approved · ' + e(r.claimedByName || '') + '</span>' : '<span class="aps-pill p">Pending</span>';
+        var sub = '<div class="s">' + e(r.packingType || '') + ' · Tempo <b>' + e(r.tempo || '-') + '</b> · Dispatch To ' + e(r.dispatchTo || '-') + '</div>'
+            + '<div class="s">' + (r.packs || 0) + ' packs · ' + (Number(r.pcs) || 0) + ' pcs · ' + wt + '</div>'
+            + '<div class="s">Made by <b>' + e(r.madeByName || r.madeBy || '') + '</b> · ' + e(apsWhen_(r.madeAt))
+            + ((r.edits || []).length ? ' · edited ' + r.edits.length + 'x, last by ' + e(r.edits[r.edits.length - 1].name || '') : '') + '</div>';
+        if (APS.tab === 'DONE') sub += '<div class="s">Approved by <b>' + e(r.approvedByName || '') + '</b> · ' + e(apsWhen_(r.approvedAt))
+            + (r.pdf ? ' · <a href="' + escapeHtmlAttr(r.pdf) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">Open PDF</a>' : '') + '</div>';
+        var click = APS.tab === 'DONE' ? '' : ' onclick="apsOpen(' + Number(r.id) + ')"';
+        return '<div class="aps-card"' + click + '><div class="t"><span>' + e(r.reqNo) + ' · ' + e(r.party || '') + '</span>' + pill + '</div>' + sub + '</div>';
+    }).join('');
+}
+
+// ── the checklist popup ──
+function apsOpen(id) {
+    var r = APS.rows.find(function (x) { return Number(x.id) === Number(id); });
+    if (!r) return;
+    APS.cur = r; APS.ticks = {}; APS.keys = [];
+    var e = escapeHtmlJs, F = r.form || {}, H = F.header || {}, D = F.dispatch || {}, can = APS.canApprove;
+    var ck = function (key, label, valHtml) {
+        APS.keys.push(key);
+        return '<label class="aps-ck" data-k="' + e(key) + '">' + (can ? '<input type="checkbox" onchange="apsTick(this, \'' + e(key) + '\')">' : '')
+            + '<span class="k">' + e(label) + '</span><span class="v">' + valHtml + '</span></label>';
+    };
+    var v = function (x) { x = String(x == null ? '' : x).trim(); return x ? e(x) : '<span style="color:#94a3b8;font-weight:600;">— (empty)</span>'; };
+    var items = F.items || [], ows = pkOwNorm_(D.otherWeights || []);
+    var tp = 0, tq = 0, tw = 0;
+    items.forEach(function (it) { (it.subRows || []).forEach(function (sr) { tp++; tq += Number(sr.qty) || 0; tw += Number(sr.weight) || 0; }); });
+    var ow = pkOwTotal_(ows);
+    var h = '<div class="aps-tot"><span>' + items.length + ' item(s)</span><span>' + tp + ' packs</span><span>' + tq + ' pcs</span><span>Total Wt ' + apsKg_(tw) + ' Kg</span>'
+        + (ows.length ? '<span>Other Material ' + apsKg_(ow) + ' Kg</span><span>Net Wt <b>' + apsKg_(tw + ow) + ' Kg</b></span>' : '') + '</div>';
+    h += '<div class="aps-sec">Slip details</div>'
+        + ck('party', 'Party Name', v(H.partyName))
+        + ck('shipTo', 'Ship To', v(H.subPartyName))
+        + ck('address', 'Delivery Address', v(H.thirdPartyName))
+        + ck('dispatchTo', 'Dispatch To', v(H.dispatchTo))
+        + ck('tempo', 'Tempo No.', v(D.tempoNo) + (D.driverMobile ? ' <span style="color:#64748b;font-weight:600;">· ' + e(D.driverMobile) + '</span>' : ''))
+        + ck('driver', 'Driver Name', v(D.driverName))
+        + ck('remarks', 'Remarks', v(D.remarks));
+    h += '<div class="aps-sec">Items (' + items.length + ')</div>';
+    items.forEach(function (it, i) {
+        var subs = it.subRows || [], q = 0, w = 0;
+        var rows = subs.map(function (sr, j) {
+            q += Number(sr.qty) || 0; w += Number(sr.weight) || 0;
+            return '<tr><td>' + (j + 1) + '</td><td class="n">' + e(sr.qty) + '</td><td class="n">' + apsKg_(sr.weight) + '</td><td>' + e(sr.from || it.dispatchFrom || '') + '</td><td>' + e(sr.to || '') + '</td><td>' + e(sr.shiftBy || '') + '</td><td>' + e(sr.loadBy || '') + '</td></tr>';
+        }).join('');
+        var head = '<b>' + e(it.type || '-') + '</b> · ' + e(it.brand || '-') + (it.orderId ? ' · Order ' + e(it.orderId) : '') + (it.privateMarka ? ' · Marka ' + e(it.privateMarka) : '')
+            + '<table><thead><tr><th>Sr.</th><th class="n">Qty</th><th class="n">Wt (Kg)</th><th>From</th><th>To</th><th>Shift By</th><th>Load By</th></tr></thead><tbody>' + rows
+            + '<tr style="font-weight:800;background:#f8fafc;"><td>' + subs.length + ' packs</td><td class="n">' + q + '</td><td class="n">' + apsKg_(w) + '</td><td colspan="4"></td></tr></tbody></table>';
+        h += ck('item:' + i, 'Item ' + (i + 1), head);
+    });
+    if (ows.length) {
+        h += '<div class="aps-sec">Other Material Weight (' + ows.length + ')</div>';
+        ows.forEach(function (o, i) {
+            h += ck('ow:' + i, o.label, e(o.qty) + ' × ' + e(o.avg) + ' Kg = <b>' + apsKg_(o.weight) + ' Kg</b>');
+        });
+    }
+    document.getElementById('aps-m-title').textContent = r.reqNo + ' · ' + (r.party || '');
+    document.getElementById('aps-m-sub').textContent = (r.packingType || '') + ' · made by ' + (r.madeByName || r.madeBy || '') + ' · ' + apsWhen_(r.madeAt)
+        + ((r.edits || []).length ? ' · edited ' + r.edits.length + 'x' : '') + (r.status === 'APPROVING' ? ' · being approved by ' + (r.claimedByName || '') : '');
+    document.getElementById('aps-m-body').innerHTML = h;
+    document.getElementById('aps-m-edit').style.display = can ? '' : 'none';
+    document.getElementById('aps-m-ok').style.display = can ? '' : 'none';
+    apsSyncBtns_();
+    document.getElementById('aps-modal').style.display = 'flex';
+    document.getElementById('aps-m-body').scrollTop = 0;
+}
+function apsTick(cb, key) {
+    APS.ticks[key] = !!cb.checked;
+    var lab = cb.closest('.aps-ck'); if (lab) lab.classList.toggle('on', cb.checked);
+    apsSyncBtns_();
+}
+function apsAllTicked_() { return APS.keys.length > 0 && APS.keys.every(function (k) { return APS.ticks[k]; }); }
+function apsSyncBtns_() {
+    var n = APS.keys.filter(function (k) { return APS.ticks[k]; }).length, all = apsAllTicked_();
+    document.getElementById('aps-m-prog').textContent = APS.canApprove
+        ? (all ? 'All ' + n + ' checked: Approve or Edit' : n + ' of ' + APS.keys.length + ' checked · tick every line to approve')
+        : 'Waiting for the Packing Incharge';
+    document.getElementById('aps-m-ok').disabled = !all;
+    document.getElementById('aps-m-edit').disabled = !all;
+}
+function apsClose() {
+    document.getElementById('aps-modal').style.display = 'none';
+    APS.cur = null; APS.ticks = {}; APS.keys = [];
+}
+document.addEventListener('keydown', function (ev) {
+    if (ev.key === 'Escape' && APS.cur && document.getElementById('aps-modal').style.display !== 'none' && !isSubmitting) apsClose();
+});
+
+// ── Edit: the request in the packing slip form; Update Request saves it back ──
+function apsEdit() {
+    var r = APS.cur; if (!r || !apsAllTicked_()) return;
+    if (typeof _editMode !== 'undefined' && _editMode) { alert('A packing slip is open in Edit Mode. Save or cancel that edit first.'); return; }
+    apsClose();
+    APS.edit = { id: r.id, reqNo: r.reqNo, ver: r.ver, madeByName: r.madeByName };
+    showPackingForm();
+    stopAutoSaveDraft();
+    populateFormFromDraft(JSON.parse(JSON.stringify(r.form || {})), null, 'PSREQ');
+    currentDraftId = null;
+    var slipField = document.getElementById('slip-sr-no');
+    if (slipField) { slipField.value = 'Request ' + r.reqNo; slipField.style.color = '#7c3aed'; }
+    var banner = document.getElementById('ps-edit-banner');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'ps-edit-banner';
+        banner.style.cssText = 'position:sticky;top:0;z-index:500;background:#7c3aed;color:#fff;text-align:center;padding:8px;font-weight:700;font-size:13px;';
+        var formEl = document.getElementById('packing-slip-form');
+        if (formEl) formEl.prepend(banner);
+    }
+    banner.innerHTML = 'EDITING REQUEST ' + escapeHtmlJs(r.reqNo) + ' of ' + escapeHtmlJs(r.madeByName || '') + ' | Update Request saves it; then tick the checklist again and Approve'
+        + ' <button type="button" onclick="apsCancelEdit()" style="background:#fff;color:#7c3aed;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;font-weight:700;margin-left:8px;">✕ Cancel Edit</button>';
+    banner.style.display = '';
+    apsPaintFinishBtn_();
+    showToast(r.reqNo + ' loaded for editing');
+}
+function apsCancelEdit() {
+    if (!confirm('Cancel editing ' + (APS.edit ? APS.edit.reqNo : 'the request') + '?\n\nThe changes made here are thrown away; the request stays as it was.')) return;
+    APS.edit = null;
+    try { sessionStorage.setItem('pk_open_aps', '1'); } catch (e) {}
+    clearFormCompletely();
+    location.reload();
+}
+
+// ── handleFinish › Submit to Packing Incharge / Update Request (form already checked, interface locked) ──
+async function apsSubmitFromForm_(btn) {
+    var mode = apsFormMode_();
+    setSavingStage('saving');
+    document.getElementById('savingTitle').textContent = mode === 'EDIT' ? 'Updating the request...' : 'Sending to the Packing Incharge...';
+    if (!navigator.onLine) {
+        setSavingStage('error', 'No internet: the request needs the connection. The form is kept; try again when online.');
+        unlockFinish(btn); return;
+    }
+    var form = buildFormPayload();
+    if (mode === 'SUBMIT' && !APS.submitKey) APS.submitKey = 'psr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+    var res;
+    try {
+        var { data, error } = await supabaseClient.rpc('ps_request_save', {
+            p_id: mode === 'EDIT' ? APS.edit.id : null, p_form: form, p_key: mode === 'SUBMIT' ? APS.submitKey : null
+        });
+        if (error) throw error;
+        if (!data || data.success === false) throw new Error((data && data.error) || 'Not saved');
+        res = data;
+    } catch (e) {
+        var m = apsErr_(e);
+        if (apsMissing_(m)) m = 'Submit to Packing Incharge needs sql/PACKING_PS_APPROVAL_MIGRATION.sql (Admin, in the Supabase SQL Editor).';
+        setSavingStage('error', m);
+        alert((mode === 'EDIT' ? 'The request was not updated:' : 'The slip was not sent to the Packing Incharge:') + '\n\n' + m);
+        unlockFinish(btn); return;
+    }
+    APS.submitKey = '';
+    if (mode === 'SUBMIT') {
+        // the draft this form came from is done with
+        if (currentDraftId) { try { await gasPost(withAuthPayload({ action: 'deleteDraft', draftId: currentDraftId })); } catch (e) {} }
+        try { clearLocalStorageDraft(); } catch (e) {}
+        setSavingStage('done', res.reqNo + ' sent to the Packing Incharge. The slip is saved and its PDF made when it is approved.');
+        document.getElementById('savingTitle').textContent = 'Submitted to Packing Incharge';
+        btn.textContent = 'Submitted — Refreshing...';
+        setTimeout(function () { clearFormCompletely(); location.reload(); }, 2200);
+    } else {
+        setSavingStage('done', res.reqNo + ' updated. Open it in Approve PS, tick the checklist again and Approve.');
+        document.getElementById('savingTitle').textContent = 'Request updated';
+        APS.edit = null;
+        try { sessionStorage.setItem('pk_open_aps', '1'); } catch (e) {}
+        setTimeout(function () { clearFormCompletely(); location.reload(); }, 1800);
+    }
+}
+
+// ── Approve: claim → save the slip → mark it approved → PDF ──
+async function apsApprove(force) {
+    var r = APS.cur; if (!r || !apsAllTicked_() || !APS.canApprove) return;
+    if (force !== true && !confirm('Approve ' + r.reqNo + ' (' + (r.party || '') + ')?\n\nThe packing slip is saved and its PDF made now.')) return;
+    if ((typeof _editMode !== 'undefined' && _editMode) || APS.edit) { alert('A slip / request is open for editing in the form. Finish or cancel it first.'); return; }
+    if (isSubmitting) return;
+    isSubmitting = true;
+    var okBtn = document.getElementById('aps-m-ok'); okBtn.disabled = true; okBtn.textContent = 'Approving...';
+    var claimed = false, req = null;
+    var fail = function (msg) {
+        setSavingStage('error', msg);
+        alert(msg);
+        isSubmitting = false; okBtn.textContent = 'Approve'; apsSyncBtns_();
+    };
+    try {
+        setSavingStage('locking');
+        var { data: c, error: cErr } = await supabaseClient.rpc('ps_request_claim', { p_id: r.id, p_ver: r.ver, p_force: force === true });
+        if (cErr) throw cErr;
+        if (!c || c.success === false) {
+            var code = (c && c.error) || '';
+            document.getElementById('savingOverlay').style.display = 'none';
+            isSubmitting = false; okBtn.textContent = 'Approve';
+            if (code === 'STALE') {
+                var go = window.IosDialog && IosDialog.choose
+                    ? await IosDialog.choose(r.reqNo + ' was being approved by ' + (c.by || 'someone') + ' at ' + apsWhen_(c.at) + ' and did not finish.\n\nCheck the Verify list first that no slip of ' + (r.party || '') + ' / ' + (r.tempo || '') + ' was saved then. Approve anyway?',
+                        [{ label: 'Approve anyway', value: 'yes', bold: true }, { label: 'Cancel', value: 'no', cancel: true }], { title: 'Approval not finished' })
+                    : (confirm(r.reqNo + ' was being approved by ' + (c.by || 'someone') + ' and did not finish. Approve anyway?') ? 'yes' : 'no');
+                if (go === 'yes') return apsApprove(true);
+                apsSyncBtns_(); return;
+            }
+            apsSyncBtns_();
+            if (code === 'CHANGED') { alert(r.reqNo + ' was changed since you opened it. It is read again: check it once more.'); apsClose(); APS.sig = ''; apsLoad(false); return; }
+            if (code === 'ALREADY_APPROVED') { alert(r.reqNo + ' is already approved' + (c.slipNo ? ' as slip ' + c.slipNo : '') + (c.by ? ' by ' + c.by : '') + '.'); apsClose(); APS.sig = ''; apsLoad(false); return; }
+            if (code === 'BUSY') { alert(r.reqNo + ' is being approved by ' + (c.by || 'someone') + ' right now.'); return; }
+            alert('Not approved: ' + code); return;
+        }
+        claimed = true; req = c;
+        var F = JSON.parse(JSON.stringify(req.form || r.form || {}));
+        F.dispatch = F.dispatch || {}; F.header = F.header || {};
+
+        // the tempo still needs its Dharam Kanta slip at the gate (PACKING DK SLIP), checked now
+        var tempo = String(F.dispatch.tempoNo || '').toUpperCase().trim();
+        if (tempo && vehCleanTempo(tempo) !== VEH_SELF) {
+            try {
+                var dk = await sarvPublic().rpc('pk_dk_slip_for_vehicle', { p_token: pkDkToken_(), p_vehicle: tempo });
+                if (dk.error) throw dk.error;
+                if (dk.data && dk.data.success !== false && !dk.data.slip) {
+                    throw { dkNone: true };
+                }
+            } catch (e) {
+                if (e && e.dkNone) { await apsRelease_(r.id); claimed = false; return fail('Tempo ' + tempo + ' has no open Dharam Kanta Tare slip at the gate any more.\n\nWeigh the empty vehicle at the gate first (or Edit the request to another tempo), then approve.'); }
+                var dm = apsErr_(e);
+                if (!/pk_dk_slip_for_vehicle|PGRST202|42883|Could not find the function|schema cache/i.test(dm)) { await apsRelease_(r.id); claimed = false; return fail('The Dharam Kanta slip of ' + tempo + ' could not be checked: ' + dm); }
+            }
+        }
+
+        // the slip itself, through the usual save (Prepared By / Supervisor = the maker)
+        setSavingStage('saving');
+        var payload = withAuthPayload(F);
+        payload.action = 'savePackingSlip';
+        payload.draftId = '';
+        payload.psReq = { id: r.id, preparedBy: req.madeBy || r.madeBy, preparedByName: req.madeByName || r.madeByName,
+                          supervisorName: req.madeByName || r.madeByName };
+        var result = await dispatchPost(payload);
+        if (!result || !result.success) {
+            await apsRelease_(r.id); claimed = false;
+            return fail('The packing slip was not saved, so ' + r.reqNo + ' is still pending:\n\n' + ((result && result.error) || 'Save failed'));
+        }
+        var slipNo = result.slipNo;
+
+        // approved: Checked By goes onto the slip
+        var done = null, doneErr = '';
+        for (var t = 0; t < 3 && !done; t++) {
+            try {
+                var { data: d, error: dErr } = await supabaseClient.rpc('ps_request_done', {
+                    p_id: r.id, p_slip_no: slipNo, p_packing_type: F.packingType || 'Billed',
+                    p_checklist: { keys: APS.keys.slice(), at: new Date().toISOString(), by: session && (session.fullName || session.username) }
+                });
+                if (dErr) throw dErr;
+                if (!d || d.success === false) throw new Error((d && d.error) || 'not marked');
+                done = d;
+            } catch (e) { doneErr = apsErr_(e); await new Promise(function (ok) { setTimeout(ok, 800); }); }
+        }
+        claimed = false;
+
+        // PDF: Prepared By = the maker (name + sign), Checked By = this approver
+        setSavingStage('pdf');
+        var fullBlob = null;
+        try {
+            var prepSig = await getSignatureForUsername(req.madeBy || r.madeBy);
+            var mySig = (session && session.signature === 'saved') ? await getMySignatureImage() : null;
+            var disp = Object.assign({}, F.dispatch, {
+                checkedBy: { name: (done && done.checkedBy) || (session && (session.fullName || session.username)) || '', sign: mySig, at: (done && done.checkedAt) || new Date().toISOString() }
+            });
+            fullBlob = await generatePackingSlipPdfClient(slipNo, F.header, F.items, disp, result.totalPcs, result.totalWeight, F.packingType,
+                SLIP_FULL_COPIES, req.madeByName || r.madeByName || '', prepSig);
+            downloadPdfBlob(fullBlob, buildSlipFileName(slipNo, F.header, disp));
+        } catch (genErr) {
+            console.error('[PS approval] PDF', genErr);
+            alert('Slip ' + slipNo + ' is saved, BUT the PDF could not be generated:\n\n' + (genErr.message || genErr) + '\n\nUse Fix PDFs to make it.');
+        }
+        if (fullBlob) {
+            try {
+                var fullUrl = await uploadPdfToStorage(fullBlob, (F.packingType || 'Billed') + '/' + slipNo + '_Full.pdf');
+                var { error: upErr } = await supabaseClient.from('packing_slips').update({ pdf_link: fullUrl, full_pdf_link: fullUrl })
+                    .eq('slip_no', slipNo).eq('packing_type', F.packingType || 'Billed');
+                if (upErr) console.error('packing_slips PDF link update failed:', upErr.message);
+            } catch (upE) { console.error('PDF Storage upload failed (PDF was still downloaded):', upE); }
+        }
+        if (result.otherWtError) alert('Slip ' + slipNo + ' is saved, BUT its Other Material Weight was not kept on the server:\n\n' + result.otherWtError);
+        if (!done) alert('Slip ' + slipNo + ' is saved and its PDF made, BUT ' + r.reqNo + ' could not be marked approved (' + doneErr + ').\n\nDo NOT approve it again: tell the Admin (request ' + r.reqNo + ' = slip ' + slipNo + ').');
+
+        setSavingStage('done', 'Slip ' + slipNo + ' saved from ' + r.reqNo + '. PDF downloaded.');
+        document.getElementById('savingTitle').textContent = 'Approved';
+        setTimeout(function () { document.getElementById('savingOverlay').style.display = 'none'; }, 1800);
+        isSubmitting = false; okBtn.textContent = 'Approve';
+        apsClose();
+        APS.sig = ''; apsLoad(false); apsBadge_();
+    } catch (e) {
+        if (claimed) await apsRelease_(r.id);
+        var m = apsErr_(e);
+        if (apsMissing_(m)) m = 'Approve PS needs sql/PACKING_PS_APPROVAL_MIGRATION.sql (Admin, in the Supabase SQL Editor).';
+        fail('Not approved: ' + m);
+    }
+}
+async function apsRelease_(id) {
+    try { await supabaseClient.rpc('ps_request_release', { p_id: id }); } catch (e) { console.warn('[PS approval] release', e); }
+}
+
 // ══════════════════════════════════════
 // TOTALS
 // ══════════════════════════════════════
@@ -6355,6 +7231,7 @@ function calculateTotals() {
     document.getElementById('bottom-total-qty').textContent = grandQty;
     document.getElementById('bottom-total-wt').textContent  = (Number(grandWt)||0).toFixed(2);
     document.getElementById('float-total-wt').textContent   = (Number(grandWt)||0).toFixed(2);
+    pkOwPaint(grandWt);   // Other Material + Net Wt (OTHER MATERIAL WEIGHT)
 
     const tbody = document.getElementById('summary-table-body');
     tbody.innerHTML = '';
@@ -6590,6 +7467,7 @@ async function handleFinish() {
     if (!validateItems()) {
         return;
     }
+    if (!pkOwValidate()) return;   // Other Material Weight rows: label + weight both, or neither
 
     // ═══ ALL VALID — now lock everything ═══
     isSubmitting = true;
@@ -6621,6 +7499,9 @@ async function handleFinish() {
         addItem();
         unlockFinish(btn); return;
     }
+
+    // ═══ PS APPROVAL: Data Entry = Submit to Packing Incharge; a request in Edit = Update Request ═══
+    if (apsFormMode_()) return apsSubmitFromForm_(btn);
 
     // ═══ SAVE ═══
     setSavingStage('saving');
@@ -6718,6 +7599,10 @@ async function handleFinish() {
     if (result.pdfBase64) {
         autoDownloadPdf(result.pdfBase64, result.pdfFileName);
     }
+    if (result.otherWtError) {
+        alert('Slip ' + (result.slipNo || '') + ' is saved and its PDF shows the Other Material Weight, BUT the server did not keep it:\n\n' +
+              result.otherWtError + '\n\nThe gate will not count it in the Loaded Weight. Run sql/PACKING_OTHER_WEIGHT_MIGRATION.sql (Admin), then Edit the slip and save it again.');
+    }
 
     btn.textContent = 'Saved — Refreshing...';
     var itemsCont = document.getElementById('items-container');
@@ -6773,6 +7658,7 @@ function clearFormCompletely() {
         document.getElementById('mob-no').value = '';
         var ic = document.getElementById('items-container');
         if (ic) ic.innerHTML = '';
+        pkOwSetRows([]);
         currentDraftId = '';
     } catch(e) { /* page is about to reload anyway */ }
 }
@@ -6781,7 +7667,7 @@ function clearFormCompletely() {
 function unlockFinish(btn) {
     isSubmitting = false;
     btn.disabled = false;
-    btn.textContent = 'Finish Packing Slip';
+    btn.textContent = apsFinishLabel_();
     btn.style.opacity = '1';
     document.getElementById('savingOverlay').style.display = 'none';
     lockEntireInterface(false);  // Re-enable all form fields
@@ -6965,6 +7851,7 @@ function updateDraftStatusBadge(state) {
 }
 
 async function autoSaveDraftSilent() {
+    if (typeof APS !== 'undefined' && APS && APS.edit) return;   // a request is edited (PS APPROVAL): it is saved by Update Request
     var formPayload = buildFormPayload();
     // Build clean payload for saving
     var cleanData = {
@@ -7193,7 +8080,8 @@ function buildFormPayload() {
             driverName:     document.getElementById('driver-name').value,
             driverMobile:   document.getElementById('driver-mobile').value,
             supervisorName:   slSupervisorName_(),
-            remarks:          (document.getElementById('slip-remarks') ? document.getElementById('slip-remarks').value : '')
+            remarks:          (document.getElementById('slip-remarks') ? document.getElementById('slip-remarks').value : ''),
+            otherWeights:     pkOwRead()   // [{label, weight}] (OTHER MATERIAL WEIGHT); drafts keep half-filled rows too
         }
     };
 }
@@ -7228,6 +8116,7 @@ function populateFormFromDraft(data, draftId, draftType) {
     document.getElementById('driver-mobile').value   = d.driverMobile   || '';
     document.getElementById('supervisor-name').value = d.supervisorName || '';   // hidden; kept only for an edited slip
     if (document.getElementById('slip-remarks')) document.getElementById('slip-remarks').value = d.remarks || '';
+    pkOwSetRows(d.otherWeights || []);   // Other Material Weight rows (OTHER MATERIAL WEIGHT)
 
     // Rebuild item blocks from draft items
     var container = document.getElementById('items-container');
@@ -8305,7 +9194,8 @@ async function loadSlipForEdit(packingType, slipNo) {
                 tempoNo: slipRow.tempo_no||'',
                 driverName: slipRow.driver_name||'',
                 driverMobile: slipRow.driver_mobile||'',
-                supervisorName: slipRow.supervisor_name || ''
+                supervisorName: slipRow.supervisor_name || '',
+                otherWeights: Array.isArray(slipRow.other_weights) ? slipRow.other_weights : []
             }
         };
 
@@ -11334,6 +12224,7 @@ function showSettingsPanel() {
     frLoadRatesEditor();   // Settings › Freight Rates
     lbLoadActEditor();     // Settings › Labour Rates & Columns
     slLoadRatesEditor();   // Settings › Labour Rates · Item Type wise (slip rows)
+    pkOwLoadEditor();      // Settings › Other Material Weight Labels
 }
 
 function renderWeightRules(loadedOk) {
@@ -14188,6 +15079,7 @@ async function tbBuild_(from, to, tempo) {
     });
     var slips = await tbSlips_(minT ? new Date(minT).toISOString() : null, maxT ? new Date(maxT + 1000).toISOString() : null, from, to);
     var items = slips.length ? await pkSelectIn('packing_slip_items', 'id, slip_id, quality, item_type, pcs, weight', 'slip_id', slips.map(function (x) { return x.id; })) : [];
+    await pkOwAttach_(slips);   // x._ow / x._owList: the slip's Other Material Weight (its own bill line)
     var rep = tbCompute(trips, slips, items, _fr.rates, { from: from, to: to, tempo: tempo });
     rep.meta = { from: from, to: to, tempo: tempo, at: new Date(), by: (session && (session.fullName || session.username)) || '', ratesFromDb: _fr.ratesFromDb };
     return rep;
@@ -14311,6 +15203,14 @@ function tbCompute(trips, slips, items, rates, opt) {
                              weight: Math.round(g.weight * 1000) / 1000, rate: rate, basis: r ? r.basis : '', freight: amt, note: note });
                 tot.packs += g.packs; tot.pcs += g.pcs; tot.weight += g.weight; tot.freight += amt;
             });
+            // OTHER MATERIAL WEIGHT of the slip: on the tempo, so in the Loaded Wt; no packs, no freight
+            var ow = Number(x._ow) || 0;
+            if (ow > 0) {
+                lines.push({ date: String(x.slip_date || '').slice(0, 10), slipNo: x.slip_no, slipId: x.id, party: x.party_name || '', ptype: x.packing_type || '',
+                             shiftTo: dt, quality: 'OTHER MATERIAL', itemType: (x._owList || []).map(function (o) { return frName(o.label); }).join(', ') || 'OTHER',
+                             packs: 0, pcs: 0, weight: Math.round(ow * 1000) / 1000, rate: null, basis: '', freight: 0, note: 'other material weight' });
+                tot.weight += ow;
+            }
         });
         tot.weight = Math.round(tot.weight * 1000) / 1000; tot.freight = Math.round(tot.freight * 100) / 100;
         var tare = Number(t.tare) || 0, expected = Math.round((tare + tot.weight) * 100) / 100;
@@ -16988,7 +17888,7 @@ async function dfuSaveSettings() {
 function hideAllPanels() {
     ['packing-slip-form','verification-panel','order-panel',
      'vehicle-panel','pack-orders-panel','pdf-repair-panel','reports-panel','settings-panel',
-     'party-master-panel','shifting-panel','freight-panel','labour-panel','dfu-panel','tempo-bill-panel'
+     'party-master-panel','shifting-panel','freight-panel','labour-panel','dfu-panel','tempo-bill-panel','approve-ps-panel'
     ].forEach(function(id) {
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -17018,8 +17918,11 @@ function updateNavButtons(activePanel) {
         'tempoBillNavBtn':  canVerify && activePanel !== 'tempo-bill-panel',
         'labourNavBtn':     canVerify && activePanel !== 'labour-panel',
         'dfuNavBtn':        canVerify && activePanel !== 'dfu-panel',
-        'settingsNavBtn':   (isAdmin || isMD) && activePanel !== 'settings-panel'   // MD: view only (SETTINGS VIEW ONLY)
+        'settingsNavBtn':   (isAdmin || isMD) && activePanel !== 'settings-panel',   // MD: view only (SETTINGS VIEW ONLY)
+        'apsNavBtn':        (canVerify || r === 'DATA_ENTRY') && activePanel !== 'approve-ps-panel'   // PS APPROVAL
     };
+    var apsLbl = document.getElementById('apsNavLbl');
+    if (apsLbl) apsLbl.textContent = r === 'DATA_ENTRY' ? 'My PS Requests' : 'Approve PS';
 
     Object.keys(btnMap).forEach(function(id) {
         var el = document.getElementById(id);

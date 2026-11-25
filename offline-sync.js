@@ -45,7 +45,7 @@
   /* RPC names that CHANGE something (or must be live, like logins / PIN
      checks). These are never answered from the cache. Anything else that
      is an RPC is treated as a read. */
-  var WRITE_RPC = /(save|delete|decide|done|undo|mark|^set_|_set_|_set$|patch|insert|update|create|login|logout|_ack|^ack|sync|claim|change|approve|reject|upload|import|lock|post_|grant|link|reset|signup|forgot|touch|activate|learn|add_|next_|verify|confirm|resolve|compute|_test|fetch_days|_done|_queue|send|register|notify|remind)/i;
+  var WRITE_RPC = /(save|delete|decide|done|undo|mark|^set_|_set_|_set$|patch|insert|update|create|login|logout|_ack|^ack|sync|claim|change|approve|reject|upload|import|lock|post_|grant|link|reset|signup|forgot|touch|activate|learn|add_|next_|verify|confirm|resolve|compute|_test|fetch_days|_done|_queue|send|register|notify|remind|cancel|release)/i;
 
   /* ── IndexedDB (tiny promise wrapper) ───────────────────────────────── */
   var dbP = null;

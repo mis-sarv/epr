@@ -4709,7 +4709,9 @@
                         + '<td class="px-1 py-1 font-bold text-gray-800">' + esc(x.party || '-') + (x.qualities ? '<span class="block text-[10px] font-semibold text-gray-500">' + esc(x.qualities) + '</span>' : '') + '</td>'
                         + '<td class="px-1 py-1 font-semibold text-gray-700">' + esc(x.dispatchTo || '-') + '</td>'
                         + '<td class="px-1 py-1 text-right font-bold">' + kg(x.packs) + '</td><td class="px-1 py-1 text-right font-bold">' + kg(x.pcs) + '</td>'
-                        + '<td class="px-1 py-1 text-right font-extrabold whitespace-nowrap">' + kg(x.weight) + ' Kg</td></tr>').join('')
+                        // weight = the slip's Net Weight: Sr. rows + Other Material Weight (carton / poly ...), PACKING_OTHER_WEIGHT_MIGRATION.sql
+                        + '<td class="px-1 py-1 text-right font-extrabold whitespace-nowrap">' + kg(x.weight) + ' Kg'
+                        + (Number(x.otherWeight) > 0 ? '<span class="block text-[9.5px] font-semibold text-gray-500">incl. Other Material ' + kg(x.otherWeight) + ' Kg</span>' : '') + '</td></tr>').join('')
                     + '<tr class="border-t-2 border-indigo-300 bg-white/70"><td class="px-1 py-1.5 font-extrabold text-gray-900" colspan="3">Grand Total · ' + rows.length + ' slip(s)</td>'
                     + '<td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.packs) + '</td><td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.pcs) + '</td>'
                     + '<td class="px-1 py-1.5 text-right font-extrabold text-indigo-700 whitespace-nowrap">' + kg(d.packWeight != null ? d.packWeight : d.weight) + ' Kg</td></tr></tbody></table></div>';
