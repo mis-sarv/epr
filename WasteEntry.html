@@ -32,14 +32,21 @@
           one phone is on every phone.
         * Delete (in a bill's view) = soft, by its maker or an Admin, with a reason and the user's own PIN.
         * Started without internet: the last login of the last 7 days is used, bills wait in the queue.
-        * (2026-11-25) SLIP NO is the server series WS-0001, WS-0002 ...: the box only SHOWS the next number
+        * (2026-11-25) SLIP NO is the server series of the bill's UNIT and FINANCIAL YEAR (April-March of its date):
+          Unit 1 = WS-1/2026-27/0001 ..., Unit 2 = WS-2/2026-27/0001 ..., each counting on its own. The box only SHOWS the next number
           (ws_next_no); ws_sale_save takes the real one when the bill reaches the server (so offline bills and two
           phones never clash). The success message offers Print with the final number.
+        * PAYMENT (2026-11-25): Submit asks PENDING / PAID / UDHAR (payModal, askPay); UDHAR needs the expected
+          payment date. PAID prints on the bill slip. Pending and Udhar bills are in the PAYMENT tab (sub-tabs Pending /
+          Udhar, paintPayments): Follow-up = a new expected date + what the party said (ws_pay_save FOLLOWUP, history in
+          waste_pay_log, History button), Mark Paid (ws_pay_save PAID). On the expected date the server gives the
+          follow-up employees of the bill's Unit (Task Manager › Score Master › Waste Sale Udhar follow-up) an EA task.
         * BUTTON RIGHTS (2026-11-25, set in ERP › Admin Panel › Tab Visibility "Waste Sale › Buttons" and Users ›
           Manage access): WS_ENTRY Data Entry, WS_MASTER Add New Party / Item, WS_REPORT Reports (all users' bills;
-          without it only the user's own), WS_DELETE Delete a bill (Admin by default). The SERVER decides them (ws_perm_)
+          without it only the user's own), WS_DELETE Delete a bill (Admin by default), WS_PAYMENT the Payment tab. The SERVER decides them (ws_perm_)
           and sends them with every answer (me.rights, applyRights); the page only hides what the server would refuse.
-        * VEHICLE (Dharam Kanta): a vehicle weighed empty at Gate-1 / Gate-2 and not dispatched yet (ws_dk_vehicles,
+        * VEHICLE (Dharam Kanta), DEPENDENT ON THE UNIT: Unit 1 lists only Gate-1 vehicles, Unit 2 only Gate-2 (the server
+          refuses another gate's slip, DK_WRONG_GATE): a vehicle weighed empty and not dispatched yet (ws_dk_vehicles,
           the gates' own "waiting for its dispatch" rule), or NO VEHICLE on purpose; compulsory choice. The gate's
           Out From Dispatch then shows this bill's waste on that Dharam Kanta slip instead of packing slips
           (gate_dk_loaded_ → waste, section 6D of gate_2.html), and its KG counts as loaded weight.
@@ -80,6 +87,7 @@
             <div class="flex w-full sm:w-auto gap-1 sm:gap-2 mt-4 bg-indigo-800/50 p-1 rounded-lg">
                 <button onclick="switchTab('entry')" id="tabEntry" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md bg-white text-indigo-700 font-semibold shadow-sm text-sm transition-all">Data Entry</button>
                 <button onclick="switchTab('report')" id="tabReport" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-indigo-100 hover:text-white font-medium text-sm transition-all">Reports</button>
+                <button onclick="switchTab('pay')" id="tabPay" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-indigo-100 hover:text-white font-medium text-sm transition-all">Payment <span id="tabPayCount" class="hidden ml-1 text-[11px] font-bold bg-amber-400 text-slate-900 rounded-full px-1.5"></span></button>
             </div>
         </div>
     </header>
@@ -298,6 +306,27 @@
         </div>
         </div> <!-- End Entry View -->
 
+        <!-- PAYMENT VIEW: bills not paid yet, sub-tabs Pending / Udhar -->
+        <div id="paymentView" class="hidden fade-in space-y-4 sm:space-y-6">
+            <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200 w-full overflow-hidden">
+                <h3 class="text-lg font-semibold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <i data-ic="money" class="text-indigo-500"></i> Payment follow-up
+                    <span id="payTotal" class="ml-auto text-xs font-normal text-slate-500"></span>
+                </h3>
+                <div class="flex flex-wrap items-center gap-2 mb-4">
+                    <div class="flex gap-1 bg-slate-100 p-1 rounded-lg">
+                        <button id="paySubPENDING" onclick="paySub('PENDING')" class="px-4 py-1.5 rounded-md text-sm font-semibold">Pending</button>
+                        <button id="paySubUDHAR" onclick="paySub('UDHAR')" class="px-4 py-1.5 rounded-md text-sm font-semibold">Udhar</button>
+                    </div>
+                    <select id="payUnit" onchange="paintPayments()" aria-label="Unit" class="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white">
+                        <option value="">Both units</option><option value="Unit 1">Unit 1</option><option value="Unit 2">Unit 2</option>
+                    </select>
+                    <input type="text" id="payQ" oninput="paintPayments()" autocomplete="off" placeholder="Search slip / party / vehicle" class="flex-1 min-w-[160px] px-3 py-2 border border-slate-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div id="payList" class="space-y-2"></div>
+            </section>
+        </div>
+
         <!-- REPORTS VIEW -->
         <div id="reportsView" class="hidden fade-in space-y-4 sm:space-y-6">
             <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200 w-full overflow-hidden">
@@ -388,6 +417,7 @@
                             <div class="col-span-1 text-right"><p class="text-slate-500 text-xs uppercase mb-1">Unit</p><p id="viewUnit" class="font-bold text-slate-800"></p></div>
                             <div class="col-span-2"><p class="text-slate-500 text-xs uppercase mb-1">Party Name</p><p id="viewParty" class="font-bold text-lg sm:text-xl text-slate-800 break-words"></p></div>
                             <div class="col-span-2"><p class="text-slate-500 text-xs uppercase mb-1">Vehicle (Dharam Kanta)</p><p id="viewVehicle" class="font-semibold text-slate-800 break-words"></p></div>
+                            <div class="col-span-2"><p class="text-slate-500 text-xs uppercase mb-1">Payment</p><p id="viewPay" class="font-semibold break-words"></p></div>
                             <div class="col-span-2 mt-1"><p class="text-slate-500 text-xs uppercase mb-1">Remarks</p><p id="viewRemarks" class="font-medium text-slate-700 break-words"></p></div>
                             <div class="col-span-2 text-xs text-slate-500" id="viewBy"></div>
                         </div>
@@ -423,6 +453,9 @@
                             </button>
                             <button id="viewPhotoBtn" onclick="viewPhoto(VIEW_BILL)" class="w-full sm:w-auto bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base">
                                 <i data-ic="image"></i> View Gate Pass Photo
+                            </button>
+                            <button id="viewHistBtn" onclick="payHistory(VIEW_BILL)" class="w-full sm:w-auto bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base">
+                                <i data-ic="list"></i> Payment History
                             </button>
                             <button id="viewDeleteBtn" onclick="openDelete(VIEW_BILL)" class="hidden w-full sm:w-auto bg-white hover:bg-red-50 border border-red-200 text-red-600 font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base">
                                 <i data-ic="trash"></i> Delete Bill
@@ -473,6 +506,61 @@
             <div class="flex items-center justify-center bg-slate-100 rounded-lg min-h-[200px]">
                 <img id="photoFull" class="max-w-full max-h-[75vh] object-contain" src="data:," alt="Gate Pass Photo" data-no-lazy>
             </div>
+        </div>
+
+        <!-- Submit Bill: how is it paid? -->
+        <div id="payModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
+            <h3 class="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2"><i data-ic="money" class="text-indigo-500"></i> Payment of this bill</h3>
+            <p id="payInfo" class="text-sm text-slate-500 mb-4"></p>
+            <div class="grid grid-cols-3 gap-2">
+                <button onclick="payPick('PENDING')" class="py-3 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-900 font-bold text-sm">PENDING</button>
+                <button onclick="payPick('PAID')" class="py-3 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold text-sm">PAID</button>
+                <button onclick="payPick('UDHAR')" class="py-3 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-900 font-bold text-sm">UDHAR</button>
+            </div>
+            <div id="payUdharBox" class="hidden mt-4 p-3 rounded-lg bg-rose-50 border border-rose-200">
+                <label for="payDue" class="block text-sm font-medium text-slate-700 mb-1">Paying expected date *</label>
+                <input type="date" id="payDue" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-3 bg-white outline-none focus:ring-2 focus:ring-rose-400">
+                <button onclick="payUdharOk()" class="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-sm">Save as UDHAR</button>
+            </div>
+            <div class="flex justify-end mt-4">
+                <button onclick="payPick(null)" class="text-slate-500 hover:text-slate-700 font-medium py-2 px-4 transition-colors">Cancel</button>
+            </div>
+        </div>
+
+        <!-- Payment tab: follow-up (new expected date + remark) -->
+        <div id="followModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
+            <h3 id="fuTitle" class="text-lg font-semibold text-slate-800 mb-1">Follow-up</h3>
+            <p id="fuInfo" class="text-sm text-slate-500 mb-4"></p>
+            <label for="fuDate" class="block text-sm font-medium text-slate-700 mb-1">New paying expected date *</label>
+            <input type="date" id="fuDate" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-4 outline-none focus:ring-2 focus:ring-indigo-500">
+            <label for="fuRemark" class="block text-sm font-medium text-slate-700 mb-1">What did the party say? *</label>
+            <input type="text" id="fuRemark" maxlength="300" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-6 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Will pay on Monday by bank">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-700 font-medium py-2 px-4 transition-colors">Cancel</button>
+                <button id="fuGo" onclick="followSave()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Save Follow-up</button>
+            </div>
+        </div>
+
+        <!-- Payment tab: mark paid -->
+        <div id="paidModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
+            <h3 class="text-lg font-semibold text-slate-800 mb-1">Mark as PAID</h3>
+            <p id="paidInfo" class="text-sm text-slate-500 mb-4"></p>
+            <label for="paidRemark" class="block text-sm font-medium text-slate-700 mb-1">How was it paid? (optional)</label>
+            <input type="text" id="paidRemark" maxlength="300" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-6 outline-none focus:ring-2 focus:ring-indigo-500" placeholder="e.g. Bank RTGS + cash to accounts">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-700 font-medium py-2 px-4 transition-colors">Cancel</button>
+                <button id="paidGo" onclick="paidSave()" class="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Mark Paid</button>
+            </div>
+        </div>
+
+        <!-- Payment history of one bill -->
+        <div id="histModal" class="bg-white rounded-xl shadow-xl p-5 w-full max-w-lg hidden">
+            <div class="flex items-center justify-between mb-2">
+                <h3 class="text-base font-semibold text-slate-800">Payment History</h3>
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-800 p-1" aria-label="Close"><i data-ic="x"></i></button>
+            </div>
+            <p id="histInfo" class="text-sm text-slate-500 mb-3"></p>
+            <div id="histList" class="space-y-2 max-h-[60vh] overflow-y-auto text-sm"></div>
         </div>
 
         <div id="deleteModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
@@ -603,7 +691,9 @@
             BAD_NUMBER:'A number is not valid', BAD_PENDING:'Previous Pending is not valid', NAME_REQUIRED:'Write the name first',
             REASON_REQUIRED:'Write the reason first', WRONG_PIN:'Incorrect PIN', NOT_ALLOWED:'Not allowed for you: ask the Admin to switch this Waste Sale button ON (Admin Panel)',
             NOT_FOUND:'This bill is not there any more', BAD_DATA:'The data is not valid', SESSION_CHECK_FAILED:'The login could not be checked. Try again.',
-            VEHICLE_REQUIRED:'Choose the vehicle (or NO VEHICLE)', DK_NOT_OPEN:'This Dharam Kanta slip is not waiting for dispatch any more (vehicle already dispatched, or slip deleted). Choose the vehicle again'
+            VEHICLE_REQUIRED:'Choose the vehicle (or NO VEHICLE)', BAD_PAY_STATUS:'Choose PENDING, PAID or UDHAR', PAY_DATE_REQUIRED:'Choose the paying expected date',
+            BAD_PAY_DATE:'The expected date must be from the bill date (a follow-up: from today) and within a year', REMARK_REQUIRED:'Write what the party said',
+            ALREADY_PAID:'This bill is already PAID', DK_WRONG_GATE:'This vehicle is at the other gate: Unit 1 takes only Gate-1 vehicles, Unit 2 only Gate-2', DK_NOT_OPEN:'This Dharam Kanta slip is not waiting for dispatch any more (vehicle already dispatched, or slip deleted). Choose the vehicle again'
         };
         async function rpc(fn, args) {
             let r;
@@ -627,8 +717,9 @@
 
         // --- Modals & toast ---
         // act = { label, fn }: one extra button (e.g. Print after a save)
+        const MODAL_IDS = ['msgBox', 'partyModal', 'itemModal', 'photoModal', 'deleteModal', 'payModal', 'followModal', 'paidModal', 'histModal'];
         function showMessage(text, act) {
-            ['partyModal', 'itemModal', 'photoModal', 'deleteModal'].forEach(id => $(id).classList.add('hidden'));
+            MODAL_IDS.forEach(id => $(id).classList.add('hidden'));
             $('msgText').textContent = text;
             const b = $('msgAct');
             b.classList.toggle('hidden', !act);
@@ -638,6 +729,7 @@
             $('msgBox').classList.remove('hidden');
         }
         window.openModal = function (modalId) {
+            MODAL_IDS.forEach(id => { if (id !== modalId) $(id).classList.add('hidden'); });
             $('modalOverlay').classList.remove('hidden');
             $(modalId).classList.remove('hidden');
             if (modalId === 'partyModal') $('newPartyInput').focus();
@@ -645,7 +737,8 @@
         };
         window.closeModals = function () {
             $('modalOverlay').classList.add('hidden');
-            ['msgBox', 'partyModal', 'itemModal', 'photoModal', 'deleteModal'].forEach(id => $(id).classList.add('hidden'));
+            MODAL_IDS.forEach(id => $(id).classList.add('hidden'));
+            if (PAY_ASK) { const r = PAY_ASK; PAY_ASK = null; r(null); }   // the Submit popup closed without a choice
             $('newPartyInput').value = ''; $('newItemInput').value = ''; $('delPin').value = ''; $('delReason').value = '';
             $('photoFull').src = 'data:,';
         };
@@ -714,27 +807,41 @@
             const t = r.inTime ? dmy(String(r.inTime).slice(0, 10)).slice(0, 5) + ' ' + hms(r.inTime).slice(0, 5) : '';
             return [r.vehicle, r.slip, gateName(r.gate), r.tare ? 'Tare ' + r.tare + ' Kg' : '', t, r.waste ? r.waste + ' waste bill' + (r.waste > 1 ? 's' : '') : ''].filter(Boolean).join(' · ');
         }
-        // The chosen unit's gate first, newest first inside each gate. A choice no longer in the list stays (marked).
+        /* DEPENDENT ON THE UNIT: Unit 1 = Gate-1 Dharam Kanta vehicles only, Unit 2 = Gate-2 only, newest first. No Unit yet =
+           the box is locked ("Choose the Unit first"). A choice of the other gate is dropped when the Unit changes; a choice
+           no longer waiting stays in the box, marked, so the user sees why Submit refuses it. */
         function paintVehicles() {
-            const sel = $('dkVehicle'), cur = sel.value || sel.dataset.want || '';
-            const g = unitGate($('unit').value);
-            const rows = VEH.rows.slice().sort((a, b) => ((b.gate === g) - (a.gate === g)) || String(b.inTime).localeCompare(String(a.inTime)));
-            let h = '<option value="">Choose the vehicle weighed at the Dharam Kanta</option>';
+            const sel = $('dkVehicle'), g = unitGate($('unit').value);
+            let cur = sel.value || sel.dataset.want || '';
+            delete sel.dataset.want;
+            if (!g) {
+                sel.innerHTML = '<option value="">Choose the Unit first</option>';
+                sel.disabled = true;
+                if (cur) sel.dataset.want = cur;        // kept for when the Unit comes back (a draft / Load into form)
+                vehHint(); return;
+            }
+            sel.disabled = false;
+            const was = vehOf(cur);
+            if (was && was.gate !== g) { toast('Vehicle ' + was.vehicle + ' is at ' + gateName(was.gate) + ': choose a ' + gateName(g) + ' vehicle for ' + $('unit').value); cur = ''; }
+            const rows = VEH.rows.filter(r => r.gate === g).sort((a, b) => String(b.inTime).localeCompare(String(a.inTime)));
+            let h = '<option value="">' + (rows.length ? 'Choose the ' + gateName(g) + ' vehicle (' + rows.length + ')' : 'No ' + gateName(g) + ' vehicle waiting') + '</option>';
             h += rows.map(r => '<option value="' + esc(r.slip) + '">' + esc(vehLabel(r)) + '</option>').join('');
             if (cur && cur !== NO_VEH && !vehOf(cur)) h += '<option value="' + esc(cur) + '">' + esc(cur + ' · not waiting for dispatch any more') + '</option>';
             h += '<option value="' + NO_VEH + '">NO VEHICLE (no Dharam Kanta)</option>';
             sel.innerHTML = h;
             sel.value = cur;
-            delete sel.dataset.want;
             vehHint();
         }
         function vehHint() {
             const v = $('dkVehicle').value, r = vehOf(v), h = $('dkHint');
             if (v && v !== NO_VEH && !r && VEH.at) { h.className = 'text-xs text-red-600 mt-1'; h.textContent = 'Slip ' + v + ' is not waiting for dispatch any more (dispatched or deleted). Choose the vehicle again.'; return; }
             h.className = 'text-xs text-slate-500 mt-1';
-            h.textContent = v === NO_VEH ? 'No vehicle: the gate does not see this bill on any Dharam Kanta slip.'
+            const g = unitGate($('unit').value), n = VEH.rows.filter(x => x.gate === g).length;
+            h.textContent = !g ? 'Unit 1 shows the Gate-1 Dharam Kanta vehicles, Unit 2 the Gate-2 ones.'
+                : v === NO_VEH ? 'No vehicle: the gate does not see this bill on any Dharam Kanta slip.'
                 : r ? 'The gate sees this bill on ' + r.slip + ' (' + gateName(r.gate) + ') when vehicle ' + r.vehicle + ' goes out.'
-                : (VEH.rows.length ? VEH.rows.length + ' vehicle(s) weighed empty at Gate-1 / Gate-2 and not dispatched yet.' : 'No vehicle is waiting at the Dharam Kanta now (last 15 days). Weigh it empty at the gate first, or choose NO VEHICLE.');
+                : (n ? n + ' vehicle(s) weighed empty at the ' + gateName(g) + ' Dharam Kanta and not dispatched yet.'
+                     : 'No vehicle is waiting at the ' + gateName(g) + ' Dharam Kanta now (last 15 days). Weigh it empty at ' + gateName(g) + ' first, or choose NO VEHICLE.');
         }
         async function loadVehicles(manual) {
             if (!can('WS_ENTRY')) return;
@@ -752,14 +859,29 @@
             if (manual) toast(VEH.rows.length + ' vehicle(s) at the Dharam Kanta');
         }
         $('dkVehicle').addEventListener('change', () => { vehHint(); saveDraft(); });
-        $('unit').addEventListener('change', () => { if (document.activeElement !== $('dkVehicle')) paintVehicles(); });
+        $('unit').addEventListener('change', () => { paintVehicles(); paintNextNo(); saveDraft(); loadNextNo(); });
+        $('date').addEventListener('change', () => { clearTimeout(loadNextNo.t); loadNextNo.t = setTimeout(loadNextNo, 300); });
 
         // ── SLIP NO (server series): the box shows the next number, Submit never sends one ──
-        let NEXT_NO = '';
-        async function loadNextNo() {
-            try { NEXT_NO = (await rpc('ws_next_no')).no || ''; } catch (e) { if (e.missing) setNoMig(true); }
+        // NEXT = the server's next number of BOTH units for the form's date ({ 'Unit 1': 'WS-1/2026-27/0001', ... }).
+        let NEXT = { units: {}, fy: '' }, NEXT_NO = '';
+        function paintNextNo() {
+            const u = $('unit').value;
+            NEXT_NO = (u && NEXT.units && NEXT.units[u]) || '';
             $('slipNo').value = NEXT_NO;
-            $('slipHint').textContent = NEXT_NO ? 'Next number of the series; the server gives the final one on Submit.' : 'Given by the server on Submit.';
+            $('slipHint').textContent = !u ? 'Choose the Unit: Unit 1 = WS-1/' + (NEXT.fy || 'FY') + '/…, Unit 2 = WS-2/' + (NEXT.fy || 'FY') + '/…'
+                : NEXT_NO ? 'Next number of ' + u + ' (FY ' + (NEXT.fy || '') + '); the server gives the final one on Submit.'
+                : 'Given by the server on Submit.';
+        }
+        async function loadNextNo() {
+            try {
+                const d = await rpc('ws_next_no', { p_unit: $('unit').value || null, p_date: $('date').value || null });
+                NEXT = { units: d.units || {}, fy: d.fy || '' };
+            } catch (e) {
+                // a server still on the first version knows only ws_next_no(p_token) (one series): show that one
+                if (e.missing) { try { const o = await rpc('ws_next_no'); NEXT = { units: { 'Unit 1': o.no, 'Unit 2': o.no }, fy: '' }; } catch (e2) { if (e2.missing) setNoMig(true); } }
+            }
+            paintNextNo();
         }
 
         function validateAgainstMaster(inputId, masterArray, errorMessage) {
@@ -941,7 +1063,7 @@
             const live = Object.values(CACHE.rows).filter(r => !r.deletedAt);
             const ids = new Set(live.map(r => r.id));
             const waiting = outbox().filter(b => !ids.has(b.id)).map(b => Object.assign({ id: b.id, slipNo: b.slipNo || '', date: b.date, unit: b.unit,
-                vehicle: b.vehicle || '', dkSlip: b.dkSlip || '', dkGate: b.dkGate || '', noVehicle: !!b.noVehicle,
+                vehicle: b.vehicle || '', dkSlip: b.dkSlip || '', dkGate: b.dkGate || '', noVehicle: !!b.noVehicle, payStatus: b.payStatus || '', payDue: b.payDue || '',
                 party: b.party, remarks: b.remarks, items: b.items, hasPhoto: true, byName: ME ? ME.name : '', local: true, err: b.err || '' }, b.totals));
             return live.concat(waiting);
         }
@@ -973,6 +1095,7 @@
             const dkv = $('dkVehicle').value, veh = vehOf(dkv);
             if (!dkv) return showMessage("Choose the Vehicle weighed at the Dharam Kanta (or NO VEHICLE).");
             if (dkv !== NO_VEH && !veh && VEH.at) return showMessage('Dharam Kanta slip ' + dkv + ' is not waiting for dispatch any more. Choose the vehicle again.');
+            if (veh && veh.gate !== unitGate(unit)) return showMessage('Vehicle ' + veh.vehicle + ' is at ' + gateName(veh.gate) + '. ' + unit + ' takes only ' + gateName(unitGate(unit)) + ' vehicles.');
             if (!date) return showMessage("Please enter a valid Date.");
             if (!validateAgainstMaster('partyName', masterParties, PARTY_MSG)) return;
             const bad = items.find(i => !masterItems.some(m => m.toUpperCase() === String(i.name).toUpperCase()));
@@ -980,10 +1103,13 @@
             if (parseFloat(summary.prevPending.value) < 0) return showMessage("Previous Pending cannot be less than 0.");
 
             const pending = parseFloat(summary.prevPending.value) || 0;
+            // PENDING / PAID / UDHAR (+ the expected date for UDHAR): the popup answers, Cancel = not submitted
+            const pay = await askPay(billTotals(items, pending).total, date);
+            if (!pay) return;
             const lines = items.map(i => Object.assign(cleanLine(i), lineOf(i)));
             const bill = { id: uuid(), slipNo: '', date, unit,
                 dkSlip: dkv === NO_VEH ? '' : dkv, noVehicle: dkv === NO_VEH, vehicle: veh ? veh.vehicle : '', dkGate: veh ? veh.gate : '', party: $('partyName').value, remarks: remarks.toUpperCase(), pending,
-                items: lines, totals: billTotals(items, pending), photo: gatePassBase64, queuedAt: Date.now() };
+                items: lines, totals: billTotals(items, pending), photo: gatePassBase64, queuedAt: Date.now(), payStatus: pay.status, payDue: pay.due || '' };
             const box = outbox(); box.push(bill);
             if (!setOutbox(box)) return showMessage("This phone's storage is full, the bill was NOT saved. Upload / discard the waiting bills, then try again.");
 
@@ -993,7 +1119,7 @@
             btn.disabled = true; btn.classList.add('opacity-70'); btn.innerHTML = ico('spin', 'spin') + ' Saving to server...';
             try { await syncNow(); } finally { btn.disabled = false; btn.classList.remove('opacity-70'); btn.innerHTML = html; }
             const still = outbox().find(b => b.id === bill.id), saved = CACHE.rows[bill.id];
-            if (!still && saved) showMessage('Success! Slip No ' + saved.slipNo + ' is saved on the server with the Gate Pass photo.' + (saved.dkSlip ? '\nThe gate sees it on Dharam Kanta slip ' + saved.dkSlip + ' (' + saved.vehicle + ').' : ''),
+            if (!still && saved) showMessage('Success! Slip No ' + saved.slipNo + ' is saved on the server with the Gate Pass photo.\nPayment: ' + payTxt(saved) + (saved.dkSlip ? '\nThe gate sees it on Dharam Kanta slip ' + saved.dkSlip + ' (' + saved.vehicle + ').' : ''),
                 { label: 'Print Bill', fn: () => printBill(saved, 'Invoice') });
             else if (still && still.err) showMessage('The bill was NOT accepted by the server:\n' + still.err + '\n\nIt is under "Waiting bills": Load into form, correct it and Submit again.');
             else showMessage('No internet: the bill is kept on this phone and gets its Slip No when it uploads by itself (when the internet is back).');
@@ -1033,6 +1159,7 @@
                 calculations: calculateItemData(l.qty, l.baseRate, l.gstRate, l.gstPercent) }));
             setPhoto(b.photo || null);
             setVehicle(b.noVehicle ? NO_VEH : (b.dkSlip || ''));
+            loadNextNo();
             setOutbox(outbox().filter(x => x.id !== id));
             renderItemsTable(); updateSummary(); saveDraft(); paintOutbox(); paintSync();
             switchTab('entry'); window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1068,7 +1195,7 @@
                 if (b.err) continue;   // refused: waits for the user (Load into form / Retry / Discard)
                 try {
                     const d = await rpc('ws_sale_save', {
-                        p_sale: { id: b.id, slipNo: b.slipNo || '', dkSlip: b.dkSlip || '', noVehicle: !!b.noVehicle, date: b.date, unit: b.unit, party: b.party, remarks: b.remarks, pending: b.pending, items: b.items.map(cleanLine) },
+                        p_sale: { id: b.id, slipNo: b.slipNo || '', dkSlip: b.dkSlip || '', noVehicle: !!b.noVehicle, payStatus: b.payStatus || 'PENDING', payDue: b.payDue || null, date: b.date, unit: b.unit, party: b.party, remarks: b.remarks, pending: b.pending, items: b.items.map(cleanLine) },
                         p_photo: b.photo });
                     setOutbox(outbox().filter(x => x.id !== b.id));
                     if (d.row) mergeRows([d.row]);
@@ -1116,6 +1243,9 @@
         // Data from the server changed: redraw the report / bill on screen, unless the user is typing in it.
         function onDataChanged() {
             loadNextNo(); loadVehicles();
+            payBadge();
+            if (!$('paymentView').classList.contains('hidden') && $('modalOverlay').classList.contains('hidden')
+                && !(document.activeElement && $('paymentView').contains(document.activeElement) && document.activeElement.tagName === 'INPUT')) paintPayments();
             if ($('reportsView').classList.contains('hidden')) return;
             const f = document.activeElement;
             if (f && $('reportsView').contains(f) && /INPUT|SELECT/.test(f.tagName)) return;
@@ -1180,6 +1310,7 @@
                         <div class="text-right">
                             <p><span class="font-bold">Date:</span> ${esc(dmy(b.date))}</p>
                             <p><span class="font-bold">Unit:</span> ${esc(b.unit || 'N/A')}</p>
+                            ${b.payStatus ? `<p class="mt-1"><span class="font-bold">Payment:</span> <span class="${b.payStatus === 'PAID' ? 'font-extrabold text-base border-2 border-black px-2 rounded' : 'font-bold'}">${esc(payTxt(b))}</span></p>` : ''}
                         </div>
                     </div>
                     <table class="w-full mb-6 text-left border-collapse">
@@ -1207,7 +1338,7 @@
 
         // --- Clear form ---
         function clearForm() {
-            $('partyName').value = ''; $('unit').value = ''; $('date').value = localToday(); $('remarks').value = ''; setVehicle('');
+            $('partyName').value = ''; $('unit').value = ''; $('date').value = localToday(); $('remarks').value = ''; setVehicle(''); paintNextNo();
             $('itemName').value = ''; $('itemType').value = 'KG';
             inputs.qty.value = ''; inputs.baseRate.value = ''; inputs.gstRate.value = ''; inputs.gstPercent.value = '0';
             summary.prevPending.value = '0';
@@ -1228,10 +1359,14 @@
             const on = 'flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md bg-white text-indigo-700 font-semibold shadow-sm text-sm transition-all';
             const off = 'flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-indigo-100 hover:text-white font-medium text-sm transition-all';
             $('entryView').classList.toggle('hidden', tab !== 'entry');
-            $('reportsView').classList.toggle('hidden', tab === 'entry');
-            $('tabEntry').className = tab === 'entry' ? on : off;
-            $('tabReport').className = tab === 'entry' ? off : on;
-            if (tab !== 'entry') {
+            $('reportsView').classList.toggle('hidden', tab !== 'report');
+            $('paymentView').classList.toggle('hidden', tab !== 'pay');
+            // className resets "hidden" too: keep the rights' choice (applyRights)
+            [['tabEntry', 'entry', 'WS_ENTRY'], ['tabReport', 'report', 'WS_REPORT'], ['tabPay', 'pay', 'WS_PAYMENT']].forEach(([id, t, k]) => {
+                $(id).className = (tab === t ? on : off) + (can(k) ? '' : ' hidden');
+            });
+            if (tab === 'pay') paintPayments();
+            if (tab === 'report') {
                 if (!$('filterFrom').value) $('filterFrom').value = localToday();
                 if (!$('filterTo').value) $('filterTo').value = localToday();
                 if (!$('filterMonth').value) $('filterMonth').value = localToday().slice(0, 7);
@@ -1351,6 +1486,9 @@
             $('slipBillView').classList.remove('hidden');
             $('viewSlipNo').textContent = slipTxt(b);
             $('viewVehicle').textContent = vehTxt(b);
+            $('viewPay').textContent = b.payStatus ? payTxt(b) + (b.payRemark ? ' · ' + b.payRemark : '') : '-';
+            $('viewPay').className = 'font-semibold break-words ' + (PAY_CLS[b.payStatus] || 'text-slate-700');
+            $('viewHistBtn').classList.toggle('hidden', !!b.local || !b.payStatus);
             $('viewDate').textContent = dmy(b.date);
             $('viewUnit').textContent = b.unit;
             $('viewParty').textContent = b.party;
@@ -1386,10 +1524,164 @@
                 try { photo = (await rpc('ws_photo_get', { p_id: b.id })).photo; }
                 catch (e) { return showMessage(e.net ? 'No internet: the photo can be opened when the phone is online.' : ('Photo not found: ' + e.message)); }
             }
-            ['msgBox', 'partyModal', 'itemModal', 'deleteModal'].forEach(id => $(id).classList.add('hidden'));
+            MODAL_IDS.forEach(id => $(id).classList.add('hidden'));
             $('photoFull').src = photo;
             $('modalOverlay').classList.remove('hidden');
             $('photoModal').classList.remove('hidden');
+        };
+
+        // ── PAYMENT (PENDING / PAID / UDHAR, see the note at the top) ─────────────────────────────────────
+        const PAY_CLS = { PAID: 'text-green-700', PENDING: 'text-amber-700', UDHAR: 'text-rose-700' };
+        const addDaysIso = (iso, n) => { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); const p = x => String(x).padStart(2, '0'); return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()); };
+        const dayDiff = (a, b) => Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000);
+        // "PAID", "PENDING", "UDHAR · expected 28-11-2026"
+        const payTxt = b => !b || !b.payStatus ? '' : b.payStatus === 'UDHAR' ? 'UDHAR · expected ' + dmy(b.payDue) : b.payStatus;
+
+        // The Submit popup. Resolves { status, due } or null (Cancel / closed).
+        let PAY_ASK = null, PAY_BILL_DATE = '';
+        function askPay(total, billDate) {
+            PAY_BILL_DATE = billDate || localToday();
+            $('payInfo').textContent = 'Total Payable ' + formatMoney(total) + '. How is this bill paid?';
+            $('payUdharBox').classList.add('hidden');
+            $('payDue').value = '';
+            openModal('payModal');
+            return new Promise(res => { PAY_ASK = res; });
+        }
+        window.payPick = function (st) {
+            if (st === 'UDHAR') {   // the date first
+                $('payUdharBox').classList.remove('hidden');
+                if (!$('payDue').value) $('payDue').value = addDaysIso(localToday() > PAY_BILL_DATE ? localToday() : PAY_BILL_DATE, 7);
+                $('payDue').focus();
+                return;
+            }
+            const r = PAY_ASK; PAY_ASK = null;
+            closeModals();
+            if (r) r(st ? { status: st } : null);
+        };
+        window.payUdharOk = function () {
+            const d = $('payDue').value;
+            if (!d) return toast('Choose the paying expected date');
+            if (d < PAY_BILL_DATE) return toast('The expected date cannot be before the bill date');
+            if (dayDiff(PAY_BILL_DATE, d) > 366) return toast('The expected date must be within a year');
+            const r = PAY_ASK; PAY_ASK = null;
+            closeModals();
+            if (r) r({ status: 'UDHAR', due: d });
+        };
+
+        // Payment tab: sub-tab, list, badge
+        let PAY_SUB = 'UDHAR';
+        window.paySub = function (st) { PAY_SUB = st; paintPayments(); };
+        function payBills(st) { return allBills().filter(b => b.payStatus === st); }
+        function payBadge() {
+            const n = payBills('PENDING').length + payBills('UDHAR').length, t = $('tabPayCount');
+            t.textContent = n; t.classList.toggle('hidden', !n);
+        }
+        function dueState(b) {
+            if (b.payStatus !== 'UDHAR' || !b.payDue) return null;
+            const d = dayDiff(localToday(), b.payDue);
+            return d < 0 ? { cls: 'bg-red-100 text-red-800', txt: 'Overdue ' + (-d) + ' day' + (d === -1 ? '' : 's') }
+                 : d === 0 ? { cls: 'bg-amber-100 text-amber-900', txt: 'Due today' }
+                 : { cls: 'bg-slate-100 text-slate-700', txt: 'In ' + d + ' day' + (d === 1 ? '' : 's') };
+        }
+        let PAY_LIST = [];
+        function paintPayments() {
+            payBadge();
+            ['PENDING', 'UDHAR'].forEach(st => {
+                const n = payBills(st).length;
+                $('paySub' + st).className = 'px-4 py-1.5 rounded-md text-sm font-semibold ' + (PAY_SUB === st ? 'bg-white shadow-sm ' + PAY_CLS[st] : 'text-slate-500');
+                $('paySub' + st).textContent = (st === 'PENDING' ? 'Pending' : 'Udhar') + ' (' + n + ')';
+            });
+            const unit = $('payUnit').value, q = $('payQ').value.trim().toUpperCase().split(/\s+/).filter(Boolean);
+            let list = payBills(PAY_SUB).filter(b => !unit || b.unit === unit)
+                .filter(b => { const hay = [b.slipNo, b.party, b.vehicle, b.dkSlip, b.unit, b.payRemark].join(' ').toUpperCase(); return q.every(w => hay.indexOf(w) >= 0); });
+            list.sort((a, b) => PAY_SUB === 'UDHAR' ? String(a.payDue).localeCompare(String(b.payDue)) : String(b.date).localeCompare(String(a.date)));
+            PAY_LIST = list;
+            const sum = list.reduce((a, b) => a + (Number(b.total) || 0), 0);
+            $('payTotal').textContent = list.length + ' bill' + (list.length === 1 ? '' : 's') + ' · ' + formatMoney(sum);
+            $('payList').innerHTML = list.length ? list.map((b, i) => {
+                const ds = dueState(b), act = !b.local && can('WS_PAYMENT');
+                return `<div class="border ${ds && ds.txt.indexOf('Overdue') === 0 ? 'border-red-200' : 'border-slate-200'} rounded-xl p-3 flex flex-wrap items-start gap-3">
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="font-bold text-slate-800">${esc(slipTxt(b))}</span>
+                            <span class="text-xs text-slate-500">${esc(dmy(b.date))} · ${esc(b.unit)}</span>
+                            ${ds ? '<span class="text-[11px] font-bold px-2 py-0.5 rounded-full ' + ds.cls + '">' + esc(ds.txt) + '</span>' : ''}
+                            ${b.local ? '<span class="pill pill-wait">Waiting to upload</span>' : ''}
+                        </div>
+                        <div class="font-semibold text-slate-800">${esc(b.party)} <span class="font-bold text-indigo-700">${formatMoney(b.total)}</span>
+                            <span class="text-xs font-normal text-slate-500">(Bank ${formatMoney(b.bank)} · Cash ${formatMoney(b.cash)})</span></div>
+                        ${b.payStatus === 'UDHAR' ? '<div class="text-sm text-rose-700 font-semibold">Expected ' + esc(dmy(b.payDue)) + (b.followCount ? ' · ' + b.followCount + ' follow-up' + (b.followCount > 1 ? 's' : '') : '') + '</div>' : ''}
+                        ${b.payRemark ? '<div class="text-xs text-slate-600">Last: ' + esc(b.payRemark) + (b.payUpdatedBy ? ' (' + esc(b.payUpdatedBy) + (b.payUpdatedAt ? ', ' + esc(dmy(String(b.payUpdatedAt).slice(0, 10))) : '') + ')' : '') + '</div>' : ''}
+                        ${b.dkSlip ? '<div class="text-xs text-slate-500">' + esc(vehTxt(b)) + '</div>' : ''}
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        ${act ? `<button onclick="openFollow(PAY_LIST[${i}])" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold">${b.payStatus === 'UDHAR' ? 'Follow-up' : 'Set Udhar date'}</button>
+                        <button onclick="openPaid(PAY_LIST[${i}])" class="px-3 py-1.5 rounded-md bg-green-600 text-white text-xs font-semibold">Mark Paid</button>
+                        <button onclick="payHistory(PAY_LIST[${i}])" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">History</button>` : ''}
+                        <button onclick="payView(PAY_LIST[${i}])" class="px-3 py-1.5 rounded-md bg-white border border-slate-300 text-slate-700 text-xs font-semibold">View</button>
+                    </div>
+                </div>`;
+            }).join('') : '<div class="py-10 text-center text-slate-400 italic text-sm">No ' + (PAY_SUB === 'UDHAR' ? 'Udhar' : 'Pending') + ' bill' + (unit || q.length ? ' for this filter' : '') + '.</div>';
+        }
+        window.payView = function (b) { if (!can('WS_REPORT')) return payHistory(b); switchTab('report'); showBill(b); };
+
+        let PAY_BILL = null;
+        window.openFollow = function (b) {
+            PAY_BILL = b;
+            $('fuTitle').textContent = b.payStatus === 'UDHAR' ? 'Follow-up' : 'Set Udhar date';
+            $('fuInfo').textContent = slipTxt(b) + ' · ' + b.party + ' · ' + formatMoney(b.total) + (b.payStatus === 'UDHAR' ? ' · expected ' + dmy(b.payDue) : ' · now PENDING');
+            $('fuDate').value = addDaysIso(localToday(), 3); $('fuRemark').value = '';
+            openModal('followModal'); $('fuRemark').focus();
+        };
+        window.followSave = async function () {
+            const d = $('fuDate').value, r = $('fuRemark').value.trim();
+            if (!d) return toast('Choose the new expected date');
+            if (d < localToday()) return toast('The new date cannot be before today');
+            if (r.length < 3) return toast('Write what the party said');
+            await paySave(PAY_BILL, 'FOLLOWUP', d, r, 'fuGo', 'Follow-up saved: expected ' + dmy(d));
+        };
+        window.openPaid = function (b) {
+            PAY_BILL = b;
+            $('paidInfo').textContent = slipTxt(b) + ' · ' + b.party + ' · ' + formatMoney(b.total) + '. Its follow-up tasks stop.';
+            $('paidRemark').value = '';
+            openModal('paidModal'); $('paidRemark').focus();
+        };
+        window.paidSave = async function () { await paySave(PAY_BILL, 'PAID', null, $('paidRemark').value.trim(), 'paidGo', 'Marked PAID'); };
+        async function paySave(b, action, due, remark, btnId, okMsg) {
+            if (!b) return;
+            const btn = $(btnId); btn.disabled = true;
+            try {
+                const d = await rpc('ws_pay_save', { p_id: b.id, p_action: action, p_due: due, p_remark: remark || null });
+                if (d.row) mergeRows([d.row]);
+                lsSet(LS_CACHE, CACHE);
+                closeModals();
+                paintPayments();
+                if (VIEW_BILL && VIEW_BILL.id === b.id && d.row) showBill(d.row);
+                toast(slipTxt(b) + ': ' + okMsg);
+            } catch (e) {
+                if (e.code === 'ALREADY_PAID' && e.data && e.data.row) { mergeRows([e.data.row]); closeModals(); paintPayments(); }
+                toast(e.net ? 'No internet: try again when the phone is online' : e.missing ? 'The server is not updated yet (run sql/WASTE_SALE_MIGRATION.sql)' : ('Not saved: ' + e.message));
+            } finally { btn.disabled = false; }
+        }
+        const PAY_ACT = { CREATE: 'Bill saved', FOLLOWUP: 'Follow-up', PAID: 'Paid' };
+        window.payHistory = async function (b) {
+            if (!b || b.local) return;
+            $('histInfo').textContent = slipTxt(b) + ' · ' + b.party + ' · ' + formatMoney(b.total) + ' · now ' + payTxt(b);
+            $('histList').innerHTML = '<div class="text-slate-400">Loading…</div>';
+            openModal('histModal');
+            try {
+                const d = await rpc('ws_pay_log_get', { p_id: b.id });
+                const rows = (d.rows || []).map(l => `<div class="border border-slate-200 rounded-lg px-3 py-2">
+                        <div class="flex flex-wrap justify-between gap-2"><b class="${PAY_CLS[l.status] || 'text-slate-800'}">${esc(PAY_ACT[l.action] || l.action)} · ${esc(l.status || '')}${l.due ? ' · expected ' + esc(dmy(l.due)) : ''}</b>
+                        <span class="text-xs text-slate-500">${esc(dmy(String(l.at).slice(0, 10)))} ${esc(hms(l.at).slice(0, 5))} · ${esc(l.by || '-')}</span></div>
+                        ${l.prevDue && l.prevDue !== l.due ? '<div class="text-xs text-slate-500">Was expected ' + esc(dmy(l.prevDue)) + '</div>' : ''}
+                        ${l.remark ? '<div class="text-slate-700">' + esc(l.remark) + '</div>' : ''}</div>`);
+                const tasks = (d.tasks || []).map(t => `<div class="text-xs ${t.status === 'ERROR' ? 'text-red-700' : 'text-slate-600'}">Task Manager EA task ${t.taskNo ? '#' + esc(t.taskNo) + ' ' : ''}to ${esc(t.emp)} for ${esc(dmy(t.due))}${t.status === 'ERROR' ? ' · not given: ' + esc(t.note || '') : ''}</div>`);
+                $('histList').innerHTML = (rows.join('') || '<div class="text-slate-400">No history yet.</div>')
+                    + (tasks.length ? '<div class="pt-2 mt-2 border-t border-slate-200 space-y-1"><div class="text-[11px] font-bold uppercase text-slate-500">Follow-up tasks</div>' + tasks.join('') + '</div>' : '');
+            } catch (e) {
+                $('histList').innerHTML = '<div class="text-red-700">' + esc(e.net ? 'No internet.' : e.missing ? 'The server is not updated yet (run sql/WASTE_SALE_MIGRATION.sql).' : e.message) + '</div>';
+            }
         };
 
         let DEL_BILL = null;
@@ -1450,7 +1742,7 @@
                 ME = { id: String(u.id), name: u.name || '', emp: u.emp_code || '', admin,
                        // last rights the server gave this login (offline start / until the first answer), else the defaults
                        rights: (c0 && c0.rights && c0.user && String(c0.user.id) === String(u.id)) ? c0.rights
-                             : { WS_ENTRY: true, WS_MASTER: true, WS_REPORT: true, WS_DELETE: admin } };
+                             : { WS_ENTRY: true, WS_MASTER: true, WS_REPORT: true, WS_DELETE: admin, WS_PAYMENT: true } };
                 start();
             } catch (e) {
                 console.error('Waste Sale boot failed', e);
@@ -1471,16 +1763,18 @@
             if (JSON.stringify(ME.rights) !== was) applyRights();
         }
         function applyRights() {
-            const E = can('WS_ENTRY'), R = can('WS_REPORT');
+            const E = can('WS_ENTRY'), R = can('WS_REPORT'), P = can('WS_PAYMENT');
             $('tabEntry').classList.toggle('hidden', !E);
             $('tabReport').classList.toggle('hidden', !R);
+            $('tabPay').classList.toggle('hidden', !P);
             $('btnAddParty').classList.toggle('hidden', !E || !can('WS_MASTER'));
             $('btnAddItem').classList.toggle('hidden', !E || !can('WS_MASTER'));
-            $('noRightsBar').classList.toggle('hidden', E || R);
-            document.querySelector('main').classList.toggle('hidden', !E && !R);
-            // stay on the tab the user may use
-            if (!E && !$('entryView').classList.contains('hidden')) { if (R) switchTab('report'); else $('entryView').classList.add('hidden'); }
-            if (!R && !$('reportsView').classList.contains('hidden')) { if (E) switchTab('entry'); else $('reportsView').classList.add('hidden'); }
+            $('noRightsBar').classList.toggle('hidden', E || R || P);
+            document.querySelector('main').classList.toggle('hidden', !E && !R && !P);
+            // stay on a tab the user may use
+            const cur = !$('entryView').classList.contains('hidden') ? 'entry' : !$('reportsView').classList.contains('hidden') ? 'report' : !$('paymentView').classList.contains('hidden') ? 'pay' : '';
+            const okTab = { entry: E, report: R, pay: P };
+            if (!cur || !okTab[cur]) { const t = E ? 'entry' : R ? 'report' : P ? 'pay' : ''; if (t) switchTab(t); else ['entryView', 'reportsView', 'paymentView'].forEach(id => $(id).classList.add('hidden')); }
             if (VIEW_BILL && !$('slipBillView').classList.contains('hidden')) showBill(VIEW_BILL);
             if (E && !VEH.at) loadVehicles();
         }

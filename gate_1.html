@@ -828,6 +828,8 @@
                 </div>
 
                 <form id="formOutwardDispatch" class="space-y-4">
+                    <!-- EDIT OF A REJECTED SLIP (section 6E): which slip, who rejected it and why, the compulsory correction remark -->
+                    <div id="dispEditBar" class="hidden rounded-2xl border-2 border-amber-300 bg-amber-50 px-3.5 py-3 space-y-2"></div>
                     <!-- Outward No Input -->
                     <div>
                         <div class="flex items-center justify-between mb-1">
@@ -2733,7 +2735,10 @@
                     // the 5-second pull may bring the host's decision before the approval poll does: say so here too
                     const was = visAprStatus(local);
                     // a row changed here and not sent yet keeps its own data, but the approval belongs to the server
-                    if (local._dirty) { if (data.visApproval) { local.visApproval = data.visApproval; local.photoKeys = x.photoKeys || local.photoKeys; changed = true; visDecisionNote(local, was); } return; }
+                    // (6E: not for a slip edited here and not sent yet: the server's decision is still the old REJECTED one)
+                    if (local._dirty) { if (data.visApproval && !((Number(local.resubmitNo) || 0) > (Number(data.resubmitNo) || 0))) { local.visApproval = data.visApproval; local.photoKeys = x.photoKeys || local.photoKeys; changed = true; visDecisionNote(local, was); } return; }
+                    // the server sends visApproval only while a request exists: a rejected one removed by an edit (6E) leaves here too
+                    if (!data.visApproval) delete local.visApproval;
                     Object.assign(local, data); local.photoKeys = x.photoKeys || []; local._syncedAt = x.updatedAt; changed = true;
                     visDecisionNote(local, was);
                 } else {
@@ -3290,6 +3295,7 @@
         // 4. VIEW SWITCHING & NAVIGATION
         // ==========================================
         function showView(viewId) {
+            if (viewId !== 'outwardDispatchForm' && typeof DISP_EDIT !== 'undefined' && DISP_EDIT) DISP_EDIT = null;   // 6E: leaving the form ends an edit
             const views = [
                 'view-actionMenu',
                 'view-inwardMenu',
@@ -3967,10 +3973,21 @@
             tempPhotos.dispDk = null;
             dispScanSet(null);   // a slip read by Scan QR is set again by gateScanPackingSlip after this
 
-            gateFillNo('OUT', 'dispOutwardNo', 'dispOutwardNoHint');
-            generatedPackingSlipNo = '';
-            document.getElementById('autoPackingSlipNo').textContent = '…';
-            gateNextNo('PKG', false).then(r => { generatedPackingSlipNo = r.no; document.getElementById('autoPackingSlipNo').textContent = r.no; });
+            const ed = dispEditEntry_();
+            document.getElementById('dispDkSlipNo').disabled = !!ed;   // an edit stays on its own Dharam Kanta slip
+            if (ed) {
+                // 6E EDIT: the SAME Outward No. and Packing Slip No. (no new number is taken)
+                document.getElementById('dispOutwardNo').value = ed.outwardNo || '';
+                document.getElementById('dispOutwardNoHint').textContent = 'Same number (edit)';
+                generatedPackingSlipNo = ed.id;
+                document.getElementById('autoPackingSlipNo').textContent = ed.id;
+            } else {
+                gateFillNo('OUT', 'dispOutwardNo', 'dispOutwardNoHint');
+                generatedPackingSlipNo = '';
+                document.getElementById('autoPackingSlipNo').textContent = '…';
+                gateNextNo('PKG', false).then(r => { if (dispEditEntry_()) return; generatedPackingSlipNo = r.no; document.getElementById('autoPackingSlipNo').textContent = r.no; });
+            }
+            dispEditPaint();
 
             const badge = document.getElementById('dispDkMatchBadge');
             badge.textContent = 'Enter Slip to Fetch Tare';
@@ -4140,6 +4157,9 @@
             const needAp = apGroup !== 'NONE' && !DISP_NOMIG;
             // GROUP APPROVAL: the request goes to every member of the group (no host), see dispApPaint
             const apUser = null, apMembers = needAp ? dispMembers(apGroup) : [];
+
+            // 6E: the edit of a REJECTED slip changes that entry, takes no new number
+            if (dispEditEntry_()) { dispEditSave({ form: this, gross, tare, netNum, wb, apRule, apGroup, needAp, apMembers }); return; }
 
             // Everything checked: now TAKE the Outward No. and the Packing Slip No.
             gateSaving.DISP = true;
@@ -4416,13 +4436,15 @@
                 const canDone = st === 'APPROVED' || ((VIS_NOMIG || DISP_NOMIG) && !a);
                 const acts = `<button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>`
                     + (canDone ? `<button onclick="dispDoneAsk('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-circle-check"></i> Done (PIN)</button>` : '')
-                    + (st === 'REJECTED' ? `<button onclick="dispDoneAsk('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-gray-700 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-xmark"></i> Close (PIN)</button>` : '');
+                    + (st === 'REJECTED' ? `<button onclick="dispEditAsk('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-amber-500 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-pen-to-square"></i> Edit (PIN)</button>`
+                        + `<button onclick="dispDoneAsk('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-gray-700 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-xmark"></i> Close (PIN)</button>` : '');
                 return `<div class="rounded-2xl border ${st === 'APPROVED' ? 'border-emerald-300 bg-emerald-50/40' : st === 'REJECTED' ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
                     <div class="min-w-0">
                         <div class="flex items-center justify-between gap-2"><span class="text-[13px] font-extrabold text-gray-900 truncate">${esc(e.name)}</span>${badge}</div>
                         <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.outwardNo || '')} · ${esc(e.vehicle)} · ${esc(formatDateTimeShort(e.inTime))}</p>
                         <p class="text-[11px] font-bold text-gray-700 truncate">${e.wtDiff != null ? 'Diff ' + (e.wtDiff > 0 ? '+' : '') + esc(Number(e.wtDiff).toFixed(2)) + ' Kg · ' : ''}Net ${esc(Number(e.netWeight || 0).toFixed(2))} Kg${e.slipTotalWt != null ? ' · Slips ' + esc(Number(e.slipTotalWt).toFixed(2)) + ' Kg' : ''} · ${esc(DISP_GROUPS[e.apGroup] || e.apGroup || '-')}${e.approver ? ' · ' + esc(e.approver) : ''}</p>
                         <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
+                        ${(e.editLog || []).length ? `<p class="text-[10.5px] font-bold text-amber-700 mt-0.5"><i class="fa-solid fa-pen-to-square"></i> Edited ${e.editLog.length}x · last ${esc(formatDateTimeShort(e.editLog[e.editLog.length - 1].at))} by ${esc(e.editLog[e.editLog.length - 1].by || '-')}: ${esc(e.editLog[e.editLog.length - 1].remark || '')}</p>` : ''}
                     </div>
                     <div class="flex gap-2">${acts}</div>
                 </div>`;
@@ -4444,6 +4466,111 @@
             renderDispatchPending(); dspRefreshUi();
             showIosBanner(st === 'REJECTED' ? `Slip ${id} closed (rejected)` : `Slip ${id} Done: the vehicle can go out`, st === 'REJECTED' ? 'info' : 'success');
         }
+        // ==========================================
+        // 6E. EDIT A REJECTED DISPATCH SLIP (sql/GATE_DISPATCH_EDIT_REJECTED_MIGRATION.sql)
+        // ==========================================
+        /* Pending Approval › a REJECTED slip › Edit (the guard's own PIN): the Dispatch Packing Slip form opens on that
+           SAME entry (same Packing Slip / Outward No., same Dharam Kanta slip, locked) with its Gross and photos; the
+           guard corrects the Gross / photos (the loaded packing slips / waste are read again, so a slip added in the ERP
+           since counts now), writes a compulsory correction remark and saves. The entry gets resubmitNo + 1 and an
+           editLog line; the server (trigger gate_disp_resubmit) then drops the rejected request and runs its own
+           approval rule again: a new request to the group, or none when the corrected difference needs no approval.
+           Offline: saved on the phone, sent with the next sync. Close (PIN) stays for a slip that is not corrected. */
+        var DISP_EDIT = null;   // { uid, auth } while the form edits a rejected slip
+        // a function declaration (not const): initDispatchPackingSlipForm, higher up, calls it
+        function dispEditEntry_() { return (typeof DISP_EDIT !== 'undefined' && DISP_EDIT && gateEntries.find(x => x.uid === DISP_EDIT.uid)) || null; }
+        function dispEditAsk(id) {
+            const e = gateEntries.find(x => x.id === id && isDispatch(x));
+            if (!e || !isDspPending(e) || visAprStatus(e) !== 'REJECTED') { showIosBanner('Only a rejected slip can be edited', 'error'); return; }
+            gatePinAsk('Edit · PIN Required', 'edit the rejected slip ' + id + ' and send it for approval again', auth => dispEditOpen(e.uid, auth));
+        }
+        async function dispEditOpen(uid, auth) {
+            const e = gateEntries.find(x => x.uid === uid); if (!e) return;
+            const dk = (/DK: ([^ |]+)/.exec(e.host || '') || [])[1] || '';
+            if (!dk || !getAllDharamKantaSlips().some(d => d.id === dk)) { showIosBanner('The Dharam Kanta slip of ' + e.id + ' is not on this phone (deleted?): it cannot be edited, Close it instead', 'error'); return; }
+            try { await gateEnsurePhotos(e); } catch (x) { }      // the saved photos, when this phone dropped them
+            DISP_EDIT = { uid, auth };
+            showView('outwardDispatchForm');                        // → initDispatchPackingSlipForm in edit mode
+            selectDispatchDkChip(dk);                               // Tare, vehicle and the loaded slips of that trip
+            const g = document.getElementById('dispGrossWeight');
+            g.value = Number(e.grossWeight) ? Number(e.grossWeight).toFixed(2) : '';
+            calcDispatchNetWeight();
+            [['vehiclePhoto', 'dispVehicle', 'dispVehiclePreviewImg', 'dispVehiclePreviewBox', 'dispVehiclePhotoLabel'],
+             ['billPhoto', 'dispDk', 'dispDkPreviewImg', 'dispDkPreviewBox', 'dispDkPhotoLabel']].forEach(([field, key, img, box, label]) => {
+                const p = photoOf(e, field); if (!p) return;
+                tempPhotos[key] = p;
+                const i = document.getElementById(img); i.src = p; i.classList.remove('hidden');
+                document.getElementById(box).classList.remove('hidden');
+                document.getElementById(label).textContent = 'Saved photo · tap to take a new one';
+            });
+            dispEditPaint();
+            showIosBanner('Editing ' + e.id + ': correct it and press Save & Send Again', 'info');
+        }
+        function dispEditPaint() {
+            const bar = document.getElementById('dispEditBar'), btn = document.getElementById('dispSubmitBtn'), e = dispEditEntry_();
+            if (!bar) return;
+            if (!e) {
+                bar.classList.add('hidden'); bar.innerHTML = '';
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Verify and Submit';
+                return;
+            }
+            const a = visApr(e) || {};
+            const keep = (document.getElementById('dispEditRemark') || {}).value || '';
+            bar.classList.remove('hidden');
+            bar.innerHTML = '<p class="text-xs font-extrabold text-amber-900"><i class="fa-solid fa-pen-to-square"></i> Editing rejected slip ' + esc(e.id) + ' · ' + esc(e.outwardNo || '') + '</p>'
+                + '<p class="text-[11px] font-bold text-red-700">Rejected by ' + esc(a.decidedBy || a.host || '-') + (a.decidedAt ? ' · ' + esc(formatDateTimeShort(a.decidedAt)) : '') + ': ' + esc(a.remarks || '-') + '</p>'
+                + '<p class="text-[10.5px] font-semibold text-gray-600">Was: Gross ' + esc(Number(e.grossWeight || 0).toFixed(2)) + ' Kg · Net ' + esc(Number(e.netWeight || 0).toFixed(2)) + ' Kg'
+                    + (e.wtDiff != null ? ' · Diff ' + (e.wtDiff > 0 ? '+' : '') + esc(Number(e.wtDiff).toFixed(2)) + ' Kg' : '') + '. Same numbers and Dharam Kanta slip; the approval is asked again on Save.</p>'
+                + '<label class="block text-[10px] font-extrabold text-amber-800 uppercase mt-1">What was corrected? *</label>'
+                + '<input type="text" id="dispEditRemark" maxlength="300" autocomplete="off" placeholder="e.g. Gross weighed again / missing packing slip added" class="w-full px-3 py-2.5 bg-white border border-amber-300 rounded-xl text-xs font-semibold outline-none">'
+                + '<button type="button" onclick="dispEditCancel()" class="ios-btn text-[11px] font-extrabold text-gray-600 underline">Cancel the edit</button>';
+            document.getElementById('dispEditRemark').value = keep;
+            if (btn) btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Save &amp; Send Again';
+        }
+        function dispEditCancel() { DISP_EDIT = null; showView('dispatchPending'); }
+        function dispEditSave(o) {
+            const e = dispEditEntry_(); if (!e) return;
+            const remark = ((document.getElementById('dispEditRemark') || {}).value || '').trim();
+            if (remark.length < 3) { showIosBanner('Write what was corrected (at least 3 letters)', 'error'); const r = document.getElementById('dispEditRemark'); if (r) r.focus(); return; }
+            if (visAprStatus(e) !== 'REJECTED') { showIosBanner('Slip ' + e.id + ' is not rejected any more (' + (visAprStatus(e) || 'no request') + '): nothing to send again', 'error'); return; }
+            const a = visApr(e) || {}, wb = o.wb, gross = o.gross, tare = o.tare, net = o.netNum.toFixed(2);
+            const dk = (/DK: ([^ |]+)/.exec(e.host || '') || [])[1] || (matchedDispatchDkEntry && matchedDispatchDkEntry.id) || '';
+            const waste = DISP_LOAD.state === 'ok' && DISP_LOAD.data && (DISP_LOAD.data.waste || []).length
+                ? DISP_LOAD.data.waste.map(b => ({ slipNo: b.slipNo, party: b.party, kg: b.kg, items: (b.items || []).map(i => i.name + ' ' + i.qty + ' ' + (i.uom || '')).join(', ') })) : undefined;
+            const log = { at: new Date().toISOString(), by: DISP_EDIT.auth.by, empCode: DISP_EDIT.auth.empCode, via: DISP_EDIT.auth.via, remark,
+                rejectedBy: a.decidedBy || a.host || '', rejectReason: a.remarks || '', rejectedAt: a.decidedAt || null,
+                prevGross: e.grossWeight, gross: +gross.toFixed(2), prevDiff: e.wtDiff == null ? null : e.wtDiff, diff: wb.diff };
+            Object.assign(e, {
+                grossWeight: +gross.toFixed(2), tareWeight: +tare.toFixed(2), netWeight: o.netNum,
+                slipTotalWt: wb.loaded, wtDiff: wb.diff, apBasis: wb.kind, loadedSlips: wb.slips, wasteBills: waste,
+                approvalStatus: o.needAp ? 'APPROVAL PENDING' : 'NOT NEEDED', needApproval: o.needAp,
+                apGroup: o.apGroup, apRule: { from: o.apRule.from, to: o.apRule.to == null ? null : o.apRule.to, approver: o.apGroup },
+                approver: o.needAp ? 'Any ' + (DISP_GROUPS[o.apGroup] || o.apGroup) : '', apMembers: o.apMembers.map(u => u.name),
+                host: 'Outward: ' + e.outwardNo + ' | DK: ' + dk + ' | Tare: ' + tare.toFixed(2) + ' Kg'
+                    + (e.erpSlipNo ? ' | Slip: ' + e.erpSlipNo : '') + (waste ? ' | Waste: ' + waste.map(b => b.slipNo).join(', ') : ''),
+                purpose: (wb.kind === 'DIFF' ? 'Diff: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net ' + net + ' − Slips ' + wb.loaded.toFixed(2) + ' Kg) · ' : '')
+                    + 'Net Wt: ' + net + ' Kg · Gross: ' + gross.toFixed(2) + ' Kg · Tare: ' + tare.toFixed(2) + ' Kg • '
+                    + (o.needAp ? 'APPROVAL: ' + (DISP_GROUPS[o.apGroup] || o.apGroup) : 'No approval needed') + ' · EDITED: ' + remark,
+                vehiclePhoto: tempPhotos.dispVehicle, billPhoto: tempPhotos.dispDk, dkPhotoField: 'billPhoto',
+                // the server reopens the request when this number changes (trigger gate_disp_resubmit)
+                resubmitNo: (Number(e.resubmitNo) || 0) + 1, editRemark: remark, editedAt: log.at, editedBy: log.by,
+                editLog: (e.editLog || []).concat([log])
+            });
+            if (waste) e.name = 'Waste: ' + waste.map(b => b.party).filter(Boolean).join(', ') + ' · ' + e.vehicle;
+            delete e.visApproval;   // the rejected decision is gone; the server's answer comes with the next sync
+            touchEntry(e, true);
+            o.form.reset();
+            tempPhotos.dispVehicle = null; tempPhotos.dispDk = null; matchedDispatchDkEntry = null;
+            DISP_EDIT = null; dispScanSet(null); dispLoadFor(''); dispApPaint(); dispEditPaint();
+            const msg = 'Slip ' + e.id + ' corrected and saved\n\n'
+                + (wb.kind === 'DIFF' ? 'Difference: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net Wt ' + net + ' − Loaded ' + wb.loaded.toFixed(2) + ' Kg)' : 'Net Wt: ' + net + ' Kg')
+                + '\n\n' + (o.needAp ? 'Need for Approval: SENT AGAIN to all ' + (DISP_GROUPS[o.apGroup] || o.apGroup) + '. Mark Out waits for the approval.' : 'Need for Approval: NOT needed any more: the slip can go out.');
+            if (window.IosDialog && IosDialog.alert) IosDialog.alert(msg); else alert(msg);
+            showView(o.needAp ? 'dispatchPending' : 'dispatchMenu');
+            if (!o.needAp) openPassModal(e.id);
+            renderDispatchPending(); dspRefreshUi();
+        }
+
         // badges of the Out From Dispatch button + the menu; the Rules button only for the Admin
         function dspRefreshUi() {
             const pend = gateEntries.filter(isDspPending), ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
@@ -4889,6 +5016,7 @@
             const rows = r.data.rows || {};
             gateEntries.forEach(e => {
                 const a = rows[e.uid]; if (!a) return;
+                if (e._dirty && Number(e.resubmitNo) > 0) return;   // 6E: an edit not sent yet must not get the old REJECTED back
                 const { photoKeys, ...apr } = a;
                 const was = visAprStatus(e);
                 if (JSON.stringify(apr) !== JSON.stringify(e.visApproval || null)) { e.visApproval = apr; changed = true; }

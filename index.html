@@ -1459,7 +1459,7 @@
                                 <th style="padding:6px; width:16%;">Department</th>
                                 <th style="padding:6px; width:14%;">Contact No.</th>
                                 <th style="padding:6px; width:8%;">Status</th>
-                                <th style="padding:6px; width:6%;">Delete</th>
+                                <th style="padding:6px; width:8%;">Actions</th>
                             </tr></thead>
                             <tbody id="employeeMasterBody">
                                 <tr><td colspan="8" style="text-align:center; padding:20px; color:#94a3b8;">Loading employees...</td></tr>
@@ -4093,6 +4093,46 @@
             <div class="modal-actions" style="margin-top: 14px;">
                 <button class="btn btn-neutral" id="p_aeCancelBtn">Cancel</button>
                 <button class="btn btn-success" id="p_aeSaveBtn">Save Employee</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ EDIT EMPLOYEE MODAL (Master Data › Employee Master › ✎, Admin only; editEmployee in store-core.js) ============ -->
+    <div class="modal-overlay" id="me_editModal">
+        <div class="modal-box" style="max-width: 560px;">
+            <h3 class="modal-title">Edit Employee</h3>
+            <p class="modal-sub">The Employee Code cannot be changed here: ERP logins, Task Manager and HR find the employee by it.</p>
+            <div class="grid-2">
+                <div class="form-group">
+                    <label>Employee Code</label>
+                    <input type="text" class="form-control" id="me_eCode" readonly tabindex="-1" style="background:#f1f5f9;font-weight:800;color:#6d28d9;">
+                </div>
+                <div class="form-group">
+                    <label>Person Name <span class="req">*</span></label>
+                    <input type="text" class="form-control" id="me_eName" placeholder="Full Name" autocomplete="off" style="text-transform:uppercase;">
+                </div>
+                <div class="form-group">
+                    <label>Designation</label>
+                    <input type="text" class="form-control" id="me_eDesig" placeholder="e.g. Supervisor" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label>Department</label>
+                    <select class="form-control" id="me_eDept"></select>
+                </div>
+                <div class="form-group">
+                    <label>Contact No.</label>
+                    <input type="tel" class="form-control" id="me_eContact" placeholder="10-digit mobile" maxlength="15">
+                </div>
+                <div class="form-group">
+                    <label>Status</label>
+                    <label style="display:flex;align-items:center;gap:6px;height:30px;font-size:12px;font-weight:700;cursor:pointer;">
+                        <input type="checkbox" id="me_eActive"> Active
+                    </label>
+                </div>
+            </div>
+            <div class="modal-actions" style="margin-top: 14px;">
+                <button class="btn btn-neutral" onclick="closeEditEmployee()">Cancel</button>
+                <button class="btn btn-success" id="me_eSaveBtn" onclick="saveEditEmployee()">Save Changes</button>
             </div>
         </div>
     </div>

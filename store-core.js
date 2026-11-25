@@ -7885,6 +7885,7 @@ const SARV_TABS=[
   {key:'WS_MASTER',label:'Add New Party / Item',hint:'The Add New Party and Add New Item buttons (the lists are common to every phone)',def:'ALL',lock:['ADMIN_PIN']},
   {key:'WS_REPORT',label:'Reports (all bills)',hint:'The Reports tab: every bill of every user, date / month / item / party / slip reports, bill view, Gate Pass photo, reprint. Without it a user sees only his own bills in the Waiting list',def:'ALL',lock:['ADMIN_PIN']},
   {key:'WS_DELETE',label:'Delete a bill',hint:'Delete Bill in the bill view (own PIN + reason, soft delete; its Slip No is never given again). Admin only by default',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  {key:'WS_PAYMENT',label:'Payment (Pending / Udhar follow-up)',hint:'The Payment tab: every unpaid bill, Follow-up (new paying expected date + what the party said, with history) and Mark Paid. The follow-up employees who get the EA task are set in Task Manager › Score Master',def:'ALL',lock:['ADMIN_PIN']},
   /* fms.html's rights inside the FMS View. Server-checked (fms_perms_ in
      sql/FMS_MIGRATION.sql); defaults MUST match fms_perm_default_() there.
      Per-user ON/OFF: Users › Apps. */
@@ -14399,8 +14400,10 @@ window.renderEmployeeMasterTable=function(){
       <td style="padding:5px 6px;text-align:center;">
         <span style="background:${e.is_active?'#dcfce7':'#fee2e2'};color:${e.is_active?'#166534':'#dc2626'};border-radius:99px;padding:2px 8px;font-size:10px;font-weight:700;">${e.is_active?'Active':'Inactive'}</span>
       </td>
-      <td style="padding:5px 6px;text-align:center;">
-        ${sarvCan('DELETE')?`<button onclick="deleteEmployee('${e.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:'<span style="color:#cbd5e1;">—</span>'}
+      <td style="padding:5px 6px;text-align:center;white-space:nowrap;">
+        ${isAdmin()?`<button onclick="editEmployee('${e.id}')" style="background:#f5f3ff;border:1px solid #c4b5fd;color:#6d28d9;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:3px;" title="Edit (Admin)">✎</button>`:''}
+        ${sarvCan('DELETE')?`<button onclick="deleteEmployee('${e.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;" title="Delete">✕</button>`:''}
+        ${!isAdmin()&&!sarvCan('DELETE')?'<span style="color:#cbd5e1;">—</span>':''}
       </td>
     </tr>`).join('');
 };
@@ -14484,6 +14487,62 @@ document.addEventListener('DOMContentLoaded',()=>{
   byId('p_addEmpModal')?.addEventListener('keydown',e=>{
     if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();savePrAddEmployee();}
     else if(e.key==='Escape')closePrAddEmployeeModal();
+  });
+});
+
+/* Employee Master › ✎ (Admin role only). Name, designation, department, contact and Active can change; the
+   Employee Code stays (ERP logins, Task Manager, HR and the PR form find the person by it). The Department list
+   is the same one as the Add form (#me_department, filled from Dropdown Master erp_department); a saved value
+   that is no longer in it is kept as an extra option, so opening and saving never changes it by itself. */
+let sarvEmpEditId=null;
+window.editEmployee=function(id){
+  if(!isAdmin()){showToast('Only the Admin can edit an employee','warn');return;}
+  const e=sarvEmployeeMasterRows.find(x=>String(x.id)===String(id));
+  if(!e){showToast('This employee is not in the list any more. Refresh.','warn');return;}
+  sarvEmpEditId=e.id;
+  const dept=byId('me_eDept'),src=byId('me_department');
+  const opts=src?[...src.options].map(o=>o.value).filter(Boolean):[];
+  if(e.department&&opts.indexOf(e.department)<0)opts.push(e.department);
+  dept.innerHTML='<option value="">-- Select --</option>'+opts.map(v=>`<option value="${escText(v)}">${escText(v)}</option>`).join('');
+  byId('me_eCode').value=e.emp_code||'';
+  byId('me_eName').value=e.person_name||'';
+  byId('me_eDesig').value=e.designation||'';
+  dept.value=e.department||'';
+  byId('me_eContact').value=e.contact_no||'';
+  byId('me_eActive').checked=e.is_active!==false;
+  byId('me_editModal').classList.add('active');
+  setTimeout(()=>byId('me_eName')?.focus(),50);
+};
+window.closeEditEmployee=function(){byId('me_editModal')?.classList.remove('active');sarvEmpEditId=null;};
+window.saveEditEmployee=async function(){
+  if(!isAdmin()){showToast('Only the Admin can edit an employee','warn');return;}
+  if(!sarvEmpEditId||!SB_READY)return;
+  const name=(byId('me_eName').value||'').trim().toUpperCase();
+  if(!name){showToast('Person Name required!','error');byId('me_eName').focus();return;}
+  const old=sarvEmployeeMasterRows.find(x=>String(x.id)===String(sarvEmpEditId))||{};
+  const upd={
+    person_name: name,
+    designation: (byId('me_eDesig').value||'').trim()||null,
+    department:  byId('me_eDept').value||null,
+    contact_no:  (byId('me_eContact').value||'').trim()||null,
+    is_active:   byId('me_eActive').checked
+  };
+  if(old.is_active!==false&&!upd.is_active&&!confirm('Make '+name+' ('+(old.emp_code||'')+') Inactive? Inactive employees are no longer offered in the lists.'))return;
+  const btn=byId('me_eSaveBtn');btn.disabled=true;btn.textContent='Saving...';
+  try{
+    const{data,error}=await SB.from('employees').update(upd).eq('id',sarvEmpEditId).select('id');
+    if(error)throw error;
+    if(!data||!data.length){showToast('Not saved: the employee was not found (deleted meanwhile?). Refresh.','error');return;}
+    showToast(`"${name}" (${old.emp_code||''}) updated`);
+    closeEditEmployee();
+    await loadEmployeeMaster();   // the list, the code datalist and sarvEmployeeCatalog
+  }catch(e){dbError(e);}
+  finally{btn.disabled=false;btn.textContent='Save Changes';}
+};
+document.addEventListener('DOMContentLoaded',()=>{
+  byId('me_editModal')?.addEventListener('keydown',e=>{
+    if(e.key==='Enter'&&e.target.tagName==='INPUT'){e.preventDefault();saveEditEmployee();}
+    else if(e.key==='Escape')closeEditEmployee();
   });
 });
 

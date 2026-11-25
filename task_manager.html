@@ -1100,6 +1100,45 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Waste Sale Udhar follow-up (WasteEntry.html, sql/WASTE_SALE_MIGRATION.sql). Its own card and Save button,
+                 like the emission automation: kept in tm_settings 'waste_followup', not in a Score Master version. -->
+            <div id="wsfCard" class="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden mt-6 mb-10">
+                <div class="bg-slate-50 border-b border-slate-200 p-6 flex flex-wrap justify-between items-center gap-3">
+                    <div>
+                        <h2 class="text-xl font-extrabold text-slate-800 flex items-center tracking-tight"><i class="ph-fill ph-hand-coins mr-2 text-rose-600"></i> Waste Sale Udhar follow-up</h2>
+                        <p class="text-sm font-medium text-slate-500 mt-1">On the paying expected date of an UDHAR waste bill, give these employees an EA task to follow up the party.</p>
+                    </div>
+                    <label class="flex items-center gap-2 cursor-pointer select-none font-extrabold text-sm text-slate-700">
+                        <input type="checkbox" id="wsfOn" class="w-5 h-5 accent-rose-600" onchange="wsfPaintOn()"> <span id="wsfOnLbl">Off</span>
+                    </label>
+                </div>
+                <div class="p-6">
+                    <div id="wsfMsg" class="hidden mb-4 text-sm font-medium rounded-xl border p-4 leading-relaxed"></div>
+                    <div id="wsfBody" class="hidden">
+                        <div class="mb-5 p-4 rounded-xl border border-rose-200 bg-rose-50 text-sm text-rose-900 font-medium leading-relaxed">
+                            The server checks every <b>30 minutes</b> (and right after a bill or a follow-up is saved). When an UDHAR bill's expected date comes and it is not paid, each employee of that bill's <b>Unit</b> gets <b>one EA task</b> due that day at the time below. When the date is revised in Waste Sale › Payment, the new date gets its own task and the open task of the old date is switched off; marking the bill Paid switches off its open tasks. A task already done is never touched.
+                            <span id="wsfUdhar" class="block mt-2 font-bold"></span>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Task time</label><div id="wsfTimeBox"></div></div>
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Planned by</label><div id="wsfPbBox"></div></div>
+                            <div><label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wide">Extra instruction</label>
+                                <input type="text" id="wsfNote" maxlength="200" class="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-rose-500 font-medium text-sm" placeholder="e.g. Tell accounts after the call"></div>
+                        </div>
+                        <div id="wsfUnits" class="grid grid-cols-1 lg:grid-cols-2 gap-4"></div>
+                        <div class="mt-6 pt-6 border-t border-slate-100 flex flex-wrap justify-end gap-3">
+                            <button id="wsfRunBtn" onclick="wsfRunNow()" class="bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-6 py-3 rounded-xl font-bold transition-all active:scale-95 flex items-center"><i class="ph-bold ph-play mr-2"></i> Run now</button>
+                            <button id="wsfSaveBtn" onclick="wsfSave()" class="bg-rose-700 hover:bg-rose-800 text-white px-8 py-3 rounded-xl font-bold shadow-md transition-all active:scale-95 flex items-center"><i class="ph-bold ph-floppy-disk mr-2 text-xl"></i> Save follow-up</button>
+                        </div>
+                        <p id="wsfSavedInfo" class="text-[11px] font-bold text-slate-400 mt-2 text-right"></p>
+                        <div class="mt-8">
+                            <h3 class="text-[11px] font-bold text-slate-500 mb-3 uppercase tracking-wider">Follow-up tasks given (newest first)</h3>
+                            <div id="wsfLog" class="space-y-2 text-sm"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- 3. EA DELEGATION & ACTIVE TASKS -->
@@ -2444,6 +2483,7 @@
             liveSetLoad();   // the Live Photo default card (its own RPC)
             initScoreReset();   // Reset score card (its own RPC)
             if (!keepAuto || !EMA.data) emAutoLoad();   // a redraw after saving the scoring rules keeps unsaved automation edits
+            if (!keepAuto || !WSF.data) wsfLoad();      // Waste Sale Udhar follow-up card (its own RPC)
         }
         // A worked example under each card, so the effect of a number is obvious before saving.
         function smExample(c) {
@@ -2884,6 +2924,129 @@
             showCustomModal('Checked', d.off ? 'The saved automation is <b>Off</b>. Switch it on and save first.'
                 : `${d.acted || 0} new alert(s) acted on, ${d.skipped || 0} skipped (cooldown or no rule). See <i>Recent automatic actions</i>.`);
         };
+        /* ── WASTE SALE UDHAR FOLLOW-UP (card #wsfCard) ─────────────────────────────────────────────────
+           WasteEntry.html saves bills as PAID / PENDING / UDHAR; an UDHAR has a paying expected date. On that date the
+           SERVER (ws_followup_run_ in sql/WASTE_SALE_MIGRATION.sql, pg_cron every 30 min) gives each employee listed here
+           for the bill's Unit one EA task. This card only edits the rule (tm_settings 'waste_followup', right
+           TM_SCORE_MASTER: tm_waste_followup_get / _save / _run_now) and shows the tasks given. */
+        const WSF = { data: null, cfg: null, loading: false };
+        const WSF_UNITS = ['Unit 1', 'Unit 2'];
+        const WSF_TIMES = (() => { const o = []; for (let m = 8 * 60; m <= 20 * 60; m += 30) { const h = Math.floor(m / 60), mm = m % 60, h12 = ((h + 11) % 12) + 1; o.push(h12 + ':' + String(mm).padStart(2, '0') + (h < 12 ? ' AM' : ' PM')); } return o; })();
+        function wsfMsg(html, cls) {
+            const b = document.getElementById('wsfMsg');
+            b.className = html ? 'mb-4 text-sm font-medium rounded-xl border p-4 leading-relaxed ' + (cls || 'bg-amber-50 border-amber-200 text-amber-900') : 'hidden';
+            b.innerHTML = html || '';
+        }
+        function wsfUnit(u) {
+            const c = WSF.cfg; c.units = c.units || {};
+            c.units[u] = c.units[u] || {}; if (!Array.isArray(c.units[u].emps)) c.units[u].emps = [];
+            return c.units[u];
+        }
+        async function wsfLoad() {
+            if (WSF.loading) return; WSF.loading = true;
+            wsfMsg('Loading the follow-up rule…', 'bg-slate-50 border-slate-200 text-slate-500');
+            const res = await tmRpc('tm_waste_followup_get');
+            WSF.loading = false;
+            if (!res.ok) {
+                document.getElementById('wsfBody').classList.add('hidden');
+                if (res.error === 'NO_MIGRATION') wsfMsg('Not set up on the server yet. Admin: run <code>sql/WASTE_SALE_MIGRATION.sql</code> in the Supabase SQL Editor.');
+                else wsfMsg('Could not load the follow-up rule: ' + esc(res.error + (res.detail ? ' · ' + res.detail : '')), 'bg-red-50 border-red-200 text-red-800');
+                return;
+            }
+            WSF.data = res.data;
+            WSF.cfg = JSON.parse(JSON.stringify(res.data.settings || {}));
+            await loadTmDropdowns();
+            wsfMsg('');
+            document.getElementById('wsfBody').classList.remove('hidden');
+            document.getElementById('wsfOn').checked = !!WSF.cfg.enabled;
+            document.getElementById('wsfNote').value = WSF.cfg.note || '';
+            const ud = res.data.udhar || {};
+            document.getElementById('wsfUdhar').textContent = 'Now: ' + (ud.open || 0) + ' UDHAR bill(s) open, ' + (ud.due || 0) + ' of them due today or earlier.';
+            document.getElementById('wsfSavedInfo').textContent = WSF.cfg.savedAt
+                ? 'Last saved ' + new Date(WSF.cfg.savedAt).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: 'numeric', minute: '2-digit' }) + ' by ' + (WSF.cfg.savedBy || '-')
+                : 'Not saved yet.';
+            wsfPaintOn(); wsfRender(); wsfRenderLog();
+        }
+        window.wsfPaintOn = function() {
+            const on = document.getElementById('wsfOn').checked, l = document.getElementById('wsfOnLbl');
+            l.textContent = on ? 'On' : 'Off'; l.className = on ? 'text-rose-700' : 'text-slate-400';
+        };
+        function wsfRender() {
+            const c = WSF.cfg, time = c.time || '11:00 AM';
+            const times = WSF_TIMES.includes(time) ? WSF_TIMES : [time].concat(WSF_TIMES);
+            document.getElementById('wsfTimeBox').innerHTML = emaSel('wsfTime', times.map(t => [t, t]), time);
+            const planned = tmDdList('plannedBy'), pb = planned.includes(c.plannedBy) || !c.plannedBy ? planned : [c.plannedBy].concat(planned);
+            document.getElementById('wsfPbBox').innerHTML = emaSel('wsfPb', [['', '-- None --']].concat(pb.map(v => [v, v])), c.plannedBy || '');
+            document.getElementById('wsfUnits').innerHTML = WSF_UNITS.map((u, ui) => {
+                const r = wsfUnit(u);
+                return `<div class="border border-slate-200 rounded-2xl p-5">
+                    <b class="text-slate-800 font-extrabold">${esc(u)}</b> <span class="text-xs font-bold text-slate-500">· follow-up employees of ${esc(u)} waste bills</span>
+                    <div class="flex flex-wrap gap-1.5 mt-3">${r.emps.map((code, i) => { const m = masterByCode(code) || appState.employees.find(e => e.empCode === code); const n = m ? (m.name || m.empName) : '';
+                        return `<span class="inline-flex items-center gap-1 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold px-2 py-1 rounded-lg">${esc(n ? n + ' (' + code + ')' : code)}<button type="button" title="Remove" onclick="wsfDelEmp(${ui},${i})" class="text-rose-500 hover:text-red-600 font-extrabold">✕</button></span>`; }).join('')}
+                    <button type="button" onclick="wsfAddEmp(${ui})" class="text-xs font-bold text-rose-700 border border-dashed border-rose-300 px-2 py-1 rounded-lg hover:bg-rose-50">+ Add employee</button></div>
+                    ${r.emps.length ? '' : '<p class="text-[11px] font-bold text-slate-400 mt-2">Nobody: no task for ' + esc(u) + ' bills.</p>'}
+                </div>`;
+            }).join('');
+        }
+        function wsfCollect() {
+            const c = WSF.cfg, g = id => document.getElementById(id);
+            c.enabled = g('wsfOn').checked;
+            if (g('wsfTime')) c.time = g('wsfTime').value;
+            if (g('wsfPb')) c.plannedBy = g('wsfPb').value;
+            c.note = g('wsfNote').value.trim();
+        }
+        window.wsfAddEmp = function(ui) {
+            const u = WSF_UNITS[ui];
+            openEmpPicker('Follow-up employee for ' + u + ' waste bills', x => {
+                wsfCollect(); const r = wsfUnit(u);
+                if (!r.emps.includes(x.code)) r.emps.push(x.code);
+                wsfRender();
+            });
+        };
+        window.wsfDelEmp = function(ui, i) { wsfCollect(); wsfUnit(WSF_UNITS[ui]).emps.splice(i, 1); wsfRender(); };
+        window.wsfSave = async function() {
+            if (!WSF.data) return;
+            wsfCollect();
+            const c = WSF.cfg, send = { enabled: !!c.enabled, time: c.time || '11:00 AM', plannedBy: c.plannedBy || '', note: c.note || '', units: {} };
+            WSF_UNITS.forEach(u => { send.units[u] = { emps: wsfUnit(u).emps.slice() }; });
+            const n = WSF_UNITS.reduce((a, u) => a + send.units[u].emps.length, 0);
+            if (send.enabled && !n) return showCustomModal('Not saved', 'The follow-up is <b>On</b> but no employee is chosen for either unit.', true);
+            setBusy('wsfSaveBtn', true);
+            const res = await tmRpc('tm_waste_followup_save', { p_settings: send });
+            setBusy('wsfSaveBtn', false);
+            if (!res.ok) {
+                if (res.error === 'WS_NO_EMP') return showCustomModal('Not saved', 'Choose at least one follow-up employee.', true);
+                return tmErr(res);
+            }
+            await wsfLoad();
+            showCustomModal('Follow-up saved', send.enabled
+                ? 'Saved and <b>On</b>. On the expected date of an UDHAR waste bill, its unit\'s employees get an EA task at ' + esc(send.time) + '. Bills already due get theirs within 30 minutes (or press Run now).'
+                : 'Saved. The follow-up is <b>Off</b>, so no task is given until you switch it on.');
+        };
+        window.wsfRunNow = async function() {
+            setBusy('wsfRunBtn', true);
+            const res = await tmRpc('tm_waste_followup_run_now');
+            setBusy('wsfRunBtn', false);
+            if (!res.ok) return tmErr(res, 'Could not run');
+            const d = res.data;
+            await wsfLoad();
+            showCustomModal('Checked', d.off ? 'The saved follow-up is <b>Off</b>. Switch it on and save first.'
+                : `${d.given || 0} new follow-up task(s) given${d.failed ? ', ' + d.failed + ' could not be given (see the list)' : ''}.`);
+        };
+        function wsfRenderLog() {
+            const L = (WSF.data && WSF.data.log) || [];
+            document.getElementById('wsfLog').innerHTML = L.length ? L.map(l => {
+                const m = masterByCode(l.emp) || appState.employees.find(e => e.empCode === l.emp), n = m ? (m.name || m.empName) : '';
+                const ok = l.status !== 'ERROR';
+                return `<div class="flex flex-wrap items-center gap-x-3 gap-y-1 border ${ok ? 'border-slate-200 bg-slate-50' : 'border-red-200 bg-red-50'} rounded-xl px-4 py-2.5">
+                    <b class="text-slate-800">${esc(l.slipNo)}</b><span class="text-slate-600">${esc(l.party)} · ${esc(l.unit)}</span>
+                    <span class="text-slate-500">expected ${esc(String(l.due || '').split('-').reverse().join('-'))}</span>
+                    <span class="font-bold ${ok ? 'text-rose-700' : 'text-red-700'}">${ok ? 'EA task #' + esc(l.taskNo) + ' → ' : 'Not given to '}${esc(n ? n + ' (' + l.emp + ')' : l.emp)}</span>
+                    ${!ok && l.note ? '<span class="text-xs text-red-700">' + esc(l.note) + '</span>' : ''}
+                    <span class="ml-auto text-[11px] font-bold text-slate-400">${esc(new Date(l.at).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: 'numeric', minute: '2-digit' }))}</span></div>`;
+            }).join('') : '<div class="text-sm font-bold text-slate-400">No follow-up task given yet.</div>';
+        }
+
         const EMA_STATUS = {
             DONE: ['Done', 'text-emerald-700 bg-emerald-50 border-emerald-200'], PARTIAL: ['Partly done', 'text-amber-700 bg-amber-50 border-amber-200'],
             ERROR: ['Failed', 'text-red-700 bg-red-50 border-red-200'], COOLDOWN: ['Cooldown', 'text-slate-600 bg-slate-100 border-slate-200'],
