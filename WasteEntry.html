@@ -35,6 +35,10 @@
         * (2026-11-25) SLIP NO is the server series WS-0001, WS-0002 ...: the box only SHOWS the next number
           (ws_next_no); ws_sale_save takes the real one when the bill reaches the server (so offline bills and two
           phones never clash). The success message offers Print with the final number.
+        * BUTTON RIGHTS (2026-11-25, set in ERP › Admin Panel › Tab Visibility "Waste Sale › Buttons" and Users ›
+          Manage access): WS_ENTRY Data Entry, WS_MASTER Add New Party / Item, WS_REPORT Reports (all users' bills;
+          without it only the user's own), WS_DELETE Delete a bill (Admin by default). The SERVER decides them (ws_perm_)
+          and sends them with every answer (me.rights, applyRights); the page only hides what the server would refuse.
         * VEHICLE (Dharam Kanta): a vehicle weighed empty at Gate-1 / Gate-2 and not dispatched yet (ws_dk_vehicles,
           the gates' own "waiting for its dispatch" rule), or NO VEHICLE on purpose; compulsory choice. The gate's
           Out From Dispatch then shows this bill's waste on that Dharam Kanta slip instead of packing slips
@@ -82,16 +86,19 @@
 
     <div id="noMigBar" class="hidden max-w-6xl mx-4 sm:mx-auto mt-3 px-4 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm no-print"></div>
 
+    <div id="noRightsBar" class="hidden max-w-6xl mx-4 sm:mx-auto mt-6 px-4 py-6 rounded-xl bg-white border border-slate-200 text-center text-slate-600 text-sm no-print">
+        You have the Waste Sale app, but neither Data Entry nor Reports is switched ON for you. Ask the Admin (ERP › Admin Panel › Tab Visibility or Users › Manage access › Waste Sale buttons).
+    </div>
     <main class="max-w-6xl mx-auto px-4 mt-4 sm:mt-6 no-print">
 
         <!-- ENTRY VIEW -->
         <div id="entryView" class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 fade-in">
 
         <div class="lg:col-span-3 flex flex-col sm:flex-row flex-wrap gap-3 mb-2">
-            <button onclick="openModal('partyModal')" class="w-full sm:w-auto justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium py-2.5 sm:py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm">
+            <button id="btnAddParty" onclick="openModal('partyModal')" class="w-full sm:w-auto justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium py-2.5 sm:py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm">
                 <i data-ic="userPlus"></i> Add New Party
             </button>
-            <button onclick="openModal('itemModal')" class="w-full sm:w-auto justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium py-2.5 sm:py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm">
+            <button id="btnAddItem" onclick="openModal('itemModal')" class="w-full sm:w-auto justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium py-2.5 sm:py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm">
                 <i data-ic="package"></i> Add New Item
             </button>
             <button id="syncPill" onclick="syncNow(true)" title="Sync now" class="sm:ml-auto self-center pill pill-busy">Starting…</button>
@@ -594,7 +601,7 @@
             PHOTO_TOO_BIG:'The Gate Pass photo is too big', NO_ITEMS:'Add at least one item', TOO_MANY_ITEMS:'At most 60 items in one bill',
             BAD_QTY:'Quantity must be more than 0', BAD_RATE:'A rate is not valid', BAD_GST:'GST % is not valid', BAD_UOM:'Type must be KG, PCS or LTR',
             BAD_NUMBER:'A number is not valid', BAD_PENDING:'Previous Pending is not valid', NAME_REQUIRED:'Write the name first',
-            REASON_REQUIRED:'Write the reason first', WRONG_PIN:'Incorrect PIN', NOT_ALLOWED:'Only the person who saved this bill or an Admin can delete it',
+            REASON_REQUIRED:'Write the reason first', WRONG_PIN:'Incorrect PIN', NOT_ALLOWED:'Not allowed for you: ask the Admin to switch this Waste Sale button ON (Admin Panel)',
             NOT_FOUND:'This bill is not there any more', BAD_DATA:'The data is not valid', SESSION_CHECK_FAILED:'The login could not be checked. Try again.',
             VEHICLE_REQUIRED:'Choose the vehicle (or NO VEHICLE)', DK_NOT_OPEN:'This Dharam Kanta slip is not waiting for dispatch any more (vehicle already dispatched, or slip deleted). Choose the vehicle again'
         };
@@ -665,7 +672,7 @@
                 const d = await rpc('ws_masters');
                 if (Array.isArray(d.parties) && d.parties.length) masterParties = d.parties;
                 if (Array.isArray(d.items) && d.items.length) masterItems = d.items;
-                if (d.me) ME.admin = !!d.me.admin;
+                if (d.me) setRights(d.me);
                 lsSet(LS_MASTERS, { parties: masterParties, items: masterItems, at: Date.now() });
                 paintMasters();
             } catch (e) {
@@ -730,6 +737,7 @@
                 : (VEH.rows.length ? VEH.rows.length + ' vehicle(s) weighed empty at Gate-1 / Gate-2 and not dispatched yet.' : 'No vehicle is waiting at the Dharam Kanta now (last 15 days). Weigh it empty at the gate first, or choose NO VEHICLE.');
         }
         async function loadVehicles(manual) {
+            if (!can('WS_ENTRY')) return;
             try {
                 const d = await rpc('ws_dk_vehicles', { p_days: 15 });
                 VEH = { rows: d.rows || [], at: Date.now() };
@@ -1073,7 +1081,7 @@
         }
         async function pullRows() {
             const d = await rpc('ws_list', { p_since: CACHE.cursor || null });
-            if (d.me) ME.admin = !!d.me.admin;
+            if (d.me) setRights(d.me);
             const changed = mergeRows(d.rows || []);
             CACHE.cursor = d.now || CACHE.cursor;
             // A cache too big for the phone is simply not kept: the next start reads everything again.
@@ -1366,7 +1374,7 @@
                 b.local ? (b.err ? 'Not accepted by the server: ' + b.err : 'Waiting on this phone: not on the server yet.') : '';
             note.classList.toggle('hidden', !note.textContent);
             $('viewPhotoBtn').classList.toggle('hidden', !b.hasPhoto);
-            const canDel = !b.local && !deleted && ME && (ME.admin || String(b.by) === String(ME.id));
+            const canDel = !b.local && !deleted && can('WS_DELETE');
             $('viewDeleteBtn').classList.toggle('hidden', !canDel);
             $('slipBillView').scrollIntoView({ behavior: 'smooth', block: 'start' });
         };
@@ -1438,7 +1446,11 @@
                     lsSet(LS_LOGIN, { token: tokenOf(), at: Date.now(), user: { id: u.id, name: u.name, emp_code: u.emp_code, roles: u.roles, primary_role: u.primary_role } });
                 }
                 const roles = (u.roles && u.roles.length ? u.roles : [u.primary_role]).filter(Boolean);
-                ME = { id: String(u.id), name: u.name || '', emp: u.emp_code || '', admin: roles.indexOf('ADMIN_PIN') >= 0 };
+                const admin = roles.indexOf('ADMIN_PIN') >= 0, c0 = lsGet(LS_LOGIN, null);
+                ME = { id: String(u.id), name: u.name || '', emp: u.emp_code || '', admin,
+                       // last rights the server gave this login (offline start / until the first answer), else the defaults
+                       rights: (c0 && c0.rights && c0.user && String(c0.user.id) === String(u.id)) ? c0.rights
+                             : { WS_ENTRY: true, WS_MASTER: true, WS_REPORT: true, WS_DELETE: admin } };
                 start();
             } catch (e) {
                 console.error('Waste Sale boot failed', e);
@@ -1447,6 +1459,31 @@
                 if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
             }
         })();
+
+        // ── BUTTON RIGHTS (decided by the server, ws_perm_; see the note at the top) ──
+        const can = k => !!(ME && ME.rights && ME.rights[k]);
+        function setRights(me) {
+            if (!me || !me.rights || !ME) return;
+            const was = JSON.stringify(ME.rights);
+            ME.admin = !!me.admin; ME.rights = me.rights;
+            const c = lsGet(LS_LOGIN, null);
+            if (c) { c.rights = me.rights; lsSet(LS_LOGIN, c); }
+            if (JSON.stringify(ME.rights) !== was) applyRights();
+        }
+        function applyRights() {
+            const E = can('WS_ENTRY'), R = can('WS_REPORT');
+            $('tabEntry').classList.toggle('hidden', !E);
+            $('tabReport').classList.toggle('hidden', !R);
+            $('btnAddParty').classList.toggle('hidden', !E || !can('WS_MASTER'));
+            $('btnAddItem').classList.toggle('hidden', !E || !can('WS_MASTER'));
+            $('noRightsBar').classList.toggle('hidden', E || R);
+            document.querySelector('main').classList.toggle('hidden', !E && !R);
+            // stay on the tab the user may use
+            if (!E && !$('entryView').classList.contains('hidden')) { if (R) switchTab('report'); else $('entryView').classList.add('hidden'); }
+            if (!R && !$('reportsView').classList.contains('hidden')) { if (E) switchTab('entry'); else $('reportsView').classList.add('hidden'); }
+            if (VIEW_BILL && !$('slipBillView').classList.contains('hidden')) showBill(VIEW_BILL);
+            if (E && !VEH.at) loadVehicles();
+        }
 
         function start() {
             $('whoLine').textContent = ME.name + (ME.emp ? ' (' + ME.emp + ')' : '') + (OFFLINE_START ? ' · offline start' : '');
@@ -1466,6 +1503,7 @@
             // the vehicle list moves at the gate (new Dharam Kanta slips, dispatches): read it again every 30 s
             setInterval(() => { if (!document.hidden && navigator.onLine !== false) loadVehicles(); }, 30000);
             paintSync();
+            applyRights();
             loadMasters();
             syncNow();
             setInterval(autoTick, AUTO_MS);
@@ -1475,5 +1513,7 @@
             setInterval(() => { if (Date.now() - (lsGet(LS_MASTERS, {}).at || 0) > 600000 && !document.hidden) loadMasters(); }, 60000);
         }
     </script>
+    <!-- Floating "← Apps" button back to the launcher (hidden inside iframes / without a session). See app-back.js. -->
+    <script src="app-back.js"></script>
 </body>
 </html>

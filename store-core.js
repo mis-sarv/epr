@@ -414,10 +414,21 @@ const SARV_DOC_NO_CFG={
 // kinds) + a per-FY running sequence, computed client-side by scanning
 // existing numbers under that same prefix — so each FY's sequence starts
 // fresh at 001 the moment the prefix itself changes.
+/* STORE INWARD NO.: an Inward that waits for its approvals keeps the number it was given on Submit
+   (inward_pending, sql/INWARD_PENDING_MIGRATION.sql). So an INWARD / NB number is asked from the server
+   (inp_next_no: saved Inwards AND allotted numbers), the scan below being the fallback without it. */
+var sarvInpNextNoMissing=false;
 async function nextNo(kind,store){
   const cfg=SARV_DOC_NO_CFG[kind];
   if(!SB_READY||!cfg) return kind+'-'+new Date().getFullYear()+'-'+String(Date.now()).slice(-5);
   const prefix=cfg.prefix(store);
+  if((kind==='INWARD'||kind==='NB')&&!sarvInpNextNoMissing){
+    try{
+      const r=await SB.rpc('inp_next_no',{p_token:localStorage.getItem(SARV_SSO_TOKEN_KEY)||'',p_prefix:prefix});
+      if(!r.error&&r.data&&r.data.success&&r.data.no)return r.data.no;
+      if(r.error&&(r.error.code==='PGRST202'||r.error.code==='42883'))sarvInpNextNoMissing=true;
+    }catch(e){}
+  }
   try{
     const {data,error}=await SB.from(cfg.table).select(cfg.col).ilike(cfg.col,prefix+'%').limit(5000);
     if(error)throw error;
@@ -3808,9 +3819,9 @@ async function ensureInwardApproval_(rows,overrides){
     return true;
   }
   if(status==='Pending'){
-    showToast('This entry has already been sent to the MD for approval ('+escText(existing.request_no||'')+').<br>'
+    showToast('This entry has already been sent to the MD for approval ('+escText(existing.inward_no||existing.request_no||'')+').<br>'
       +'Submit Inward will not work until it is approved in the mobile app under <b>PO Receipts ▸ Inward Approval</b>. '
-      +'Once approved it appears as a draft in the <b>PO Number list</b> by itself; there is no need to type it again.','warn');
+      +'It waits in the <b>Gate Entry No.</b> list under its Store Inward No.; once approved, choose it there and Submit.','warn');
     return false;
   }
   const wasRejected=status==='Rejected';
@@ -3822,6 +3833,9 @@ async function ensureInwardApproval_(rows,overrides){
       +'\n\nIt cannot be saved without the MD\'s approval.\nSend it for approval now?');
   if(!confirm(ask))return false;
   const purchasers=await inwardApprovalPurchasers_(poNos,prNos);
+  // STORE INWARD NO.: the entry's number, allotted now when it has none yet (false = could not be allotted)
+  const inwNo=await inpEnsureNo_(rows,poNos,prNos,'MD');
+  if(inwNo===false)return false;
   // A rejected request sent again is the same request: it keeps its number.
   let requestNo=existing?existing.request_no:'';
   if(!existing){
@@ -3843,6 +3857,9 @@ async function ensureInwardApproval_(rows,overrides){
     payload:inwardApprovalPayload_(rows,overrides,poNos,prNos),
     decided_by:null,decided_at:null,remarks:null
   };
+  // the Store Inward No. (inward_approvals.inward_no, mobile shows it); an Inactive old request sent again is live again
+  if(inwNo){payload.inward_no=inwNo;payload.payload.inwardNo=inwNo;}
+  if(existing&&existing.used_on){payload.used_on=null;payload.used_at=null;}
   try{
     let w;
     if(existing)w=await SB.from(INWARD_APPROVAL_TABLE).update(payload).eq('id',existing.id);
@@ -3857,9 +3874,9 @@ async function ensureInwardApproval_(rows,overrides){
     showToast('The approval request could not be sent: '+(e.message||e),'error');
     return false;
   }
-  showToast('Approval request sent ('+escText(payload.request_no)+')'
-    +'.<br>Once the MD approves it in the mobile app under <b>PO Receipts ▸ Inward Approval</b>, this entry '
-    +'it will appear in the <b>PO Number list</b> under "MD APPROVED — DRAFT SAVED"; load it from there and Submit whenever you are ready.','warn');
+  inpMarkSent_();
+  if(!inwNo)showToast('Approval request sent ('+escText(payload.request_no)+')'
+    +'.<br>Once the MD approves it in the mobile app under <b>PO Receipts ▸ Inward Approval</b>, press <b>Submit</b> again with the same values.','warn');
   return false;
 }
 /* ══ UNLOADER-SUPERVISOR VERIFICATION ═══════════════════════════════
@@ -4083,7 +4100,7 @@ async function ensureUnloaderApproval_(rows){
       try{
         const d=await ulRpc_('ul_request_create',{p_req:{signature:sig,entry_type:pVal('entryTypeSelect')||'INWARD',
           supplier_name:pVal('supplierName')||'',invoice_no:pVal('invoiceNumber')||'',invoice_date:pVal('invoiceDate')||null,
-          po_numbers:poNos.join(', '),req_numbers:prNos.join(', '),payload:Object.assign(inwardApprovalPayload_(rows,[],poNos,prNos),{extra:inwardDraftExtra_()}),
+          po_numbers:poNos.join(', '),req_numbers:prNos.join(', '),payload:Object.assign(inwardApprovalPayload_(rows,[],poNos,prNos),{extra:inwardDraftExtra_(),inwardNo:(sarvInwPendActive&&sarvInwPendActive.no)||''}),
           assigned_to_uid:sup.id}});
         if(d.reassigned)showToast('Moved '+escText(d.request_no||'')+' to <b>'+escText(d.assigned_to||sup.name)+'</b>.');
         else ulAssignCheck_(d,sup);
@@ -4107,6 +4124,8 @@ async function ensureUnloaderApproval_(rows){
      carries its PO / PR pending and excess figures for that. */
   const payload=inwardApprovalPayload_(rows,[],poNos,prNos);
   payload.extra=inwardDraftExtra_();
+  // STORE INWARD NO.: the entry's number, allotted now when it has none yet (unloader.html shows it)
+  {const n=await inpEnsureNo_(rows,poNos,prNos,'UL');if(n===false)return false;if(n)payload.inwardNo=n;}
   try{
     const d=await ulRpc_('ul_request_create',{p_req:{
       signature:sig,entry_type:pVal('entryTypeSelect')||'INWARD',
@@ -4116,10 +4135,10 @@ async function ensureUnloaderApproval_(rows){
     // Approved in the moment between the read above and this call.
     if(d.status==='Approved')return ensureUnloaderApproval_(rows);
     ulAssignCheck_(d,sup);
+    inpMarkSent_();
     showToast('Sent to '+(d.assigned_to?('<b>'+escText(d.assigned_to)+'</b>'):'the Unloader Supervisor')
-      +' (<b>'+escText(d.request_no||'')+'</b>).<br>'
-      +'Once they approve it with photos and PIN, press <b>Submit</b> again with the same values, or load it from the '
-      +'<b>PO Number list</b> ("APPROVED — DRAFT SAVED") and Submit.','warn');
+      +' (<b>'+escText(payload.inwardNo||d.request_no||'')+'</b>).<br>'
+      +'Once they approve it with photos and PIN, choose it in the <b>Gate Entry No.</b> list (under its Store Inward No.) and Submit.','warn');
   }catch(e){
     if(unloadTableMissing_(e)){unloadMissingWarn_();return true;}
     showToast('The verification request could not be sent: '+escText(e.message||e),'error');
@@ -5004,32 +5023,12 @@ function inwDraftExcess_(d){
    the only thing that retires a draft, so a database that predates that column
    is filtered in memory instead of having its query refused outright. */
 async function loadInwardApprovedDrafts_(){
-  if(!SB_READY){sarvInwApprovedDrafts=[];return sarvInwApprovedDrafts}
-  let md=[];
-  if(!sarvInwDraftListFailed){
-    try{
-      let q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
-        .eq('status','Approved').is('used_on',null).order('id',{ascending:false}).limit(200);
-      if(q.error&&/used_on/i.test(q.error.message||''))
-        q=await SB.from(INWARD_APPROVAL_TABLE).select('*')
-          .eq('status','Approved').order('id',{ascending:false}).limit(200);
-      if(q.error)throw q.error;
-      md=(q.data||[]).filter(r=>!r.used_on&&inwDraftItems_(r).length&&inwDraftOfStore_(r)).map(r=>({...r,_src:'MD'}));
-    }catch(e){
-      // No table, no approval desk — and no drafts section either. Said in the
-      // console only: the Submit path already names the migration to run, and
-      // repeating it on every PO refresh would be noise.
-      if(inwardApprovalTableMissing_(e))sarvInwDraftListFailed=true;
-      else console.warn('[SARV] Approved inward drafts load skipped:',e.message||e);
-    }
-  }
-  /* Unloader-verified entries join the same list. One entry approved by both
-     (same signature) is shown once, as the MD card marked "Unloader ✔". */
-  const ul=await loadUnloadDraftRows_();
-  const ulSigs=new Set(ul.map(r=>r.signature));
-  const mdSigs=new Set(md.map(r=>r.signature));
-  sarvInwApprovedDrafts=md.map(r=>({...r,_ulOk:ulSigs.has(r.signature)}))
-    .concat(ul.filter(r=>!mdSigs.has(r.signature)));
+  /* STORE INWARD NO. (2026-11-24): there is no Draft list any more. An entry that needs the MD / Unloader
+     Supervisor gets its Store Inward No. on Submit and waits in the Gate Entry No. list under that number
+     (inp_list); the old drafts were made Inactive by sql/INWARD_PENDING_MIGRATION.sql. So nothing is read
+     here; the callers only get the Gate Entry No. list re-read soon. */
+  sarvInwApprovedDrafts=[];sarvUnloadPending=[];
+  if(typeof sarvInwGate!=='undefined'&&sarvInwGate)sarvInwGate.at=0;
   return sarvInwApprovedDrafts;
 }
 /* Which drafts belong on this form right now. Narrowed by Supplier Name for
@@ -5299,17 +5298,19 @@ function inwDraftAddRow_(it,ctx,poNos,prNos){
   return tr;
 }
 /* Load an approved draft onto the Inward form. */
-async function inwDraftLoad_(id){
+/* given: a row built by inpPick_ (STORE INWARD NO.), loaded as it is (no re-read); its _unlocked = rejected,
+   so the form opens for correction instead of locked. True = loaded. */
+async function inwDraftLoad_(id,given){
   if(!SB_READY)return showToast('Please configure Supabase','warn');
-  let d=sarvInwApprovedDrafts.find(x=>String(x.id)===String(id));
+  let d=given||sarvInwApprovedDrafts.find(x=>String(x.id)===String(id));
   if(!d)return showToast('This approved draft was not found in the list. Press Refresh.','warn');
   // MD and Unloader approvals live in different tables, and their ids can clash.
   const src=d._src||'MD', ulOk=!!d._ulOk;
-  const who=src==='UL'?'Unloader-verified':'MD-approved';
+  const who=src==='INP'?'Store Inward No.':src==='UL'?'Unloader-verified':'MD-approved';
   /* Re-read it before anything is loaded. "Any time later" can be days later:
      in the meantime the same draft may have been booked at another desk, or the
      MD may have changed their mind. */
-  try{
+  if(!given)try{
     const q=await SB.from(src==='UL'?UNLOAD_APPROVAL_TABLE:INWARD_APPROVAL_TABLE).select('*').eq('id',d.id).maybeSingle();
     if(q.error)throw q.error;
     if(!q.data){
@@ -5385,7 +5386,8 @@ async function inwDraftLoad_(id){
   setInwardPoLock(poNos.length>0);
   updateStoreTotals();
   // ── Locked, and announced ──────────────────────────────────────
-  sarvInwDraftActive={id:d.id,requestNo:d.request_no||('#'+d.id),signature:d.signature||'',row:d,src};
+  // a rejected Store Inward No. entry opens for correction: no lock, no approved signature to keep
+  sarvInwDraftActive=d._unlocked?null:{id:d.id,requestNo:d.request_no||('#'+d.id),signature:d.signature||'',row:d,src};
   inwDraftApplyLock_();
   renderPoNumberPanel();
   /* Two checks the user is better off reading now than at Submit.
@@ -5402,7 +5404,7 @@ async function inwDraftLoad_(id){
         the MD was looking at, and that is worth a word. */
   const live=rowDataInward();
   const sig=inwardApprovalSignature_(live,inwardPoRefList_(live),inwardPrRefList_(live));
-  if(d.signature&&sig!==d.signature)
+  if(d.signature&&sig!==d.signature&&!d._unlocked)
     showToast('<b>'+escText(sarvInwDraftActive.requestNo)+'</b> has loaded, but this form\'s values '
       +'do not match the approved values at all; approval will be requested again on Submit.<br>'
       +'If the PO or Item Master has changed, it has to be approved again.','warn');
@@ -5416,19 +5418,23 @@ async function inwDraftLoad_(id){
     showToast('More material has arrived for these items since the approval; Already / Excess on the strip have changed '
       +'dikhega: '+escText([...new Set(drift)].slice(0,3).join(', '))+(drift.length>3?' …':'')
       +'<br>The MD\'s approval is for that Qty / Weight / Rate and still stands.','warn');
-  showToast(who+' draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> loaded into the form; '
-    +'Qty / Weight / Rate are locked. Add Remarks and Photos and Submit whenever you are ready.');
-  byId('inwDraftLockStrip')?.scrollIntoView({behavior:'smooth',block:'center'});
+  if(src!=='INP'){
+    showToast(who+' draft <b>'+escText(sarvInwDraftActive.requestNo)+'</b> loaded into the form; '
+      +'Qty / Weight / Rate are locked. Add Remarks and Photos and Submit whenever you are ready.');
+    byId('inwDraftLockStrip')?.scrollIntoView({behavior:'smooth',block:'center'});
+  }
+  return true;
 }
 /* Puts the form back to a blank entry and leaves the draft untouched in the
    approval list, so it can be loaded again whenever. */
 function inwDraftCancel_(){
   const no=sarvInwDraftActive?sarvInwDraftActive.requestNo:'';
   if(!no)return;
-  if(!confirm('Remove draft '+no+' from the form?\n\nIt stays in the approval list as it is; you can load it again any time.'))return;
+  const inp=sarvInwDraftActive.src==='INP';
+  if(!confirm('Remove '+(inp?'Store Inward No. ':'draft ')+no+' from the form?\n\nIt stays in the '+(inp?'Gate Entry No. list':'approval list')+' as it is; you can load it again any time.'))return;
   clearInwardForm();          // nulls the draft state and lifts the lock
   renderPoNumberPanel();
-  showToast('Draft '+escText(no)+' removed from the form; it is still in the approval list');
+  showToast(escText(no)+' removed from the form; it is still in the '+(inp?'Gate Entry No. list':'approval list'));
 }
 /* THE LOCK. Everything inwardApprovalSignature_ is computed from — and
    everything else that decides the amount the MD saw — goes read-only while a
@@ -5504,19 +5510,21 @@ function inwDraftRenderStrip_(){
   const pill=(l,v)=>'<span style="background:#fde047;color:#7e22ce;border-radius:4px;padding:1px 6px;'
     +'font-size:10px;font-weight:800;">'+escText(l)+' '+escText(v)+'</span>';
   box.innerHTML='<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-    +'<span style="font-weight:800;color:#15803d;">'+(sarvInwDraftActive.src==='UL'?'UNLOADER VERIFIED DRAFT':'MD APPROVED DRAFT')+'</span>'
+    +'<span style="font-weight:800;color:#15803d;">'+(sarvInwDraftActive.src==='INP'?'STORE INWARD NO.':sarvInwDraftActive.src==='UL'?'UNLOADER VERIFIED DRAFT':'MD APPROVED DRAFT')+'</span>'
     +'<span style="font-weight:800;">'+escText(sarvInwDraftActive.requestNo)+'</span>'
     +'<span style="font-weight:700;">'+escText(inwDraftRef_(d))+'</span>'
-    +'<span style="font-weight:600;">✔ '+escText(d.decided_by||(sarvInwDraftActive.src==='UL'?'Unloader Supervisor':'MD'))
-      +(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</span>'
+    +(sarvInwDraftActive.src==='INP'
+      ?'<span style="font-weight:700;">'+escText(inpState_((sarvInwPendActive&&sarvInwPendActive.row)||{}).txt)+'</span>'
+      :'<span style="font-weight:600;">✔ '+escText(d.decided_by||(sarvInwDraftActive.src==='UL'?'Unloader Supervisor':'MD'))
+      +(d.decided_at?(' · '+escText(pStamp(d.decided_at))):'')+'</span>')
     +(ex.qty>0?pill('Excess Qty',nWt_(ex.qty)):'')
     +(ex.wt>0?pill('Excess Wt',nWt_(ex.wt)+' KGS'):'')
     +'<button type="button" id="inwDraftCancelBtn" style="margin-left:auto;background:#fee2e2;'
     +'border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 10px;font-size:10px;'
-    +'font-weight:800;cursor:pointer;">✖ Remove Draft</button></div>'
+    +'font-weight:800;cursor:pointer;">✖ '+(sarvInwDraftActive.src==='INP'?'Remove from form':'Remove Draft')+'</button></div>'
     +'<div style="margin-top:4px;font-weight:600;">Qty / Weight / Rate, items and the PO / PR link '
-    +'are <b>locked</b>; these figures were approved. Add Remarks and Photos and Submit whenever '
-    +'you are ready; until then this draft stays in the approval list.</div>'
+    +'are <b>locked</b>; these figures were '+(sarvInwDraftActive.src==='INP'?'sent for approval':'approved')+'. Add Remarks and Photos and Submit whenever '
+    +'you are ready; until then '+(sarvInwDraftActive.src==='INP'?'it stays in the Gate Entry No. list under its Store Inward No. (saved with that number)':'this draft stays in the approval list')+'.</div>'
     +(reasons.length?('<ul style="margin:4px 0 0;padding-left:18px;font-weight:600;">'
       +reasons.map(x=>'<li>'+escText(x)+'</li>').join('')+'</ul>'):'');
   box.style.display='block';
@@ -6751,7 +6759,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1','HOME_WASTE_SALE'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -7794,6 +7802,10 @@ const SARV_TABS=[
      (GATE2_MASTERS_MIGRATION.sql, gate_masters checks this same key). Admin only until switched on. */
   {key:'HOME_GATE1',label:'Gate-1 (Security Gate, Unit-1)',hint:'Gate register of Unit-1 / Store 1 (gate_1.html, opens from the launcher): same as Gate-2, own G1- numbers and Store 1 lists; unit transfers and visitors moving between the two gates (GATE1_UNIT1_MIGRATION.sql)',def:['ADMIN_PIN']},
   {key:'HOME_GATE2',label:'Gate-2 (Security Gate, Unit-2)',hint:'Gate register: Inward, Outward, Visitor, Dharam Kanta, Hydra / JCB (gate_2.html, opens from the launcher). Party / vehicle / PO lists come from the ERP',def:['ADMIN_PIN']},
+  /* Waste Sale Entry (WasteEntry.html, opens from the launcher): scrap / waste sale bills with Gate Pass photo,
+     Bank / Cash split and reports, in Supabase (sql/WASTE_SALE_MIGRATION.sql; ws_ctx_ checks this key).
+     Admin only by default, the same as the launcher tile's defRoles; change both together. */
+  {key:'HOME_WASTE_SALE',label:'Waste Sale Entry',hint:'Waste / scrap sale bills: party, items, GST + TCS, Bank / Cash split, compulsory Gate Pass photo, date / month / item / party / slip reports (WasteEntry.html, opens from the launcher)',def:['ADMIN_PIN']},
   {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
   /* emission-live.html: the boiler stack's online monitoring readings (PM,
      NOx, SO2) from the Access Surveykshan portal, live, with today's trend and
@@ -7865,6 +7877,14 @@ const SARV_TABS=[
   {group:'Yarn Unloading › Buttons (Yarn-Unloading.html)'},
   {key:'YU_ENTRY',label:'New Entry / Saved Draft / Download Report',hint:'Weigh and save unloading entries on the phone, continue any phone\'s draft, the phone\'s own reports',def:'ALL',lock:['ADMIN_PIN']},
   {key:'YU_CLOUD',label:'Cloud Reports',hint:'Every phone\'s saved entries from the cloud, PDF / CSV (was password 1700)',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
+  /* WasteEntry.html's buttons. Server-checked: ws_perm_ in sql/WASTE_SALE_MIGRATION.sql reads this same
+     matrix (tab_visibility) and Users › Apps, and its defaults (ws_perm_default_) MUST match these. A user also
+     needs the app itself (HOME_WASTE_SALE). */
+  {group:'Waste Sale › Buttons (WasteEntry.html)'},
+  {key:'WS_ENTRY',label:'Data Entry (make / submit bills)',hint:'The Data Entry tab: new waste sale bill, vehicle from the Dharam Kanta, Gate Pass photo, Submit. Without it the app opens on Reports',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'WS_MASTER',label:'Add New Party / Item',hint:'The Add New Party and Add New Item buttons (the lists are common to every phone)',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'WS_REPORT',label:'Reports (all bills)',hint:'The Reports tab: every bill of every user, date / month / item / party / slip reports, bill view, Gate Pass photo, reprint. Without it a user sees only his own bills in the Waiting list',def:'ALL',lock:['ADMIN_PIN']},
+  {key:'WS_DELETE',label:'Delete a bill',hint:'Delete Bill in the bill view (own PIN + reason, soft delete; its Slip No is never given again). Admin only by default',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   /* fms.html's rights inside the FMS View. Server-checked (fms_perms_ in
      sql/FMS_MIGRATION.sql); defaults MUST match fms_perm_default_() there.
      Per-user ON/OFF: Users › Apps. */
@@ -8584,9 +8604,9 @@ const SARV_APP_LABEL={HOME_PR:'Purchase Requirement',HOME_PO:'PO Generation',HOM
   HOME_TRACKER:'Item Tracker',HOME_MASTER:'Master Data',HOME_REPAIR:'Repair Tracker',HOME_PRODUCTION:'Production',
   HOME_LOT_CARD:'Lot Card Manager',HOME_PRINTING_LOT:'Printing Lot Card',HOME_TRIMS:'Trims Manager',
   HOME_APPROVAL_APP:'Approval App',HOME_COMPLAINT_APP:'Complaint App',HOME_PACKING:'Packing & Dispatch',
-  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)',HOME_GATE1:'Gate-1 (Security Gate)'};
+  HOME_ORDER_FORM:'Order Form (Sales)',HOME_SHEET_LINKS:'Sheet Links',HOME_TASK_MANAGER:'Task Manager',HOME_MY_TASKS:'My Tasks',HOME_MY_REQUESTS:'Track My Store Request',HOME_DISPATCH_REPORT:'Dispatch Report',HOME_HR_PAYROLL:'HR & Payroll',HOME_UNLOADER:'Unloader Supervisor',HOME_ISSUER:'Issue Supervisor',HOME_BILL_CHECK:'Bill Check',HOME_ISSUE_BILL_CHECK:'Issue Bill Check',HOME_YARN_UNLOADING:'Yarn Unloading',HOME_SOP_MASTER:'SOP Master',HOME_CATALOG_MAKER:'Catalog Templates',HOME_PRICE_LIST:'Price List (Sales)',HOME_FMS_BUILDER:'FMS Builder',HOME_FMS_VIEW:'FMS View',HOME_TASK_TRACKER:'Task Tracker',HOME_TT_ESCALATIONS:'Escalations',HOME_TT_SCORECARD:'Scorecard',HOME_TT_PLANACTUAL:'Plan vs Actual',HOME_EMISSION_LIVE:'Stack Emission (Live)',HOME_SOLAR_LIVE:'Solar Plant (Live)',HOME_GATE2:'Gate-2 (Security Gate)',HOME_GATE1:'Gate-1 (Security Gate)',HOME_WASTE_SALE:'Waste Sale Entry'};
 // Apps that open in their own file; their SSO runs on this access.
-const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1,HOME_GATE1:1};
+const SARV_APP_EXTERNAL={HOME_COMPLAINT_APP:1,HOME_PACKING:1,HOME_ORDER_FORM:1,HOME_SHEET_LINKS:1,HOME_TASK_MANAGER:1,HOME_MY_TASKS:1,HOME_MY_REQUESTS:1,HOME_DISPATCH_REPORT:1,HOME_HR_PAYROLL:1,HOME_UNLOADER:1,HOME_ISSUER:1,HOME_BILL_CHECK:1,HOME_ISSUE_BILL_CHECK:1,HOME_YARN_UNLOADING:1,HOME_EMISSION_LIVE:1,HOME_SOLAR_LIVE:1,HOME_GATE2:1,HOME_GATE1:1,HOME_WASTE_SALE:1};
 /* Buttons INSIDE an app that also get a per-user ON / OFF in the user
    form (below the apps). Read from SARV_TABS, so adding a TM_* row there
    is all it takes. */
@@ -8594,6 +8614,7 @@ const SARV_APP_INNER_GROUPS=[
   {title:'Task Manager buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TM_')===0).map(t=>t.key)},
   {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)},
   {title:'Yarn Unloading buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('YU_')===0).map(t=>t.key)},
+  {title:'Waste Sale buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('WS_')===0).map(t=>t.key)},
   {title:'FMS rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('FMS_')===0).map(t=>t.key)},
   {title:'Task Tracker rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TT_')===0).map(t=>t.key)},
   {title:'Print History / Reports rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('RPT_')===0).map(t=>t.key)}
@@ -8806,7 +8827,7 @@ const SARV_ACCESS_AREAS=[
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
   {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER']},
-  {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_SHEET_LINKS']}
+  {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_WASTE_SALE','HOME_SHEET_LINKS']}
 ];
 /* Store access + Complaint registers: user-only keys that are NOT rows of
    the role-wise Tab Visibility and are not in the form's hidden selects.
@@ -8837,7 +8858,7 @@ function sarvAccKeyLabel_(k){
   return SARV_APP_LABEL[k]||(SARV_TABS.find(t=>t.key===k)||{}).label||k;
 }
 // Inner buttons / rights shown under their app (by key prefix).
-const SARV_ACCESS_PARENT={TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER',RPT_:'HOME_REPORTS'};
+const SARV_ACCESS_PARENT={TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',WS_:'HOME_WASTE_SALE',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER',RPT_:'HOME_REPORTS'};
 const sarvAccParentOf_=k=>{const p=Object.keys(SARV_ACCESS_PARENT).find(x=>k.indexOf(x)===0);return p?SARV_ACCESS_PARENT[p]:'';};
 function sarvAccCss_(){
   if(byId('acpCss'))return;
@@ -18317,6 +18338,8 @@ async function loadInwardForEdit(id,no){
   setTimeout(()=>inwGateRefresh_(true),650);
   // Kept through the edit so the regenerated PDF still names the supervisor.
   sarvInwUnloadActive=unloadInfoFrom_(e.unload_info);
+  // CHALLAN ENTRY: and still says it came against a challan
+  sarvInwChallanLoaded=(e.challan_info&&typeof e.challan_info==='object')?e.challan_info:null;
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
   // The requirements this record credits as it stands — header req_no plus each
   // line's own, so a PR removed during the edit is still re-graded on save.
@@ -20290,6 +20313,9 @@ window.addEventListener('DOMContentLoaded',()=>{
      if(d.lotNo)rightPairs.push(['Lot No.:',d.lotNo]);
      if(d.natureOfInward)rightPairs.push(['Nature of Inward:',d.natureOfInward]);
      if(d.yarnUlNo)rightPairs.push(['Yarn Unloading No:',d.yarnUlNo]);
+     // CHALLAN ENTRY: booked against a challan only (bill to come), or the challan its bill replaced
+     if(d.challan&&!d.challan.billed&&d.challan.billDue)rightPairs.push(['Against Challan · Bill due:',fmtDate_(d.challan.billDue)]);
+     if(d.challan&&d.challan.billed&&d.challan.challanNo)rightPairs.push(['Challan No:',d.challan.challanNo]);
      // Last row of the second column (see inwUnloadRows_).
      inwUnloadRows_(d,'right').forEach(p=>rightPairs.push(p));
    } else {
@@ -23540,7 +23566,9 @@ let PR_TEAL=[13,92,83];
      // YARN UNLOADING LINK: the report of a WEAVING YARN receipt, printed in the details
      yarnUlNo:sarvInwYarnUlChosen||(inwYarnUlNeeded_()?pVal('inwYarnUlNo'):''),
      // GATE ENTRY LINK: printed under the copy tag ("Gate Entry No.")
-     gateEntryNo:sarvInwGateChosen||pVal('inwGateEntryNo')};
+     gateEntryNo:sarvInwGateChosen||inwGateVal_(),
+     // CHALLAN ENTRY: "Against Challan · Bill due" / the old Challan No. once its bill is in
+     challan:inwChallanPdf_()};
  }
  // The Submit preview's "PR/PO details on Supplier Copy" choice; true = as before.
  let sarvInwSupplierRef=true;
@@ -23820,6 +23848,8 @@ let PR_TEAL=[13,92,83];
  async function saveInwardWithPdf_(){
    if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
    if(!validateRequiredFields([{id:'invoiceNumber',label:'Invoice Number'},{id:'invoiceDate',label:'Invoice Date'},{id:'supplierName',label:'Supplier Name'}]))return;
+   // CHALLAN ENTRY: the bill of a challan entry is being booked: its Invoice No. + Original Invoice first
+   if(!await inwChallanBillGate_())return;
    /* Without PO, a Purchase receipt has to say which requirement it met —
       otherwise the PR it satisfied stays open with nothing linking the two.
       Checked here as well as on the field, because the box can be left blank. */
@@ -23854,6 +23884,7 @@ let PR_TEAL=[13,92,83];
       both checks. Asked before the invoice photo: the first Submit only sends
       the requests; the Final Submit needs the photo. */
    const selectedPoNos=getSelectedPoNos();
+   sarvInwPendNew=null;sarvInwPendSent=false;   // STORE INWARD NO.: this Submit's own allotment / sends
    {
      /* A Gate Entry No.: the approver's Unloader's Photos / Original Invoice are the unloading proof, so it is
         never sent to the Unloader Supervisor (GATE UNLOADER PHOTOS); Submit waits until an Unloader is assigned
@@ -23871,7 +23902,9 @@ let PR_TEAL=[13,92,83];
         without inward_approvals it falls back to the Edit Password. */
      const overrides=inwardDocOverrides(rows);
      const mdOk=overrides.length?await ensureInwardApproval_(rows,overrides):true;
-     if(!ulOk||!mdOk)return;
+     /* STORE INWARD NO.: a request went out = the entry keeps its allotted number, waits in the Gate Entry No.
+        list and the form is cleared (inpAfterSend_); still waiting = stays as it is. */
+     if(!ulOk||!mdOk){await inpAfterSend_(rows,overrides.length>0,!(sarvEditingInwardId||gul===true||sarvUnloadTableMissing));return;}
    }
    // The original invoice photo is mandatory — it becomes the Original Invoice PDF.
    if(!await ensureStorePhotos_('inward',sarvEditingInwardId?sarvEditingInwardNo:''))return;
@@ -23888,6 +23921,8 @@ let PR_TEAL=[13,92,83];
        return showToast('An INWARD entry with GST = 0 cannot be saved without the Edit Password','warn');
    }
    if(pVal('inwNatureOfInward')==='Repaired'&&!getSelectedRepairOutNos().length)return showToast('For a Repair Return, a pending Outward must be selected','warn');
+   // CHALLAN ENTRY: a Final Amount / Rate of 0 or less = only a challan? Then when does its bill come?
+   if(!await inwChallanAsk_(rows))return;
    const overlay=byId('syncOverlay'),msgEl=byId('syncOverlayText'),btn=byId('submitBtn');
    // Editing an existing record? Then the document number is the one it
    // already carries — nextNo() must not be called, or the record would be
@@ -23899,7 +23934,7 @@ let PR_TEAL=[13,92,83];
       the PDF and the totals printed. `rows` (items only) stays what every check,
       approval and stock line works on. */
    const coyRow=inwCostYarn_(),rowsP=coyRow?rows.concat([coyRow]):rows;
-   const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:'(Auto on Submit)',rowsP),rowsP);
+   const okToSave=await confirmStoreEntryPreview('INWARD',collectInwardData(editId?editNo:((inpForSave_(rows)||{}).no||'(Auto on Submit)'),rowsP),rowsP);
    if(btn)btn.disabled=false;
    if(!okToSave)return;
    // The Supplier Copy choice made in the preview; read by collectInwardData for the PDF.
@@ -23911,7 +23946,9 @@ let PR_TEAL=[13,92,83];
    if(btn){btn.disabled=true;btn.dataset.origLabel=btn.textContent;btn.textContent=editId?'Updating...':'Saving...';}
    if(overlay){if(msgEl)msgEl.textContent=editId?('Updating '+editNo+'…'):'Saving Inward entry…';overlay.classList.add('active');}
    try{
-     const no=editId?editNo:await nextNo(pVal('entryTypeSelect')==='INWARD NB'?'NB':'INWARD');
+     // STORE INWARD NO.: an entry sent for approval earlier is saved with the number it was given then
+     const pend=editId?null:inpForSave_(rows);
+     const no=editId?editNo:(pend?pend.no:await nextNo(pVal('entryTypeSelect')==='INWARD NB'?'NB':'INWARD'));
      const base={document_no:no,entry_type:pVal('entryTypeSelect')||'INWARD',receiving_date:pVal('receivingDate')||today(),invoice_no:pVal('invoiceNumber')||null,invoice_date:pVal('invoiceDate')||null,party_state:pVal('partyState')||null,notes:pVal('inwRemarks')||null};
      // On an edit the PO picker is deliberately left untouched (re-ticking it
      // would rebuild the rows from the PO), so the record's existing PO number
@@ -23981,6 +24018,8 @@ let PR_TEAL=[13,92,83];
      await inwYarnUlStore_(h.data.id);
      // The Gate Entry No. (own update too)
      await inwGateSave_(h.data.id);
+     // CHALLAN ENTRY: the challan record / its bill received (own update: no column = saved without it)
+     await inwChallanStore_(h.data.id);
      /* req_no on the LINE, not just the header. A receipt covering two
         requirements has no other way to say which of them a given item belongs
         to, and without that the PR sub-row's "already received" has to count
@@ -24050,6 +24089,7 @@ let PR_TEAL=[13,92,83];
         invoiceBlob:pdfs.INVOICE?.blob||null,invoiceName:pdfs.INVOICE?.name||storePdfFilename_('INWARD',d,'INVOICE'),
         text:'INWARD '+no+' — '+(d.supplier||'-')+(d.invoiceNum?(' | Invoice '+d.invoiceNum):'')+' | Final Amount '+pMoney(d.finalAmt)});}
      showToast(editId?(''+no+' updated; saved under the same Record No.'):('Inward saved: '+no));
+     sarvInwGate.at=0;   // STORE INWARD NO.: the saved one leaves the Gate Entry No. list (the server booked it)
      /* Stamp the Purchaser's approval with the receipt it ended up on, so the
         Inward Approval list can say "this became SIHF-II/…/017" rather than
         leaving an approved request looking like it was never used. The
@@ -24603,6 +24643,8 @@ let PR_TEAL=[13,92,83];
       function re-applies those for the blank form that is left behind. The
       approval itself is untouched and stays in the list. */
    sarvInwDraftActive=null;
+   sarvInwPendActive=null;sarvInwPendNew=null;   // and the Store Inward No. loaded on it (STORE INWARD NO.)
+   sarvInwChallanNew=null;sarvInwChallanBill=null;sarvInwChallanLoaded=null;   // and its challan (CHALLAN ENTRY)
    // The Unloader Supervisor's details belong to the entry just left.
    sarvInwUnloadActive=null;
    inwDraftApplyLock_();
@@ -24643,7 +24685,7 @@ let PR_TEAL=[13,92,83];
    // lookup resolves later, and without the guard it would overwrite it.
    // Record No. comes from the series the (possibly pinned) Entry Type belongs
    // to — an INWARD NB form must not be handed an INWARD number.
-   if(SB_READY){nextNo((byId('entryTypeSelect')?.value||'')==='INWARD NB'?'NB':'INWARD').then(no=>{const e=byId('regEntryNo');if(e&&!sarvEditingInwardId)e.value=no;}).catch(()=>{});refreshSerialNo('INWARD').catch(()=>{});}
+   if(SB_READY){nextNo((byId('entryTypeSelect')?.value||'')==='INWARD NB'?'NB':'INWARD').then(no=>{const e=byId('regEntryNo');if(e&&!sarvEditingInwardId&&!sarvInwPendActive)e.value=no;}).catch(()=>{});refreshSerialNo('INWARD').catch(()=>{});}
    /* Re-drawn once more at the very end: Supplier Name has been blanked by
       now, and the approved-draft strip counts what is waiting FOR THAT
       supplier — so the count it showed while the form was still filled in is
@@ -33905,7 +33947,7 @@ async function inwYarnUlStore_(id){
    No migration = the box says so and the Inward saves as before.
    ═══════════════════════════════════════════════════════════════════════ */
 var sarvInwGate={list:null,store:'',at:0,busy:null,noMig:false,err:'',required:false,want:'',editHad:false,editStore:'',sig:'',
-  ulList:[],ulNoMig:false,editUlHad:false,renderNb:null};
+  ulList:[],ulNoMig:false,editUlHad:false,renderNb:null,inp:[],inpNoMig:false,chl:[],chlNoMig:false};
 var sarvInwGateChosen='', sarvInwGateRef=null, sarvInwGateUlPay='';
 /* UNLOADING BILL (sql/GATE_INWARD_UL_PAYABLE_MIGRATION.sql). The gate Inward's approver picks the Unloader AND the
    Unloading type on the launcher: FOC = nothing more (the usual workflow), PAYABLE = the Unloader is paid for it.
@@ -33917,7 +33959,7 @@ var sarvInwGateChosen='', sarvInwGateRef=null, sarvInwGateUlPay='';
 const INW_UL_PFX='UL|';
 function inwIsNbForm_(){return (byId('entryTypeSelect')?.value||'')==='INWARD NB';}
 function inwGateUlPayRow_(v){
-  v=v==null?pVal('inwGateEntryNo'):String(v||'');
+  v=v==null?inwGateVal_():String(v||'');
   if(v.indexOf(INW_UL_PFX)!==0)return null;
   const no=v.slice(INW_UL_PFX.length);
   return (sarvInwGate.ulList||[]).find(x=>x.no===no)||null;
@@ -33979,6 +34021,21 @@ async function inwGateLoad_(force){
         if(u.error){S.ulNoMig=u.error.code==='PGRST202'||u.error.code==='42883'||/gate_ul_payable_list|schema cache/i.test(u.error.message||'');S.ulList=[];}
         else{S.ulNoMig=false;S.ulList=(u.data&&u.data.success!==false&&u.data.rows)||[];}
       }catch(e){S.ulList=S.ulList||[];}
+      // STORE INWARD NO.: the open entries of this store (no function yet = none)
+      try{
+        const p=await SB.rpc('inp_list',{p_token:tok,p_store:store});
+        if(p.error){S.inpNoMig=inpNoMig_(p.error);S.inp=[];}
+        else{S.inpNoMig=false;S.inp=(p.data&&p.data.success!==false&&p.data.rows)||[];}
+      }catch(e){S.inp=S.inp||[];}
+      // CHALLAN ENTRY: this store's Inwards booked against a challan whose bill is not in yet
+      try{
+        let q=SB.from('inward_entries').select('id,document_no,entry_type,supplier_name,invoice_no,invoice_date,receiving_date,notes,gate_entry_no,po_number,challan_info,created_at')
+          .not('challan_info','is',null).is('challan_info->>billAt',null).order('id',{ascending:false}).limit(200);
+        if(sarvHasStoreCol!==false)q=q.eq('store',store);
+        const c=await q;
+        if(c.error){S.chlNoMig=c.error.code==='42703'||/challan_info/i.test(c.error.message||'');S.chl=[];}
+        else{S.chlNoMig=false;S.chl=(c.data||[]).filter(r=>!isStoreRecordCancelled_(r.notes));}
+      }catch(e){S.chl=S.chl||[];}
       S.store=store;S.at=Date.now();
       return S.list;
     }catch(e){console.warn('[SARV] Gate entries not read:',e.message||e);S.err=e.message||String(e);S.list=S.list||[];return S.list;}
@@ -33989,24 +34046,39 @@ async function inwGateLoad_(force){
 function inwGateRender_(){
   const S=sarvInwGate, sel=byId('inwGateEntryNo');if(!sel)return;
   const cur=sel.value||S.want, mine=sarvEditingInwardId?String(sarvEditingInwardId):'';
-  const opts=(S.list||[]).filter(r=>!r.usedBy||r.usedBy.id===mine);
+  /* STORE INWARD NO.: the entries submitted for approval come FIRST, under their number, with the step they are at;
+     a gate entry one of them holds is offered only through it (never booked twice). */
+  const inp=mine?[]:(S.inp||[]).slice();
+  if(sarvInwPendActive&&!inp.some(p=>String(p.id)===String(sarvInwPendActive.id)))inp.unshift(sarvInwPendActive.row);
+  const held=new Set(inp.map(p=>p.gateEntryNo).filter(Boolean));
+  const opts=(S.list||[]).filter(r=>(!r.usedBy||r.usedBy.id===mine)&&!held.has(r.no));
   const nb=inwIsNbForm_(), ulOpts=nb?(S.ulList||[]).filter(r=>!r.usedBy||r.usedBy.id===mine):[];
   S.renderNb=nb;
+  const inpHtml=inp.length?'<optgroup label="Store Inward No. · submitted, waiting / approved">'+inp.map(p=>
+    '<option value="'+escText(INP_PFX+p.id)+'">'+escText(p.no)+(p.entryType==='INWARD NB'?' (NB)':'')+' · '+escText(p.supplier||'-')
+      +(p.gateEntryNo?' · Gate '+escText(p.gateEntryNo):'')+' · '+escText(inpState_(p).txt)+'</option>').join('')+'</optgroup>':'';
   const ulHtml=ulOpts.length?'<optgroup label="Unloading bill · Payable (by Unloader)">'+ulOpts.map(r=>{
     const t=inwGateUlPayTot_(r), w=r.unloader||{};
     return '<option value="'+escText(INW_UL_PFX+r.no)+'">UL · '+escText(r.no)+' · Unloader '+escText(w.name||'-')+' · '+escText((r.inward||{}).no||'-')
       +' · '+t.n+' item(s)'+(t.wt?' · '+escText(inwGateUlNum_(t.wt))+' Kg':'')+'</option>';}).join('')+'</optgroup>':'';
-  sel.innerHTML='<option value="">-- Select the gate\'s Inward entry --</option>'+ulHtml+(ulHtml?'<optgroup label="Gate Inward entries">':'')+opts.map(r=>
+  // CHALLAN ENTRY: the Inwards booked against a challan, waiting for their bill
+  const chl=mine?[]:(S.chl||[]);
+  const chlHtml=chl.length?'<optgroup label="Challan · Bill pending (add the Original Invoice)">'+chl.map(r=>{
+    const due=inwChallanDue_(r);
+    return '<option value="'+escText(CHL_PFX+r.id)+'">'+escText(r.document_no||'-')+' · '+escText(r.supplier_name||'-')
+      +(r.invoice_no?' · Challan '+escText(r.invoice_no):'')+' · '+escText(due.txt)+'</option>';}).join('')+'</optgroup>':'';
+  const grp=inpHtml||ulHtml||chlHtml;
+  sel.innerHTML='<option value="">-- Select the gate\'s Inward entry / Store Inward No. --</option>'+inpHtml+chlHtml+ulHtml+(grp?'<optgroup label="Gate Inward entries">':'')+opts.map(r=>
     '<option value="'+escText(r.no)+'">'+escText(r.no)+(r.kind==='VISITOR'?' · Working visitor '+escText(r.visitor||'-')+' of':'')+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
-      +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+'</option>').join('')+(ulHtml?'</optgroup>':'');
-  if(cur&&(opts.some(r=>r.no===cur)||ulOpts.some(r=>INW_UL_PFX+r.no===cur)))sel.value=cur;
+      +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+' · '+escText(inwGateStepTxt_(r))+'</option>').join('')+(grp?'</optgroup>':'');
+  if(cur&&(opts.some(r=>r.no===cur)||ulOpts.some(r=>INW_UL_PFX+r.no===cur)||inp.some(p=>INP_PFX+p.id===cur)||chl.some(r=>CHL_PFX+r.id===cur)))sel.value=cur;
   else if(cur&&S.want===cur&&mine){sel.insertAdjacentHTML('beforeend','<option value="'+escText(cur)+'">'+escText(cur)+' (this record)</option>');sel.value=cur;}
   inwGateInfo_();
 }
 // The party of the picked gate entry (capitals), '' when none is picked
 function inwGateParty_(){
   if(typeof sarvInwGate==='undefined'||!sarvInwGate)return '';
-  const v=pVal('inwGateEntryNo'), r=(sarvInwGate.list||[]).find(x=>x.no===v);
+  const v=inwGateVal_(), r=(sarvInwGate.list||[]).find(x=>x.no===v);
   return r&&r.party?String(r.party).trim().toUpperCase():'';
 }
 /* The picked gate entry against this Inward: {row, errs, warns, refChange}
@@ -34015,7 +34087,7 @@ function inwGateParty_(){
      refChange  {type, no} when this Inward books other PO(s) / PR(s) than the guard noted: Save writes
                 them back onto the gate entry (inwGateRefSync_) */
 function inwGateCheck_(){
-  const v=pVal('inwGateEntryNo'), r=(sarvInwGate.list||[]).find(x=>x.no===v);
+  const v=inwGateVal_(), r=(sarvInwGate.list||[]).find(x=>x.no===v);
   if(!r)return {row:null,errs:[],warns:[],refChange:null};
   const errs=[], warns=[], sup=pVal('supplierName');
   if(r.party&&sup&&yulKey_(r.party)!==yulKey_(sup))errs.push('Supplier Name must be the gate entry\'s party "'+r.party+'" (this Inward: "'+sup+'")');
@@ -34034,6 +34106,7 @@ function inwGateCheck_(){
   return {row:r,errs,warns,refChange};
 }
 function inwGateInfo_(){
+  inwChallanPaint_();   // CHALLAN ENTRY: the bill being booked, under the box
   const box=byId('inwGateInfo');if(!box)return;
   const S=sarvInwGate, store=inwGateStoreOf_();
   const tag=byId('inwGateReqTag');if(tag)tag.textContent=S.required?'★ COMPULSORY ('+store+')':'(from '+inwGateLabel_()+')';
@@ -34044,6 +34117,9 @@ function inwGateInfo_(){
   if(S.err){box.innerHTML='<span style="color:#b91c1c;font-weight:700;">Could not read the gate entries ('+escText(S.err)+'). Press Refresh.</span>';return;}
   const {row,errs,warns}=inwGateCheck_();
   {const ur=inwGateUlPayRow_();if(ur){box.innerHTML=inwGateUlPayHtml_(ur);return;}}
+  // STORE INWARD NO.: the picked entry's own pipeline (under its gate entry's, when it has one)
+  const ip=inpRowOf_();
+  if(ip&&!row){box.innerHTML=inpInfoHtml_(ip,false);return;}
   if(!row){
     const n=(S.list||[]).filter(r=>!r.usedBy).length;
     if(inwIsNbForm_()){
@@ -34051,7 +34127,11 @@ function inwGateInfo_(){
       if(nu){box.innerHTML='<span style="color:#1e3a8a;font-weight:700;">'+nu+' Payable unloading'+(nu===1?'':'s')+' waiting for the Unloader\'s bill (UL · …). Choose one to book its bill as this Inward NB.</span>'
         +'<div style="margin-top:4px;color:#475569;">'+(n?n+' gate Inward entr'+(n===1?'y':'ies')+' not booked yet.':'')+'</div>';return;}
     }
-    box.innerHTML='<span style="color:#475569;">'+(S.list?(n?n+' approved Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery.'
+    const ni=(S.inp||[]).length, nc=(S.chl||[]).length, nco=(S.chl||[]).filter(r=>inwChallanDue_(r).late).length;
+    box.innerHTML=(nc?'<div style="margin-bottom:4px;color:'+(nco?'#b91c1c':'#92400e')+';font-weight:700;">'+nc+' Inward'+(nc===1?'':'s')+' booked against a challan wait for the bill'+(nco?' ('+nco+' overdue)':'')+'. Choose one under "Challan · Bill pending" to add its Original Invoice.</div>':'')
+      +(ni?'<div style="margin-bottom:4px;color:#1e3a8a;font-weight:700;">'+ni+' entr'+(ni===1?'y':'ies')+' submitted and waiting / approved under a Store Inward No. (at the top of the list). Choose one to see its step, or to Submit it once approved.</div>':'')
+      +(S.inpNoMig&&isAdmin()?'<div style="margin-bottom:4px;color:#92400e;font-weight:700;">The Store Inward No. on Submit needs sql/INWARD_PENDING_MIGRATION.sql (Admin).</div>':'')
+      +'<span style="color:#475569;">'+(S.list?(n?n+' approved Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery.'
       :'No approved, unbooked Inward entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate saves it when the vehicle comes in and its approver approves it (launcher › Gate Approvals); then press Refresh.'):'Loading the gate entries…')+'</span>';
     return;
   }
@@ -34064,6 +34144,7 @@ function inwGateInfo_(){
     +(row.hasBill?'<span style="color:#15803d;">Bill photo at the gate ✓</span>':'')+'</div>'
     +inwGatePipeHtml_(row)
     +inwGateUlHtml_(row)
+    +(ip?inpInfoHtml_(ip,true):'')
     +(errs.length?'<div style="margin-top:6px;background:#fef2f2;border:1px solid #f87171;border-radius:6px;padding:6px 9px;color:#b91c1c;font-weight:700;">Not allowed: '+errs.map(escText).join(' · ')+'</div>':'')
     +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">'+warns.map(escText).join(' · ')+'</div>'
       :errs.length?'':'<div style="margin-top:6px;color:#15803d;font-weight:700;">Matches this Inward.</div>');
@@ -34071,6 +34152,15 @@ function inwGateInfo_(){
 /* Picked: fill what is still empty. Supplier Name when blank; the gate's PO (or Field Boy PR) when nothing is
    ticked, no item row is filled and no MD-approved draft is loaded, through the pickers' own state + loaders. */
 async function inwGatePicked_(){
+  // STORE INWARD NO.: an entry submitted earlier is loaded back as a whole
+  {const raw=byId('inwGateEntryNo')?.value||'';
+   if(raw.indexOf(CHL_PFX)===0){await inwChallanPick_(raw.slice(CHL_PFX.length));return;}   // CHALLAN ENTRY
+   if(raw.indexOf(INP_PFX)===0){await inpPick_(raw.slice(INP_PFX.length));return;}
+   if(sarvInwPendActive){
+     const sel=byId('inwGateEntryNo');
+     if(!confirm('Store Inward No. '+sarvInwPendActive.no+' is loaded on the form.\n\nRemove it from the form and take this one instead? It stays in the list.')){if(sel)sel.value=INP_PFX+sarvInwPendActive.id;return;}
+     clearInwardForm();if(sel)sel.value=raw;
+   }}
   sarvInwGate.want=pVal('inwGateEntryNo');
   // UNLOADING BILL: no gate photos, no PO; Supplier Name = the Unloader when it is still empty
   {const ur=inwGateUlPayRow_(sarvInwGate.want);
@@ -34132,12 +34222,13 @@ async function inwGatePicked_(){
 }
 async function inwGateRefresh_(force){
   if(!byId('inwGateGroup'))return;
-  const before=sarvInwGate.list, beforeUl=sarvInwGate.ulList;
+  const before=sarvInwGate.list, beforeUl=sarvInwGate.ulList, beforeInp=sarvInwGate.inp;
   await inwGateLoad_(force);
-  if(force||before!==sarvInwGate.list||beforeUl!==sarvInwGate.ulList||sarvInwGate.renderNb!==inwIsNbForm_()||!byId('inwGateEntryNo').options.length)inwGateRender_();
+  inpFollow_();
+  if(force||before!==sarvInwGate.list||beforeUl!==sarvInwGate.ulList||beforeInp!==sarvInwGate.inp||sarvInwGate.renderNb!==inwIsNbForm_()||!byId('inwGateEntryNo').options.length)inwGateRender_();
   else inwGateInfo_();
   // the Unloader uploaded while the Store waited on the form: their photos come in by themselves
-  const r=(sarvInwGate.list||[]).find(x=>x.no===pVal('inwGateEntryNo'));
+  const r=(sarvInwGate.list||[]).find(x=>x.no===inwGateVal_());
   // an entry opened for edit (or picked before the list arrived): its photos too; an upload since = read again
   {const ul=inwGateUlOf_(r),sig=r?r.uid+'|'+(ul?ul.status+(ul.photoCount||0):''):'';if(sig!==sarvInwGatePh.sig)inwGatePhotosLoad_(r||null);}
   const ul=inwGateUlOf_(r);
@@ -34146,7 +34237,8 @@ async function inwGateRefresh_(force){
 setInterval(()=>{
   const p=byId('inwardPanel');if(!p||p.offsetParent===null)return;
   const sig=[pVal('supplierName'),inwGateStoreOf_(),getSelectedPoNos().join(','),getSelectedPrNos().join(','),pVal('entryTypeSelect')].join('|');
-  if(sig===sarvInwGate.sig&&Date.now()-sarvInwGate.at<60000)return;
+  // read again every 60 s; every 15 s while a Store Inward No. entry waits for a decision
+  if(sig===sarvInwGate.sig&&Date.now()-sarvInwGate.at<((sarvInwGate.inp||[]).some(p=>inpState_(p).wait)?15000:60000))return;
   sarvInwGate.sig=sig;inwGateRefresh_(false);
 },1500);
 // Admin: compulsory on / off for the store on screen (app_settings 'gate_inward_required', Admin PIN)
@@ -34169,7 +34261,7 @@ async function inwGateSetRequired_(on){
 // Submit: the gate before anything is written. false = stop (the reason was shown).
 async function inwGateGate_(){
   sarvInwGateChosen='';sarvInwGateRef=null;sarvInwGateUlPay='';
-  const v0=pVal('inwGateEntryNo'), mine=String(sarvEditingInwardId||'');
+  const v0=inwGateVal_(), mine=String(sarvEditingInwardId||'');
   const list=await inwGateLoad_(true);
   const S=sarvInwGate;
   // booked by another Inward since it was picked: say so (the fresh list no longer offers it)
@@ -34177,7 +34269,7 @@ async function inwGateGate_(){
   if(r0&&r0.usedBy&&r0.usedBy.id!==mine){S.want='';inwGateRender_();showToast('Gate entry '+v0+' is already booked by Inward '+(r0.usedBy.no||'')+'. Choose another one.','error');return false;}
   inwGateRender_();
   if(S.noMig)return true;
-  const v=pVal('inwGateEntryNo');
+  const v=inwGateVal_();
   // UNLOADING BILL: an Inward NB against a Payable unloading
   if(v&&v.indexOf(INW_UL_PFX)===0){
     const ur=inwGateUlPayRow_(v);
@@ -34193,7 +34285,7 @@ async function inwGateGate_(){
       highlightRequiredField('inwGateEntryNo');byId('inwGateEntryNo')?.scrollIntoView({behavior:'smooth',block:'center'});
       showToast('Choose the Gate Entry No. of this delivery ('+inwGateLabel_()+'): it is compulsory for '+inwGateStoreOf_(),'warn');return false;
     }
-    const n=(list||[]).filter(r=>!r.usedBy).length;
+    const n=sarvInwPendActive?0:(list||[]).filter(r=>!r.usedBy).length;
     if(n&&!confirm('No Gate Entry No. is chosen, while '+n+' Inward entr'+(n===1?'y':'ies')+' of '+inwGateLabel_()+' are not booked yet.\n\nSave this Inward WITHOUT a Gate Entry No.?')){
       byId('inwGateEntryNo')?.scrollIntoView({behavior:'smooth',block:'center'});return false;}
     return true;
@@ -34558,4 +34650,491 @@ function inwYarnUlReset_(){
   const S=sarvInwYarnUl;S.want='';S.editHad=false;S.editStore='';S.sig='';sarvInwYarnUlChosen='';
   const sel=byId('inwYarnUlNo');if(sel)sel.value='';
   const g=byId('inwYarnUlGroup');if(g)g.style.display='none';
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STORE INWARD NO.   (sql/INWARD_PENDING_MIGRATION.sql, 2026-11-24)
+   Replaces the Draft list. Submit Inward on an entry that needs an approval (the Unloader Supervisor for an
+   Inward without a gate Unloader, the MD for excess qty / weight, rate, extra item) first takes its REAL Store
+   Inward No. from the server (inp_save: the store's series under a lock, so no other entry gets it), sends the
+   request(s) carrying that number (inward_approvals.inward_no + payload.inwardNo; mobile.html and unloader.html
+   show it) and clears the form. The entry then waits in the Gate Entry No. list under that number (option value
+   'INP|<id>', inp_list) with its step: Waiting: Unloader / MD, Rejected, or Approved · ready for Final Submit.
+   Picking it loads the whole entry back through inwDraftLoad_ (locked; open for correction when rejected, Submit
+   sends it again under the same number); its gate entry, if any, comes with it and is offered only through it.
+   Final Submit saves it WITH that number (inpForSave_ in saveInwardWithPdf_) and the server's trigger books the
+   row. Cancel (own PIN + reason, inp_cancel) leaves the number unused for good and withdraws the waiting requests.
+   An entry that needs no approval is saved straight away as before; nextNo skips the allotted numbers.
+   No migration = the requests go out without a number, as before (no Draft list any more: Submit the same
+   values again once approved).
+   ═══════════════════════════════════════════════════════════════════════ */
+var sarvInwPendActive=null;   // {id, no, row}: the Store Inward No. entry loaded on the form
+var sarvInwPendNew=null;      // the row allotted by THIS Submit
+var sarvInwPendSent=false;    // this Submit sent a request
+var INP_PFX='INP|';   // var: inwGateVal_ may run before this line is reached
+function inpNoMig_(e){return !!e&&(e.code==='PGRST202'||e.code==='42883'||/inp_save|inp_list|inp_cancel|inward_pending|schema cache/i.test(e.message||''));}
+async function inpRpc_(fn,args){
+  let tok='';try{tok=localStorage.getItem(SARV_SSO_TOKEN_KEY)||'';}catch(e){}
+  const r=await SB.rpc(fn,Object.assign({p_token:tok},args||{}));
+  if(r.error)throw r.error;
+  const d=r.data||{};
+  if(d.success===false){const e=new Error(String(d.error||'FAILED'));e.code=String(d.error||'');e.data=d;throw e;}
+  return d;
+}
+// the Store Inward No. entry behind the box (or behind v), null for a gate entry / nothing
+function inpRowOf_(v){
+  v=String(v==null?(byId('inwGateEntryNo')?.value||''):v);
+  if(v.indexOf(INP_PFX)!==0)return null;
+  const id=v.slice(INP_PFX.length);
+  return (sarvInwGate.inp||[]).find(p=>String(p.id)===id)||(sarvInwPendActive&&String(sarvInwPendActive.id)===id?sarvInwPendActive.row:null);
+}
+// the gate entry number the box stands for: a Store Inward No. entry stands for its own gate entry
+function inwGateVal_(){
+  const v=String(byId('inwGateEntryNo')?.value||'').trim();
+  if(v.indexOf(CHL_PFX)===0)return '';   // a challan entry (CHALLAN ENTRY) stands for no gate entry while it is being opened
+  if(v.indexOf(INP_PFX)===0){const p=inpRowOf_(v);return p?String(p.gateEntryNo||''):'';}
+  return v;
+}
+/* Where an entry stands: {txt, wait, rej, todo, ready}. needUl / needMd = the approvals it asked for; the
+   requests are the latest of its signature (inp_json_). todo = asked, but its request is not out (send failed). */
+function inpState_(p){
+  p=p||{};
+  const st=x=>String((x&&x.status)||'');
+  const parts=[], rejs=[];let wait=false,todo=false;
+  if(p.needUl){
+    if(st(p.ul)==='Approved')parts.push('Unloader ✓');
+    else if(st(p.ul)==='Rejected')rejs.push('Unloader Supervisor REJECTED');
+    else if(!p.ul){todo=true;parts.push('Unloader request not sent');}
+    else{wait=true;parts.push('Waiting: Unloader Supervisor'+(p.ul.to?' '+p.ul.to:''));}
+  }
+  if(p.needMd){
+    if(st(p.md)==='Approved')parts.push('MD ✓');
+    else if(st(p.md)==='Rejected')rejs.push('MD REJECTED');
+    else if(!p.md){todo=true;parts.push('MD request not sent');}
+    else{wait=true;parts.push('Waiting: MD Approval');}
+  }
+  const rej=rejs.length>0, ready=!rej&&!wait&&!todo;
+  return {rej,wait,todo,ready,
+    txt:rej?rejs.join(' · ')+' · correct and Submit again':wait||todo?parts.filter(x=>!/✓/.test(x)).join(' · '):'Approved · ready for Final Submit'};
+}
+// the Gate Entry No. option's step words (the same rule as the pipeline's Store Entry step)
+function inwGateStepTxt_(r){
+  if(!r||r.kind==='VISITOR')return 'Ready for Store entry';
+  if(!Object.prototype.hasOwnProperty.call(r,'unload'))return 'Ready for Store entry';
+  const ul=inwGateUlOf_(r);
+  if(!ul)return r.approval?'Waiting: Unloader to be assigned':'Ready for Store entry';
+  if(ul.status!=='DONE')return 'Waiting: Unloader '+(ul.to||'')+' to upload';
+  return 'Unloader done · ready for Store entry';
+}
+function inwPipeStep_(st,title,when,lines){
+  const C={done:['#15803d','#f0fdf4','#86efac'],wait:['#b45309','#fffbeb','#fcd34d'],miss:['#b91c1c','#fef2f2','#fca5a5'],off:['#64748b','#f8fafc','#cbd5e1']};
+  const c=C[st]||C.off;
+  return '<div style="flex:1 1 150px;min-width:150px;border:1px solid '+c[2]+';background:'+c[1]+';border-radius:7px;padding:6px 8px;">'
+    +'<div style="display:flex;align-items:center;gap:6px;font-weight:800;color:'+c[0]+';">'
+    +'<span style="width:16px;height:16px;border-radius:50%;background:'+c[0]+';color:#fff;font-size:10px;line-height:16px;text-align:center;flex:none;">'+(st==='done'?'✓':st==='miss'?'!':'…')+'</span>'
+    +escText(title)+'</div>'
+    +(when?'<div style="font-size:11px;font-weight:700;color:#334155;margin-top:2px;">'+escText(when)+'</div>':'')
+    +lines.filter(Boolean).map(l=>'<div style="font-size:11px;color:#475569;margin-top:1px;">'+l+'</div>').join('')+'</div>';
+}
+// Submitted → Unloader Supervisor → MD Approval → Final Submit
+function inpPipeHtml_(p){
+  const s=inpState_(p), st=x=>String((x&&x.status)||'');
+  const steps=[inwPipeStep_('done','Store Submitted',inwGateDmyT_(p.at),['Store Inward No. <b>'+escText(p.no)+'</b> allotted',p.by?'By <b>'+escText(p.by)+'</b>':''])];
+  const dec=(x,who)=>st(x)==='Approved'
+    ?inwPipeStep_('done',who+' Approved',inwGateDmyT_(x.at),['By <b>'+escText(x.by||'-')+'</b>',x.remarks?'Remarks: '+escText(x.remarks):''])
+    :st(x)==='Rejected'
+      ?inwPipeStep_('miss',who+' Rejected',inwGateDmyT_(x.at),['By <b>'+escText(x.by||'-')+'</b>',x.remarks?'Reason: <b>'+escText(x.remarks)+'</b>':''])
+      :x?inwPipeStep_('wait',who,'Waiting',[x.to?'With <b>'+escText(x.to)+'</b>':'',x.sentAt?'Sent '+escText(inwGateDmyT_(x.sentAt)):''])
+        :inwPipeStep_('miss',who,'Not sent',['The request did not go out: choose this entry and Submit to send it']);
+  if(p.needUl)steps.push(dec(p.ul,'Unloader Supervisor'));
+  if(p.needMd){
+    const rs=(Array.isArray(p.md&&p.md.reasons)?p.md.reasons:[]).slice(0,3).map(x=>escText(String(x)));
+    let h=dec(p.md,'MD Approval');
+    if(rs.length&&st(p.md)!=='Approved')h=h.replace(/<\/div>$/,'<div style="font-size:10px;color:#7c2d12;margin-top:2px;">'+rs.join('<br>')+'</div></div>');
+    steps.push(h);
+  }
+  steps.push(s.ready?inwPipeStep_('done','Final Submit','Ready',['Choose it, add the Original Invoice photo and Submit: saved as <b>'+escText(p.no)+'</b>'])
+    :s.rej?inwPipeStep_('miss','Final Submit','Correct',['Choose it, correct the values and Submit: sent again under <b>'+escText(p.no)+'</b>'])
+    :inwPipeStep_('off','Final Submit','Locked',['Allowed once every approval above is given']));
+  return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join('<div style="align-self:center;color:#94a3b8;font-weight:800;flex:none;">→</div>')+'</div>';
+}
+function inpInfoHtml_(p,withGate){
+  const s=inpState_(p), C=s.rej?['#b91c1c','#fef2f2','#fca5a5']:s.ready?['#15803d','#f0fdf4','#86efac']:['#b45309','#fffbeb','#fcd34d'];
+  return '<div style="margin-top:'+(withGate?'10px':'0')+';border:1.5px solid '+C[2]+';background:'+C[1]+';border-radius:8px;padding:8px 10px;">'
+    +'<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;color:#1e293b;">'
+    +'<span style="font-weight:800;color:'+C[0]+';">Store Inward No. '+escText(p.no)+'</span>'
+    +(p.entryType&&p.entryType!=='INWARD'?'<span>'+escText(p.entryType)+'</span>':'')
+    +'<span>'+escText(p.supplier||'-')+(p.invoiceNo?' · Bill '+escText(p.invoiceNo):'')+'</span>'
+    +(p.po?'<span>PO '+escText(p.po)+'</span>':p.pr?'<span>PR '+escText(p.pr)+'</span>':'')
+    +'<span style="font-weight:800;color:'+C[0]+';">'+escText(s.txt)+'</span>'
+    +'<button type="button" onclick="inpCancel_('+Number(p.id)+')" style="margin-left:auto;background:#fff;border:1px solid #fca5a5;color:#b91c1c;border-radius:5px;padding:3px 10px;font-size:11px;font-weight:800;cursor:pointer;">Cancel this No.</button></div>'
+    +inpPipeHtml_(p)+'</div>';
+}
+// the entry this Submit saves under its allotted number: the one loaded, else an open one of the same values
+function inpForSave_(rows){
+  if(sarvEditingInwardId)return null;
+  const et=pVal('entryTypeSelect')||'INWARD';
+  if(sarvInwPendActive&&(sarvInwPendActive.row.entryType||'INWARD')===et)return sarvInwPendActive.row;
+  if(!rows||!rows.length)return null;
+  const sig=inwardApprovalSignature_(rows,inwardPoRefList_(rows),inwardPrRefList_(rows));
+  return (sarvInwGate.inp||[]).find(p=>p.signature===sig&&(p.entryType||'INWARD')===et)||null;
+}
+function inpRowPayload_(rows,poNos,prNos,id){
+  const et=pVal('entryTypeSelect')||'INWARD', cfg=SARV_DOC_NO_CFG[et==='INWARD NB'?'NB':'INWARD'], gate=inwGateVal_();
+  return {id:id||null,store:sarvStore,entryType:et,prefix:cfg.prefix(sarvStore),
+    signature:inwardApprovalSignature_(rows,poNos,prNos),
+    supplier:pVal('supplierName')||'',invoiceNo:pVal('invoiceNumber')||'',invoiceDate:pVal('invoiceDate')||'',
+    gateEntryNo:gate,po:poNos.join(', '),pr:prNos.join(', '),
+    payload:Object.assign(inwardApprovalPayload_(rows,inwardDocOverrides(rows),poNos,prNos),{extra:inwardDraftExtra_(),gateEntryNo:gate})};
+}
+/* Called by the MD / Unloader request just before it is written: the entry's number, allotted now when it has
+   none ('' = no migration, sent without one; false = stop, said why). kind 'MD' / 'UL' = which approval it asks. */
+async function inpEnsureNo_(rows,poNos,prNos,kind){
+  if(sarvEditingInwardId)return '';
+  if(sarvInwPendActive)return sarvInwPendActive.no;
+  if(sarvInwPendNew)return sarvInwPendNew.no;
+  if(sarvInwGate.inpNoMig)return '';
+  try{
+    const row=Object.assign(inpRowPayload_(rows,poNos,prNos,null),{needMd:kind==='MD',needUl:kind==='UL'});
+    const d=await inpRpc_('inp_save',{p_row:row});
+    sarvInwPendNew=d.row;
+    return d.row.no;
+  }catch(e){
+    if(inpNoMig_(e)){
+      sarvInwGate.inpNoMig=true;
+      showToast('The Store Inward No. on Submit needs <code>sql/INWARD_PENDING_MIGRATION.sql</code> (Admin). The request goes out without a number, as before.','warn');
+      return '';
+    }
+    showToast('The Store Inward No. could not be allotted, so nothing was sent: '+escText(e.message||e),'error');
+    return false;
+  }
+}
+function inpMarkSent_(){sarvInwPendSent=true;}
+// After the requests of a Submit: the row gets the final values and approvals asked, the form is cleared
+async function inpAfterSend_(rows,needMd,needUl){
+  const p=sarvInwPendNew||(sarvInwPendActive&&sarvInwPendActive.row)||null;
+  const isNew=!!sarvInwPendNew, sent=sarvInwPendSent;
+  sarvInwPendNew=null;sarvInwPendSent=false;
+  if(!p)return;
+  if(!sent){
+    // allotted, but its request did not go out: it stays on the form; the next Submit uses the same number
+    if(isNew)showToast('Store Inward No. <b>'+escText(p.no)+'</b> is allotted, but the request did not go out. Submit again.','warn');
+    sarvInwGate.at=0;return;
+  }
+  try{
+    await inpRpc_('inp_save',{p_row:Object.assign(inpRowPayload_(rows,inwardPoRefList_(rows),inwardPrRefList_(rows),p.id),{needMd:!!needMd,needUl:!!needUl})});
+  }catch(e){console.warn('[SARV] Store Inward No. row not updated:',e.message||e);}
+  const waitFor=[needUl?'the Unloader Supervisor (Unloader Supervisor app)':'',needMd?'the MD (mobile app › PO Receipts › Inward Approval)':''].filter(Boolean).join(' and ');
+  clearInwardForm();
+  sarvInwGate.at=0;inwGateRefresh_(true);
+  const msg=(isNew?'Store Inward No. '+p.no+' is allotted to this entry.':'Store Inward No. '+p.no+' is sent again for approval.')
+    +'\n\nIt waits for '+(waitFor||'its approval')+'.'
+    +'\n\nFollow it in the Gate Entry No. list of the Inward form (at the top, under its Store Inward No.). Once approved, choose it there, add the Original Invoice photo and Submit: it is saved with this same number.';
+  if(window.IosDialog&&typeof IosDialog.alert==='function')IosDialog.alert(msg);else alert(msg);
+}
+// Picked in the Gate Entry No. list: the whole entry back onto the form
+async function inpPick_(id){
+  const sel=byId('inwGateEntryNo');
+  await inwGateLoad_(true);
+  const p=(sarvInwGate.inp||[]).find(x=>String(x.id)===String(id));
+  if(!p){
+    inwGateRender_();if(sel)sel.value='';inwGateInfo_();
+    return showToast('This Store Inward No. is not open any more (saved or cancelled meanwhile). The list is read again.','warn');
+  }
+  if(sarvInwPendActive&&String(sarvInwPendActive.id)===String(p.id)){if(sel)sel.value=INP_PFX+p.id;inwGateInfo_();return;}
+  const s=inpState_(p), ok=a=>a&&a.status==='Approved'?a:null;
+  const dec=ok(p.md)||ok(p.ul)||{};
+  const d={id:'INP'+p.id,_src:'INP',_unlocked:s.rej,request_no:p.no,signature:p.signature||'',payload:p.payload||{},
+    supplier_name:p.supplier||'',invoice_no:p.invoiceNo||'',invoice_date:p.invoiceDate||'',entry_type:p.entryType||'INWARD',
+    po_numbers:p.po||'',req_numbers:p.pr||'',status:'Approved',decided_by:dec.by||'',decided_at:dec.at||'',
+    reasons:(p.md&&p.md.reasons)||[]};
+  const loaded=await inwDraftLoad_(null,d);
+  if(loaded!==true){inwGateRender_();if(sel)sel.value='';inwGateInfo_();return;}
+  sarvInwPendActive={id:p.id,no:p.no,row:p};
+  const e=byId('regEntryNo');if(e)e.value=p.no;
+  // its gate entry comes with it (photos of the delivery, the Unloader's photos)
+  sarvInwGate.want=p.gateEntryNo||'';
+  inwGateRender_();if(sel)sel.value=INP_PFX+p.id;
+  const gr=p.gateEntryNo?(sarvInwGate.list||[]).find(x=>x.no===p.gateEntryNo):null;
+  inwGateUlApply_(gr||null);inwGatePhotosLoad_(gr||null);
+  renderPoNumberPanel();inwDraftRenderStrip_();inwGateInfo_();
+  showToast('Store Inward No. <b>'+escText(p.no)+'</b> loaded into the form · '+escText(s.txt)
+    +(s.ready?'<br>Add the Original Invoice photo and Submit.':s.rej?'<br>Correct the values and Submit: it goes for approval again under the same number.':'<br>Submit works once it is approved.'),s.ready?'':'warn');
+  byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+}
+// a decision that arrives while the entry is on the form: said, and its boxes follow
+function inpFollow_(){
+  if(!sarvInwPendActive)return;
+  const f=(sarvInwGate.inp||[]).find(x=>String(x.id)===String(sarvInwPendActive.id));
+  if(!f)return;
+  const a=inpState_(sarvInwPendActive.row).txt, b=inpState_(f).txt;
+  sarvInwPendActive.row=f;
+  if(a!==b){showToast('Store Inward No. <b>'+escText(f.no)+'</b>: '+escText(b),inpState_(f).rej?'warn':'');inwDraftRenderStrip_();}
+}
+// Cancel (own PIN + reason): the number stays unused for good, the waiting requests are withdrawn
+async function inpCancel_(id){
+  const p=(sarvInwGate.inp||[]).find(x=>String(x.id)===String(id))||(sarvInwPendActive&&String(sarvInwPendActive.id)===String(id)?sarvInwPendActive.row:null);
+  if(!p)return;
+  const reason=prompt('Cancel Store Inward No. '+p.no+'?\n\nThis number is not given to any other entry (the series keeps the gap), and the approval requests still waiting for it are withdrawn.\n\nReason:','');
+  if(reason==null)return;
+  if(reason.trim().length<3)return showToast('Write the reason (3 letters or more)','warn');
+  const pin=await askSecret({title:'Confirm with your PIN',subtitle:'Cancel Store Inward No. '+p.no,
+    recordInfo:(p.supplier||'-')+(p.invoiceNo?' · Bill '+p.invoiceNo:''),label:'Your PIN',confirmText:'Cancel the No.'});
+  if(pin==null||!pin.trim())return;
+  try{await inpRpc_('inp_cancel',{p_id:Number(p.id),p_reason:reason.trim(),p_pin:pin.trim()});}
+  catch(e){return showToast(e.code==='PIN_INVALID'?'Wrong PIN':e.code==='NOT_OPEN'?'It is not open any more ('+escText((e.data&&e.data.status)||'')+')':'Not cancelled: '+escText(e.message||e),'error');}
+  if(sarvInwPendActive&&String(sarvInwPendActive.id)===String(p.id))clearInwardForm();
+  sarvInwGate.at=0;await inwGateRefresh_(true);
+  showToast('Store Inward No. '+escText(p.no)+' cancelled');
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CHALLAN ENTRY   (sql/INWARD_CHALLAN_MIGRATION.sql, 2026-11-24)
+   Submit Inward with a Final Amount or any item Rate of 0 or less asks "Kya ye Inward Entry only Challan ke
+   againt hai ?" (Yes / Cancel; Cancel = nothing saved, correct the rates). Yes asks "Iska Bill kab aayega ?"
+   (a date, today or later). The entry is then saved as usual (record, stock, PDF printing "Against Challan · Bill
+   due") and inward_entries.challan_info = {on, billDue, at, by, challanNo, amount} (inwChallanStore_).
+   Until its bill is in, the entry is listed in the Gate Entry No. box under "Challan · Bill pending" (value
+   'CHL|<id>', overdue marked; read with the gate list in inwGateLoad_). Picking it asks for the ORIGINAL INVOICE
+   first (inwChallanAskInvoice_: photos or a PDF, at least one); only then the record opens on the form
+   (loadInwardForEdit, no EDIT right needed for this), the bill's pages added to its saved attachments, and the
+   Invoice No. box EMPTY and compulsory (the challan no. is shown, a bill with the same number is asked about).
+   Update = the same record (rates may be filled now), challan_info gets billAt / billBy / billNo / billDate and
+   the PDF prints the old Challan No. The pipeline Challan Saved → Bill Due → Original Invoice → Bill Updated is
+   shown in the popup and under the box while the bill is booked (inwChallanPipeHtml_).
+   ═══════════════════════════════════════════════════════════════════════ */
+var CHL_PFX='CHL|';           // var: inwGateVal_ may run before this line is reached
+var sarvInwChallanNew=null;   // {billDue} answered at THIS Submit of a new entry
+var sarvInwChallanBill=null;  // {id, no, row, prevInvoice}: the challan entry whose bill is being booked
+var sarvInwChallanLoaded=null;// challan_info of the record opened for edit
+function inwChallanMe_(){return (sarvCurrentUser&&sarvCurrentUser.name)||'';}
+function inwChallanFinal_(){return pNum(String(byId('finalAmount')?.textContent||'').replace(/[^\d.\-]/g,''));}
+function inwChallanDmy_(v){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v||''));return m?m[3]+'-'+m[2]+'-'+m[1]:'-';}
+// Bill due: {txt, late, days}
+function inwChallanDue_(r){
+  const c=(r&&r.challan_info)||{}, due=String(c.billDue||'');
+  if(!due)return {txt:'Bill date not set',late:false,days:0};
+  const d=Math.round((new Date(due+'T00:00:00')-new Date(today()+'T00:00:00'))/86400000);
+  return d<0?{txt:'Bill due '+inwChallanDmy_(due)+' · OVERDUE '+(-d)+' day'+(d===-1?'':'s'),late:true,days:d}
+    :{txt:'Bill due '+inwChallanDmy_(due)+(d===0?' · today':' · in '+d+' day'+(d===1?'':'s')),late:false,days:d};
+}
+// Submit of a NEW entry: true = go on (not a challan, or a challan with its bill date), false = stop
+async function inwChallanAsk_(rows){
+  sarvInwChallanNew=null;
+  if(sarvEditingInwardId)return true;
+  const zeroRate=(rows||[]).some(r=>pNum(r.rate)<=0), amt=inwChallanFinal_();
+  if(!(zeroRate||amt<=0))return true;
+  const q='Kya ye Inward Entry only Challan ke againt hai ?\n\n'
+    +(amt<=0?'Final Amount: '+amt.toFixed(2):'Item(s) with Rate 0: '+(rows||[]).filter(r=>pNum(r.rate)<=0).map(r=>r.name).slice(0,4).join(', '));
+  let yes;
+  if(window.IosDialog&&typeof IosDialog.choose==='function')
+    yes=(await IosDialog.choose(q,[{label:'Yes',value:'yes',bold:true},{label:'Cancel',value:'no',cancel:true}]))==='yes';
+  else yes=window.confirm(q);
+  if(!yes){showToast('Not saved. Fill the Rate of every item, or answer Yes for a challan entry.','warn');return false;}
+  const due=await inwChallanAskDate_();
+  if(!due)return false;
+  sarvInwChallanNew={billDue:due};
+  return true;
+}
+// "Iska Bill kab aayega ?" with a calendar box; resolves the date (YYYY-MM-DD) or null
+function inwChallanAskDate_(){
+  return new Promise(resolve=>{
+    const ov=document.createElement('div');
+    ov.className='sarv-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML='<div style="background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.25);width:min(380px,100%);font-size:13px;">'
+      +'<div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;">Iska Bill kab aayega ?</div>'
+      +'<div style="padding:12px 14px;color:#475569;">Expected date of the bill for this challan entry. It waits in the Gate Entry No. list until its Original Invoice is added.'
+      +'<input type="date" id="chlBillDue" style="display:block;width:100%;box-sizing:border-box;margin-top:10px;padding:8px;border:1px solid #cbd5e1;border-radius:6px;font-size:14px;">'
+      +'<div id="chlBillErr" style="color:#b91c1c;font-weight:700;min-height:16px;margin-top:6px;"></div></div>'
+      +'<div style="padding:10px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">'
+      +'<button type="button" data-x style="padding:7px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;">Cancel</button>'
+      +'<button type="button" data-ok style="padding:7px 14px;border:0;background:#0f766e;color:#fff;font-weight:700;border-radius:5px;cursor:pointer;">Save Entry</button></div></div>';
+    document.body.appendChild(ov);
+    const inp=ov.querySelector('#chlBillDue'), err=ov.querySelector('#chlBillErr');
+    const done=v=>{document.removeEventListener('keydown',key,true);ov.remove();resolve(v);};
+    const ok=()=>{
+      const v=String(inp.value||'').trim();
+      if(!/^\d{4}-\d{2}-\d{2}$/.test(v)){err.textContent='Choose the date';return;}
+      if(v<today()){err.textContent='The date cannot be before today';return;}
+      done(v);
+    };
+    const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(null);}else if(e.key==='Enter'){e.preventDefault();e.stopPropagation();ok();}};
+    ov.querySelector('[data-x]').onclick=()=>done(null);
+    ov.querySelector('[data-ok]').onclick=ok;
+    document.addEventListener('keydown',key,true);
+    setTimeout(()=>{try{inp.focus();inp.click();}catch(e){}},60);
+  });
+}
+// Submit of the BILL of a challan entry: the Original Invoice is in the box, a new Invoice No. is typed
+async function inwChallanBillGate_(){
+  const B=sarvInwChallanBill;
+  if(!B||String(B.id)!==String(sarvEditingInwardId||''))return true;
+  const inv=pVal('invoiceNumber');
+  if(!inv){highlightRequiredField('invoiceNumber');showToast('Type the Invoice No. of the bill: it is compulsory','warn');return false;}
+  if(window.photosReady)await window.photosReady('inward');
+  if(!(window.getPhotos?window.getPhotos('inward'):[]).some(f=>f&&f.chlInv)){
+    const files=await inwChallanAskInvoice_(B.row);
+    if(!files)return false;
+    if(window.putPhotos)window.putPhotos('inward',window.getPhotos('inward').concat(files));
+  }
+  if(B.prevInvoice&&yulKey_(inv)===yulKey_(B.prevInvoice)
+    &&!confirm('The Invoice No. '+inv+' is the same as the challan no.\n\nSave the bill with this Invoice No.?'))return false;
+  const amt=inwChallanFinal_();
+  if((amt<=0||rowDataInward().some(r=>pNum(r.rate)<=0))
+    &&!confirm('The Final Amount / a Rate is still 0 or less.\n\nSave the bill like this? (Cancel, fill the rates of the bill and Update.)'))return false;
+  return true;
+}
+// After the header is written: the challan of a new entry, or its bill received
+async function inwChallanStore_(id){
+  let v=null;
+  const B=sarvInwChallanBill;
+  if(B&&String(B.id)===String(id)){
+    const old=(B.row&&B.row.challan_info)||{};
+    v=Object.assign({},old,{billAt:new Date().toISOString(),billBy:inwChallanMe_(),billNo:pVal('invoiceNumber'),
+      billDate:pVal('invoiceDate')||null,challanNo:old.challanNo||B.prevInvoice||''});
+  }else if(sarvInwChallanNew&&!sarvEditingInwardId){
+    v={on:true,billDue:sarvInwChallanNew.billDue,at:new Date().toISOString(),by:inwChallanMe_(),
+      challanNo:pVal('invoiceNumber')||'',amount:inwChallanFinal_()};
+  }
+  if(!v)return;
+  try{
+    const r=await SB.from('inward_entries').update({challan_info:v}).eq('id',id);
+    if(r.error){
+      if(r.error.code==='42703'||/challan_info/i.test(r.error.message||''))
+        showToast('Saved, but the challan / bill record needs <code>sql/INWARD_CHALLAN_MIGRATION.sql</code> (Admin): this entry is not listed under "Challan · Bill pending".','warn');
+      else console.warn('[SARV] Challan record not stored:',r.error.message);
+    }else{
+      if(v.billAt)showToast('Bill '+escText(v.billNo)+' booked on the challan entry; it leaves the Challan · Bill pending list');
+      else showToast('Challan entry saved. Bill due '+escText(inwChallanDmy_(v.billDue))+': it waits in the Gate Entry No. list under "Challan · Bill pending".');
+    }
+  }catch(e){console.warn('[SARV] Challan record not stored:',e.message||e);}
+  sarvInwGate.at=0;
+}
+// What the PDF prints
+function inwChallanPdf_(){
+  const B=sarvInwChallanBill;
+  if(B&&String(B.id)===String(sarvEditingInwardId||'')){const c=(B.row&&B.row.challan_info)||{};return {billed:true,challanNo:c.challanNo||B.prevInvoice||''};}
+  if(sarvInwChallanNew&&!sarvEditingInwardId)return {billDue:sarvInwChallanNew.billDue};
+  const c=sarvEditingInwardId?sarvInwChallanLoaded:null;
+  if(c)return c.billAt?{billed:true,challanNo:c.challanNo||''}:{billDue:c.billDue||''};
+  return null;
+}
+// Challan Saved → Bill Due → Original Invoice → Bill Updated
+function inwChallanPipeHtml_(r,live){
+  const c=(r&&r.challan_info)||{}, due=inwChallanDue_(r);
+  const nInv=live?(window.getPhotos?window.getPhotos('inward'):[]).filter(f=>f&&f.chlInv).length:0;
+  const steps=[
+    inwPipeStep_('done','Challan Saved',inwGateDmyT_(c.at||r.created_at),['Inward <b>'+escText(r.document_no||'-')+'</b>',
+      c.challanNo||r.invoice_no?'Challan No. <b>'+escText(c.challanNo||r.invoice_no)+'</b>':'',c.by?'By <b>'+escText(c.by)+'</b>':'',
+      c.amount!=null?'Amount '+escText(pNum(c.amount).toFixed(2)):'']),
+    inwPipeStep_(due.late?'miss':live?'done':'wait','Bill Due',inwChallanDmy_(c.billDue),[escText(due.txt.replace(/^Bill due [\d-]+ · ?/,''))]),
+    nInv?inwPipeStep_('done','Original Invoice','Added',[nInv+' page(s) in Photos / Original Invoice'])
+      :inwPipeStep_('wait','Original Invoice','Not added',['Choose it in the Gate Entry No. list and add the bill']),
+    inwPipeStep_(live?'wait':'off','Bill Updated',live?'Now':'',[live?'Type the bill\'s Invoice No. (and its rates) and Update':''])
+  ];
+  return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join('<div style="align-self:center;color:#94a3b8;font-weight:800;flex:none;">→</div>')+'</div>';
+}
+// under the Gate Entry No. box while a challan's bill is being booked
+function inwChallanPaint_(){
+  const grp=byId('inwGateGroup');if(!grp)return;
+  let box=byId('inwChallanBox');
+  const B=sarvInwChallanBill, on=B&&String(B.id)===String(sarvEditingInwardId||'');
+  if(!on){if(box)box.style.display='none';return;}
+  if(!box){box=document.createElement('div');box.id='inwChallanBox';box.style.cssText='margin-top:10px;border:1.5px solid #f59e0b;background:#fffbeb;border-radius:8px;padding:8px 10px;font-size:12px;';
+    const after=byId('inwGateInfo');if(after&&after.nextSibling)grp.insertBefore(box,after.nextSibling);else grp.appendChild(box);}
+  box.style.display='block';
+  box.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;color:#1e293b;">'
+    +'<span style="font-weight:800;color:#b45309;">Bill of challan entry '+escText(B.no||'')+'</span>'
+    +'<span>'+escText(B.row.supplier_name||'-')+'</span>'
+    +(B.prevInvoice?'<span>Challan No. <b>'+escText(B.prevInvoice)+'</b> (the Invoice No. box is cleared: type the bill\'s number)</span>':'')+'</div>'
+    +inwChallanPipeHtml_(B.row,true);
+}
+// Picked in the Gate Entry No. list: the Original Invoice first, then the entry on the form
+async function inwChallanPick_(id){
+  const sel=byId('inwGateEntryNo');
+  const back=()=>{if(sel)sel.value='';inwGateInfo_();};
+  const r=(sarvInwGate.chl||[]).find(x=>String(x.id)===String(id));
+  if(!r){back();return showToast('This challan entry is not in the list any more (its bill may be booked already). Press Refresh.','warn');}
+  if((sarvInwPendActive||sarvEditingInwardId)&&!confirm('Another entry is open on the form.\n\nLeave it and open the challan entry '+(r.document_no||'')+'?')){back();return;}
+  const files=await inwChallanAskInvoice_(r);
+  if(!files){back();return;}
+  await loadInwardForEdit(r.id,r.document_no);
+  if(String(sarvEditingInwardId||'')!==String(r.id))return;   // not opened (said why)
+  sarvInwChallanBill={id:r.id,no:r.document_no||'',row:r,prevInvoice:r.invoice_no||''};
+  // the bill's pages join the saved ones (sarvEditAttachLoad_ keeps what is added while it loads)
+  if(window.putPhotos)window.putPhotos('inward',(window.getPhotos?window.getPhotos('inward'):[]).concat(files));
+  const grp=byId('inwPhotoGroup');if(grp){grp.style.outline='';grp.style.background='';}
+  const inv=byId('invoiceNumber');
+  if(inv){inv.value='';inv.readOnly=false;inv.disabled=false;inv.placeholder='Invoice No. of the bill (compulsory)';highlightRequiredField('invoiceNumber');}
+  inwChallanPaint_();
+  showToast('Challan entry <b>'+escText(r.document_no||'')+'</b> opened with '+files.length+' Original Invoice page(s). Type the bill\'s Invoice No. (and its rates) and press Update.');
+  setTimeout(()=>{try{inv&&inv.focus();}catch(e){}},300);
+}
+// "Add Original Invoice": photos / a PDF of the bill. Resolves the files for the photo box, or null
+function inwChallanAskInvoice_(r){
+  return new Promise(resolve=>{
+    const files=[];let busy=0;
+    const ov=document.createElement('div');
+    ov.className='sarv-ov';
+    ov.style.cssText='position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:100000;display:flex;align-items:center;justify-content:center;padding:16px;';
+    ov.innerHTML='<div style="background:#fff;border-radius:10px;box-shadow:0 8px 28px rgba(0,0,0,.25);width:min(720px,100%);max-height:90vh;display:flex;flex-direction:column;font-size:13px;">'
+      +'<div style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-weight:800;color:#0f172a;">Add Original Invoice · '+escText(r.document_no||'')+'</div>'
+      +'<div style="padding:10px 14px;overflow:auto;flex:1;">'
+      +'<div style="color:#475569;">'+escText(r.supplier_name||'-')+(r.invoice_no?' · Challan No. <b>'+escText(r.invoice_no)+'</b>':'')+' · '+escText(inwChallanDue_(r).txt)+'</div>'
+      +inwChallanPipeHtml_(r,false)
+      +'<div style="margin-top:12px;font-weight:700;color:#0f172a;">Upload the Original Invoice (photos or a PDF). The entry opens on the form only after it is added.</div>'
+      +'<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">'
+      +'<label style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;border:1.5px dashed #86efac;color:#166534;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Choose Files'
+      +'<input type="file" data-up="inw-challan-invoice" accept="image/*,application/pdf" multiple style="display:none;"></label>'
+      +'<label style="display:inline-flex;align-items:center;gap:6px;background:#eff6ff;border:1.5px dashed #93c5fd;color:#1e40af;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;">Take Photo'
+      +'<input type="file" data-up="inw-challan-invoice" accept="image/*" capture="environment" style="display:none;"></label></div>'
+      +'<div data-list style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;"></div>'
+      +'<div data-msg style="color:#b91c1c;font-weight:700;min-height:16px;margin-top:6px;"></div></div>'
+      +'<div style="padding:10px 14px;border-top:1px solid #e2e8f0;display:flex;gap:8px;justify-content:flex-end;">'
+      +'<button type="button" data-x style="padding:7px 14px;border:1px solid #cbd5e1;background:#fff;border-radius:5px;cursor:pointer;">Cancel</button>'
+      +'<button type="button" data-ok style="padding:7px 14px;border:0;background:#0f766e;color:#fff;font-weight:700;border-radius:5px;cursor:pointer;">Open the entry</button></div></div>';
+    document.body.appendChild(ov);
+    const list=ov.querySelector('[data-list]'), msg=ov.querySelector('[data-msg]'), okB=ov.querySelector('[data-ok]');
+    const draw=()=>{
+      list.innerHTML=files.map((f,i)=>'<div style="position:relative;width:92px;height:120px;border:1px solid #cbd5e1;border-radius:6px;overflow:hidden;background:#f8fafc;">'
+        +'<img src="'+f.dataUrl+'" style="width:100%;height:100%;object-fit:contain;" alt="">'
+        +'<button type="button" data-rm="'+i+'" style="position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:50%;border:0;background:rgba(15,23,42,.7);color:#fff;cursor:pointer;">✕</button></div>').join('')
+        +(busy?'<div style="align-self:center;color:#475569;">Reading…</div>':'');
+      okB.disabled=!files.length||busy>0;okB.style.opacity=okB.disabled?'.5':'1';
+    };
+    const add=async fl=>{
+      busy++;draw();msg.textContent='';
+      try{
+        for(const file of [...(fl||[])]){
+          if(/pdf/i.test(file.type)||/\.pdf$/i.test(file.name||'')){
+            const lib=await sarvPdfJs_(), pdf=await lib.getDocument({data:await file.arrayBuffer()}).promise;
+            for(let p=1;p<=pdf.numPages;p++){
+              const pg=await pdf.getPage(p),v1=pg.getViewport({scale:1}),vp=pg.getViewport({scale:Math.min(3,1800/v1.width)});
+              const cv=document.createElement('canvas');cv.width=Math.round(vp.width);cv.height=Math.round(vp.height);
+              await pg.render({canvasContext:cv.getContext('2d'),viewport:vp}).promise;
+              files.push({name:'ORIGINAL INVOICE · '+(r.document_no||'')+' · page '+(files.length+1),type:'image/jpeg',dataUrl:cv.toDataURL('image/jpeg',0.85),chlInv:true});
+              cv.width=cv.height=0;
+            }
+          }else if(/^image\//i.test(file.type)){
+            const url=await new Promise((ok,no)=>{const fr=new FileReader();fr.onload=()=>ok(fr.result);fr.onerror=()=>no(fr.error);fr.readAsDataURL(file);});
+            const img=await new Promise((ok,no)=>{const im=new Image();im.onload=()=>ok(im);im.onerror=()=>no(new Error('not a picture'));im.src=url;});
+            const k=Math.min(1,1800/Math.max(img.width,img.height));
+            const cv=document.createElement('canvas');cv.width=Math.round(img.width*k);cv.height=Math.round(img.height*k);
+            const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(img,0,0,cv.width,cv.height);
+            files.push({name:'ORIGINAL INVOICE · '+(r.document_no||'')+' · page '+(files.length+1),type:'image/jpeg',dataUrl:cv.toDataURL('image/jpeg',0.85),chlInv:true});
+          }else msg.textContent=(file.name||'A file')+' is not a photo or a PDF';
+        }
+      }catch(e){msg.textContent='Could not read the file: '+(e.message||e);}
+      busy--;draw();
+    };
+    ov.querySelectorAll('input[type=file]').forEach(i=>i.addEventListener('change',()=>{add(i.files);i.value='';}));
+    list.addEventListener('click',e=>{const b=e.target.closest('[data-rm]');if(b){files.splice(+b.getAttribute('data-rm'),1);draw();}});
+    const done=v=>{document.removeEventListener('keydown',key,true);ov.remove();resolve(v);};
+    const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();done(null);}};
+    ov.querySelector('[data-x]').onclick=()=>done(null);
+    okB.onclick=()=>{if(!files.length){msg.textContent='Add the Original Invoice first';return;}done(files.slice());};
+    document.addEventListener('keydown',key,true);
+    draw();
+  });
 }
