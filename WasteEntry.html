@@ -1,0 +1,1479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sarv India - Waste Sale Entry</title>
+    <script src="date-dmy.js"></script>
+    <script src="caps-input.js"></script>
+    <script src="hover-tip.js"></script>
+    <!-- ERP single sign-on: login only from launcher.html (app key HOME_WASTE_SALE) -->
+    <script src="sso-preboot.js"></script>
+    <script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+    <link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+    <link rel="stylesheet" href="ios-dialog.css?v=20261120a">
+    <script src="ios-ui.js?v=20261118a" defer></script>
+    <script src="ios-dropdown.js?v=20261120a" defer></script>
+    <script src="ios-dialog.js?v=20261120a"></script>
+    <!--
+      WASTE SALE ENTRY (launcher app HOME_WASTE_SALE; server sql/WASTE_SALE_MIGRATION.sql)
+        Until 2026-11 every bill was posted to a Google Apps Script sheet and the Reports tab only knew the bills
+        submitted in the open browser tab (a reload lost them). Now the bills live in Supabase:
+        * Submit puts the bill (with its Gate Pass photo) in this phone's queue (OUTBOX, localStorage per user) and
+          uploads it at once with ws_sale_save. No internet = it stays in the queue and goes up by itself.
+        * AUTO SYNC every 5 s while the page is on screen: the queue is pushed, then every bill changed since the
+          last answer is pulled (ws_list from a cursor), so the reports show what other phones saved too.
+          A bill the server REFUSES (Slip No. already used, a party no longer in the list ...) stays in the queue
+          under "Waiting bills" with the reason: Load into form (fix it, Submit again) or Discard.
+        * The server works the totals out again (ws_calc_, the same formula as calculateItemData here) and keeps
+          Slip No. unique; Party / Item lists are on the server (ws_masters / ws_master_save), so a name added on
+          one phone is on every phone.
+        * Delete (in a bill's view) = soft, by its maker or an Admin, with a reason and the user's own PIN.
+        * Started without internet: the last login of the last 7 days is used, bills wait in the queue.
+        * (2026-11-25) SLIP NO is the server series WS-0001, WS-0002 ...: the box only SHOWS the next number
+          (ws_next_no); ws_sale_save takes the real one when the bill reaches the server (so offline bills and two
+          phones never clash). The success message offers Print with the final number.
+        * VEHICLE (Dharam Kanta): a vehicle weighed empty at Gate-1 / Gate-2 and not dispatched yet (ws_dk_vehicles,
+          the gates' own "waiting for its dispatch" rule), or NO VEHICLE on purpose; compulsory choice. The gate's
+          Out From Dispatch then shows this bill's waste on that Dharam Kanta slip instead of packing slips
+          (gate_dk_loaded_ → waste, section 6D of gate_2.html), and its KG counts as loaded weight.
+    -->
+    <style>
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #a8a8a8; }
+        body { background: #f8fafc; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+        .ic { width: 1.15em; height: 1.15em; flex: none; display: inline-block; vertical-align: -0.2em; }
+        .spin { animation: wsSpin 0.9s linear infinite; }
+        @keyframes wsSpin { to { transform: rotate(360deg); } }
+        .pill { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .pill-ok { background: #dcfce7; color: #166534; }
+        .pill-wait { background: #fef3c7; color: #92400e; }
+        .pill-bad { background: #fee2e2; color: #991b1b; }
+        .pill-busy { background: #e0e7ff; color: #3730a3; }
+        @media (prefers-reduced-motion: reduce) { .fade-in, .spin { animation: none; } }
+        @media print {
+            body * { visibility: hidden; }
+            #printArea, #printArea * { visibility: visible; }
+            #printArea { position: absolute; left: 0; top: 0; width: 100%; display: block !important; padding: 20px; background: white; }
+            @page { size: auto; margin: 10mm; }
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen pb-12 relative overflow-x-hidden">
+
+    <header class="bg-indigo-600 text-white shadow-md sticky top-0 z-10 no-print">
+        <div class="max-w-6xl mx-auto px-4 py-4 flex flex-col items-center">
+            <h1 class="text-3xl font-bold tracking-tight">SARV INDIA</h1>
+            <h2 class="text-indigo-200 text-sm font-medium tracking-widest mt-1 uppercase text-center">Waste Sale Entry Data</h2>
+            <div id="whoLine" class="text-indigo-100 text-xs mt-1"></div>
+
+            <div class="flex w-full sm:w-auto gap-1 sm:gap-2 mt-4 bg-indigo-800/50 p-1 rounded-lg">
+                <button onclick="switchTab('entry')" id="tabEntry" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md bg-white text-indigo-700 font-semibold shadow-sm text-sm transition-all">Data Entry</button>
+                <button onclick="switchTab('report')" id="tabReport" class="flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-indigo-100 hover:text-white font-medium text-sm transition-all">Reports</button>
+            </div>
+        </div>
+    </header>
+
+    <div id="noMigBar" class="hidden max-w-6xl mx-4 sm:mx-auto mt-3 px-4 py-2 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 text-sm no-print"></div>
+
+    <main class="max-w-6xl mx-auto px-4 mt-4 sm:mt-6 no-print">
+
+        <!-- ENTRY VIEW -->
+        <div id="entryView" class="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8 fade-in">
+
+        <div class="lg:col-span-3 flex flex-col sm:flex-row flex-wrap gap-3 mb-2">
+            <button onclick="openModal('partyModal')" class="w-full sm:w-auto justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium py-2.5 sm:py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm">
+                <i data-ic="userPlus"></i> Add New Party
+            </button>
+            <button onclick="openModal('itemModal')" class="w-full sm:w-auto justify-center bg-indigo-100 hover:bg-indigo-200 text-indigo-700 font-medium py-2.5 sm:py-2 px-4 rounded-lg transition-colors flex items-center gap-2 shadow-sm text-sm">
+                <i data-ic="package"></i> Add New Item
+            </button>
+            <button id="syncPill" onclick="syncNow(true)" title="Sync now" class="sm:ml-auto self-center pill pill-busy">Starting…</button>
+        </div>
+
+        <!-- Bills in this phone's queue (not on the server yet) -->
+        <section id="outboxCard" class="lg:col-span-3 hidden bg-amber-50 p-4 rounded-xl border border-amber-200">
+            <h3 class="text-sm font-semibold text-amber-900 mb-2 flex items-center gap-2"><i data-ic="cloud"></i> Waiting bills (not on the server yet)</h3>
+            <div id="outboxList" class="space-y-2 text-sm"></div>
+        </section>
+
+        <div class="lg:col-span-2 space-y-4 sm:space-y-6">
+
+            <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-semibold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <i data-ic="receipt" class="text-indigo-500"></i> Bill Details
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                    <div class="sm:col-span-1">
+                        <label for="slipNo" class="block text-sm font-medium text-slate-700 mb-1">Slip No <span class="text-xs font-normal text-slate-400">(auto)</span></label>
+                        <input type="text" id="slipNo" readonly tabindex="-1" class="w-full px-3 py-2 border border-slate-200 rounded-lg bg-slate-100 text-slate-700 font-semibold outline-none cursor-not-allowed" placeholder="Given on Submit">
+                        <p id="slipHint" class="text-xs text-slate-500 mt-1">Next number of the series; the server gives the final one on Submit.</p>
+                    </div>
+                    <div class="sm:col-span-2 md:col-span-2">
+                        <label for="partyName" class="block text-sm font-medium text-slate-700 mb-1">Party Name</label>
+                        <input type="text" id="partyName" list="partyDataList" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white transition-shadow" placeholder="Type to search or select party...">
+                        <datalist id="partyDataList"></datalist>
+                    </div>
+                    <div class="sm:col-span-1">
+                        <label for="unit" class="block text-sm font-medium text-slate-700 mb-1">Unit</label>
+                        <select id="unit" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
+                            <option value="" disabled selected>Select Unit</option>
+                            <option value="Unit 1">Unit 1</option>
+                            <option value="Unit 2">Unit 2</option>
+                        </select>
+                    </div>
+                    <div class="sm:col-span-1 md:col-span-2">
+                        <label for="date" class="block text-sm font-medium text-slate-700 mb-1">Date</label>
+                        <input type="date" id="date" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow">
+                    </div>
+                    <div class="sm:col-span-2 md:col-span-3">
+                        <label for="dkVehicle" class="block text-sm font-medium text-slate-700 mb-1">Vehicle (Dharam Kanta) <button type="button" onclick="loadVehicles(true)" class="ml-1 text-xs font-semibold text-indigo-600 hover:underline">Refresh</button></label>
+                        <select id="dkVehicle" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
+                            <option value="" selected>Choose the vehicle weighed at the Dharam Kanta</option>
+                        </select>
+                        <p id="dkHint" class="text-xs text-slate-500 mt-1">Vehicles weighed empty at Gate-1 / Gate-2 Dharam Kanta and not dispatched yet. The gate sees this bill when the vehicle goes out.</p>
+                    </div>
+                    <div class="sm:col-span-2 md:col-span-3">
+                        <label for="remarks" class="block text-sm font-medium text-slate-700 mb-1">Remarks</label>
+                        <input type="text" id="remarks" maxlength="500" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-shadow" placeholder="Enter remarks (if any)...">
+                    </div>
+                </div>
+            </section>
+
+            <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 class="text-lg font-semibold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <i data-ic="package" class="text-indigo-500"></i> Add Item
+                </h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                    <div class="sm:col-span-2">
+                        <label for="itemName" class="block text-sm font-medium text-slate-700 mb-1">Item Name</label>
+                        <input type="text" id="itemName" list="itemDataList" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white transition-shadow" placeholder="Type to search or select item...">
+                        <datalist id="itemDataList"></datalist>
+                    </div>
+                    <div>
+                        <label for="quantity" class="block text-sm font-medium text-slate-700 mb-1">Quantity</label>
+                        <input type="number" id="quantity" min="0" step="any" inputmode="decimal" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-right" placeholder="0">
+                    </div>
+                    <div>
+                        <label for="itemType" class="block text-sm font-medium text-slate-700 mb-1">Type</label>
+                        <select id="itemType" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
+                            <option value="KG" selected>KG</option>
+                            <option value="PCS">PCS</option>
+                            <option value="LTR">LTR</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="baseRate" class="block text-sm font-medium text-slate-700 mb-1">Rate (Basic)</label>
+                        <input type="number" id="baseRate" min="0" step="any" inputmode="decimal" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-right" placeholder="₹0.00">
+                    </div>
+                    <div>
+                        <label for="gstRate" class="block text-sm font-medium text-slate-700 mb-1">Rate (w/ GST)</label>
+                        <input type="number" id="gstRate" min="0" step="any" inputmode="decimal" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-right" placeholder="₹0.00" title="The rate billed with GST (bank part); the rest of the Basic rate is paid in cash">
+                    </div>
+                    <div class="sm:col-span-2 md:col-span-1">
+                        <label for="gstPercent" class="block text-sm font-medium text-slate-700 mb-1">GST %</label>
+                        <select id="gstPercent" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none bg-white">
+                            <option value="0" selected>0%</option>
+                            <option value="5">5%</option>
+                            <option value="12">12%</option>
+                            <option value="18">18%</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="mt-4 p-3 sm:p-4 bg-slate-50 rounded-lg border border-slate-200 text-sm">
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3 text-slate-600">
+                        <div><span class="block text-xs uppercase tracking-wider text-slate-400">Amt (w/o GST)</span><span id="previewBaseAmt" class="font-medium text-slate-800 break-words">₹0.00</span></div>
+                        <div><span class="block text-xs uppercase tracking-wider text-slate-400">Taxable Amt</span><span id="previewTaxableAmt" class="font-medium text-slate-800 break-words">₹0.00</span></div>
+                        <div><span class="block text-xs uppercase tracking-wider text-slate-400">Amt (w/ GST)</span><span id="previewAmtWithGst" class="font-medium text-slate-800 break-words">₹0.00</span></div>
+                        <div><span class="block text-xs uppercase tracking-wider text-slate-400">Amt (w/ TCS 2%)</span><span id="previewAmtWithTcs" class="font-medium text-indigo-700 break-words">₹0.00</span></div>
+                    </div>
+                </div>
+
+                <div class="mt-5 flex justify-end">
+                    <button id="addItemBtn" class="w-full sm:w-auto justify-center bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 sm:py-2 px-6 rounded-lg transition-colors flex items-center gap-2">
+                        <i data-ic="plus"></i> Add Item to Bill
+                    </button>
+                </div>
+            </section>
+
+            <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200 w-full overflow-hidden">
+                <h3 class="text-lg font-semibold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <i data-ic="list" class="text-indigo-500"></i> Added Items
+                </h3>
+                <div class="overflow-x-auto pb-2 w-full">
+                    <table class="w-full text-sm text-left whitespace-nowrap min-w-[600px]">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 rounded-lg">
+                            <tr>
+                                <th class="px-4 py-3 rounded-l-lg">Item</th>
+                                <th class="px-4 py-3 text-right">Qty</th>
+                                <th class="px-4 py-3 text-center">Type</th>
+                                <th class="px-4 py-3 text-right">Rate</th>
+                                <th class="px-4 py-3 text-right">Base Amt</th>
+                                <th class="px-4 py-3 text-right">GST Rate</th>
+                                <th class="px-4 py-3 text-center">GST %</th>
+                                <th class="px-4 py-3 text-right">Final Amt</th>
+                                <th class="px-4 py-3 rounded-r-lg text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemsTableBody" class="divide-y divide-slate-100"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+
+        <div class="space-y-4 sm:space-y-6">
+            <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200 lg:sticky lg:top-44">
+                <h3 class="text-lg font-semibold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <i data-ic="calc" class="text-indigo-500"></i> Final Summary
+                </h3>
+                <div class="space-y-3 text-sm">
+                    <div class="flex justify-between items-center text-slate-600"><span>1. All Items Amt (w/o GST)</span><span id="sumBaseAmt" class="font-medium text-slate-800">₹0.00</span></div>
+                    <div class="flex justify-between items-center text-slate-600"><span>2. + GST Amount</span><span id="sumGstAmt" class="font-medium text-slate-800">₹0.00</span></div>
+                    <div class="flex justify-between items-center text-slate-600"><span>3. + TCS Amount (2%)</span><span id="sumTcsAmt" class="font-medium text-slate-800">₹0.00</span></div>
+                    <div class="flex justify-between items-center text-slate-600 border-b border-slate-100 pb-3 pt-2">
+                        <span>4. + Previous Pending</span>
+                        <div class="relative w-24 sm:w-28">
+                            <span class="absolute left-2 top-1/2 -translate-y-1/2 text-slate-500 text-sm">₹</span>
+                            <input type="number" id="prevPendingAmt" inputmode="decimal" class="w-full pl-6 pr-1 sm:pr-2 py-1 text-right border border-slate-300 rounded-md focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none text-slate-800 font-medium transition-shadow text-sm sm:text-base" value="0" min="0" step="any">
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center font-bold text-base sm:text-lg text-slate-800 pt-2"><span>Total Payable by Buyer</span><span id="totalPayable">₹0.00</span></div>
+                </div>
+
+                <div class="mt-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <h4 class="font-medium text-slate-700 mb-3 text-xs sm:text-sm uppercase tracking-wider">Payment Breakdown</h4>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between items-center text-indigo-700 font-medium flex-wrap gap-1"><span class="flex items-center gap-1"><i data-ic="bank"></i> Bank Transfer</span><span id="bankTransferAmt">₹0.00</span></div>
+                        <div class="text-[11px] sm:text-xs text-slate-500 mb-2 pl-5">(Amount with TCS)</div>
+                        <div class="flex justify-between items-center text-emerald-700 font-medium flex-wrap gap-1"><span class="flex items-center gap-1"><i data-ic="money"></i> Cash Amount</span><span id="cashAmt">₹0.00</span></div>
+                        <div class="text-[11px] sm:text-xs text-slate-500 pl-5">(Total Payable - Amt w/ TCS)</div>
+                    </div>
+                </div>
+
+                <div class="mt-6 bg-red-50/50 p-3 sm:p-4 rounded-lg border border-red-200">
+                    <h4 class="font-medium text-slate-800 mb-3 text-sm flex items-center gap-2 flex-wrap">
+                        <i data-ic="camera" class="text-red-500"></i> Attach Gate Pass <span class="text-[10px] sm:text-xs font-bold text-red-500 bg-red-100 px-1.5 sm:px-2 py-0.5 rounded ml-auto">MANDATORY</span>
+                    </h4>
+                    <input type="file" id="gatePassImage" data-up="waste-gate-pass" accept="image/*" capture="environment" class="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-red-100 file:text-red-700 hover:file:bg-red-200 transition-colors">
+                    <p class="text-xs text-slate-500 mt-2">Use camera or select from storage.</p>
+                    <div id="gatePassPreviewBox" class="mt-3 hidden relative rounded-lg border border-slate-200 overflow-hidden bg-slate-100 flex items-center justify-center min-h-[120px]">
+                        <img id="gatePassPreview" class="max-w-full max-h-48 object-contain" src="data:," alt="Gate Pass Preview" data-no-lazy>
+                        <button id="removePhotoBtn" class="absolute top-2 right-2 bg-red-600/80 hover:bg-red-600 text-white p-1.5 rounded-full transition-colors shadow-sm" title="Remove Photo" aria-label="Remove Photo">
+                            <i data-ic="x"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="mt-6 space-y-3">
+                    <button id="submitBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2">
+                        <i data-ic="send"></i> Submit Bill
+                    </button>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="printBill(formBill(), 'Invoice')" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-semibold py-2.5 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 text-sm">
+                            <i data-ic="printer"></i> Print Bill
+                        </button>
+                        <button onclick="shareWhatsApp(formBill())" class="w-full bg-[#25D366] hover:bg-[#20b958] text-white font-semibold py-2.5 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 text-sm">
+                            <i data-ic="chat"></i> WhatsApp
+                        </button>
+                    </div>
+                    <button id="clearBtn" class="w-full bg-white hover:bg-red-50 text-red-600 border border-red-200 font-semibold py-3 px-4 rounded-lg shadow-sm transition-colors flex items-center justify-center gap-2 mt-2">
+                        <i data-ic="reset"></i> Clear Form Data
+                    </button>
+                </div>
+            </section>
+        </div>
+        </div> <!-- End Entry View -->
+
+        <!-- REPORTS VIEW -->
+        <div id="reportsView" class="hidden fade-in space-y-4 sm:space-y-6">
+            <section class="bg-white p-4 sm:p-6 rounded-xl shadow-sm border border-slate-200 w-full overflow-hidden">
+                <h3 class="text-lg font-semibold border-b border-slate-100 pb-3 mb-4 flex items-center gap-2">
+                    <i data-ic="chart" class="text-indigo-500"></i> Generate Report
+                    <span id="reportCount" class="ml-auto text-xs font-normal text-slate-500"></span>
+                </h3>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 bg-slate-50 p-4 rounded-lg border border-slate-200">
+                    <div>
+                        <label for="reportTypeFilter" class="block text-sm font-medium text-slate-700 mb-1">Report Type</label>
+                        <select id="reportTypeFilter" onchange="updateReportInputUI()" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none">
+                            <option value="date">Date Wise</option>
+                            <option value="month">Month Wise</option>
+                            <option value="item">Item Wise</option>
+                            <option value="party">Party Wise</option>
+                            <option value="slip">Slip No Wise (Bill View)</option>
+                        </select>
+                    </div>
+                    <div id="filterInputContainer" class="sm:col-span-2 md:col-span-2 relative">
+                        <label class="block text-sm font-medium text-slate-700 mb-1">Select Filter Value</label>
+                        <div id="filterDateBox" class="grid grid-cols-2 gap-2">
+                            <input type="date" id="filterFrom" aria-label="From date" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                            <input type="date" id="filterTo" aria-label="To date" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none">
+                        </div>
+                        <input type="month" id="filterMonth" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none hidden">
+                        <input type="text" id="filterItem" list="itemDataList" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none hidden" placeholder="Search item...">
+                        <input type="text" id="filterParty" list="partyDataList" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none hidden" placeholder="Search party...">
+                        <input type="text" id="filterSlip" class="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none hidden" placeholder="Enter Slip No (e.g. SLP-100)...">
+                    </div>
+                    <div class="flex items-end sm:col-span-1">
+                        <button id="showReportBtn" onclick="generateReport()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 sm:py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2">
+                            <i data-ic="search"></i> <span>Show Report</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="reportTableView" class="overflow-x-auto pb-2 w-full">
+                    <table class="w-full text-sm text-left whitespace-nowrap border-collapse min-w-[560px]">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 rounded-lg border-b border-slate-200">
+                            <tr>
+                                <th class="px-4 py-3">Item Name</th>
+                                <th class="px-4 py-3 text-center">Type</th>
+                                <th class="px-4 py-3 text-right">Unit 1 (Qty)</th>
+                                <th class="px-4 py-3 text-right">Unit 2 (Qty)</th>
+                                <th class="px-4 py-3 text-right">Amount w/ TCS (₹)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="reportTableBody" class="divide-y divide-slate-100">
+                            <tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 italic">Select filters and generate report</td></tr>
+                        </tbody>
+                        <tfoot class="bg-slate-50 font-bold border-t border-slate-200">
+                            <tr>
+                                <td class="px-4 py-3 text-right text-slate-600" colspan="2">TOTAL:</td>
+                                <td id="reportTotalUnit1" class="px-4 py-3 text-right text-slate-800">0</td>
+                                <td id="reportTotalUnit2" class="px-4 py-3 text-right text-slate-800">0</td>
+                                <td id="reportTotalAmount" class="px-4 py-3 text-right text-indigo-700 text-base">₹0.00</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+
+                <!-- The bills behind the report (or the Slip No matches) -->
+                <div id="billListView" class="hidden mt-6 overflow-x-auto pb-2 w-full">
+                    <h4 class="text-sm font-semibold text-slate-700 mb-2">Bills</h4>
+                    <table class="w-full text-sm text-left whitespace-nowrap border-collapse min-w-[760px]">
+                        <thead class="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-200">
+                            <tr>
+                                <th class="px-3 py-2">Date</th><th class="px-3 py-2">Slip No</th><th class="px-3 py-2">Party</th><th class="px-3 py-2">Unit</th>
+                                <th class="px-3 py-2 text-right">Total Payable</th><th class="px-3 py-2 text-right">Bank</th><th class="px-3 py-2 text-right">Cash</th><th class="px-3 py-2"></th>
+                            </tr>
+                        </thead>
+                        <tbody id="billListBody" class="divide-y divide-slate-100"></tbody>
+                        <tfoot id="billListFoot" class="bg-slate-50 font-bold border-t border-slate-200"></tfoot>
+                    </table>
+                </div>
+
+                <!-- One bill -->
+                <div id="slipBillView" class="hidden mt-6 bg-white border border-slate-200 sm:border-2 rounded-xl overflow-hidden shadow-sm">
+                    <div class="bg-indigo-600 text-white p-3 sm:p-4 flex justify-between items-center flex-wrap gap-2">
+                        <h4 class="text-base sm:text-lg font-bold tracking-widest">SARV INDIA INVOICE</h4>
+                        <span id="viewDate" class="text-xs sm:text-sm font-medium opacity-80"></span>
+                    </div>
+                    <div class="p-4 sm:p-6">
+                        <div id="viewNote" class="hidden mb-4 text-sm px-3 py-2 rounded-lg"></div>
+                        <div class="grid grid-cols-2 gap-4 text-sm mb-6 border-b border-slate-100 pb-6">
+                            <div class="col-span-1"><p class="text-slate-500 text-xs uppercase mb-1">Slip No</p><p id="viewSlipNo" class="font-bold text-base sm:text-lg text-slate-800 break-all"></p></div>
+                            <div class="col-span-1 text-right"><p class="text-slate-500 text-xs uppercase mb-1">Unit</p><p id="viewUnit" class="font-bold text-slate-800"></p></div>
+                            <div class="col-span-2"><p class="text-slate-500 text-xs uppercase mb-1">Party Name</p><p id="viewParty" class="font-bold text-lg sm:text-xl text-slate-800 break-words"></p></div>
+                            <div class="col-span-2"><p class="text-slate-500 text-xs uppercase mb-1">Vehicle (Dharam Kanta)</p><p id="viewVehicle" class="font-semibold text-slate-800 break-words"></p></div>
+                            <div class="col-span-2 mt-1"><p class="text-slate-500 text-xs uppercase mb-1">Remarks</p><p id="viewRemarks" class="font-medium text-slate-700 break-words"></p></div>
+                            <div class="col-span-2 text-xs text-slate-500" id="viewBy"></div>
+                        </div>
+
+                        <div class="mb-6 overflow-x-auto">
+                            <p class="text-slate-500 text-xs uppercase mb-2 font-bold">Items Submitted:</p>
+                            <table class="w-full text-xs sm:text-sm text-left whitespace-nowrap min-w-[520px]">
+                                <thead class="text-xs text-slate-500 uppercase bg-slate-50"><tr>
+                                    <th class="px-3 py-2">#</th><th class="px-3 py-2">Item</th><th class="px-3 py-2 text-right">Qty</th><th class="px-3 py-2 text-right">Rate</th>
+                                    <th class="px-3 py-2 text-right">GST Rate</th><th class="px-3 py-2 text-right">GST %</th><th class="px-3 py-2 text-right">Final Amt</th>
+                                </tr></thead>
+                                <tbody id="viewItems" class="divide-y divide-slate-100"></tbody>
+                            </table>
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-y-3 gap-x-4 sm:gap-x-6 text-xs sm:text-sm mb-6 bg-indigo-50/50 p-3 sm:p-4 rounded-lg border border-indigo-100">
+                            <div class="flex justify-between col-span-2 md:col-span-1"><span class="text-slate-600">Total Base Amount:</span> <span id="viewBaseAmt" class="font-medium"></span></div>
+                            <div class="flex justify-between col-span-2 md:col-span-1"><span class="text-slate-600">GST Amount:</span> <span id="viewGstAmt" class="font-medium"></span></div>
+                            <div class="flex justify-between col-span-2 md:col-span-1"><span class="text-slate-600">TCS Amount (2%):</span> <span id="viewTcsAmt" class="font-medium"></span></div>
+                            <div class="flex justify-between col-span-2 md:col-span-1"><span class="text-slate-600">Previous Pending:</span> <span id="viewPending" class="font-medium text-red-600"></span></div>
+                            <div class="col-span-2 border-t border-slate-200 my-1"></div>
+                            <div class="flex justify-between items-center col-span-2 text-sm sm:text-base font-bold"><span class="text-slate-800">Total Payable:</span> <span id="viewTotal" class="text-indigo-700"></span></div>
+                            <div class="flex justify-between items-center col-span-2 md:col-span-1 mt-2 text-indigo-700"><span class="flex items-center gap-1"><i data-ic="bank"></i> Bank Transfer:</span> <span id="viewBank" class="font-bold"></span></div>
+                            <div class="flex justify-between items-center col-span-2 md:col-span-1 mt-2 text-emerald-700"><span class="flex items-center gap-1"><i data-ic="money"></i> Cash Amount:</span> <span id="viewCash" class="font-bold"></span></div>
+                        </div>
+
+                        <div class="mt-4 flex justify-center gap-3 flex-wrap">
+                            <button onclick="printBill(VIEW_BILL, 'Invoice (Duplicate Copy)')" class="w-full sm:w-auto bg-slate-800 hover:bg-slate-900 text-white font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base shadow-sm">
+                                <i data-ic="printer"></i> Print Professional Bill
+                            </button>
+                            <button onclick="shareWhatsApp(VIEW_BILL)" class="w-full sm:w-auto bg-[#25D366] hover:bg-[#20b958] text-white font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base">
+                                <i data-ic="chat"></i> WhatsApp
+                            </button>
+                            <button id="viewPhotoBtn" onclick="viewPhoto(VIEW_BILL)" class="w-full sm:w-auto bg-red-50 hover:bg-red-100 border border-red-200 text-red-700 font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base">
+                                <i data-ic="image"></i> View Gate Pass Photo
+                            </button>
+                            <button id="viewDeleteBtn" onclick="openDelete(VIEW_BILL)" class="hidden w-full sm:w-auto bg-white hover:bg-red-50 border border-red-200 text-red-600 font-medium py-3 sm:py-2.5 px-6 rounded-lg transition-colors flex items-center justify-center gap-2 text-sm sm:text-base">
+                                <i data-ic="trash"></i> Delete Bill
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+
+    <!-- Modals -->
+    <div id="modalOverlay" class="fixed inset-0 bg-slate-900/50 hidden z-50 flex items-center justify-center fade-in no-print p-4">
+        <div id="msgBox" class="bg-white rounded-xl shadow-xl p-5 sm:p-6 w-full max-w-sm hidden">
+            <h3 class="text-lg font-semibold text-slate-800 mb-2 flex items-center gap-2"><i data-ic="info" class="text-indigo-500"></i> Notice</h3>
+            <p class="text-slate-600 mb-6 whitespace-pre-line" id="msgText"></p>
+            <div class="flex justify-end gap-3">
+                <button id="msgAct" class="hidden bg-slate-800 hover:bg-slate-900 text-white font-medium py-2 px-4 rounded-lg transition-colors"></button>
+                <button onclick="closeModals()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">OK</button>
+            </div>
+        </div>
+
+        <div id="partyModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
+            <h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><i data-ic="userPlus" class="text-indigo-500"></i> Add New Party</h3>
+            <label for="newPartyInput" class="block text-sm font-medium text-slate-700 mb-1">Party Name</label>
+            <input type="text" id="newPartyInput" maxlength="120" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-6 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Enter party name">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-700 font-medium py-2 px-4 transition-colors">Cancel</button>
+                <button onclick="addNewMaster('party')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Add Party</button>
+            </div>
+        </div>
+
+        <div id="itemModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
+            <h3 class="text-lg font-semibold text-slate-800 mb-4 flex items-center gap-2"><i data-ic="package" class="text-indigo-500"></i> Add New Item</h3>
+            <label for="newItemInput" class="block text-sm font-medium text-slate-700 mb-1">Item Name</label>
+            <input type="text" id="newItemInput" maxlength="120" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-6 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Enter item name">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-700 font-medium py-2 px-4 transition-colors">Cancel</button>
+                <button onclick="addNewMaster('item')" class="bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Add Item</button>
+            </div>
+        </div>
+
+        <div id="photoModal" class="bg-white rounded-xl shadow-xl p-3 w-full max-w-2xl hidden">
+            <div class="flex items-center justify-between mb-2 px-1">
+                <h3 class="text-base font-semibold text-slate-800">Gate Pass Photo</h3>
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-800 p-1" aria-label="Close"><i data-ic="x"></i></button>
+            </div>
+            <div class="flex items-center justify-center bg-slate-100 rounded-lg min-h-[200px]">
+                <img id="photoFull" class="max-w-full max-h-[75vh] object-contain" src="data:," alt="Gate Pass Photo" data-no-lazy>
+            </div>
+        </div>
+
+        <div id="deleteModal" class="bg-white rounded-xl shadow-xl p-6 w-full max-w-sm hidden">
+            <h3 class="text-lg font-semibold text-slate-800 mb-1 flex items-center gap-2"><i data-ic="trash" class="text-red-500"></i> Delete Bill</h3>
+            <p id="delInfo" class="text-sm text-slate-500 mb-4"></p>
+            <label for="delReason" class="block text-sm font-medium text-slate-700 mb-1">Reason</label>
+            <input type="text" id="delReason" maxlength="300" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Why is it deleted?">
+            <label for="delPin" class="block text-sm font-medium text-slate-700 mb-1">Your PIN</label>
+            <input type="password" id="delPin" name="pin" inputmode="numeric" autocomplete="off" class="w-full px-3 py-2 border border-slate-300 rounded-lg mb-6 focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="PIN">
+            <div class="flex justify-end gap-3">
+                <button onclick="closeModals()" class="text-slate-500 hover:text-slate-700 font-medium py-2 px-4 transition-colors">Cancel</button>
+                <button id="delGo" onclick="doDelete()" class="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">Delete Bill</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed bottom-4 right-4 left-4 sm:left-auto bg-slate-800 text-white px-5 py-3 rounded-lg shadow-lg z-50 hidden no-print text-sm"></div>
+
+    <div id="printArea" class="hidden"></div>
+
+    <script>
+        const SUPABASE_URL = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+        const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+        const APP_KEY = 'HOME_WASTE_SALE';
+        const TCS_PERCENTAGE = 2;          // keep in step with ws_calc_ (WASTE_SALE_MIGRATION.sql)
+        const AUTO_MS = 5000;              // auto sync, the same 5 s as the other apps
+        const OFFLINE_DAYS = 7;            // a last login this old may still open the page without internet
+
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+
+        // Line icons (the page used to load an icon font from unpkg; the apps use inline SVG).
+        const IC = {
+            userPlus:'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/>',
+            package:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+            cloud:'<path d="M18 10h-1.3A7 7 0 1 0 9 20h9a5 5 0 0 0 0-10z"/>',
+            receipt:'<path d="M5 3h14v18l-3-2-2 2-2-2-2 2-2-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
+            list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+            calc:'<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>',
+            bank:'<path d="M3 10l9-6 9 6"/><path d="M5 10v8M9 10v8M15 10v8M19 10v8M3 21h18"/>',
+            money:'<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="3"/>',
+            camera:'<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/>',
+            x:'<path d="M18 6L6 18M6 6l12 12"/>',
+            plus:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+            send:'<path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4z"/>',
+            printer:'<path d="M6 9V2h12v7"/><rect x="6" y="14" width="12" height="8"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/>',
+            chat:'<path d="M21 11.5a8.4 8.4 0 0 1-12.6 7.3L3 21l2.2-5.4A8.4 8.4 0 1 1 21 11.5z"/>',
+            reset:'<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+            chart:'<path d="M3 3v18h18"/><path d="M8 17v-5M13 17V8M18 17v-9"/>',
+            search:'<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/>',
+            image:'<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="M21 15l-5-5L5 21"/>',
+            trash:'<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>',
+            info:'<circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/>',
+            spin:'<path d="M21 12a9 9 0 1 1-6.2-8.6"/>'
+        };
+        const ico = (n, cls) => '<svg class="ic ' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (IC[n] || '') + '</svg>';
+        document.querySelectorAll('i[data-ic]').forEach(el => { el.outerHTML = ico(el.getAttribute('data-ic'), el.getAttribute('class')); });
+
+        // Offline fallback only: the real lists are on the server (waste_masters, seeded with these).
+        const DEFAULT_ITEMS = [
+            "A.C INDOOR", "A.C.CHARGER", "BAMBOO", "BAMBOO FDY", "BAMBOO GATTA YARN", "BEAM KATA YARN", "C.T", "CAMERA WIRE", "CANCIL",
+            "CEMENT CHADAR", "CHURI", "CONTACTAR", "COPPER", "FANE DHELIG", "FANS ROOF", "FOC", "GANDA NADA", "GAS CUTTER", "GATTA PATTI",
+            "GATTA RELIANCE", "GATTA W.KNOWN", "LOHA", "MCB", "MOTOR BODY", "MULTICARE WIRE", "NADA MIX", "OLD GLASS", "PANI PATTI",
+            "PLASTIC", "RANGEEN BABY", "RANGEEN NADA", "RASHAL WASTE", "RAZING", "RAZING NADA", "RAZING YARN", "REWINDING YARN",
+            "S.S.STEEL", "SINGLE CORE WIRE", "SLEEPRING", "STABLIZER", "THERMACOL", "TIN TAPPAR", "WASTE ALUMINIUM", "WASTE BAG",
+            "WASTE BARDANA", "WASTE BORE", "WASTE COLOR GATTA", "WASTE CYLINDER", "WASTE DRUM", "WASTE GATTA", "WASTE OIL",
+            "WASTE SATTAN", "WASTE YARN", "WATER COLLER", "WELDING SET", "WHITE BLANKET", "WHITE NADA", "WIRE WASTE", "WOOD WASTE",
+            "YARN BSAMBU PETI"
+        ];
+        const DEFAULT_PARTIES = [
+            "AHSHAN", "AKRAM", "ALI", "AMIT", "ARSHAD", "ARUN", "ASHOK", "ASHU", "BABLU", "BALBIR", "BALESH JI", "BEENI", "CASH", "DEEPAK",
+            "DEVINDER", "GANTULAL", "GURMEET", "HARUN", "JABIR", "KALLU", "KASHAV", "KHUSHI", "LATAIF", "MANISH /PUNIT", "MOHIT", "NASHIB",
+            "RAMAN", "RASSI", "RITESH", "ROHIT MITTAL", "SAHID", "SAJID", "SAMIR", "SATTA", "SATTAR", "SHADIH", "SHAMSHAD", "SHANKAR",
+            "SHUNTY", "SONU", "SUKHBIR", "SURENDER", "VIKASH"
+        ];
+
+        // --- State ---
+        let ME = null;                       // { id, name, emp, admin }
+        let OFFLINE_START = false;           // opened with the cached login (no internet at the start)
+        let NO_MIG = false;                  // the server has no ws_* functions yet
+        let items = [];
+        let gatePassBase64 = null;
+        let masterItems = DEFAULT_ITEMS.slice();
+        let masterParties = DEFAULT_PARTIES.slice();
+        let CACHE = { cursor: null, rows: {} };   // every bill the server sent, by id (deleted ones too, flagged)
+        let VIEW_BILL = null;                // the bill open in Reports › bill view
+        let LAST_REPORT = null;              // the report on screen, redrawn by the auto sync when the data changes
+
+        const LS_CACHE = 'ws_cache_v1', LS_MASTERS = 'ws_masters_v1', LS_LOGIN = 'ws_login_v1';
+        const lsOutbox = () => 'ws_outbox_v1:' + (ME ? ME.id : '-');
+        const lsDraft = () => 'ws_draft_v1:' + (ME ? ME.id : '-');
+        // localStorage can be full, blocked or missing (private window): never let that break the page.
+        function lsGet(k, def) { try { const v = localStorage.getItem(k); return v == null ? def : JSON.parse(v); } catch (e) { return def; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+        function lsDel(k) { try { localStorage.removeItem(k); } catch (e) {} }
+        const tokenOf = () => (window.SARV_GATE && SARV_GATE.token) || (function () { try { return localStorage.getItem('sarv_sso_token') || ''; } catch (e) { return ''; } })();
+
+        // Local date (toISOString would give yesterday before 5:30 am in India).
+        function localToday() { const t = new Date(), p = n => String(n).padStart(2, '0'); return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate()); }
+        const dmy = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? m[3] + '-' + m[2] + '-' + m[1] : (d || ''); };
+        const hms = t => { const d = new Date(t), p = n => String(n).padStart(2, '0'); return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds()); };
+        const normSlip = s => String(s || '').toUpperCase().replace(/\s+/g, '');
+        function uuid() {
+            if (window.crypto && crypto.randomUUID) { try { return crypto.randomUUID(); } catch (e) {} }
+            const b = new Uint8Array(16); (window.crypto || {}).getRandomValues ? crypto.getRandomValues(b) : b.forEach((_, i) => b[i] = Math.random() * 256 | 0);
+            b[6] = (b[6] & 15) | 64; b[8] = (b[8] & 63) | 128;
+            const h = Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
+            return h.slice(0, 8) + '-' + h.slice(8, 12) + '-' + h.slice(12, 16) + '-' + h.slice(16, 20) + '-' + h.slice(20);
+        }
+
+        const inputs = { qty: $('quantity'), baseRate: $('baseRate'), gstRate: $('gstRate'), gstPercent: $('gstPercent') };
+        const previews = { baseAmt: $('previewBaseAmt'), taxableAmt: $('previewTaxableAmt'), amtWithGst: $('previewAmtWithGst'), amtWithTcs: $('previewAmtWithTcs') };
+        const summary = { baseAmt: $('sumBaseAmt'), gstAmt: $('sumGstAmt'), tcsAmt: $('sumTcsAmt'), prevPending: $('prevPendingAmt'),
+                          totalPayable: $('totalPayable'), bankTransfer: $('bankTransferAmt'), cash: $('cashAmt') };
+
+        const formatMoney = (amount) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 2 }).format(Number(amount) || 0);
+        const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+        const fmtQty = n => { const v = Number(n) || 0; return Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, ''); };
+
+        // ── Server calls ────────────────────────────────────────────────────
+        const SESSION_ERR = { NO_TOKEN:1, NO_SESSION:1, SESSION_REVOKED:1, SESSION_EXPIRED:1, USER_INACTIVE:1, NO_APP_ACCESS:1 };
+        const ERR = {
+            SLIP_REQUIRED:'Slip No is required', SLIP_TAKEN:'This Slip No is already saved', PARTY_REQUIRED:'Party Name is required',
+            PARTY_NOT_IN_LIST:'This party is not in the Party list', ITEM_NOT_IN_LIST:'An item is not in the Item list',
+            UNIT_REQUIRED:'Choose the Unit', BAD_DATE:'The date is not valid', PHOTO_REQUIRED:'The Gate Pass photo is missing',
+            PHOTO_TOO_BIG:'The Gate Pass photo is too big', NO_ITEMS:'Add at least one item', TOO_MANY_ITEMS:'At most 60 items in one bill',
+            BAD_QTY:'Quantity must be more than 0', BAD_RATE:'A rate is not valid', BAD_GST:'GST % is not valid', BAD_UOM:'Type must be KG, PCS or LTR',
+            BAD_NUMBER:'A number is not valid', BAD_PENDING:'Previous Pending is not valid', NAME_REQUIRED:'Write the name first',
+            REASON_REQUIRED:'Write the reason first', WRONG_PIN:'Incorrect PIN', NOT_ALLOWED:'Only the person who saved this bill or an Admin can delete it',
+            NOT_FOUND:'This bill is not there any more', BAD_DATA:'The data is not valid', SESSION_CHECK_FAILED:'The login could not be checked. Try again.',
+            VEHICLE_REQUIRED:'Choose the vehicle (or NO VEHICLE)', DK_NOT_OPEN:'This Dharam Kanta slip is not waiting for dispatch any more (vehicle already dispatched, or slip deleted). Choose the vehicle again'
+        };
+        async function rpc(fn, args) {
+            let r;
+            try {
+                r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+                    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+                    body: JSON.stringify(Object.assign({ p_token: tokenOf() }, args || {})) });
+            } catch (e) { const er = new Error('No internet connection.'); er.net = true; throw er; }
+            const d = await r.json().catch(() => null);
+            if (!r.ok) {
+                const e = new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status)); e.code = d && d.code;
+                e.missing = e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01'; e.net = r.status >= 500 && !e.missing; throw e;
+            }
+            if (d && d.success === false) {
+                const c = String(d.error || '');
+                if (SESSION_ERR[c]) { location.replace('launcher.html?why=' + c); return new Promise(() => {}); }
+                const e = new Error((ERR[c] || c || 'Unknown error') + (d.item ? ': ' + d.item : '') + (d.party ? ': ' + d.party : '')); e.code = c; e.data = d; throw e;
+            }
+            return d;
+        }
+
+        // --- Modals & toast ---
+        // act = { label, fn }: one extra button (e.g. Print after a save)
+        function showMessage(text, act) {
+            ['partyModal', 'itemModal', 'photoModal', 'deleteModal'].forEach(id => $(id).classList.add('hidden'));
+            $('msgText').textContent = text;
+            const b = $('msgAct');
+            b.classList.toggle('hidden', !act);
+            b.textContent = act ? act.label : '';
+            b.onclick = act ? () => { closeModals(); act.fn(); } : null;
+            $('modalOverlay').classList.remove('hidden');
+            $('msgBox').classList.remove('hidden');
+        }
+        window.openModal = function (modalId) {
+            $('modalOverlay').classList.remove('hidden');
+            $(modalId).classList.remove('hidden');
+            if (modalId === 'partyModal') $('newPartyInput').focus();
+            if (modalId === 'itemModal') $('newItemInput').focus();
+        };
+        window.closeModals = function () {
+            $('modalOverlay').classList.add('hidden');
+            ['msgBox', 'partyModal', 'itemModal', 'photoModal', 'deleteModal'].forEach(id => $(id).classList.add('hidden'));
+            $('newPartyInput').value = ''; $('newItemInput').value = ''; $('delPin').value = ''; $('delReason').value = '';
+            $('photoFull').src = 'data:,';
+        };
+        $('modalOverlay').addEventListener('click', e => { if (e.target === $('modalOverlay')) closeModals(); });
+        document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modalOverlay').classList.contains('hidden')) closeModals(); });
+        function toast(msg) {
+            const t = $('toast'); t.textContent = msg; t.classList.remove('hidden');
+            clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add('hidden'), 2800);
+        }
+
+        // --- Masters (Party / Item lists) ---
+        function populateDatalist(listId, dataArray) {
+            const datalist = $(listId);
+            datalist.innerHTML = '';
+            dataArray.slice().sort().forEach(item => {
+                const opt = document.createElement('option');
+                opt.value = item;
+                datalist.appendChild(opt);
+            });
+        }
+        function paintMasters() { populateDatalist('itemDataList', masterItems); populateDatalist('partyDataList', masterParties); }
+        async function loadMasters() {
+            try {
+                const d = await rpc('ws_masters');
+                if (Array.isArray(d.parties) && d.parties.length) masterParties = d.parties;
+                if (Array.isArray(d.items) && d.items.length) masterItems = d.items;
+                if (d.me) ME.admin = !!d.me.admin;
+                lsSet(LS_MASTERS, { parties: masterParties, items: masterItems, at: Date.now() });
+                paintMasters();
+            } catch (e) {
+                if (e.missing) setNoMig(true);
+            }
+        }
+
+        /* A new name goes to the server first, so every phone has it and the server accepts bills with it.
+           Without internet it cannot be added (the server would refuse the bill later). */
+        window.addNewMaster = async function (type) {
+            const box = type === 'party' ? $('newPartyInput') : $('newItemInput');
+            const val = box.value.trim().replace(/\s+/g, ' ').toUpperCase();
+            if (!val) return showMessage((type === 'party' ? 'Party' : 'Item') + ' name cannot be empty.');
+            let name = val;
+            try {
+                const d = await rpc('ws_master_save', { p_kind: type === 'party' ? 'PARTY' : 'ITEM', p_name: val });
+                name = d.name || val;
+            } catch (e) {
+                return showMessage(e.net ? 'No internet: a new name can be added only when the phone is online.' : ('Not added: ' + e.message));
+            }
+            const list = type === 'party' ? masterParties : masterItems;
+            if (!list.some(x => x.toUpperCase() === name.toUpperCase())) list.push(name);
+            lsSet(LS_MASTERS, { parties: masterParties, items: masterItems, at: Date.now() });
+            paintMasters();
+            $(type === 'party' ? 'partyName' : 'itemName').value = name;
+            saveDraft();
+            closeModals();
+            toast((type === 'party' ? 'Party ' : 'Item ') + name + ' added');
+        };
+
+        // ── VEHICLE (Dharam Kanta slips of both gates waiting for their dispatch) ──
+        const NO_VEH = '__NONE__';                       // "no vehicle / no Dharam Kanta" chosen on purpose
+        const LS_VEH = 'ws_dk_vehicles_v1';
+        let VEH = { rows: [], at: 0 };
+        const gateName = g => g === 'G1' ? 'Gate-1' : 'Gate-2';
+        const unitGate = u => u === 'Unit 1' ? 'G1' : u === 'Unit 2' ? 'G2' : '';
+        const vehOf = slip => VEH.rows.find(r => String(r.slip).toUpperCase() === String(slip || '').toUpperCase()) || null;
+        function vehLabel(r) {
+            const t = r.inTime ? dmy(String(r.inTime).slice(0, 10)).slice(0, 5) + ' ' + hms(r.inTime).slice(0, 5) : '';
+            return [r.vehicle, r.slip, gateName(r.gate), r.tare ? 'Tare ' + r.tare + ' Kg' : '', t, r.waste ? r.waste + ' waste bill' + (r.waste > 1 ? 's' : '') : ''].filter(Boolean).join(' · ');
+        }
+        // The chosen unit's gate first, newest first inside each gate. A choice no longer in the list stays (marked).
+        function paintVehicles() {
+            const sel = $('dkVehicle'), cur = sel.value || sel.dataset.want || '';
+            const g = unitGate($('unit').value);
+            const rows = VEH.rows.slice().sort((a, b) => ((b.gate === g) - (a.gate === g)) || String(b.inTime).localeCompare(String(a.inTime)));
+            let h = '<option value="">Choose the vehicle weighed at the Dharam Kanta</option>';
+            h += rows.map(r => '<option value="' + esc(r.slip) + '">' + esc(vehLabel(r)) + '</option>').join('');
+            if (cur && cur !== NO_VEH && !vehOf(cur)) h += '<option value="' + esc(cur) + '">' + esc(cur + ' · not waiting for dispatch any more') + '</option>';
+            h += '<option value="' + NO_VEH + '">NO VEHICLE (no Dharam Kanta)</option>';
+            sel.innerHTML = h;
+            sel.value = cur;
+            delete sel.dataset.want;
+            vehHint();
+        }
+        function vehHint() {
+            const v = $('dkVehicle').value, r = vehOf(v), h = $('dkHint');
+            if (v && v !== NO_VEH && !r && VEH.at) { h.className = 'text-xs text-red-600 mt-1'; h.textContent = 'Slip ' + v + ' is not waiting for dispatch any more (dispatched or deleted). Choose the vehicle again.'; return; }
+            h.className = 'text-xs text-slate-500 mt-1';
+            h.textContent = v === NO_VEH ? 'No vehicle: the gate does not see this bill on any Dharam Kanta slip.'
+                : r ? 'The gate sees this bill on ' + r.slip + ' (' + gateName(r.gate) + ') when vehicle ' + r.vehicle + ' goes out.'
+                : (VEH.rows.length ? VEH.rows.length + ' vehicle(s) weighed empty at Gate-1 / Gate-2 and not dispatched yet.' : 'No vehicle is waiting at the Dharam Kanta now (last 15 days). Weigh it empty at the gate first, or choose NO VEHICLE.');
+        }
+        async function loadVehicles(manual) {
+            try {
+                const d = await rpc('ws_dk_vehicles', { p_days: 15 });
+                VEH = { rows: d.rows || [], at: Date.now() };
+                lsSet(LS_VEH, VEH);
+            } catch (e) {
+                if (manual) toast(e.net ? 'No internet: the vehicle list is from ' + (VEH.at ? hms(VEH.at) : 'before') : ('Vehicles not read: ' + e.message));
+                if (e.missing) setNoMig(true);
+                return;
+            }
+            // never redraw the list under the finger
+            if (document.activeElement !== $('dkVehicle')) paintVehicles();
+            if (manual) toast(VEH.rows.length + ' vehicle(s) at the Dharam Kanta');
+        }
+        $('dkVehicle').addEventListener('change', () => { vehHint(); saveDraft(); });
+        $('unit').addEventListener('change', () => { if (document.activeElement !== $('dkVehicle')) paintVehicles(); });
+
+        // ── SLIP NO (server series): the box shows the next number, Submit never sends one ──
+        let NEXT_NO = '';
+        async function loadNextNo() {
+            try { NEXT_NO = (await rpc('ws_next_no')).no || ''; } catch (e) { if (e.missing) setNoMig(true); }
+            $('slipNo').value = NEXT_NO;
+            $('slipHint').textContent = NEXT_NO ? 'Next number of the series; the server gives the final one on Submit.' : 'Given by the server on Submit.';
+        }
+
+        function validateAgainstMaster(inputId, masterArray, errorMessage) {
+            const inputEl = $(inputId);
+            const val = inputEl.value.trim();
+            if (!val) return true;
+            const match = masterArray.find(item => item.toLowerCase() === val.toLowerCase());
+            if (match) { inputEl.value = match; return true; }
+            showMessage(errorMessage);
+            inputEl.value = '';
+            return false;
+        }
+        const PARTY_MSG = "Kirpya party add kijiye upar diye gye link (button) me.";
+        const ITEM_MSG = "Kirpya item add kijiye upar diye gye link (button) me.";
+        $('partyName').addEventListener('change', () => { validateAgainstMaster('partyName', masterParties, PARTY_MSG); saveDraft(); });
+        $('itemName').addEventListener('change', () => { validateAgainstMaster('itemName', masterItems, ITEM_MSG); });
+
+        // --- Core calculations (the server's ws_calc_ does the same; keep the two in step) ---
+        function calculateItemData(qty, baseRate, gstRate, gstPercent) {
+            qty = parseFloat(qty) || 0; baseRate = parseFloat(baseRate) || 0; gstRate = parseFloat(gstRate) || 0; gstPercent = parseFloat(gstPercent) || 0;
+            const baseAmount = r2(qty * baseRate);
+            const taxableAmount = r2(qty * gstRate);
+            const gstCalculatedAmount = r2(taxableAmount * gstPercent / 100);
+            const amountWithGst = r2(taxableAmount + gstCalculatedAmount);
+            const tcsCalculatedAmount = r2(amountWithGst * TCS_PERCENTAGE / 100);
+            const amountWithTcs = r2(amountWithGst + tcsCalculatedAmount);
+            return { baseAmount, taxableAmount, gstAmount: gstCalculatedAmount, amountWithGst, tcsAmount: tcsCalculatedAmount, amountWithTcs };
+        }
+        // The bill's sums from its lines (same shape as a server row).
+        function billTotals(list, pending) {
+            const t = { base: 0, taxable: 0, gst: 0, tcs: 0, withTcs: 0 };
+            list.forEach(i => { const c = i.calculations; t.base += c.baseAmount; t.taxable += c.taxableAmount; t.gst += c.gstAmount; t.tcs += c.tcsAmount; t.withTcs += c.amountWithTcs; });
+            Object.keys(t).forEach(k => t[k] = r2(t[k]));
+            t.pending = r2(parseFloat(pending) || 0);
+            t.total = r2(t.base + t.gst + t.tcs + t.pending);
+            t.bank = t.withTcs;
+            t.cash = r2(t.total - t.bank);
+            return t;
+        }
+
+        function updateLivePreview() {
+            const data = calculateItemData(inputs.qty.value, inputs.baseRate.value, inputs.gstRate.value, inputs.gstPercent.value);
+            previews.baseAmt.textContent = formatMoney(data.baseAmount);
+            previews.taxableAmt.textContent = formatMoney(data.taxableAmount);
+            previews.amtWithGst.textContent = formatMoney(data.amountWithGst);
+            previews.amtWithTcs.textContent = formatMoney(data.amountWithTcs);
+        }
+        function updateSummary() {
+            const t = billTotals(items, summary.prevPending.value);
+            summary.baseAmt.textContent = formatMoney(t.base);
+            summary.gstAmt.textContent = formatMoney(t.gst);
+            summary.tcsAmt.textContent = formatMoney(t.tcs);
+            summary.totalPayable.textContent = formatMoney(t.total);
+            summary.bankTransfer.textContent = formatMoney(t.bank);
+            summary.cash.textContent = formatMoney(t.cash);
+        }
+
+        function renderItemsTable() {
+            const tbody = $('itemsTableBody');
+            if (items.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" class="px-4 py-8 text-center text-slate-400 italic">No items added yet. Fill the form above to add items.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = items.map((item, index) => `
+                <tr class="hover:bg-slate-50 transition-colors">
+                    <td class="px-4 py-3 font-medium text-slate-800">${esc(item.name)}</td>
+                    <td class="px-4 py-3 text-right">${esc(fmtQty(item.qty))}</td>
+                    <td class="px-4 py-3 text-center text-xs"><span class="bg-indigo-100 text-indigo-800 px-2 py-1 rounded font-medium">${esc(item.type)}</span></td>
+                    <td class="px-4 py-3 text-right">₹${esc(item.baseRate)}</td>
+                    <td class="px-4 py-3 text-right text-slate-600">${formatMoney(item.calculations.baseAmount)}</td>
+                    <td class="px-4 py-3 text-right">₹${esc(item.gstRate)}</td>
+                    <td class="px-4 py-3 text-center">${esc(item.gstPercent)}%</td>
+                    <td class="px-4 py-3 text-right font-medium text-indigo-700">${formatMoney(item.calculations.amountWithTcs)}</td>
+                    <td class="px-4 py-3 text-center">
+                        <button onclick="removeItem(${index})" class="text-red-500 hover:text-red-700 p-1 rounded-md hover:bg-red-50 transition-colors" aria-label="Remove item">${ico('trash')}</button>
+                    </td>
+                </tr>`).join('');
+        }
+        window.removeItem = function (index) { items.splice(index, 1); renderItemsTable(); updateSummary(); saveDraft(); };
+
+        // --- Draft (the form survives a reload; per user) ---
+        function saveDraft() {
+            if (!ME) return;
+            const draft = { dkVehicle: $('dkVehicle').value, partyName: $('partyName').value, unit: $('unit').value, date: $('date').value,
+                remarks: $('remarks').value, prevPending: summary.prevPending.value, items, gatePassBase64 };
+            // A photo can be too big for the phone's storage: keep the rest of the form then.
+            if (!lsSet(lsDraft(), draft)) lsSet(lsDraft(), Object.assign({}, draft, { gatePassBase64: null }));
+        }
+        function loadDraft() {
+            let draft = lsGet(lsDraft(), null);
+            if (!draft) {   // the draft of the old page (one for the whole browser), taken over once
+                draft = lsGet('sarvIndiaDraft', null);
+                if (draft) { lsDel('sarvIndiaDraft'); }
+            }
+            if (!draft) return;
+            $('partyName').value = draft.partyName || '';
+            $('unit').value = draft.unit || '';
+            if (draft.date) $('date').value = draft.date;
+            $('remarks').value = draft.remarks || '';
+            setVehicle(draft.dkVehicle || '');
+            summary.prevPending.value = draft.prevPending || '0';
+            items = Array.isArray(draft.items) ? draft.items : [];
+            setPhoto(draft.gatePassBase64 || null);
+            renderItemsTable();
+            updateSummary();
+        }
+        document.querySelectorAll('#entryView input, #entryView select').forEach(el => {
+            el.addEventListener('input', () => {
+                if (el.id === 'quantity' || el.id === 'baseRate' || el.id === 'gstRate' || el.id === 'gstPercent') updateLivePreview();
+                if (el.id === 'prevPendingAmt') updateSummary();
+                if (el.type !== 'file') saveDraft();
+            });
+            if (el.tagName === 'SELECT' && el.id !== 'dkVehicle') el.addEventListener('change', () => { if (el.id === 'gstPercent') updateLivePreview(); saveDraft(); });
+        });
+
+        // --- Add item ---
+        $('addItemBtn').addEventListener('click', () => {
+            const itemNameEl = $('itemName');
+            const itemTypeEl = $('itemType');
+            if (!itemNameEl.value) return showMessage("Please select an Item Name.");
+            if (!validateAgainstMaster('itemName', masterItems, ITEM_MSG)) return;
+            if (!inputs.qty.value || parseFloat(inputs.qty.value) <= 0) return showMessage("Please enter a valid Quantity.");
+            if (parseFloat(inputs.baseRate.value) < 0 || parseFloat(inputs.gstRate.value) < 0) return showMessage("A rate cannot be less than 0.");
+            const calculations = calculateItemData(inputs.qty.value, inputs.baseRate.value, inputs.gstRate.value, inputs.gstPercent.value);
+            items.push({
+                name: itemNameEl.value, qty: parseFloat(inputs.qty.value), type: itemTypeEl.value,
+                baseRate: parseFloat(inputs.baseRate.value) || 0, gstRate: parseFloat(inputs.gstRate.value) || 0,
+                gstPercent: parseFloat(inputs.gstPercent.value) || 0, calculations
+            });
+            itemNameEl.value = ''; inputs.qty.value = ''; inputs.baseRate.value = ''; inputs.gstRate.value = '';
+            updateLivePreview(); renderItemsTable(); updateSummary(); saveDraft();
+            itemNameEl.focus();
+        });
+
+        // --- Gate Pass photo ---
+        function setPhoto(dataUrl) {
+            gatePassBase64 = dataUrl || null;
+            $('gatePassPreview').src = gatePassBase64 || 'data:,';
+            $('gatePassPreviewBox').classList.toggle('hidden', !gatePassBase64);
+        }
+        $('gatePassImage').addEventListener('change', function (event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            showMessage("Compressing image...");
+            const fail = () => { $('gatePassImage').value = ''; showMessage("This photo could not be read. Take the photo again (JPG / PNG)."); };
+            const reader = new FileReader();
+            reader.onerror = fail;
+            reader.onload = function (e) {
+                const img = new Image();
+                img.onerror = fail;
+                img.onload = function () {
+                    const canvas = document.createElement('canvas');
+                    const MAX_WIDTH = 1000;   // readable, ~100-200 KB
+                    let width = img.width, height = img.height;
+                    if (width > MAX_WIDTH) { height = Math.round((height * MAX_WIDTH) / width); width = MAX_WIDTH; }
+                    canvas.width = width; canvas.height = height;
+                    canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+                    setPhoto(canvas.toDataURL('image/jpeg', 0.6));
+                    saveDraft();
+                    closeModals();
+                };
+                img.src = e.target.result;
+            };
+            reader.readAsDataURL(file);
+        });
+        $('removePhotoBtn').addEventListener('click', function (e) {
+            e.preventDefault();
+            $('gatePassImage').value = '';
+            setPhoto(null);
+            saveDraft();
+        });
+
+        // ── OUTBOX: bills on this phone that the server does not have yet ──
+        const outbox = () => { const b = lsGet(lsOutbox(), []); return Array.isArray(b) ? b : []; };
+        const setOutbox = b => lsSet(lsOutbox(), b);
+
+        // Every bill the reports know: the server's live ones + this phone's waiting ones.
+        function allBills() {
+            const live = Object.values(CACHE.rows).filter(r => !r.deletedAt);
+            const ids = new Set(live.map(r => r.id));
+            const waiting = outbox().filter(b => !ids.has(b.id)).map(b => Object.assign({ id: b.id, slipNo: b.slipNo || '', date: b.date, unit: b.unit,
+                vehicle: b.vehicle || '', dkSlip: b.dkSlip || '', dkGate: b.dkGate || '', noVehicle: !!b.noVehicle,
+                party: b.party, remarks: b.remarks, items: b.items, hasPhoto: true, byName: ME ? ME.name : '', local: true, err: b.err || '' }, b.totals));
+            return live.concat(waiting);
+        }
+        // The slip no. as shown: a bill still on this phone has none yet (the server gives it).
+        const slipTxt = b => b.slipNo || 'Auto No. (on upload)';
+        // The vehicle line of a bill
+        const vehTxt = b => b.dkSlip ? (b.vehicle || '-') + ' · Dharam Kanta ' + b.dkSlip + (b.dkGate ? ' (' + gateName(b.dkGate) + ')' : '') : (b.noVehicle ? 'No vehicle (no Dharam Kanta)' : '-');
+        // Put a vehicle choice back in the box (it may not be in the list any more: paintVehicles keeps it, marked)
+        function setVehicle(v) { const sel = $('dkVehicle'); sel.dataset.want = v || ''; sel.value = ''; paintVehicles(); }
+
+        // A form item → the line the server takes.
+        const cleanLine = i => ({ name: i.name, qty: i.qty, uom: i.type || i.uom, baseRate: i.baseRate, gstRate: i.gstRate, gstPercent: i.gstPercent });
+        // A line (form or server) → the amounts the reports / print need.
+        function lineOf(i) {
+            const c = i.calculations || i;
+            return { name: i.name, qty: i.qty, uom: i.uom || i.type, baseRate: i.baseRate, gstRate: i.gstRate, gstPercent: i.gstPercent,
+                baseAmount: c.baseAmount, taxableAmount: c.taxableAmount, gstAmount: c.gstAmount, tcsAmount: c.tcsAmount, amountWithTcs: c.amountWithTcs };
+        }
+
+        // --- Submit ---
+        $('submitBtn').addEventListener('click', async () => {
+            if (items.length === 0) return showMessage("Please add at least one item to the bill before submitting.");
+            if (!gatePassBase64) return showMessage("Kirpya Gate Pass ki photo attach karein (Mandatory).");
+            const partyName = $('partyName').value.trim();
+            const unit = $('unit').value;
+            const date = $('date').value;
+            const remarks = $('remarks').value.trim();
+            if (!partyName || !unit) return showMessage("Please fill in Party Name and Unit details.");
+            const dkv = $('dkVehicle').value, veh = vehOf(dkv);
+            if (!dkv) return showMessage("Choose the Vehicle weighed at the Dharam Kanta (or NO VEHICLE).");
+            if (dkv !== NO_VEH && !veh && VEH.at) return showMessage('Dharam Kanta slip ' + dkv + ' is not waiting for dispatch any more. Choose the vehicle again.');
+            if (!date) return showMessage("Please enter a valid Date.");
+            if (!validateAgainstMaster('partyName', masterParties, PARTY_MSG)) return;
+            const bad = items.find(i => !masterItems.some(m => m.toUpperCase() === String(i.name).toUpperCase()));
+            if (bad) return showMessage('Item "' + bad.name + '" is not in the Item list any more. Remove it or add it again.');
+            if (parseFloat(summary.prevPending.value) < 0) return showMessage("Previous Pending cannot be less than 0.");
+
+            const pending = parseFloat(summary.prevPending.value) || 0;
+            const lines = items.map(i => Object.assign(cleanLine(i), lineOf(i)));
+            const bill = { id: uuid(), slipNo: '', date, unit,
+                dkSlip: dkv === NO_VEH ? '' : dkv, noVehicle: dkv === NO_VEH, vehicle: veh ? veh.vehicle : '', dkGate: veh ? veh.gate : '', party: $('partyName').value, remarks: remarks.toUpperCase(), pending,
+                items: lines, totals: billTotals(items, pending), photo: gatePassBase64, queuedAt: Date.now() };
+            const box = outbox(); box.push(bill);
+            if (!setOutbox(box)) return showMessage("This phone's storage is full, the bill was NOT saved. Upload / discard the waiting bills, then try again.");
+
+            clearForm();
+            paintOutbox();
+            const btn = $('submitBtn'), html = btn.innerHTML;
+            btn.disabled = true; btn.classList.add('opacity-70'); btn.innerHTML = ico('spin', 'spin') + ' Saving to server...';
+            try { await syncNow(); } finally { btn.disabled = false; btn.classList.remove('opacity-70'); btn.innerHTML = html; }
+            const still = outbox().find(b => b.id === bill.id), saved = CACHE.rows[bill.id];
+            if (!still && saved) showMessage('Success! Slip No ' + saved.slipNo + ' is saved on the server with the Gate Pass photo.' + (saved.dkSlip ? '\nThe gate sees it on Dharam Kanta slip ' + saved.dkSlip + ' (' + saved.vehicle + ').' : ''),
+                { label: 'Print Bill', fn: () => printBill(saved, 'Invoice') });
+            else if (still && still.err) showMessage('The bill was NOT accepted by the server:\n' + still.err + '\n\nIt is under "Waiting bills": Load into form, correct it and Submit again.');
+            else showMessage('No internet: the bill is kept on this phone and gets its Slip No when it uploads by itself (when the internet is back).');
+        });
+
+        // --- Outbox card ---
+        function paintOutbox() {
+            const box = outbox();
+            $('outboxCard').classList.toggle('hidden', !box.length);
+            $('outboxList').innerHTML = box.map(b => `
+                <div class="bg-white border ${b.err ? 'border-red-200' : 'border-amber-200'} rounded-lg p-3 flex flex-wrap items-center gap-2">
+                    <div class="min-w-0 flex-1">
+                        <div class="font-semibold text-slate-800">${esc(slipTxt(b))} · ${esc(b.party)} <span class="font-normal text-slate-500">· ${esc(dmy(b.date))} · ${esc(b.unit)} · ${esc(vehTxt(b))} · ${formatMoney(b.totals && b.totals.total)}</span></div>
+                        <div class="text-xs ${b.err ? 'text-red-600' : 'text-amber-700'}">${b.err ? 'Not accepted: ' + esc(b.err) : 'Waiting to upload'}</div>
+                    </div>
+                    ${b.err ? `<button onclick="outboxLoad('${esc(b.id)}')" class="px-3 py-1.5 rounded-md bg-indigo-600 text-white text-xs font-semibold">Load into form</button>` : ''}
+                    <button onclick="outboxRetry('${esc(b.id)}')" class="px-3 py-1.5 rounded-md bg-slate-100 text-slate-700 text-xs font-semibold">Retry</button>
+                    <button onclick="outboxDiscard('${esc(b.id)}')" class="px-3 py-1.5 rounded-md bg-white border border-red-200 text-red-600 text-xs font-semibold">Discard</button>
+                </div>`).join('');
+        }
+        window.outboxRetry = function (id) {
+            setOutbox(outbox().map(b => b.id === id ? Object.assign(b, { err: '', errCode: '' }) : b));
+            paintOutbox(); syncNow(true);
+        };
+        window.outboxDiscard = function (id) {
+            const b = outbox().find(x => x.id === id); if (!b) return;
+            if (!confirm('Discard the bill of ' + b.party + ' (' + dmy(b.date) + ', ' + formatMoney(b.totals && b.totals.total) + ')? It is not on the server, so it will be gone.')) return;
+            setOutbox(outbox().filter(x => x.id !== id)); paintOutbox(); paintSync();
+        };
+        // A refused bill back into the form to correct it; it leaves the queue (Submit queues it again, with a new id).
+        window.outboxLoad = function (id) {
+            const b = outbox().find(x => x.id === id); if (!b) return;
+            if (items.length && !confirm('The form has data. Replace it with the bill of ' + b.party + '?')) return;
+            $('partyName').value = b.party; $('unit').value = b.unit; $('date').value = b.date;
+            $('remarks').value = b.remarks || ''; summary.prevPending.value = String(b.pending || 0);
+            items = (b.items || []).map(l => ({ name: l.name, qty: l.qty, type: l.uom, baseRate: l.baseRate, gstRate: l.gstRate, gstPercent: l.gstPercent,
+                calculations: calculateItemData(l.qty, l.baseRate, l.gstRate, l.gstPercent) }));
+            setPhoto(b.photo || null);
+            setVehicle(b.noVehicle ? NO_VEH : (b.dkSlip || ''));
+            setOutbox(outbox().filter(x => x.id !== id));
+            renderItemsTable(); updateSummary(); saveDraft(); paintOutbox(); paintSync();
+            switchTab('entry'); window.scrollTo({ top: 0, behavior: 'smooth' });
+            toast('Bill of ' + b.party + ' loaded: correct it and Submit again');
+        };
+
+        // ── AUTO SYNC ───────────────────────────────────────────────────────
+        const SYNC = { p: null, again: false, last: 0, err: '', offline: false };
+        function syncNow(manual) {
+            if (SYNC.p) { SYNC.again = true; return SYNC.p; }
+            SYNC.p = (async () => {
+                do {
+                    SYNC.again = false;
+                    paintSync(true);
+                    try {
+                        if (navigator.onLine === false) throw Object.assign(new Error('offline'), { net: true });
+                        await pushOutbox();
+                        await pullRows();
+                        SYNC.err = ''; SYNC.offline = false; SYNC.last = Date.now();
+                        if (NO_MIG) setNoMig(false);
+                    } catch (e) {
+                        SYNC.offline = !!e.net;
+                        SYNC.err = e.net ? '' : (e.message || 'error');
+                        if (e.missing) setNoMig(true);
+                        if (manual && !e.net && !e.missing) toast('Sync: ' + SYNC.err);
+                    }
+                } while (SYNC.again);
+            })().finally(() => { SYNC.p = null; paintSync(); paintOutbox(); });
+            return SYNC.p;
+        }
+        async function pushOutbox() {
+            for (const b of outbox()) {
+                if (b.err) continue;   // refused: waits for the user (Load into form / Retry / Discard)
+                try {
+                    const d = await rpc('ws_sale_save', {
+                        p_sale: { id: b.id, slipNo: b.slipNo || '', dkSlip: b.dkSlip || '', noVehicle: !!b.noVehicle, date: b.date, unit: b.unit, party: b.party, remarks: b.remarks, pending: b.pending, items: b.items.map(cleanLine) },
+                        p_photo: b.photo });
+                    setOutbox(outbox().filter(x => x.id !== b.id));
+                    if (d.row) mergeRows([d.row]);
+                    if (!d.already) toast('Slip No ' + ((d.row && d.row.slipNo) || '') + ' saved on the server');
+                } catch (e) {
+                    if (e.net || e.missing) throw e;
+                    setOutbox(outbox().map(x => x.id === b.id ? Object.assign(x, { err: e.message, errCode: e.code || '' }) : x));
+                }
+            }
+        }
+        async function pullRows() {
+            const d = await rpc('ws_list', { p_since: CACHE.cursor || null });
+            if (d.me) ME.admin = !!d.me.admin;
+            const changed = mergeRows(d.rows || []);
+            CACHE.cursor = d.now || CACHE.cursor;
+            // A cache too big for the phone is simply not kept: the next start reads everything again.
+            if (!lsSet(LS_CACHE, CACHE)) lsDel(LS_CACHE);
+            if (changed) onDataChanged();
+        }
+        function mergeRows(rows) {
+            let changed = false;
+            rows.forEach(r => {
+                const old = CACHE.rows[r.id];
+                if (!old || old.updatedAt !== r.updatedAt || old.deletedAt !== r.deletedAt) { CACHE.rows[r.id] = r; changed = true; }
+            });
+            return changed;
+        }
+        function paintSync(busy) {
+            const p = $('syncPill'); if (!p) return;
+            const n = outbox().length, bad = outbox().filter(b => b.err).length;
+            const wait = n ? ' · ' + n + ' waiting' : '';
+            if (busy) { p.className = 'sm:ml-auto self-center pill pill-busy'; p.innerHTML = ico('spin', 'spin') + ' Syncing…' + esc(wait); return; }
+            if (NO_MIG) { p.className = 'sm:ml-auto self-center pill pill-wait'; p.textContent = 'On this phone only' + wait; return; }
+            if (SYNC.offline) { p.className = 'sm:ml-auto self-center pill pill-wait'; p.textContent = 'Offline' + wait + (SYNC.last ? ' · last sync ' + hms(SYNC.last) : ''); return; }
+            if (SYNC.err || bad) { p.className = 'sm:ml-auto self-center pill pill-bad'; p.textContent = (SYNC.err ? 'Sync error: ' + SYNC.err : bad + ' bill(s) not accepted') + (SYNC.err ? wait : ''); return; }
+            p.className = 'sm:ml-auto self-center pill ' + (n ? 'pill-wait' : 'pill-ok');
+            p.textContent = 'Online · Synced ' + (SYNC.last ? hms(SYNC.last) : '') + wait;
+        }
+        function setNoMig(on) {
+            NO_MIG = on;
+            const b = $('noMigBar');
+            b.textContent = on ? 'The server is not ready for Waste Sale yet (run sql/WASTE_SALE_MIGRATION.sql). Bills are kept on this phone and upload once it is done.' : '';
+            b.classList.toggle('hidden', !on);
+        }
+        // Data from the server changed: redraw the report / bill on screen, unless the user is typing in it.
+        function onDataChanged() {
+            loadNextNo(); loadVehicles();
+            if ($('reportsView').classList.contains('hidden')) return;
+            const f = document.activeElement;
+            if (f && $('reportsView').contains(f) && /INPUT|SELECT/.test(f.tagName)) return;
+            if (!$('modalOverlay').classList.contains('hidden')) return;
+            if (VIEW_BILL && !$('slipBillView').classList.contains('hidden')) {
+                const fresh = allBills().find(b => b.id === VIEW_BILL.id) || CACHE.rows[VIEW_BILL.id];
+                if (fresh) showBill(fresh);
+            } else if (LAST_REPORT) generateReport(true);
+            paintCount();
+        }
+        function autoTick() { if (!document.hidden && ME) syncNow(); }
+
+        // --- WhatsApp / print from a bill object (the form's, or a saved one) ---
+        // The form as a bill (Print / WhatsApp before Submit).
+        window.formBill = function () {
+            const t = billTotals(items, summary.prevPending.value);
+            const dkv = $('dkVehicle').value, veh = vehOf(dkv);
+            return Object.assign({ slipNo: NEXT_NO ? NEXT_NO + ' (provisional)' : 'Given on Submit', dkSlip: veh ? veh.slip : '', vehicle: veh ? veh.vehicle : '',
+                dkGate: veh ? veh.gate : '', noVehicle: dkv === NO_VEH, party: $('partyName').value, date: $('date').value,
+                unit: $('unit').value, remarks: $('remarks').value, items: items.map(lineOf) }, t);
+        };
+        window.shareWhatsApp = function (b) {
+            if (!b || !(b.items || []).length) return showMessage("Please add items to share the bill.");
+            let text = `*SARV INDIA - Waste Sale Bill*\n`;
+            text += `--------------------------------\n`;
+            text += `Slip No: ${b.slipNo || 'N/A'}\nParty: ${b.party || 'Customer'}\nDate: ${dmy(b.date)}\n${b.dkSlip || b.noVehicle ? 'Vehicle: ' + vehTxt(b) + '\n' : ''}\n`;
+            text += `*Items Added:*\n`;
+            b.items.map(lineOf).forEach((item, index) => {
+                text += `${index + 1}. ${item.name} (${fmtQty(item.qty)} ${item.uom}) - ${formatMoney(item.amountWithTcs)}\n`;
+            });
+            text += `\n*Bank Transfer:* ${formatMoney(b.bank)}\n`;
+            text += `*Cash Amount:* ${formatMoney(b.cash)}\n`;
+            text += `*Total Payable:* ${formatMoney(b.total)}\n`;
+            text += `--------------------------------\n`;
+            text += `Thank you!`;
+            window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(text), '_blank');
+        };
+        window.printBill = function (b, copyLabel) {
+            if (!b || !(b.items || []).length) return showMessage("Please add items to print the bill.");
+            const itemsHtml = b.items.map(lineOf).map((item, index) => `
+                <tr class="border-b border-slate-300 text-sm">
+                    <td class="py-1">${index + 1}</td>
+                    <td class="py-1 font-medium">${esc(item.name)}</td>
+                    <td class="py-1 text-right">${esc(fmtQty(item.qty))} ${esc(item.uom)}</td>
+                    <td class="py-1 text-right">₹${esc(item.baseRate)}</td>
+                    <td class="py-1 text-right">${esc(item.gstPercent)}%</td>
+                    <td class="py-1 text-right">${formatMoney(item.amountWithTcs)}</td>
+                </tr>`).join('');
+            $('printArea').innerHTML = `
+                <div class="w-full mx-auto text-slate-900">
+                    <div class="text-center border-b-2 border-black pb-2 mb-4">
+                        <h1 class="text-4xl font-bold uppercase tracking-wider">SI</h1>
+                        <p class="text-sm font-medium text-slate-600">${esc(copyLabel || 'Invoice')}</p>
+                    </div>
+                    <div class="flex justify-between mb-4 text-sm">
+                        <div>
+                            <p><span class="font-bold">Slip No:</span> ${esc(b.slipNo || 'N/A')}</p>
+                            <p><span class="font-bold">Party Name:</span> ${esc(b.party || 'N/A')}</p>
+                            ${b.dkSlip || b.noVehicle ? `<p><span class="font-bold">Vehicle:</span> ${esc(vehTxt(b))}</p>` : ''}
+                            ${b.remarks ? `<p><span class="font-bold">Remarks:</span> ${esc(b.remarks)}</p>` : ''}
+                        </div>
+                        <div class="text-right">
+                            <p><span class="font-bold">Date:</span> ${esc(dmy(b.date))}</p>
+                            <p><span class="font-bold">Unit:</span> ${esc(b.unit || 'N/A')}</p>
+                        </div>
+                    </div>
+                    <table class="w-full mb-6 text-left border-collapse">
+                        <thead class="border-y-2 border-black text-sm">
+                            <tr><th class="py-1">#</th><th class="py-1">Item Name</th><th class="py-1 text-right">Qty</th><th class="py-1 text-right">Rate</th><th class="py-1 text-right">GST %</th><th class="py-1 text-right">Final Amount</th></tr>
+                        </thead>
+                        <tbody>${itemsHtml}</tbody>
+                    </table>
+                    <div class="flex justify-end mb-4 text-sm">
+                        <div class="w-1/2 sm:w-2/3 md:w-1/2 border border-black p-3 rounded-lg bg-white">
+                            <div class="flex justify-between mb-1"><span>Total Base Amt:</span> <span>${formatMoney(b.base)}</span></div>
+                            <div class="flex justify-between mb-1"><span>Total GST Amt:</span> <span>${formatMoney(b.gst)}</span></div>
+                            <div class="flex justify-between mb-1"><span>Total TCS (2%):</span> <span>${formatMoney(b.tcs)}</span></div>
+                            <div class="flex justify-between mb-1"><span>Previous Pending:</span> <span>${formatMoney(b.pending)}</span></div>
+                            <div class="flex justify-between font-bold text-base border-t border-black pt-1 mt-1"><span>Total Payable:</span> <span>${formatMoney(b.total)}</span></div>
+                        </div>
+                    </div>
+                    <div class="flex justify-between items-center border border-black p-3 rounded-lg text-sm">
+                        <div><span class="font-bold">Bank Transfer:</span> ${formatMoney(b.bank)}</div>
+                        <div><span class="font-bold">Cash Amount:</span> ${formatMoney(b.cash)}</div>
+                    </div>
+                </div>`;
+            window.print();
+        };
+
+        // --- Clear form ---
+        function clearForm() {
+            $('partyName').value = ''; $('unit').value = ''; $('date').value = localToday(); $('remarks').value = ''; setVehicle('');
+            $('itemName').value = ''; $('itemType').value = 'KG';
+            inputs.qty.value = ''; inputs.baseRate.value = ''; inputs.gstRate.value = ''; inputs.gstPercent.value = '0';
+            summary.prevPending.value = '0';
+            items = [];
+            $('gatePassImage').value = '';
+            setPhoto(null);
+            updateLivePreview(); renderItemsTable(); updateSummary();
+            lsDel(lsDraft());
+        }
+        $('clearBtn').addEventListener('click', () => {
+            if ((items.length || gatePassBase64) && !confirm('Clear the whole form? The items and the photo will be removed.')) return;
+            clearForm();
+            toast('Form data has been cleared.');
+        });
+
+        // --- Reports ---
+        function switchTab(tab) {
+            const on = 'flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md bg-white text-indigo-700 font-semibold shadow-sm text-sm transition-all';
+            const off = 'flex-1 sm:flex-none px-4 sm:px-6 py-2 rounded-md text-indigo-100 hover:text-white font-medium text-sm transition-all';
+            $('entryView').classList.toggle('hidden', tab !== 'entry');
+            $('reportsView').classList.toggle('hidden', tab === 'entry');
+            $('tabEntry').className = tab === 'entry' ? on : off;
+            $('tabReport').className = tab === 'entry' ? off : on;
+            if (tab !== 'entry') {
+                if (!$('filterFrom').value) $('filterFrom').value = localToday();
+                if (!$('filterTo').value) $('filterTo').value = localToday();
+                if (!$('filterMonth').value) $('filterMonth').value = localToday().slice(0, 7);
+                paintCount();
+            }
+        }
+        function paintCount() {
+            const n = allBills().length;
+            $('reportCount').textContent = n + ' bill' + (n === 1 ? '' : 's') + ' on record' + (SYNC.last ? '' : ' (not synced yet)');
+        }
+        function updateReportInputUI() {
+            const type = $('reportTypeFilter').value;
+            $('filterDateBox').classList.toggle('hidden', type !== 'date');
+            $('filterMonth').classList.toggle('hidden', type !== 'month');
+            $('filterItem').classList.toggle('hidden', type !== 'item');
+            $('filterParty').classList.toggle('hidden', type !== 'party');
+            $('filterSlip').classList.toggle('hidden', type !== 'slip');
+            $('reportTableView').classList.toggle('hidden', type === 'slip');
+            $('slipBillView').classList.add('hidden');
+            $('billListView').classList.add('hidden');
+            LAST_REPORT = null; VIEW_BILL = null;
+        }
+
+        function generateReport(quiet) {
+            const type = $('reportTypeFilter').value;
+            let fv = '', from = '', to = '';
+            if (type === 'date') { from = $('filterFrom').value; to = $('filterTo').value || from; fv = from; }
+            if (type === 'month') fv = $('filterMonth').value;
+            if (type === 'item') fv = $('filterItem').value.trim().toUpperCase();
+            if (type === 'party') fv = $('filterParty').value.trim().toUpperCase();
+            if (type === 'slip') fv = normSlip($('filterSlip').value);
+            if (!fv) { if (!quiet) showMessage("Please select/enter a valid filter value."); return; }
+            if (type === 'date' && to < from) { if (!quiet) showMessage("The To date must be on or after the From date."); return; }
+            LAST_REPORT = type;
+            const bills = allBills().sort((a, b) => (a.date + a.slipNo).localeCompare(b.date + b.slipNo));
+
+            if (type === 'slip') {
+                const exact = bills.filter(b => normSlip(b.slipNo) === fv);
+                const like = exact.length ? exact : bills.filter(b => normSlip(b.slipNo).indexOf(fv) >= 0);
+                if (like.length === 1) { $('billListView').classList.add('hidden'); return showBill(like[0]); }
+                $('slipBillView').classList.add('hidden'); VIEW_BILL = null;
+                if (!like.length) { $('billListView').classList.add('hidden'); if (!quiet) showMessage('Slip No ' + fv + ' not found.' + (SYNC.last ? '' : ' (The bills are not synced yet.)')); return; }
+                return paintBillList(like);
+            }
+
+            $('reportTableView').classList.remove('hidden');
+            $('slipBillView').classList.add('hidden'); VIEW_BILL = null;
+            const reportData = {}, qtyTot = { 'Unit 1': {}, 'Unit 2': {} };
+            let totalAmount = 0;
+            const matched = [];
+            bills.forEach(bill => {
+                let match = false;
+                if (type === 'date' && bill.date >= from && bill.date <= to) match = true;
+                if (type === 'month' && String(bill.date).startsWith(fv)) match = true;
+                if (type === 'party' && String(bill.party).toUpperCase() === fv) match = true;
+                const lines = (bill.items || []).map(lineOf);
+                const use = type === 'item' ? lines.filter(i => String(i.name).toUpperCase() === fv) : lines;
+                if (type === 'item' && use.length) match = true;
+                if (!match) return;
+                matched.push(bill);
+                use.forEach(item => {
+                    const key = item.name + '|' + item.uom;
+                    if (!reportData[key]) reportData[key] = { name: item.name, uom: item.uom, unit1: 0, unit2: 0, amount: 0 };
+                    if (bill.unit === 'Unit 1') reportData[key].unit1 += Number(item.qty) || 0;
+                    else if (bill.unit === 'Unit 2') reportData[key].unit2 += Number(item.qty) || 0;
+                    if (qtyTot[bill.unit]) qtyTot[bill.unit][item.uom] = (qtyTot[bill.unit][item.uom] || 0) + (Number(item.qty) || 0);
+                    reportData[key].amount += Number(item.amountWithTcs) || 0;
+                    totalAmount += Number(item.amountWithTcs) || 0;
+                });
+            });
+
+            const rows = Object.values(reportData).sort((a, b) => a.name.localeCompare(b.name) || a.uom.localeCompare(b.uom));
+            const tbody = $('reportTableBody');
+            if (!rows.length) {
+                tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-400 italic">No records found for selected filter.</td></tr>';
+            } else {
+                tbody.innerHTML = rows.map(d => `
+                    <tr class="hover:bg-slate-50 border-b border-slate-100 transition-colors">
+                        <td class="px-4 py-3 font-medium text-slate-800">${esc(d.name)}</td>
+                        <td class="px-4 py-3 text-center text-xs">${esc(d.uom)}</td>
+                        <td class="px-4 py-3 text-right">${d.unit1.toFixed(2)}</td>
+                        <td class="px-4 py-3 text-right">${d.unit2.toFixed(2)}</td>
+                        <td class="px-4 py-3 text-right">${formatMoney(d.amount)}</td>
+                    </tr>`).join('');
+            }
+            // Quantities of different types (KG / PCS / LTR) are never added together.
+            const qt = u => Object.keys(qtyTot[u]).sort().map(k => qtyTot[u][k].toFixed(2) + ' ' + k).join(' · ') || '0';
+            $('reportTotalUnit1').textContent = qt('Unit 1');
+            $('reportTotalUnit2').textContent = qt('Unit 2');
+            $('reportTotalAmount').textContent = formatMoney(totalAmount);
+            if (matched.length) paintBillList(matched); else $('billListView').classList.add('hidden');
+        }
+
+        let LIST_BILLS = [];
+        function paintBillList(list) {
+            LIST_BILLS = list;
+            $('billListView').classList.remove('hidden');
+            $('billListBody').innerHTML = list.map((b, i) => `
+                <tr class="hover:bg-slate-50">
+                    <td class="px-3 py-2">${esc(dmy(b.date))}</td>
+                    <td class="px-3 py-2 font-medium">${esc(slipTxt(b))}${b.local ? ' <span class="pill pill-wait">' + (b.err ? 'Not accepted' : 'Waiting') + '</span>' : ''}</td>
+                    <td class="px-3 py-2">${esc(b.party)}${b.dkSlip ? '<span class="block text-xs text-slate-500">' + esc(b.vehicle + ' · ' + b.dkSlip) + '</span>' : ''}</td>
+                    <td class="px-3 py-2">${esc(b.unit)}</td>
+                    <td class="px-3 py-2 text-right">${formatMoney(b.total)}</td>
+                    <td class="px-3 py-2 text-right text-indigo-700">${formatMoney(b.bank)}</td>
+                    <td class="px-3 py-2 text-right text-emerald-700">${formatMoney(b.cash)}</td>
+                    <td class="px-3 py-2 text-right"><button onclick="showBill(LIST_BILLS[${i}])" class="px-3 py-1 rounded-md bg-indigo-50 text-indigo-700 text-xs font-semibold">View</button></td>
+                </tr>`).join('');
+            const s = k => list.reduce((a, b) => a + (Number(b[k]) || 0), 0);
+            $('billListFoot').innerHTML = `<tr><td class="px-3 py-2" colspan="4">${list.length} bill${list.length === 1 ? '' : 's'}</td>
+                <td class="px-3 py-2 text-right">${formatMoney(s('total'))}</td><td class="px-3 py-2 text-right">${formatMoney(s('bank'))}</td>
+                <td class="px-3 py-2 text-right">${formatMoney(s('cash'))}</td><td></td></tr>`;
+        }
+
+        window.showBill = function (b) {
+            VIEW_BILL = b;
+            $('slipBillView').classList.remove('hidden');
+            $('viewSlipNo').textContent = slipTxt(b);
+            $('viewVehicle').textContent = vehTxt(b);
+            $('viewDate').textContent = dmy(b.date);
+            $('viewUnit').textContent = b.unit;
+            $('viewParty').textContent = b.party;
+            $('viewRemarks').textContent = b.remarks || 'N/A';
+            $('viewBy').textContent = (b.byName ? 'Saved by ' + b.byName : '') + (b.createdAt ? ' · ' + dmy(String(b.createdAt).slice(0, 10)) + ' ' + hms(b.createdAt) : '');
+            $('viewItems').innerHTML = (b.items || []).map(lineOf).map((i, n) => `
+                <tr><td class="px-3 py-2">${n + 1}</td><td class="px-3 py-2 font-medium">${esc(i.name)}</td><td class="px-3 py-2 text-right">${esc(fmtQty(i.qty))} ${esc(i.uom)}</td>
+                <td class="px-3 py-2 text-right">₹${esc(i.baseRate)}</td><td class="px-3 py-2 text-right">₹${esc(i.gstRate)}</td><td class="px-3 py-2 text-right">${esc(i.gstPercent)}%</td>
+                <td class="px-3 py-2 text-right font-medium">${formatMoney(i.amountWithTcs)}</td></tr>`).join('');
+            $('viewBaseAmt').textContent = formatMoney(b.base);
+            $('viewGstAmt').textContent = formatMoney(b.gst);
+            $('viewTcsAmt').textContent = formatMoney(b.tcs);
+            $('viewPending').textContent = formatMoney(b.pending);
+            $('viewTotal').textContent = formatMoney(b.total);
+            $('viewBank').textContent = formatMoney(b.bank);
+            $('viewCash').textContent = formatMoney(b.cash);
+            const note = $('viewNote');
+            const deleted = !!b.deletedAt;
+            note.className = 'mb-4 text-sm px-3 py-2 rounded-lg ' + (deleted || b.err ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-800');
+            note.textContent = deleted ? ('Deleted by ' + (b.deletedByName || '-') + ': ' + (b.deleteReason || '')) :
+                b.local ? (b.err ? 'Not accepted by the server: ' + b.err : 'Waiting on this phone: not on the server yet.') : '';
+            note.classList.toggle('hidden', !note.textContent);
+            $('viewPhotoBtn').classList.toggle('hidden', !b.hasPhoto);
+            const canDel = !b.local && !deleted && ME && (ME.admin || String(b.by) === String(ME.id));
+            $('viewDeleteBtn').classList.toggle('hidden', !canDel);
+            $('slipBillView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        };
+
+        window.viewPhoto = async function (b) {
+            if (!b) return;
+            let photo = b.local ? (outbox().find(x => x.id === b.id) || {}).photo : null;
+            if (!photo) {
+                try { photo = (await rpc('ws_photo_get', { p_id: b.id })).photo; }
+                catch (e) { return showMessage(e.net ? 'No internet: the photo can be opened when the phone is online.' : ('Photo not found: ' + e.message)); }
+            }
+            ['msgBox', 'partyModal', 'itemModal', 'deleteModal'].forEach(id => $(id).classList.add('hidden'));
+            $('photoFull').src = photo;
+            $('modalOverlay').classList.remove('hidden');
+            $('photoModal').classList.remove('hidden');
+        };
+
+        let DEL_BILL = null;
+        window.openDelete = function (b) {
+            if (!b) return;
+            DEL_BILL = b;
+            $('delInfo').textContent = 'Slip No ' + b.slipNo + ' · ' + b.party + ' · ' + dmy(b.date) + ' · ' + formatMoney(b.total) + '. The Slip No can be used again afterwards.';
+            openModal('deleteModal');
+            $('delReason').focus();
+        };
+        window.doDelete = async function () {
+            const reason = $('delReason').value.trim(), pin = $('delPin').value.trim();
+            if (reason.length < 3) return toast('Write the reason first');
+            if (!/^\d{4,}$/.test(pin)) return toast('Type your PIN');
+            const btn = $('delGo'); btn.disabled = true;
+            try {
+                const d = await rpc('ws_sale_delete', { p_id: DEL_BILL.id, p_pin: pin, p_reason: reason });
+                if (d.row) mergeRows([d.row]);
+                lsSet(LS_CACHE, CACHE);
+                closeModals();
+                $('slipBillView').classList.add('hidden'); VIEW_BILL = null;
+                if (LAST_REPORT && LAST_REPORT !== 'slip') generateReport(true);
+                paintCount(); loadVehicles();
+                toast('Bill ' + DEL_BILL.slipNo + ' deleted');
+            } catch (e) {
+                if (e.code === 'WRONG_PIN') { $('delPin').value = ''; $('delPin').focus(); return toast('Incorrect PIN'); }
+                toast(e.net ? 'No internet: try again when the phone is online' : ('Not deleted: ' + e.message));
+            } finally { btn.disabled = false; }
+        };
+
+        // ── BOOT ────────────────────────────────────────────────────────────
+        // Only a network failure counts as "offline"; every real answer goes through SARV_GATE.boot.
+        async function serverReachable() {
+            const ctl = window.AbortController ? new AbortController() : null;
+            const t = setTimeout(() => { if (ctl) ctl.abort(); }, 8000);
+            try {
+                await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_session', { method: 'POST', signal: ctl ? ctl.signal : undefined,
+                    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+                    body: JSON.stringify({ p_token: tokenOf(), p_app: APP_KEY }) });
+                return true;
+            } catch (e) { return false; }
+            finally { clearTimeout(t); }
+        }
+        (async function boot() {
+            try {
+                let u = null;
+                if (tokenOf() && !(await serverReachable())) {
+                    const c = lsGet(LS_LOGIN, null);
+                    if (c && c.token === tokenOf() && Date.now() - (c.at || 0) < OFFLINE_DAYS * 86400000) { u = c.user; OFFLINE_START = true; }
+                }
+                if (!u) {
+                    // Resolves only when the user may enter; otherwise the gate shows the reason / goes to the launcher.
+                    u = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Waste Sale Entry' });
+                    lsSet(LS_LOGIN, { token: tokenOf(), at: Date.now(), user: { id: u.id, name: u.name, emp_code: u.emp_code, roles: u.roles, primary_role: u.primary_role } });
+                }
+                const roles = (u.roles && u.roles.length ? u.roles : [u.primary_role]).filter(Boolean);
+                ME = { id: String(u.id), name: u.name || '', emp: u.emp_code || '', admin: roles.indexOf('ADMIN_PIN') >= 0 };
+                start();
+            } catch (e) {
+                console.error('Waste Sale boot failed', e);
+                showMessage('The app could not start: ' + (e.message || e));
+            } finally {
+                if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+            }
+        })();
+
+        function start() {
+            $('whoLine').textContent = ME.name + (ME.emp ? ' (' + ME.emp + ')' : '') + (OFFLINE_START ? ' · offline start' : '');
+            const m = lsGet(LS_MASTERS, null);
+            if (m && Array.isArray(m.parties) && m.parties.length) masterParties = m.parties;
+            if (m && Array.isArray(m.items) && m.items.length) masterItems = m.items;
+            paintMasters();
+            const c = lsGet(LS_CACHE, null);
+            if (c && c.rows && typeof c.rows === 'object') CACHE = { cursor: c.cursor || null, rows: c.rows };
+            $('date').value = localToday();
+            const vc = lsGet(LS_VEH, null);
+            if (vc && Array.isArray(vc.rows)) VEH = vc;
+            paintVehicles();
+            loadDraft();
+            updateLivePreview(); renderItemsTable(); updateSummary(); paintOutbox();
+            loadNextNo(); loadVehicles();
+            // the vehicle list moves at the gate (new Dharam Kanta slips, dispatches): read it again every 30 s
+            setInterval(() => { if (!document.hidden && navigator.onLine !== false) loadVehicles(); }, 30000);
+            paintSync();
+            loadMasters();
+            syncNow();
+            setInterval(autoTick, AUTO_MS);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) syncNow(); });
+            window.addEventListener('online', () => syncNow());
+            window.addEventListener('offline', () => { SYNC.offline = true; paintSync(); });
+            setInterval(() => { if (Date.now() - (lsGet(LS_MASTERS, {}).at || 0) > 600000 && !document.hidden) loadMasters(); }, 60000);
+        }
+    </script>
+</body>
+</html>

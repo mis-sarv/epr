@@ -4163,6 +4163,9 @@
                 grossWeight: +gross.toFixed(2), tareWeight: +tare.toFixed(2), netWeight: netNum,   // the server reads netWeight (approval rule)
                 // 6D: what the page saw; the server's own Grand Total decides the approval
                 slipTotalWt: wb.loaded, wtDiff: wb.diff, apBasis: wb.kind, loadedSlips: wb.slips,
+                // Waste Sale bills on this Dharam Kanta slip (shown in place of packing slips): kept on the entry
+                wasteBills: DISP_LOAD.state === 'ok' && DISP_LOAD.data && (DISP_LOAD.data.waste || []).length
+                    ? DISP_LOAD.data.waste.map(b => ({ slipNo: b.slipNo, party: b.party, kg: b.kg, items: (b.items || []).map(i => i.name + ' ' + i.qty + ' ' + (i.uom || '')).join(', ') })) : undefined,
                 approvalStatus: needAp ? 'APPROVAL PENDING' : 'NOT NEEDED',
                 needApproval: needAp,
                 apGroup: apGroup, apRule: { from: apRule.from, to: apRule.to == null ? null : apRule.to, approver: apGroup },
@@ -4179,6 +4182,10 @@
                 status: 'IN'
             };
 
+            if (newDispatchEntry.wasteBills) {   // a waste vehicle: the parties name it, the host lists the bills
+                newDispatchEntry.name = 'Waste: ' + newDispatchEntry.wasteBills.map(b => b.party).filter(Boolean).join(', ') + ' · ' + vehicleNo;
+                newDispatchEntry.host += ' | Waste: ' + newDispatchEntry.wasteBills.map(b => b.slipNo).join(', ');
+            }
             // the ERP Packing Slip read by Scan QR goes with it (only when it is for this vehicle)
             if (DISP_SCAN && (!DISP_SCAN.veh || dkVehKey(DISP_SCAN.veh) === dkVehKey(vehicleNo))) {
                 newDispatchEntry.erpSlipNo = DISP_SCAN.no;
@@ -4199,7 +4206,7 @@
             // AFTER SUBMIT: the weight difference and whether the approval request went (it was hidden in the form)
             const grpTxt = DISP_GROUPS[apGroup] || apGroup;
             const diffTxt = wb.kind === 'DIFF'
-                ? 'Difference: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net Wt ' + net + ' − Packing slips ' + wb.loaded.toFixed(2) + ' Kg)'
+                ? 'Difference: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net Wt ' + net + ' − ' + (newDispatchEntry.wasteBills ? 'Loaded (packing + waste KG) ' : 'Packing slips ') + wb.loaded.toFixed(2) + ' Kg)'
                 : 'Net Wt: ' + net + ' Kg (no ERP packing slip data for this tempo)';
             const apTxt = needAp
                 ? 'Need for Approval: SENT to all ' + (apMembers.length ? apMembers.length + ' ' + grpTxt + ' (' + apMembers.map(u => u.name).join(', ') + ')' : grpTxt + ' (nobody has this role: the Admin decides)') + '. Mark Out waits for the approval.'
@@ -4304,7 +4311,11 @@
            the box also shows Net Wt − Grand Total. That DIFFERENCE (either way) picks the Approval Rules band
            (dispWtBasis), not the Net Wt; no packing slip data (offline, no migration, the packing tables cannot be
            read) = the Net Wt as before, said so in the box. The server works the Grand Total out again in its
-           trigger (gate_disp_request_trg_), so the approval never depends on what the phone saw. */
+           trigger (gate_disp_request_trg_), so the approval never depends on what the phone saw.
+           WASTE SALE (2026-11-25, WasteEntry.html / sql/WASTE_SALE_MIGRATION.sql): a waste bill is made on a Dharam Kanta
+           slip, so gate_dk_loaded also returns those bills (waste: party, items + qty, KG). They are shown here INSTEAD of
+           the packing slips (beside them when the tempo has both), and their KG counts in the loaded weight (weight =
+           packWeight + wasteKg), so the difference rule works for a waste vehicle too. */
         var DISP_LOAD = { slip: '', state: '', data: null, err: '', seq: 0 };   // state '' / loading / ok / nopk / nomig / error
         async function dispLoadFor(slipId) {
             const seq = ++DISP_LOAD.seq;
@@ -4323,7 +4334,7 @@
             const n = Number(net) || 0, d = DISP_LOAD.state === 'ok' ? DISP_LOAD.data : null;
             if (!d) return { kind: 'NET', basis: n, loaded: null, diff: null, slips: null };
             const loaded = +(Number(d.weight) || 0).toFixed(2), diff = +(n - loaded).toFixed(2);
-            return { kind: 'DIFF', basis: Math.abs(diff), loaded, diff, slips: (d.slips || []).map(x => x.slipNo) };
+            return { kind: 'DIFF', basis: Math.abs(diff), loaded, diff, slips: (d.slips || []).map(x => x.slipNo).concat((d.waste || []).map(x => x.slipNo)) };
         }
         function dispWtWhy(wb, net) {
             if (wb.kind === 'DIFF') return 'Difference ' + (wb.diff > 0 ? '+' : '') + esc(wb.diff.toFixed(2)) + ' Kg (Net ' + esc(Number(net).toFixed(2)) + ' − Slips ' + esc(wb.loaded.toFixed(2)) + ' Kg)';
@@ -4336,15 +4347,17 @@
             box.classList.remove('hidden');
             const wrap = (cls, inner) => '<div class="rounded-2xl border ' + cls + ' px-3.5 py-3">' + inner + '</div>';
             const again = '<button type="button" onclick="dispLoadFor(DISP_LOAD.slip)" class="ios-btn mt-2 px-3 py-1.5 rounded-xl bg-white border border-gray-200 text-[11px] font-extrabold text-gray-700">Try again</button>';
-            const title = '<p class="text-[10px] font-extrabold text-indigo-500 uppercase tracking-wide mb-1.5">Auto-Generated · Packing slips on ' + esc(DISP_LOAD.slip) + '</p>';
+            const hasWaste = !!(d && (d.waste || []).length) && !((d.slips || []).length);
+            const title = '<p class="text-[10px] font-extrabold ' + (hasWaste ? 'text-lime-700' : 'text-indigo-500') + ' uppercase tracking-wide mb-1.5">Auto-Generated · ' + (hasWaste ? 'Waste Sale' : 'Packing slips') + ' on ' + esc(DISP_LOAD.slip) + '</p>';
             if (st === 'loading') { box.innerHTML = wrap('border-indigo-100 bg-indigo-50/50', title + '<p class="text-[11px] font-semibold text-gray-500">Reading the ERP packing slips of this tempo…</p>'); return; }
             if (st === 'nomig') { box.innerHTML = wrap('border-amber-200 bg-amber-50', title + '<p class="text-[11px] font-bold text-amber-800">Not set up on the server yet: the Admin must run GATE_DISPATCH_SLIP_WEIGHT_MIGRATION.sql. The approval uses the Net Wt until then.</p>'); return; }
             if (st === 'error') { box.innerHTML = wrap('border-red-200 bg-red-50', title + '<p class="text-[11px] font-bold text-red-700">' + (DISP_LOAD.err === 'offline' ? 'No internet: the packing slips cannot be read now.' : 'The packing slips could not be read: ' + esc(DISP_LOAD.err)) + ' The approval uses the Net Wt for now (the server checks the slips again).</p>' + again); return; }
-            if (st === 'nopk') { box.innerHTML = wrap('border-amber-200 bg-amber-50', title + '<p class="text-[11px] font-bold text-amber-800">The ERP packing slips cannot be read here (' + esc(d && d.error || '') + '): the approval uses the Net Wt.</p>'); return; }
-            const rows = d.slips || [];
+            if (st === 'nopk') { box.innerHTML = wrap('border-amber-200 bg-amber-50', title + '<p class="text-[11px] font-bold text-amber-800">The ERP packing slips cannot be read here (' + esc(d && d.error || '') + '): the approval uses the Net Wt.</p>') + dispWasteHtml(d); return; }
+            const rows = d.slips || [], waste = d.waste || [];
             const net = parseFloat(document.getElementById('dispNetWeight').value);
             const kg = n => esc((Math.round((Number(n) || 0) * 100) / 100).toLocaleString('en-IN', { maximumFractionDigits: 2 }));
             let h = title;
+            if (!rows.length && waste.length) { box.innerHTML = dispWasteHtml(d, title); return; }   // a waste vehicle: the waste instead of packing slips
             if (!rows.length) h += '<p class="text-[11px] font-bold text-red-700">No ERP packing slip is saved on ' + esc(d.vehicle || 'this tempo') + ' since this Dharam Kanta slip. The whole Net Wt counts as the difference.</p>';
             else {
                 h += '<div class="overflow-x-auto -mx-1"><table class="w-full text-[11px] min-w-[420px]"><thead><tr class="text-[9.5px] uppercase text-gray-500 font-extrabold">'
@@ -4357,10 +4370,28 @@
                         + '<td class="px-1 py-1 text-right font-extrabold whitespace-nowrap">' + kg(x.weight) + ' Kg</td></tr>').join('')
                     + '<tr class="border-t-2 border-indigo-300 bg-white/70"><td class="px-1 py-1.5 font-extrabold text-gray-900" colspan="3">Grand Total · ' + rows.length + ' slip(s)</td>'
                     + '<td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.packs) + '</td><td class="px-1 py-1.5 text-right font-extrabold">' + kg(d.pcs) + '</td>'
-                    + '<td class="px-1 py-1.5 text-right font-extrabold text-indigo-700 whitespace-nowrap">' + kg(d.weight) + ' Kg</td></tr></tbody></table></div>';
+                    + '<td class="px-1 py-1.5 text-right font-extrabold text-indigo-700 whitespace-nowrap">' + kg(d.packWeight != null ? d.packWeight : d.weight) + ' Kg</td></tr></tbody></table></div>';
             }
             // the Net Wt / Grand Total / Difference cards are left out on purpose: the difference is shown after Verify and Submit
-            box.innerHTML = wrap('border-indigo-200 bg-indigo-50/50', h);
+            box.innerHTML = wrap('border-indigo-200 bg-indigo-50/50', h) + (waste.length ? dispWasteHtml(d) : '');
+        }
+        // The Waste Sale bills on this Dharam Kanta slip: bill, party, unit, every item with its qty, KG total.
+        function dispWasteHtml(d, title) {
+            const w = (d && d.waste) || [];
+            if (!w.length) return '';
+            const kg = n => esc((Math.round((Number(n) || 0) * 1000) / 1000).toLocaleString('en-IN', { maximumFractionDigits: 3 }));
+            const head = title || '<p class="text-[10px] font-extrabold text-lime-700 uppercase tracking-wide mb-1.5">Waste Sale on ' + esc(DISP_LOAD.slip) + '</p>';
+            const bills = w.map(b => '<div class="rounded-xl bg-white/80 border border-lime-200 px-2.5 py-2 mb-1.5">'
+                + '<div class="flex items-center justify-between gap-2"><span class="font-mono text-[12px] font-extrabold text-gray-900">' + esc(b.slipNo) + '</span>'
+                + '<span class="text-[10px] font-bold text-gray-500">' + esc(b.unit || '') + (b.date ? ' · ' + esc(String(b.date).split('-').reverse().join('-')) : '') + '</span></div>'
+                + '<p class="text-[12px] font-extrabold text-gray-800">' + esc(b.party || '-') + '</p>'
+                + '<table class="w-full text-[11px] mt-1"><tbody>' + (b.items || []).map(i => '<tr class="border-t border-lime-100"><td class="py-0.5 font-semibold text-gray-700">' + esc(i.name) + '</td>'
+                    + '<td class="py-0.5 text-right font-extrabold whitespace-nowrap">' + kg(i.qty) + ' ' + esc(i.uom || '') + '</td></tr>').join('') + '</tbody></table>'
+                + (b.remarks ? '<p class="text-[10px] font-semibold text-gray-500 mt-0.5">' + esc(b.remarks) + '</p>' : '')
+                + '</div>').join('');
+            return '<div class="rounded-2xl border border-lime-300 bg-lime-50/60 px-3.5 py-3' + (title ? '' : ' mt-2') + '">' + head + bills
+                + '<p class="text-[11px] font-extrabold text-gray-900 mt-1">Total · ' + w.length + ' waste bill' + (w.length > 1 ? 's' : '') + ' · ' + kg(d.wasteKg) + ' Kg'
+                + '<span class="block text-[10px] font-semibold text-gray-500">Only KG items count as loaded weight (PCS / LTR have no weight).</span></p></div>';
         }
 
         // ── Pending Approval ──
@@ -5346,12 +5377,18 @@
                     const r = await gateRpc('gate_dk_loaded', { p_slip: d.id });
                     if (r.error === 'NO_MIGRATION') { rows.forEach(x => { DK_LOADED[x.id] = { at: Date.now(), n: 0, weight: 0, ok: false }; }); break; }
                     const slips = r.ok && r.data && r.data.available !== false ? (r.data.slips || []) : [];
-                    const was = DK_LOADED[d.id], n = slips.length;
-                    DK_LOADED[d.id] = { at: Date.now(), n, weight: r.ok ? Number(r.data.weight) || 0 : 0, ok: !!r.ok };
+                    const waste = r.ok && r.data ? (r.data.waste || []) : [];
+                    const was = DK_LOADED[d.id], n = slips.length + waste.length;
+                    DK_LOADED[d.id] = { at: Date.now(), n, pk: slips.length, ws: waste.length, weight: r.ok ? Number(r.data.weight) || 0 : 0, ok: !!r.ok };
                     if (!was || was.n !== n) changed = true;
                 }
             } finally { dkLoadedBusy = false; }
             if (changed) renderDkPending();
+        }
+        // "2 packing slips", "1 waste bill", "1 packing slip + 1 waste bill"
+        function dkLoadedTxt(ld) {
+            const pk = ld.pk != null ? ld.pk : ld.n, ws = ld.ws || 0;
+            return [pk ? pk + ' packing slip' + (pk > 1 ? 's' : '') : '', ws ? ws + ' waste bill' + (ws > 1 ? 's' : '') : ''].filter(Boolean).join(' + ');
         }
         function renderDkPending() {
             const box = document.getElementById('dkPendingBox'), list = document.getElementById('dkPendingList');
@@ -5372,7 +5409,7 @@
                     <button type="button" onclick="openPassModal('${esc(d.id)}')" class="ios-btn min-w-0 flex-1 text-left">
                         <span class="block font-mono text-[13px] font-extrabold ${n ? 'text-emerald-900' : 'text-gray-900'} truncate">${esc(d.vehicle || '-')}</span>
                         <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg${gross ? ' · Gross ' + esc(gross) + ' Kg' : ''} · ${esc(fmt(d.inTime))}</span>
-                        ${n ? `<span class="mt-1 inline-flex items-center gap-1 text-[10px] font-extrabold text-white bg-emerald-600 px-2 py-0.5 rounded-full"><i class="fa-solid fa-box"></i> ${n} packing slip${n > 1 ? 's' : ''} loaded · ${esc((Math.round((ld.weight || 0) * 100) / 100).toLocaleString('en-IN'))} Kg</span>` : ''}
+                        ${n ? `<span class="mt-1 inline-flex items-center gap-1 text-[10px] font-extrabold text-white bg-emerald-600 px-2 py-0.5 rounded-full"><i class="fa-solid fa-box"></i> ${dkLoadedTxt(ld)} loaded · ${esc((Math.round((ld.weight || 0) * 100) / 100).toLocaleString('en-IN'))} Kg</span>` : ''}
                     </button>
                     <button type="button" onclick="dkGoDispatch('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white flex items-center gap-1" title="Open the Dispatch Packing Slip form with this slip"><i class="fa-solid fa-truck-fast"></i> Dispatch Slip</button>
                     ${admin ? `<button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>` : ''}
