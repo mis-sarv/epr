@@ -3,7 +3,7 @@
 <head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
     <title>SARV INDIA GATE-2</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -160,7 +160,7 @@
 <link rel="stylesheet" href="ios-dialog.css?v=20261120a">
 <script src="ios-ui.js?v=20261118a" defer></script>
 <script src="ios-dropdown.js?v=20261120a" defer></script>
-<script src="ios-dialog.js?v=20261120a"></script>
+<script src="ios-dialog.js?v=20261126a"></script>
 <!-- QR scanner (Scan QR at the bottom of the menu): reads the slips / store copies / gate passes, see sarv-qr.js -->
 <script src="sarv-qr.js?v=20261123a"></script>
 </head>
@@ -512,8 +512,9 @@
                     </div>
 
                     <!-- Bill Photo & Item Photo (Compressed & Saved with Preview) -->
+                    <!-- 5B: a Returnable Inward (Repair) has NO Bill Photo (inwApplyRetMode hides #inBillBox / #inBillPrevCell) -->
                     <div class="grid grid-cols-2 gap-3">
-                        <div>
+                        <div id="inBillBox">
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Bill Photo *</label>
                             <label class="ios-btn flex flex-col items-center justify-center p-3 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
                                 <i class="fa-solid fa-file-invoice text-blue-500 text-lg mb-1"></i>
@@ -521,7 +522,7 @@
                                 <input type="file" id="inBillPhoto" accept="image/*" capture="environment" class="hidden" onchange="handleCompressedUpload(this, 'inBillLabel', 'inBillPreview', 'inBill', 'inwardPreviewRow')">
                             </label>
                         </div>
-                        <div>
+                        <div id="inItemBox">
                             <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Item Photo *</label>
                             <label class="ios-btn flex flex-col items-center justify-center p-3 bg-blue-50/70 border-2 border-dashed border-blue-200 rounded-2xl cursor-pointer text-center">
                                 <i class="fa-solid fa-camera text-blue-500 text-lg mb-1"></i>
@@ -533,11 +534,11 @@
 
                     <!-- Inward Live Photo Thumbnails Preview -->
                     <div id="inwardPreviewRow" class="hidden grid grid-cols-2 gap-3">
-                        <div class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
+                        <div id="inBillPrevCell" class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
                             <img id="inBillPreview" class="gp-fit hidden" alt="Bill">
                             <span class="text-[10px] text-gray-400 font-medium">No Bill Photo</span>
                         </div>
-                        <div class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
+                        <div id="inItemPrevCell" class="relative rounded-xl overflow-hidden border border-blue-200 bg-gray-50 h-20 flex items-center justify-center">
                             <img id="inItemPreview" class="gp-fit hidden" alt="Item">
                             <span class="text-[10px] text-gray-400 font-medium">No Item Photo</span>
                         </div>
@@ -1980,6 +1981,18 @@
     </div>
 
     <!-- Pending POs / Field Boy PRs of the chosen Party (Inward form) -->
+    <!-- DISPATCH RESULT (dispResultCard): after Verify and Submit of the Dispatch Packing Slip, ONE big card instead of the
+         weight details: red "Approval Needed ! Wait for Approval" or green "All Okay 👍 Vehicle ko jane de" -->
+    <div id="dispResModal" class="fixed inset-0 z-[85] hidden flex items-center justify-center p-5 bg-black/55" role="alertdialog" aria-modal="true" aria-labelledby="dispResTitle">
+        <div id="dispResCard" class="w-full max-w-sm rounded-[28px] border-2 shadow-2xl px-6 pt-8 pb-5 text-center">
+            <div id="dispResIcon" class="w-24 h-24 mx-auto rounded-full flex items-center justify-center text-5xl mb-5"></div>
+            <h2 id="dispResTitle" class="text-[26px] leading-tight font-extrabold"></h2>
+            <p id="dispResSub" class="mt-2 text-sm font-bold opacity-80"></p>
+            <p id="dispResSlip" class="mt-3 text-xs font-mono font-bold opacity-70"></p>
+            <button type="button" id="dispResOk" onclick="dispResultClose()" class="ios-btn mt-6 w-full h-[58px] rounded-[20px] text-white text-lg font-extrabold shadow-md">OK</button>
+        </div>
+    </div>
+
     <!-- DHARAM KANTA ASK: full-screen Yes / No before an Inward / Sample & Other entry is sent without a weighbridge slip (dkAskScreen) -->
     <div id="dkAskModal" class="fixed inset-0 z-[80] hidden bg-white flex flex-col" role="dialog" aria-modal="true" aria-labelledby="dkAskTitle">
         <div class="flex-1 flex flex-col items-center justify-center text-center px-6 py-8 overflow-y-auto">
@@ -3487,9 +3500,7 @@
 
             if (viewId === 'inwardForm') {
                 inwApLoad(false); inwApHint();
-                // the approver chosen last time on this phone (most days the same person)
-                const lastAp = readLS(INW_APPROVER_KEY, '');
-                if (lastAp && GATE_COMBOS.inApprover && !document.getElementById('inApprover').value) GATE_COMBOS.inApprover.set(lastAp, true);
+                // (2026-11-26) Whom to Approve is never filled by itself (no "last approver"): the guard picks it every time
                 // Inward No. of the chosen In Entry Type (an NB never without its PIN); the Store ref follows its digits
                 if (INW_ENTRY_TYPE === 'INWARD NB' && !INW_NB_AUTH) INW_ENTRY_TYPE = 'INWARD';
                 inwSetType(INW_ENTRY_TYPE);
@@ -3662,6 +3673,15 @@
             }
             band.classList.toggle('hidden', !INW_RET);
             if (INW_RET) document.getElementById('inwFormTitle').textContent = 'Returnable Inward (Repair)';
+            // a repaired item comes back on the Store's own Repair Outward: no supplier bill, so no Bill Photo (Item Photo only)
+            ['inBillBox', 'inBillPrevCell'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('hidden', INW_RET); });
+            ['inItemBox', 'inItemPrevCell'].forEach(id => { const el = document.getElementById(id); if (el) el.classList.toggle('col-span-2', INW_RET); });
+            if (INW_RET && tempPhotos.inBill) {
+                tempPhotos.inBill = null;
+                document.getElementById('inBillLabel').textContent = 'Upload Bill';
+                document.getElementById('inBillPreview').classList.add('hidden');
+                const bi = document.getElementById('inBillPhoto'); if (bi) bi.value = '';
+            }
             refreshRefNoList();
         }
         // The details of the ticked Repair Outwards (from the list, no server call)
@@ -3870,6 +3890,39 @@
            toggle is closed. */
         /* (2026-11-25) asked on a FULL-SCREEN page with two large buttons (#dkAskModal), not a small alert: the guard must
            choose one of the two; there is no third way out (no backdrop, no Esc). Keys Y / N also answer. */
+        /* DISPATCH RESULT (2026-11-26): after Verify and Submit (and Save & Send Again of a rejected one) the guard sees only
+           whether the vehicle may go: approval needed = RED card "Approval Needed ! Wait for Approval", none = GREEN card
+           "All Okay 👍 Vehicle ko jane de". The weights / difference are not shown here (they stay on the entry and the pass).
+           Promise: resolves when OK is pressed (Enter / Esc too). */
+        let DISP_RES = null;
+        function dispResultCard(needAp, slipNo) {
+            const m = document.getElementById('dispResModal');
+            if (!m) return Promise.resolve();
+            if (DISP_RES) dispResultClose();
+            const red = !!needAp;
+            document.getElementById('dispResCard').className = 'w-full max-w-sm rounded-[28px] border-2 shadow-2xl px-6 pt-8 pb-5 text-center '
+                + (red ? 'bg-red-50 border-red-300 text-red-800' : 'bg-emerald-50 border-emerald-300 text-emerald-800');
+            const ic = document.getElementById('dispResIcon');
+            ic.className = 'w-24 h-24 mx-auto rounded-full flex items-center justify-center text-5xl mb-5 ' + (red ? 'bg-red-100 text-red-600' : 'bg-emerald-100 text-emerald-600');
+            ic.innerHTML = red ? '<i class="fa-solid fa-hourglass-half"></i>' : '<i class="fa-solid fa-circle-check"></i>';
+            document.getElementById('dispResTitle').textContent = red ? 'Approval Needed !' : 'All Okay 👍';
+            document.getElementById('dispResSub').textContent = red ? 'Wait for Approval' : 'Vehicle ko jane de';
+            document.getElementById('dispResSlip').textContent = slipNo ? 'Packing Slip ' + slipNo : '';
+            document.getElementById('dispResOk').className = 'ios-btn mt-6 w-full h-[58px] rounded-[20px] text-white text-lg font-extrabold shadow-md ' + (red ? 'bg-red-600' : 'bg-emerald-600');
+            m.classList.remove('hidden');
+            try { if (navigator.vibrate) navigator.vibrate(red ? [80, 60, 80] : 50); } catch (e) { }
+            let done; const p = new Promise(r => { done = r; });
+            DISP_RES = { done };
+            document.addEventListener('keydown', dispResKey, true);
+            setTimeout(() => { const b = document.getElementById('dispResOk'); if (b) b.focus(); }, 60);
+            return p;
+        }
+        function dispResKey(e) { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); dispResultClose(); } }
+        function dispResultClose() {
+            const m = document.getElementById('dispResModal'); if (m) m.classList.add('hidden');
+            document.removeEventListener('keydown', dispResKey, true);
+            const r = DISP_RES; DISP_RES = null; if (r) r.done();
+        }
         let DK_ASK = null;
         function dkAskScreen() {
             if (DK_ASK) return DK_ASK.p;   // already open (a second press): the same answer
@@ -3908,8 +3961,8 @@
         document.getElementById('formInward').addEventListener('submit', async function(e) {
             e.preventDefault();
             if (gateSaving.IN) return;
-            if (!tempPhotos.inBill || !tempPhotos.inItem) {
-                showIosBanner('Both the Bill Photo and the Item Photo are required!', 'error');
+            if (INW_RET ? !tempPhotos.inItem : (!tempPhotos.inBill || !tempPhotos.inItem)) {
+                showIosBanner(INW_RET ? 'The Item Photo is required!' : 'Both the Bill Photo and the Item Photo are required!', 'error');
                 return;
             }
             // 5B: a returnable inward's party is its Repair Outwards' party (it may be a buyer not in the supplier list)
@@ -4023,7 +4076,6 @@
             document.getElementById('inDkPhotoBox').classList.add('hidden');
             if (isInwardDkActive) toggleInwardDharamKanta();
 
-            writeLS(INW_APPROVER_KEY, inAp.value);
             showView('inwardPending');
             showIosBanner(`${inEntryType === 'INWARD NB' ? 'Inward NB' : 'Inward'} ${customInwardNo} (${generatedStoreNo})${dk ? ' · DK Slip ' + dk.slip : ''} sent to ${inAp.apName || inAp.value} for approval`, 'success');
         });
@@ -4540,16 +4592,9 @@
             dispLoadFor('');
             dispApPaint();
 
-            // AFTER SUBMIT: the weight difference and whether the approval request went (it was hidden in the form)
+            // AFTER SUBMIT: one big card, red = wait for the approval, green = the vehicle may go (DISPATCH RESULT)
             const grpTxt = DISP_GROUPS[apGroup] || apGroup;
-            const diffTxt = wb.kind === 'DIFF'
-                ? 'Difference: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net Wt ' + net + ' − ' + (newDispatchEntry.wasteBills ? 'Loaded (packing + waste KG) ' : 'Packing slips ') + wb.loaded.toFixed(2) + ' Kg)'
-                : 'Net Wt: ' + net + ' Kg (no ERP packing slip data for this tempo)';
-            const apTxt = needAp
-                ? 'Need for Approval: SENT to all ' + (apMembers.length ? apMembers.length + ' ' + grpTxt + ' (' + apMembers.map(u => u.name).join(', ') + ')' : grpTxt + ' (nobody has this role: the Admin decides)') + '. Mark Out waits for the approval.'
-                : apGroup === 'NONE' ? 'Need for Approval: NOT needed (' + dispBandText(apRule) + ').' : 'Need for Approval: not set up on the server, so it was NOT sent (saved without it).';
-            const msg = 'Packing Slip ' + generatedPackingSlipNo + ' (' + customOutwardNo + ') saved\n\n' + diffTxt + '\n\n' + apTxt;
-            if (window.IosDialog && IosDialog.alert) IosDialog.alert(msg); else alert(msg);
+            dispResultCard(needAp, generatedPackingSlipNo + ' · ' + customOutwardNo);
             if (needAp) {
                 showView('dispatchPending');
                 showIosBanner(`${generatedPackingSlipNo}: approval request sent to all ${grpTxt}`, 'info');
@@ -4886,10 +4931,7 @@
             o.form.reset();
             tempPhotos.dispVehicle = null; tempPhotos.dispDk = null; matchedDispatchDkEntry = null;
             DISP_EDIT = null; dispScanSet(null); dispLoadFor(''); dispApPaint(); dispEditPaint();
-            const msg = 'Slip ' + e.id + ' corrected and saved\n\n'
-                + (wb.kind === 'DIFF' ? 'Difference: ' + (wb.diff > 0 ? '+' : '') + wb.diff.toFixed(2) + ' Kg (Net Wt ' + net + ' − Loaded ' + wb.loaded.toFixed(2) + ' Kg)' : 'Net Wt: ' + net + ' Kg')
-                + '\n\n' + (o.needAp ? 'Need for Approval: SENT AGAIN to all ' + (DISP_GROUPS[o.apGroup] || o.apGroup) + '. Mark Out waits for the approval.' : 'Need for Approval: NOT needed any more: the slip can go out.');
-            if (window.IosDialog && IosDialog.alert) IosDialog.alert(msg); else alert(msg);
+            dispResultCard(o.needAp, e.id);   // DISPATCH RESULT: red = wait for the approval again, green = may go
             showView(o.needAp ? 'dispatchPending' : 'dispatchMenu');
             if (!o.needAp) openPassModal(e.id);
             renderDispatchPending(); dspRefreshUi();
@@ -5088,8 +5130,8 @@
                 }
                 document.getElementById('visitorName').value = prevEntry.name || '';
                 document.getElementById('vehicleNo').value = (prevEntry.vehicle && prevEntry.vehicle !== 'N/A') ? prevEntry.vehicle : '';
-                // only if that person is still an ERP user (the box takes list values only)
-                if (GATE_COMBOS.hostName) GATE_COMBOS.hostName.set(prevEntry.host || '', true);
+                // Whom to Meet (the approver) is NOT taken from the earlier visit: chosen by hand every time
+                if (GATE_COMBOS.hostName) GATE_COMBOS.hostName.set('', true);
                 const cleanPurpose = (prevEntry.purpose || '').split('•')[0].trim();
                 document.getElementById('purpose').value = cleanPurpose;
                 document.getElementById('visType').value = prevEntry.visitorType || '';
@@ -6046,7 +6088,7 @@
                                 Back (with a reason: status OUT, inStage SENT_BACK, the server drops the request).
              Existing Inward    Inside: approved and unloading -> Out with the vehicle photo + remarks (the Visitor Out
                                 popup); Out: the last VIS_OUT_DAYS days.
-           The ERP's Inward form offers a gate Inward under Gate Entry No. only once it is APPROVED (gate_inward_list).
+           The ERP's Inward form lists a gate Inward under Gate Entry No. while PENDING too ("Waiting: Approver", not bookable) and books it once APPROVED (gate_inward_list).
            The decision (entry.visApproval) is SERVER-OWNED, as for a visitor. Inward entries from before this flow (no
            needApproval) count as inside; HYD_NOSRV / VIS_NOMIG = a server without these approvals: Allow Unloading then
            works without one, with a note. */
@@ -6371,9 +6413,8 @@
             document.getElementById('hydraInPreviewImg').classList.add('hidden');
 
             refreshMasterDropdowns();
-            // the approver chosen last time on this phone, if he is still an ERP user (the box takes list values only)
-            const last = readLS(HYD_APPROVER_KEY, '');
-            if (last && GATE_COMBOS.hydraApprover) GATE_COMBOS.hydraApprover.set(last, true);
+            // the Approver is never filled by itself: picked by hand every time
+            if (GATE_COMBOS.hydraApprover) GATE_COMBOS.hydraApprover.set('', true);
             updateHydraLiveUI();
         }
 
@@ -6649,7 +6690,6 @@
             };
 
             commitEntry(newHydra);
-            writeLS(HYD_APPROVER_KEY, apOpt.value);
             this.reset();
             tempPhotos.hydraIn = null;
             document.getElementById('hydraInPhotoLabel').textContent = 'Tap to Capture Hydra Live Photo';
@@ -6833,8 +6873,8 @@
             smpResetForm();
             refreshMasterDropdowns();
             gateFillNo('IN', 'smpInwardNo', 'smpInwardNoHint');
-            const last = readLS(SMP_APPROVER_KEY, '');
-            if (last && GATE_COMBOS.smpApprover) GATE_COMBOS.smpApprover.set(last, true);
+            // Whom to Approve is never filled by itself: picked by hand every time
+            if (GATE_COMBOS.smpApprover) GATE_COMBOS.smpApprover.set('', true);
         }
 
         document.getElementById('formSample').addEventListener('submit', async function(e) {
@@ -6911,7 +6951,6 @@
                 hostDept: apOpt.dept || null
             };
             commitEntry(entry);
-            writeLS(SMP_APPROVER_KEY, apOpt.value);
             smpResetForm();
             showView('samplePending');
             showIosBanner(`Inward ${inNo} (${typeLbl}) sent to ${apOpt.value} for approval`, 'success');
@@ -6980,7 +7019,7 @@
             if (inwDkNeedsTare(e)) {
                 const d = inwDkOf(e);
                 const ask = 'Dharam Kanta ' + d.slip + ': Tare Weight (Kg) of the empty vehicle ' + (e.vehicle || '') + ' (Gross ' + d.gross + ' Kg)';
-                const v = (window.IosDialog && IosDialog.prompt) ? await IosDialog.prompt(ask, '') : prompt(ask, '');
+                const v = (window.IosDialog && IosDialog.prompt) ? await IosDialog.prompt(ask, '', { inputMode: 'decimal', placeholder: 'Tare Kg' }) : prompt(ask, '');
                 if (v === null || v === undefined) return;
                 const tare = parseFloat(String(v).replace(',', '.')) || 0;
                 if (!(tare > 0)) { showIosBanner('Enter the Tare Weight of the empty vehicle', 'error'); return; }
@@ -8114,6 +8153,54 @@
                 setTimeout(() => banner.remove(), 260);
             }, 2600);
         }
+    </script>
+    <script>
+        /* KEYBOARD (2026-11-26): every box that takes only digits opens the phone's NUMBER keyboard, and a box never hides
+           under the keyboard.
+           Number keyboard: type=number (weights / Kg = decimal keypad with the dot, others = digits), type=tel (mobile),
+           PIN / password boxes (digits, pattern [0-9]*) and any box with data-num ("decimal" for the dot) get inputmode;
+           boxes added later (popups, rule rows, gate-link.js forms) are set as they appear (MutationObserver).
+           Never hidden: the viewport meta has interactive-widget=resizes-content (the page shrinks above the keyboard), and
+           the focused box is scrolled to the middle of what is left visible when the keyboard opens or resizes
+           (focusin + visualViewport resize). A box already in view is not moved. */
+        (function () {
+            var DEC = /weight|wt$|wt[A-Z_]|gross|tare|net|kg|amount|rate/i;
+            function setNum(el) {
+                if (!el || el.tagName !== 'INPUT' || el.hasAttribute('inputmode') && !el.hasAttribute('data-kb-auto')) return;
+                var t = (el.getAttribute('type') || 'text').toLowerCase(), key = (el.id || '') + ' ' + (el.name || '') + ' ' + (el.placeholder || '');
+                var mode = '';
+                if (el.hasAttribute('data-num')) mode = el.getAttribute('data-num') === 'decimal' ? 'decimal' : 'numeric';
+                else if (t === 'number') { var st = el.getAttribute('step') || ''; mode = (/\./.test(st) || st === 'any' || DEC.test(key)) ? 'decimal' : 'numeric'; }
+                else if (t === 'tel') mode = 'numeric';
+                else if (t === 'password' && /pin/i.test(key)) mode = 'numeric';
+                if (!mode) return;
+                el.setAttribute('inputmode', mode); el.setAttribute('data-kb-auto', '');
+                if (mode === 'numeric' && t !== 'number' && !el.hasAttribute('pattern')) el.setAttribute('pattern', '[0-9]*');
+            }
+            function scan(root) {
+                if (!root || !root.querySelectorAll) return;
+                if (root.tagName === 'INPUT') setNum(root);
+                root.querySelectorAll('input').forEach(setNum);
+            }
+            scan(document.body);
+            new MutationObserver(function (list) {
+                list.forEach(function (m) {
+                    m.addedNodes.forEach(function (n) { if (n.nodeType === 1) scan(n); });
+                    if (m.type === 'attributes' && m.target.tagName === 'INPUT' && m.target.hasAttribute('data-kb-auto')) { m.target.removeAttribute('inputmode'); m.target.removeAttribute('data-kb-auto'); setNum(m.target); }
+                });
+            }).observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['type'] });
+
+            // the focused box stays in what the keyboard leaves visible
+            function typing(el) { return el && (el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || (el.tagName === 'INPUT' && !/^(checkbox|radio|file|button|submit|hidden|range|color)$/i.test(el.type || ''))); }
+            function keep(el) {
+                if (!typing(el) || document.activeElement !== el) return;
+                var vv = window.visualViewport, top = vv ? vv.offsetTop : 0, h = vv ? vv.height : window.innerHeight;
+                var r = el.getBoundingClientRect();
+                if (r.height && (r.top < top + 56 || r.bottom > top + h - 16)) { try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) { el.scrollIntoView(); } }
+            }
+            document.addEventListener('focusin', function (e) { var el = e.target; setTimeout(function () { keep(el); }, 320); setTimeout(function () { keep(el); }, 700); });
+            if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { var a = document.activeElement; if (typing(a)) setTimeout(function () { keep(a); }, 80); });
+        })();
     </script>
     <!-- Between Gate-1 and Gate-2 (unit transfer, visitor moving units, vehicle cross-check): shared by both gates -->
     <script src="gate-link.js?v=20261124a"></script>

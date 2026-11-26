@@ -1015,6 +1015,12 @@ let sarvPoCatalog=[],sarvPendingRequirements=[],sarvEditingRequirementId=null,sa
 let sarvPoLineMap={};
 // Admin-only view toggle for fully-received / short-closed POs.
 let sarvShowReceivedPos=false;
+/* Generated POs (2026-11-26): Received / Closed (Short) and Rejected / Cancelled POs are NOT read from the database
+   until their button (Show Received / Closed, Show Cancelled / Rejected) or a Status tick asks for them (poListExcl_);
+   the buttons show how many there are from a head-only count. sarvPoLoadedExcl = the excluded set of the last read. */
+/* Pending Items (Build PO): Rejected / Cancelled PRs likewise only with Show Rejected / Cancelled on (sarvToggleDeadPrs_). */
+let sarvShowDeadPrs=false, sarvPrDeadCount=0;
+let sarvShowDeadPos=false, sarvPoLoadedExcl=null, sarvPoHiddenCounts={done:0,dead:0}, sarvPoListBusy=false;
 // Generated POs › Status multi-select: the ticked statuses (none = All). See renderPoListStatusOpts_.
 const sarvPoListStatusSel=new Set();
 let sarvItemCatalog=[];     // Global item master cache for auto-fill
@@ -1854,27 +1860,42 @@ function prCompletionDone_(recv){
    are read in pages of SARV_LIGHT_PAGE (a single response is capped at 1000
    rows; the functions order on id last, so pages never overlap), so a list
    stays complete however many PRs / POs there are. Returns {data, error}. */
-const sarvLightMissing_={},SARV_LIGHT_PAGE=1000;
+const sarvLightMissing_={},sarvLightNoFlt_={},SARV_LIGHT_PAGE=1000;
 async function sarvPrPoLight_(kind,opts){
   opts=opts||{};
   const fn=kind==='PO'?'sarv_po_light':'sarv_pr_light',limit=opts.limit,ids=opts.ids;
   if(Array.isArray(ids)&&!ids.length)return {data:[],error:null};
+  // opts.exclStatus: statuses left out ON THE SERVER (a row without a status is kept)
+  const excl=Array.isArray(opts.exclStatus)&&opts.exclStatus.length
+    ?'status.is.null,status.not.in.('+opts.exclStatus.map(s=>'"'+String(s).replace(/"/g,'')+'"').join(',')+')':'';
+  const flt=q=>excl?q.or(excl):q;
   if(!sarvLightMissing_[fn]){
     const args={};
     if(kind!=='PO'&&limit)args.p_limit=limit;
     if(Array.isArray(ids))args.p_ids=ids;
-    let rows=[],err=null;
-    if(limit){
-      const r=await SB.rpc(fn,args);
-      if(r.error)err=r.error;else rows=r.data||[];
-    }else{
-      for(let from=0;;from+=SARV_LIGHT_PAGE){
-        const r=await SB.rpc(fn,args).range(from,from+SARV_LIGHT_PAGE-1);
-        if(r.error){err=r.error;break;}
-        const got=r.data||[];rows=rows.concat(got);
-        if(got.length<SARV_LIGHT_PAGE)break;
+    // the light function's rows filtered on the server; a function whose answer cannot be filtered (no status
+    // column the server can see) is read once unfiltered and filtered here, and remembered (sarvLightNoFlt_)
+    const read=async useFlt=>{
+      let rows=[],err=null;
+      const f=useFlt?flt:(q=>q);
+      if(limit){
+        const r=await f(SB.rpc(fn,args));
+        if(r.error)err=r.error;else rows=r.data||[];
+      }else{
+        for(let from=0;;from+=SARV_LIGHT_PAGE){
+          const r=await f(SB.rpc(fn,args)).range(from,from+SARV_LIGHT_PAGE-1);
+          if(r.error){err=r.error;break;}
+          const got=r.data||[];rows=rows.concat(got);
+          if(got.length<SARV_LIGHT_PAGE)break;
+        }
       }
+      return {rows,err};
+    };
+    let {rows,err}=await read(!!excl&&!sarvLightNoFlt_[fn]);
+    if(err&&excl&&!sarvLightNoFlt_[fn]&&!['PGRST202','42883'].includes(err.code||'')){
+      sarvLightNoFlt_[fn]=true;({rows,err}=await read(false));
     }
+    if(!err&&excl&&sarvLightNoFlt_[fn])rows=rows.filter(r=>!r||!r.status||!opts.exclStatus.includes(r.status));
     if(!err)return {data:rows,error:null};
     const c=err.code||'';
     if(c==='PGRST202'||c==='42883')sarvLightMissing_[fn]=true;
@@ -1887,7 +1908,7 @@ async function sarvPrPoLight_(kind,opts){
   if(Array.isArray(ids)){
     try{return {data:await fuFetchByIds_(table,'*','id',ids),error:null};}catch(e){return {data:null,error:e};}
   }
-  if(kind==='PO')return SB.from('purchase_orders').select('*').order('po_date',{ascending:false});
+  if(kind==='PO')return flt(SB.from('purchase_orders').select('*')).order('po_date',{ascending:false});
   return limit
     ?SB.from('purchase_requirements').select('*').order('created_at',{ascending:false}).limit(limit)   // never req_no: text order puts PR/…/1001 below PR/…/999
     :SB.from('purchase_requirements').select('*').order('request_date',{ascending:false});
@@ -24902,7 +24923,8 @@ let PR_TEAL=[13,92,83];
    if(!SB_READY)return;
    await sarvLoadFieldBoys_();   // prFieldLocked_ / fbLineDeletable_ below need the Field Boy names
    const [rq,lq,iq,pq]=await Promise.all([
-     sarvPrPoLight_('PR'),   // a list: no signature images (PR / PO LIGHT LISTS)
+     // a list: no signature images (PR / PO LIGHT LISTS); Rejected / Cancelled PRs only with their button on
+     sarvPrPoLight_('PR',{exclStatus:sarvShowDeadPrs?[]:PR_DEAD_ST}),
      // Must match the .order('id') used when pdf_snapshot.items was built
      // (Vendor Rate & Info save / approvePR) — this array's row order is
      // matched to snapshot.items by position below, so a different order
@@ -25026,11 +25048,12 @@ let PR_TEAL=[13,92,83];
           Status filter above the table can still show it as Completed — but
           poPendingMatches() leaves it out of the default (pending) view, so
           the list itself only ever offers work that is still to be ordered. */
-       if(String(req.status||'')==='Cancelled')return;
+       if(!sarvShowDeadPrs&&PR_DEAD_ST.includes(String(req.status||'')))return;   // (read only with Show Rejected / Cancelled on)
        if(completed||available>0)sarvPendingRequirements.push({req,line,item,name,requested,inPo,available,received,completed,grossWeight,machine,sr:index+1,prPdfUrl:prPdfMap[req.req_no]||'',approvedVendor,approvedRate,approvedDiscount,poEligible,vendorInfoFilled});
      });
    });
    renderPendingRequirementsTable();
+   sarvPaintDeadPrBtn_();
    // The entry form's Rejected PRs button / bar (REJECTED PR LOAD); in the background.
    sarvRefreshRejectedPrBar_().catch(e=>console.warn('[SARV] Rejected PR bar skipped:',e.message||e));
    /* Write the verdicts back, after the table is already on screen — grading a
@@ -25043,6 +25066,22 @@ let PR_TEAL=[13,92,83];
      renderPendingRequirementsTable();
      showToast('Updated the status of '+n+' PR(s) based on receiving');
    }).catch(e=>console.warn('[SARV] PR status reconcile skipped:',e.message||e));
+ }
+ /* Show Rejected / Cancelled (Pending Items, 2026-11-26): such PRs are not read from the database while it is off; the
+    button counts them with a head-only query. On = they are read and listed (never PO-eligible, Edit refused). */
+ const PR_DEAD_ST=['Rejected','Cancelled'];
+ async function sarvPaintDeadPrBtn_(){
+   const b=byId('p_poShowDeadPrBtn');if(!b)return;
+   if(!sarvShowDeadPrs){
+     try{const r=await SB.from('purchase_requirements').select('id',{count:'exact',head:true}).in('status',PR_DEAD_ST);if(!r.error)sarvPrDeadCount=r.count||0;}catch(e){}
+   }
+   b.textContent=sarvShowDeadPrs?'Hide Rejected / Cancelled':'Show Rejected / Cancelled'+(sarvPrDeadCount?' ('+sarvPrDeadCount+')':'');
+   b.style.background=sarvShowDeadPrs?'#dc2626':'#fff';b.style.color=sarvShowDeadPrs?'#fff':'#dc2626';
+ }
+ function sarvToggleDeadPrs_(){
+   sarvShowDeadPrs=!sarvShowDeadPrs;
+   const b=byId('p_poShowDeadPrBtn');if(b){b.disabled=true;b.textContent='Loading...';}
+   refreshPendingRequirements().catch(dbError).finally(()=>{const x=byId('p_poShowDeadPrBtn');if(x)x.disabled=false;sarvPaintDeadPrBtn_();});
  }
  // Does this pending line survive the filter bar above the table?
  function poPendingMatches(x){
@@ -25085,6 +25124,7 @@ let PR_TEAL=[13,92,83];
  }
  function canEditPr_(req){
    if(prFieldLocked_(req))return false;
+   if(String((req&&req.status)||'')==='Cancelled')return false;   // shown only with Show Rejected / Cancelled; never edited
    if(isAdmin())return true;
    const st=String((req&&req.status)||'Pending').trim();
    // A Rejected PR of the user's own store: they must clear it before a New PR, so they may correct it (REJECTED PR LOAD).
@@ -25986,9 +26026,33 @@ let PR_TEAL=[13,92,83];
    const fallbackMsg=msg+(po.pdf_url?'\nPDF: '+po.pdf_url:'');
    window.open('https://wa.me/'+phone+'?text='+encodeURIComponent(fallbackMsg),'_blank');
  }
+ const PO_DONE_ST=['Received','Closed (Short)'], PO_DEAD_ST=['Rejected','Cancelled'];
+ // The statuses NOT to read now: a group comes in only when its button is on or one of its statuses is ticked
+ function poListExcl_(){
+   const wantDone=sarvCan('PO_RECEIVED_VIEW')&&(sarvShowReceivedPos||PO_DONE_ST.some(s=>sarvPoListStatusSel.has(s)));
+   const wantDead=sarvShowDeadPos||PO_DEAD_ST.some(s=>sarvPoListStatusSel.has(s));
+   return [].concat(wantDone?[]:PO_DONE_ST,wantDead?[]:PO_DEAD_ST);
+ }
+ // How many POs a button would bring in (head-only counts: no rows are read)
+ async function poHiddenCounts_(excl){
+   const out={done:0,dead:0};
+   const cnt=async list=>{try{const r=await SB.from('purchase_orders').select('id',{count:'exact',head:true}).in('status',list);return r.error?0:(r.count||0);}catch(e){return 0;}};
+   if(PO_DONE_ST.every(s=>excl.includes(s)))out.done=await cnt(PO_DONE_ST);
+   if(PO_DEAD_ST.every(s=>excl.includes(s)))out.dead=await cnt(PO_DEAD_ST);
+   return out;
+ }
  async function refreshGeneratedPoList(){
    if(!SB_READY)return;const tb=byId('p_poListBody');if(!tb)return;
-   const q=await sarvPrPoLight_('PO');if(q.error){console.warn('[SARV] PO list unavailable:',q.error.message);return}
+   if(sarvPoListBusy)return;
+   sarvPoListBusy=true;
+   try{await refreshGeneratedPoList_();}finally{sarvPoListBusy=false;}
+ }
+ async function refreshGeneratedPoList_(){
+   const tb=byId('p_poListBody');
+   const excl=poListExcl_();
+   const [q,hid]=await Promise.all([sarvPrPoLight_('PO',{exclStatus:excl}),poHiddenCounts_(excl)]);
+   if(q.error){console.warn('[SARV] PO list unavailable:',q.error.message);return}
+   sarvPoLoadedExcl=excl.join('|');sarvPoHiddenCounts=hid;
    // Sorted by PO No., newest number on top. Numeric-aware, so PO/U-2/100
    // comes before PO/U-2/99 (a plain text sort would put it after).
    sarvGeneratedPos=(q.data||[]).sort((a,b)=>String(b.po_no||'').localeCompare(String(a.po_no||''),undefined,{numeric:true,sensitivity:'base'}));
@@ -26083,6 +26147,8 @@ let PR_TEAL=[13,92,83];
  // every keystroke. Reload is what goes back to the database.
  function renderGeneratedPoTable(){
    const tb=byId('p_poListBody');if(!tb)return;
+   // a Status tick asks for a group not read yet (Received / Closed, Rejected / Cancelled): read again first
+   if(sarvPoLoadedExcl!==null&&!sarvPoListBusy&&poListExcl_().join('|')!==sarvPoLoadedExcl){refreshGeneratedPoList().catch(dbError);return;}
    const poLineMap=sarvPoLineMap||{};
    const statusColors={'Generated':'#64748b','GM/CEO Approved':'#0284c7','MD Approved':'#7c3aed','Vendor Verified':'#16a34a','Partially Received':'#d97706','Received':'#16a34a','Closed (Short)':'#0f766e','Rejected':'#dc2626','Cancelled':'#dc2626'};
    // Completed POs (fully received / short-closed) drop off the list; only an
@@ -26094,7 +26160,8 @@ let PR_TEAL=[13,92,83];
    const canDone=sarvCan('PO_RECEIVED_VIEW');
    const showDone=canDone&&(sarvShowReceivedPos||doneStatuses.some(s=>sarvPoListStatusSel.has(s)));
    const openPos=sarvGeneratedPos.filter(po=>showDone||!doneStatuses.includes(po.status||''));
-   const doneCount=sarvGeneratedPos.length-openPos.length;
+   // not read from the database = the head-only count of poHiddenCounts_
+   const doneCount=(sarvGeneratedPos.length-openPos.length)||sarvPoHiddenCounts.done||0;
    // Search box + Status multi-select above the table (no tick = all statuses).
    const term=(byId('p_poListSearch')?.value||'').trim().toLowerCase();
    renderPoListStatusOpts_(canDone);
@@ -26110,7 +26177,9 @@ let PR_TEAL=[13,92,83];
        .concat(lines.map(l=>(l.item_name||'')+' '+(l.item_description||''))),term);
    });
    renderPoListDoneToggle(doneCount);
+   renderPoListDeadToggle(sarvShowDeadPos?0:(sarvPoHiddenCounts.dead||0));
    syncPoListLinks_();
+   requestAnimationFrame(poListFit_);
    tb.innerHTML='';visiblePos.forEach(po=>{
      const statusVal=po.status||'Generated',sc=statusColors[statusVal]||'#64748b';
      /* A short-closed PO carries the remark that justified writing off the
@@ -26341,6 +26410,7 @@ let PR_TEAL=[13,92,83];
  function poListFullScreen_(on){
    const p=byId('p_poListPanel');if(!p)return;
    p.classList.toggle('fu-full',!!on);
+   requestAnimationFrame(poListFit_);   // back in the tab: down to the window's bottom again
    const b=byId('p_poListFsBtn');
    if(b){b.innerHTML=on?'&#10005; Exit Full Screen':'Full Screen';b.title=on?'Back (Esc)':'View the Generated POs table full screen (Esc to exit)';}
    poListStatusPanel_(false);
@@ -26362,6 +26432,32 @@ let PR_TEAL=[13,92,83];
    btn.textContent=sarvShowReceivedPos?'Hide Received / Closed':'Show Received / Closed'+(doneCount?' ('+doneCount+')':'');
    btn.style.background=sarvShowReceivedPos?'#0f766e':'#fff';
    btn.style.color=sarvShowReceivedPos?'#fff':'#0f766e';
+ }
+ /* The Generated POs table box reaches down to the bottom of the window by itself (2026-11-26): its max-height =
+    window height − its top − a small margin, at least 320 px; again on every render, window resize and when the
+    panel opens. Full Screen keeps its own CSS rule (store.css .fu-full, !important). */
+ function poListFit_(){
+   const w=byId('p_poListTableWrap');if(!w||!w.offsetParent)return;
+   if(byId('p_poListPanel')?.classList.contains('fu-full')){w.style.maxHeight='';return;}
+   const top=w.getBoundingClientRect().top;
+   w.style.maxHeight=Math.max(320,Math.floor(window.innerHeight-Math.max(0,top)-14))+'px';
+ }
+ window.addEventListener('resize',()=>{clearTimeout(poListFit_.t);poListFit_.t=setTimeout(poListFit_,120);});
+ // "Show Cancelled / Rejected" — for everyone who sees the list; their rows are read from the database only when on
+ function renderPoListDeadToggle(deadCount){
+   const host=byId('p_poListCount')?.closest('.items-total-strip');if(!host)return;
+   let btn=byId('p_poShowDeadBtn');
+   if(!btn){
+     btn=document.createElement('button');
+     btn.type='button';btn.id='p_poShowDeadBtn';
+     btn.style.cssText='margin-left:10px;padding:3px 12px;font-size:11px;font-weight:700;border-radius:14px;border:1.5px solid #dc2626;background:#fff;color:#dc2626;cursor:pointer;';
+     btn.addEventListener('click',()=>{sarvShowDeadPos=!sarvShowDeadPos;refreshGeneratedPoList().catch(dbError);});
+     const after=byId('p_poShowReceivedBtn'), links=host.querySelector('.po-list-links');
+     if(after&&after.parentNode===host)host.insertBefore(btn,after.nextSibling);else if(links)host.insertBefore(btn,links);else host.appendChild(btn);
+   }
+   btn.textContent=sarvShowDeadPos?'Hide Cancelled / Rejected':'Show Cancelled / Rejected'+(deadCount?' ('+deadCount+')':'');
+   btn.style.background=sarvShowDeadPos?'#dc2626':'#fff';
+   btn.style.color=sarvShowDeadPos?'#fff':'#dc2626';
  }
  /* ================================================================
     PR -> PO -> INWARD FOLLOW-UP REPORT  (PO tab, third sub-panel)
@@ -28711,11 +28807,13 @@ let PR_TEAL=[13,92,83];
          +row('Short (written off)',pEsc(shortTx));
      }else sum.innerHTML='';
    }
-   const r=byId('p_poCloseRemarks');if(r)r.value='';
+   // pre-filled "Negligible" (the usual reason: the short qty is too small to wait for); editable, still compulsory
+   const r=byId('p_poCloseRemarks');if(r)r.value='NEGLIGIBLE';
    const by=byId('p_poCloseBy');
    if(by)by.value=(sarvCurrentUser&&sarvCurrentUser.name)||SARV_ROLE_LABEL[sarvCurrentRole]||'';
    byId('p_poCloseModal')?.classList.add('active');
-   setTimeout(()=>byId('p_poCloseRemarks')?.focus(),80);
+   // the text comes selected: typing replaces it, Enter / Save keeps it
+   setTimeout(()=>{const t=byId('p_poCloseRemarks');if(t){t.focus();try{t.select();}catch(e){}}},80);
  }
  function closePoShortCloseModal(){
    byId('p_poCloseModal')?.classList.remove('active');
@@ -34117,7 +34215,7 @@ function inwGateRender_(){
   const nb=inwIsNbForm_(), ulOpts=nb?(S.ulList||[]).filter(r=>!r.usedBy||r.usedBy.id===mine):[];
   S.renderNb=nb;
   const inpHtml=inp.length?'<optgroup label="Store Inward No. · submitted, waiting / approved">'+inp.map(p=>
-    '<option value="'+escText(INP_PFX+p.id)+'">'+escText(p.no)+(p.entryType==='INWARD NB'?' (NB)':'')+' · '+escText(p.supplier||'-')
+    '<option value="'+escText(INP_PFX+p.id)+'"'+(inpState_(p).ready?' data-iosdd-cls="ok" style="background:#dcfce7;color:#166534;font-weight:700;"':'')+'>'+escText(p.no)+(p.entryType==='INWARD NB'?' (NB)':'')+' · '+escText(p.supplier||'-')
       +(p.gateEntryNo?' · Gate '+escText(p.gateEntryNo):'')+' · '+escText(inpState_(p).txt)+'</option>').join('')+'</optgroup>':'';
   const ulHtml=ulOpts.length?'<optgroup label="Unloading bill · Payable (by Unloader)">'+ulOpts.map(r=>{
     const t=inwGateUlPayTot_(r), w=r.unloader||{};
@@ -34131,7 +34229,8 @@ function inwGateRender_(){
       +(r.invoice_no?' · Challan '+escText(r.invoice_no):'')+' · '+escText(due.txt)+'</option>';}).join('')+'</optgroup>':'';
   const grp=inpHtml||ulHtml||chlHtml;
   sel.innerHTML='<option value="">-- Select the gate\'s Inward entry / Store Inward No. --</option>'+inpHtml+chlHtml+ulHtml+(grp?'<optgroup label="Gate Inward entries">':'')+opts.map(r=>
-    '<option value="'+escText(r.no)+'">'+escText(r.no)+(r.kind==='VISITOR'?' · Working visitor '+escText(r.visitor||'-')+' of':'')
+    // ready for the Store entry = GREEN in the list (data-iosdd-cls for the ios-dropdown list, style for a native one)
+    '<option value="'+escText(r.no)+'"'+(inwGateReady_(r)?' data-iosdd-cls="ok" style="background:#dcfce7;color:#166534;font-weight:700;"':'')+'>'+escText(r.no)+(r.kind==='VISITOR'?' · Working visitor '+escText(r.visitor||'-')+' of':'')
       +(inwGateIsSmp_(r)?' · Sample / Other ('+escText(r.returnType==='RETURNABLE'?'Returnable':'Non-Returnable')+')'+(r.item?' '+escText(r.item):'')+' from':'')+' · '+escText(r.party||'-')+(r.refNo?' · '+escText((r.refType||'Ref')+' '+r.refNo):'')
       +(r.vehicle&&r.vehicle!=='N/A'?' · '+escText(r.vehicle):'')+' · '+escText(inwGateDmyT_(r.inTime))+' · '+escText(inwGateStepTxt_(r))+'</option>').join('')+(grp?'</optgroup>':'');
   if(cur&&(opts.some(r=>r.no===cur)||ulOpts.some(r=>INW_UL_PFX+r.no===cur)||inp.some(p=>INP_PFX+p.id===cur)||chl.some(r=>CHL_PFX+r.id===cur)))sel.value=cur;
@@ -34199,8 +34298,8 @@ function inwGateInfo_(){
     box.innerHTML=(nc?'<div style="margin-bottom:4px;color:'+(nco?'#b91c1c':'#92400e')+';font-weight:700;">'+nc+' Inward'+(nc===1?'':'s')+' booked against a challan wait for the bill'+(nco?' ('+nco+' overdue)':'')+'. Choose one under "Challan · Bill pending" to add its Original Invoice.</div>':'')
       +(ni?'<div style="margin-bottom:4px;color:#1e3a8a;font-weight:700;">'+ni+' entr'+(ni===1?'y':'ies')+' submitted and waiting / approved under a Store Inward No. (at the top of the list). Choose one to see its step, or to Submit it once approved.</div>':'')
       +(S.inpNoMig&&isAdmin()?'<div style="margin-bottom:4px;color:#92400e;font-weight:700;">The Store Inward No. on Submit needs sql/INWARD_PENDING_MIGRATION.sql (Admin).</div>':'')
-      +'<span style="color:#475569;">'+(S.list?(n?n+' approved Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery.'
-      :'No approved, unbooked Inward entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate saves it when the vehicle comes in and its approver approves it (launcher › Gate Approvals); then press Refresh.'):'Loading the gate entries…')+'</span>';
+      +'<span style="color:#475569;">'+(S.list?(n?n+' Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet'+((S.list||[]).filter(r=>!r.usedBy&&inwGateApPending_(r)).length?' ('+(S.list||[]).filter(r=>!r.usedBy&&inwGateApPending_(r)).length+' still waiting for the approver)':'')+'. Choose the one of this delivery.'
+      :'No unbooked Inward entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate saves it when the vehicle comes in and its approver approves it (launcher › Gate Approvals); then press Refresh.'):'Loading the gate entries…')+'</span>';
     return;
   }
   box.innerHTML='<div style="display:flex;flex-wrap:wrap;gap:6px 18px;color:#1e293b;">'
@@ -34427,6 +34526,13 @@ async function inwGateGate_(){
   const r=(list||[]).find(x=>x.no===v);
   if(!r&&!(mine&&v===S.want)){showToast('Gate entry '+v+' is not an Inward entry of '+inwGateLabel_()+' (30 days). Press Refresh.','warn');return false;}
   if(r&&r.usedBy&&r.usedBy.id!==mine){showToast('Gate entry '+v+' is already booked by Inward '+(r.usedBy.no||'')+'. Choose another one.','error');return false;}
+  // still waiting for its approver (listed, but not bookable yet)
+  if(r&&!mine&&inwGateApPending_(r)){
+    byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+    showToast('Gate entry <b>'+escText(v)+'</b> is still waiting for its approver'+(r.approver?' <b>'+escText(r.approver)+'</b>':'')
+      +' (launcher › Gate Approvals). The Store entry can be submitted only after it is approved (and its Unloader has uploaded).','warn');
+    return false;
+  }
   const {errs,refChange}=inwGateCheck_();
   if(errs.length){
     byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
@@ -34637,6 +34743,7 @@ function inwGatePipeHtml_(row){
     ]));
     steps.push(ap&&ap.status==='APPROVED'
       ?step('done','Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.approver||'-')+'</b>'])
+      :inwGateApPending_(row)?step('wait','Waiting: Approver','',['<b>'+escText(row.approver||ap.by||'-')+'</b> to approve on the launcher › Gate Approvals','Nothing is filled from it before'])
       :step('off','Approval','',['No approval on this entry']));
     // its Unloader, as for an Inward (the approver assigns one; the Store books it after the upload)
     {const ul=inwGateUlOf_(row);
@@ -34659,9 +34766,11 @@ function inwGatePipeHtml_(row){
     ]));
     steps.push(ap&&ap.status==='APPROVED'
       ?step('done','Host Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.host||'-')+'</b>'])
+      :inwGateApPending_(row)?step('wait','Waiting: Approver','',['<b>'+escText(row.approver||ap.by||'-')+'</b> to approve on the launcher › Gate Approvals','Nothing is filled from it before'])
       :step('off','Host','',['Old visitor entry: no approval asked']));
     steps.push(step('off','Unloader','',['Working visitor: no Unloader. The Unloader Supervisor checks this Inward on Submit']));
-    steps.push(step('done','Store Entry','Ready to Submit',['The Firm Name is the Supplier Name of this Inward']));
+    steps.push(inwGateApPending_(row)?step('wait','Store Entry','Locked',['Allowed only after the host approves'])
+      :step('done','Store Entry','Ready to Submit',['The Firm Name is the Supplier Name of this Inward']));
     return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
   }
   // 1. Gate In: guard, vehicle, Dharam Kanta
@@ -34675,13 +34784,14 @@ function inwGatePipeHtml_(row){
   // 2. Approver
   steps.push(ap&&ap.status==='APPROVED'
     ?step('done','Approver Approved',inwGateDmyT_(ap.at),['By <b>'+escText(ap.by||row.approver||'-')+'</b>'])
+    :inwGateApPending_(row)?step('wait','Waiting: Approver','',['<b>'+escText(row.approver||ap.by||'-')+'</b> to approve on the launcher › Gate Approvals','Nothing is filled from it before'])
     :step('off','Approver',ap?String(ap.status||''):'',[ap?'':'Old gate entry: no approval asked'+(row.approver?' ('+escText(row.approver)+')':'')]));
   // 3. Unloader assigned, 4. Unloader done
   const canAssign=ulOn&&!ul&&ap&&ap.status==='APPROVED'&&typeof isAdmin==='function'&&isAdmin()&&!sarvEditingInwardId;
   if(!ulOn){
     steps.push(step('off','Unloader','',['The server needs GATE_INWARD_UNLOADER_MIGRATION.sql: the Unloader Supervisor checks this Inward on Submit']));
   }else if(!ul){
-    steps.push(step(ap?'miss':'off','Unloader Assigned','',[ap?'<b>Not assigned yet.</b> The approver assigns one on the launcher › Gate Approvals › Assign Unloader'
+    steps.push(step(ap&&!inwGateApPending_(row)?'miss':'off','Unloader Assigned','',[inwGateApPending_(row)?'Chosen by the approver when approving':ap?'<b>Not assigned yet.</b> The approver assigns one on the launcher › Gate Approvals › Assign Unloader'
       +(canAssign?' <a href="#" onclick="inwGateUlAssign_('+escText(JSON.stringify(row.no))+');return false;" style="font-weight:800;">Assign Unloader</a>':''):'Old gate entry: the Unloader Supervisor checks it on Submit']));
   }else{
     steps.push(step('done','Unloader Assigned',inwGateDmyT_(ul.at),['To <b>'+escText(ul.to||'-')+'</b>'+(ul.toEmp?' ('+escText(ul.toEmp)+')':''),ul.by?'By '+escText(ul.by):'',
@@ -34691,8 +34801,8 @@ function inwGatePipeHtml_(row){
       :step('wait','Unloader Done','',['Waiting for <b>'+escText(ul.to||'-')+'</b> to upload the Photos / Original Invoice (unloader.html › Gate Inward)']));
   }
   // 5. Store entry
-  const ready=!ulOn||(ul&&ul.status==='DONE')||(!ul&&!ap);
-  steps.push(step(ready?'done':'wait','Store Entry',ready?'Ready to Submit':'Locked',[ready?(ul?'The Unloader\'s photos are the unloading proof: no Unloader Supervisor step':''):'Allowed only after the Unloader is done',
+  const ready=!inwGateApPending_(row)&&(!ulOn||(ul&&ul.status==='DONE')||(!ul&&!ap));
+  steps.push(step(ready?'done':'wait','Store Entry',ready?'Ready to Submit':'Locked',[ready?(ul?'The Unloader\'s photos are the unloading proof: no Unloader Supervisor step':''):inwGateApPending_(row)?'Allowed only after the approver approves and the Unloader is done':'Allowed only after the Unloader is done',
     ul&&ul.chargeType==='PAYABLE'?'Payable: after this Inward, the Unloader\'s bill is booked in Inward NB › Gate Entry No. (UL · '+escText(row.no)+')':'']));
   return '<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;align-items:stretch;">'+steps.join(arrow)+'</div>';
 }
@@ -34876,7 +34986,10 @@ function inpState_(p){
     txt:rej?rejs.join(' · ')+' · correct and Submit again':wait||todo?parts.filter(x=>!/✓/.test(x)).join(' · '):'Approved · ready for Final Submit'};
 }
 // the Gate Entry No. option's step words (the same rule as the pipeline's Store Entry step)
+// a gate entry still waiting for its approver (gate_inward_list lists PENDING ones too since 2026-11-26)
+function inwGateApPending_(r){ return !!(r&&r.approval&&String(r.approval.status||'').toUpperCase()==='PENDING'); }
 function inwGateStepTxt_(r){
+  if(inwGateApPending_(r))return 'Waiting: Approver'+(r.approver?' '+r.approver:'')+' to approve';
   if(!r||r.kind==='VISITOR')return 'Ready for Store entry';
   if(!Object.prototype.hasOwnProperty.call(r,'unload'))return 'Ready for Store entry';
   const ul=inwGateUlOf_(r);
