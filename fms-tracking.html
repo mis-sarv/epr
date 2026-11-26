@@ -9,11 +9,14 @@
 <title>FMS Tracking</title>
 <script src="date-dmy.js"></script>
 <script src="sso-preboot.js"></script>
-<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261119a"></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script>
 <!--
   FMS TRACKING (launcher app HOME_FMS_TRACKING; server sql/FMS_TRACKING_MIGRATION.sql, read only)
     Two flows, one row per document, every step with PLANNED time, ACTUAL time, who did it / who has to, and delay:
-      INWARD    Gate In → Gate Approval → Unloader → Store Inward → MD Approval (if asked) → GM Bill Check →
+      INWARD    (2026-11-26) a FIELD BOY PR (no PO): PR Entry → Field Boy Pickup (item photos, mobile.html) → Requester
+                Approval (my-requests.html) → Gate In …; every other PR:
+                PR Entry → Vendor Info → PO Generated → MD Approval (PO) → Sent to Vendor (delivery date +
+                every follow-up, received / ordered) → Gate In → Gate Approval → Unloader → Store Inward → MD Approval (if asked) → GM Bill Check →
                 EA Bill Check → MD-1 Bill Check → Debit Note (if raised; the Accounts Check waits for it) → Accounts Check        (fmt_inward)
       DISPATCH  Dharam Kanta (Tare) → Loading (every packing slip / waste bill with its time) → Outward Dharam
                 Kanta (Gross) → Dispatch Approval (if asked) → Gate Out                            (fmt_dispatch)
@@ -187,7 +190,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&am
      st: 'done' | 'wait' (not done yet) | 'na' (not needed for this row) | 'hold' | 'rej'   (late / overdue / skipped
      are worked out after, from the planned time and the later steps). */
 const TAT_DEF = {
-  inward:   { GATE_APPR: 1, UNLOADER: 2, STORE: 4, MD_APPR: 4, GM: 24, EA: 24, MD1: 24, AC: 24, DEBIT: 48 },
+  inward:   { FB_PICK: 24, FB_APPR: 24, VENDOR: 24, PO_GEN: 24, PO_MD: 24, PO_SENT: 12, GATE_IN: 72, GATE_APPR: 1, UNLOADER: 2, STORE: 4, MD_APPR: 4, GM: 24, EA: 24, MD1: 24, AC: 24, DEBIT: 48 },
   dispatch: { LOADING: 6, DK_GROSS: 2, DISP_APPR: 1, GATE_OUT: 1 }
 };
 const tim = v => v ? new Date(v) : null;
@@ -201,13 +204,144 @@ const checkStep = (code, label, doer) => ({ code, label, doer, read: r => {
   if (c.status === 'HOLD') return { st: 'hold', at: tim(c.at), by: c.by, lines: ['On HOLD' + (c.remarks ? ': ' + c.remarks : '')] };
   return { st: 'wait', lines: [c.status] };
 } });
+/* PURCHASE STEPS (2026-11-26): r.prpo = {prs:[…], pos:[…]} from the server (fmt_prpo_), each record with its own time,
+   person and remarks. A step is done when EVERY PO / PR of the row has done it (its time = the last one); its records are
+   listed under the step (items) with their times, persons and remarks. A row without PO / PR = these steps not needed. */
+const PO_PAST_MD = ['MD Approved', 'Vendor Verified', 'Partially Received', 'Received', 'Closed (Short)'];
+const prsOf = r => (r.prpo && r.prpo.prs) || [], posOf = r => (r.prpo && r.prpo.pos) || [];
+/* FIELD BOY (2026-11-26): a row whose PR(s) are Field Boy PRs and that has no PO goes PR Entry → Field Boy Pickup →
+   Requester Approval → Gate; Vendor Info / PO / MD / Sent are "not needed" there, the two Field Boy steps everywhere else. */
+const fbPrs = r => prsOf(r).filter(p => p.fb);
+const isFbRow = r => fbPrs(r).length > 0 && !posOf(r).length;
+const FB_ST = { NEW: 'not bought yet', PHOTO: 'photo taken, not sent', SENT: 'sent to the requester', APPROVED: 'approved by the requester', REJECTED: 'sent back by the requester' };
+const fbHist = p => ((p.fb && p.fb.history) || []).filter(h => h && typeof h === 'object');
+const hItems = h => (h.items || []).filter(Boolean).join(', ');
+const maxAt = list => list.reduce((m, d) => (d && (!m || d > m)) ? d : m, null);
+const minAt = list => list.reduce((m, d) => (d && (!m || d < m)) ? d : m, null);
+const sigTxt = (g, w) => [w || '', g && g.by ? 'by ' + g.by + (g.as ? ' (' + g.as + ')' : '') : '', g && g.remarks ? '· Remarks: ' + g.remarks : ''].filter(Boolean).join(' ');
+const dmy = v => { if (!v) return ''; const d = new Date(String(v).length <= 10 ? v + 'T00:00:00' : v); return isNaN(d) ? String(v) : p2(d.getDate()) + '-' + p2(d.getMonth() + 1) + '-' + d.getFullYear(); };
+const PURCHASE_STEPS = [
+  { code: 'PR', label: 'PR Entry', doer: 'Requester', read: r => {
+      const prs = prsOf(r); if (!prs.length) return { st: 'na', lines: [r.prpo ? 'No PR linked' : 'No PO / PR on this entry'] };
+      const items = prs.map(p => ({ at: tim(p.at), by: p.by, txt: 'PR ' + p.no + (p.purchaser ? ' · Purchaser ' + p.purchaser + (p.fb ? ' (Field Boy)' : '') : '') + (p.dept ? ' · ' + p.dept : '') + (p.priority && p.priority !== 'Normal' ? ' · ' + p.priority : '') + ' · ' + (p.status || 'Pending')
+        + (p.requiredBy ? ' · Required by ' + dmy(p.requiredBy) : '') + (p.notes ? ' · Remarks: ' + p.notes : '') }));
+      prs.forEach(p => { if (p.cancel) items.push({ at: tim(p.cancel.at), by: p.cancel.by, txt: 'PR ' + p.no + ' CANCELLED' + (p.cancel.remarks ? ' · Reason: ' + p.cancel.remarks : '') }); });
+      if (prs.every(p => p.status === 'Cancelled')) return { st: 'rej', at: tim(prs[0].at), by: prs[0].by, lines: ['PR cancelled'], items };
+      return { st: 'done', at: minAt(prs.map(p => tim(p.at))), by: [...new Set(prs.map(p => p.by).filter(Boolean))].join(', '), lines: [prs.map(p => p.no).join(', ')], items }; } },
+  { code: 'FB_PICK', label: 'Field Boy Pickup (item photos)', doer: 'Field Boy', read: r => {
+      if (!isFbRow(r)) return { st: 'na' };
+      const items = [], prs = fbPrs(r);
+      let all = 0, sent = 0, photo = 0, legacy = true, last = null, who = new Set();
+      prs.forEach(p => {
+        const fb = p.fb || {}; if (!fb.legacy) legacy = false;
+        (fb.lines || []).forEach(l => {
+          all++;
+          if (['SENT', 'APPROVED'].includes(l.status)) sent++;
+          if (l.photoAt || ['PHOTO', 'SENT', 'APPROVED', 'REJECTED'].includes(l.status)) photo++;
+          items.push({ at: tim(l.photoAt), txt: 'PR ' + p.no + ' · ' + l.item + ' · ' + num(l.qty) + ' ' + (l.uom || '') + ' · ' + (FB_ST[l.status] || l.status) + (l.sentAt ? ' · sent ' + fmt(tim(l.sentAt)) : '') });
+        });
+        fbHist(p).forEach(h => {
+          if (h.ev === 'SENT') { items.push({ at: tim(h.at), by: h.by || 'Field Boy', txt: 'Sent for approval: ' + (h.count || 0) + ' item(s) with photos' + (hItems(h) ? ' (' + hItems(h) + ')' : '') }); last = maxAt([last, tim(h.at)]); if (h.by) who.add(h.by); }
+          else if (h.ev === 'QTY') items.push({ at: tim(h.at), by: h.by, txt: 'Qty changed: ' + hItems(h) + ' · ' + num(h.from) + ' → ' + num(h.to) + ' ' + (h.uom || '') + (h.remarks ? ' · Remarks: ' + h.remarks : '') });
+          else if (h.ev === 'DELETED') items.push({ at: tim(h.at), by: h.by, txt: 'Item deleted: ' + hItems(h) + (h.remarks ? ' · Remarks: ' + h.remarks : '') });
+          else if (h.ev === 'CANCELLED') items.push({ at: tim(h.at), by: h.by, txt: (h.wholePr ? 'PR cancelled (only item): ' : 'Item cancelled: ') + hItems(h) + (h.remarks ? ' · Reason: ' + h.remarks : '') });
+        });
+      });
+      items.sort((a, b) => (a.at || 0) - (b.at || 0));
+      const fbName = [...new Set(prs.map(p => p.purchaser).filter(Boolean))].join(', ');
+      if (legacy) return { st: 'done', at: null, by: fbName, lines: ['Done under the old tick list'], items };
+      const lines = [photo + ' of ' + all + ' item photo(s) · ' + sent + ' sent for approval'];
+      if (all && sent === all) return { st: 'done', at: last || maxAt(items.map(i => i.at)), by: [...who].join(', ') || fbName, lines, items };
+      return { st: 'wait', who: fbName || 'Field Boy', running: photo > 0, lines, items }; } },
+  { code: 'FB_APPR', label: 'Requester Approval', doer: 'Requester', read: r => {
+      if (!isFbRow(r)) return { st: 'na' };
+      const items = [], prs = fbPrs(r);
+      let all = 0, ok = 0, back = 0, legacy = true, last = null, who = new Set();
+      prs.forEach(p => {
+        const fb = p.fb || {}; if (!fb.legacy) legacy = false;
+        (fb.lines || []).forEach(l => {
+          all++; if (l.status === 'APPROVED') ok++; if (l.status === 'REJECTED') back++;
+          const d = l.dec && typeof l.dec === 'object' ? l.dec : null;
+          if (d) items.push({ at: tim(d.at), by: d.by, txt: 'PR ' + p.no + ' · ' + l.item + ': ' + (l.status === 'REJECTED' ? 'SENT BACK' : 'approved') + (d.remarks ? ' · Remarks: ' + d.remarks : '') });
+        });
+        fbHist(p).forEach(h => {
+          if (h.ev === 'DECIDED') { items.push({ at: tim(h.at), by: h.by, txt: (h.sentBack ? 'Decided (some sent back)' : 'Approved') + ': approved ' + (h.approved || 0) + ' · sent back ' + (h.sentBack || 0) + (h.remarks ? ' · Remarks: ' + h.remarks : '') }); last = maxAt([last, tim(h.at)]); if (h.by) who.add(h.by); }
+          else if (h.ev === 'CONFIRMED') items.push({ at: tim(h.at), by: h.by || 'Field Boy', txt: 'Confirmed by the Field Boy: done' });
+        });
+        const rc = fb.reqConfirm;
+        if (rc && typeof rc === 'object') items.push({ at: tim(rc.atIso || rc.at), by: rc.by, txt: 'Requester confirmed the receipt: ' + (rc.outcome === 'OK' ? 'OK' : 'problem reported') + (rc.remarks ? ' · Remarks: ' + rc.remarks : '') });
+      });
+      items.sort((a, b) => (a.at || 0) - (b.at || 0));
+      const reqBy = [...new Set(prs.map(p => p.by).filter(Boolean))].join(', ');
+      if (legacy) return { st: 'done', at: null, by: reqBy, lines: ['Done under the old tick list'], items };
+      const lines = [ok + ' of ' + all + ' item(s) approved' + (back ? ' · ' + back + ' sent back to the Field Boy' : '')];
+      if (all && ok === all) return { st: 'done', at: last || maxAt(items.map(i => i.at)), by: [...who].join(', ') || reqBy, lines, items };
+      return { st: 'wait', who: reqBy || 'Requester', lines, items }; } },
+  { code: 'VENDOR', label: 'Vendor Info', doer: 'Purchaser', read: r => {
+      if (isFbRow(r)) return { st: 'na', lines: ['Field Boy PR: no vendor / PO'] };
+      const prs = prsOf(r), pos = posOf(r); if (!prs.length) return { st: pos.length ? 'na' : 'na', lines: pos.length ? ['PO without a PR'] : [] };
+      const items = prs.map(p => p.vi ? { at: tim(p.vi.at), by: p.vi.by, txt: 'PR ' + p.no + ': vendor approved ' + sigTxt(p.vi, '') }
+        : { at: null, txt: 'PR ' + p.no + ': ' + (p.vendorFilled ? 'vendor rates filled, waiting for the Purchaser approval' : 'vendor rates not filled yet') });
+      prs.forEach(p => { if (p.rej) items.push({ at: tim(p.rej.at), by: p.rej.by, txt: 'PR ' + p.no + ' REJECTED' + (p.rej.remarks ? ' · ' + p.rej.remarks : '') }); });
+      const rej = prs.find(p => p.status === 'Rejected');
+      if (rej) return { st: 'rej', at: tim(rej.rej && rej.rej.at), by: rej.rej && rej.rej.by, lines: ['PR ' + rej.no + ' rejected' + (rej.rej && rej.rej.remarks ? ': ' + rej.rej.remarks : '')], items };
+      const done = prs.every(p => p.vi || ['GM/CEO Approved', 'MD Approved', 'Vendor Verified', 'Completed'].includes(p.status)) || pos.length > 0;
+      if (done) return { st: 'done', at: maxAt(prs.map(p => p.vi && tim(p.vi.at))), by: [...new Set(prs.map(p => p.vi && p.vi.by).filter(Boolean))].join(', '), items,
+        lines: prs.map(p => p.vi && p.vi.remarks ? 'Remarks: ' + p.vi.remarks : '').filter(Boolean) };
+      return { st: 'wait', who: [...new Set(prs.map(p => p.purchaser).filter(Boolean))].join(', '), items }; } },
+  { code: 'PO_GEN', label: 'PO Generated', doer: 'Purchaser', read: r => {
+      if (isFbRow(r)) return { st: 'na' };
+      const pos = posOf(r); if (!pos.length) return prsOf(r).length ? { st: 'wait', lines: ['No PO yet'] } : { st: 'na' };
+      const items = pos.map(p => ({ at: tim(p.at), by: p.gen && p.gen.by, txt: 'PO ' + p.no + ' · ' + (p.vendor || '-') + ' · ' + (p.status || 'Generated') + (p.gen && p.gen.remarks ? ' · Remarks: ' + p.gen.remarks : '') }));
+      return { st: 'done', at: maxAt(pos.map(p => tim(p.at))), by: [...new Set(pos.map(p => p.gen && p.gen.by).filter(Boolean))].join(', '), lines: [pos.map(p => p.no).join(', ')], items }; } },
+  { code: 'PO_MD', label: 'MD Approval (PO)', doer: 'MD', read: r => {
+      if (isFbRow(r)) return { st: 'na' };
+      const pos = posOf(r); if (!pos.length) return prsOf(r).length ? { st: 'wait' } : { st: 'na' };
+      const items = pos.map(p => p.md ? { at: tim(p.md.at), by: p.md.by, txt: 'PO ' + p.no + ': approved ' + sigTxt(p.md, '') }
+        : p.rej ? { at: tim(p.rej.at), by: p.rej.by, txt: 'PO ' + p.no + ': REJECTED' + (p.rej.stage ? ' at ' + p.rej.stage : '') + (p.rej.remarks ? ' · ' + p.rej.remarks : '') }
+        : { at: null, txt: 'PO ' + p.no + ': ' + (PO_PAST_MD.includes(p.status) ? 'approved (' + p.status + ')' : 'waiting (' + (p.status || 'Generated') + ')') });
+      const rej = pos.find(p => p.status === 'Rejected' || p.status === 'Cancelled');
+      if (rej && pos.every(p => p.status === 'Rejected' || p.status === 'Cancelled')) return { st: 'rej', at: tim(rej.rej && rej.rej.at), by: rej.rej && rej.rej.by, lines: ['PO ' + rej.no + ' ' + rej.status + (rej.rej && rej.rej.remarks ? ': ' + rej.rej.remarks : '')], items };
+      const live = pos.filter(p => p.status !== 'Rejected' && p.status !== 'Cancelled');
+      if (live.every(p => p.md || PO_PAST_MD.includes(p.status))) return { st: 'done', at: maxAt(live.map(p => p.md && tim(p.md.at))), by: [...new Set(live.map(p => p.md && p.md.by).filter(Boolean))].join(', '), items,
+        lines: live.map(p => p.md && p.md.remarks ? 'Remarks: ' + p.md.remarks : '').filter(Boolean) };
+      return { st: 'wait', items }; } },
+  { code: 'PO_SENT', label: 'Sent to Vendor', doer: 'Purchaser', read: r => {
+      if (isFbRow(r)) return { st: 'na' };
+      const pos = posOf(r).filter(p => p.status !== 'Rejected' && p.status !== 'Cancelled'); if (!pos.length) return posOf(r).length || prsOf(r).length ? { st: 'wait' } : { st: 'na' };
+      const items = [];
+      pos.forEach(p => {
+        items.push(p.sentAt ? { at: tim(p.sentAt), txt: 'PO ' + p.no + ' sent to ' + (p.vendor || 'the vendor') } : { at: null, txt: 'PO ' + p.no + ': not sent to the vendor yet' });
+        if (p.delivery) items.push({ at: null, txt: 'PO ' + p.no + ': delivery date on the PO ' + dmy(p.delivery) });
+        (p.followups || []).forEach((x, k) => items.push({ at: tim(x.at), by: x.by, txt: 'PO ' + p.no + ': follow-up ' + (k + 1) + ' · delivery ' + (x.prev ? dmy(x.prev) + ' → ' : '') + dmy(x.date) + (x.remarks ? ' · Remarks: ' + x.remarks : '') }));
+        const ord = Number(p.ord) || 0, rec = Number(p.rec) || 0;
+        if (rec > 0 || ['Partially Received', 'Received', 'Closed (Short)'].includes(p.status))
+          items.push({ at: null, txt: 'PO ' + p.no + ': received ' + num(rec) + ' / ' + num(ord) + ' · ' + p.status });
+        if (p.status === 'Closed (Short)' || p.closeRemarks || p.shortClose)
+          items.push({ at: tim((p.shortClose && p.shortClose.at) || p.closedAt), by: (p.shortClose && p.shortClose.by) || p.closedBy, txt: 'PO ' + p.no + ': short-closed' + ((p.closeRemarks || (p.shortClose && p.shortClose.remarks)) ? ' · Remarks: ' + (p.closeRemarks || p.shortClose.remarks) : '') });
+      });
+      const sent = pos.every(p => p.sentAt || ['Partially Received', 'Received', 'Closed (Short)'].includes(p.status));
+      const part = pos.filter(p => p.status === 'Partially Received').map(p => p.no);
+      const lines = part.length ? ['Partially Received: ' + part.join(', ')] : [];
+      const lastFu = pos.flatMap(p => p.followups || []).slice(-1)[0];
+      if (lastFu) lines.push('Latest promised delivery ' + dmy(lastFu.date) + (lastFu.remarks ? ' (' + lastFu.remarks + ')' : ''));
+      if (sent) return { st: 'done', at: maxAt(pos.map(p => tim(p.sentAt))), lines, items };
+      return { st: 'wait', lines, items }; } }
+];
+// the gate's planned arrival = the latest delivery date the vendor promised (follow-up), else the PO's own; null = TAT
+function promisedAt(r) {
+  let best = null;
+  posOf(r).forEach(p => { const fu = (p.followups || []).slice(-1)[0], d = (fu && fu.date) || p.delivery; if (d) { const t = new Date(String(d).slice(0, 10) + 'T23:59:00'); if (!isNaN(t) && (!best || t > best)) best = t; } });
+  return best;
+}
 const FLOWS = {
   inward: {
     label: 'Inward',
-    steps: [
+    steps: PURCHASE_STEPS.concat([
       { code: 'GATE_IN', label: 'Gate Inward', doer: 'Gate guard', read: r => {
+          if (r.preGate) return { st: 'wait', planAt: promisedAt(r), lines: ['The material has not come to the gate yet'] };
           const s = r.steps.GATE_IN; if (!s) return { st: 'na', lines: ['No gate entry (Store Inward without one)'] };
-          return { st: 'done', at: tim(s.at), by: s.by, lines: [r.gateNo + (r.gateKind === 'SAMPLE / OTHER' ? ' · Sample / Other' : '') + (r.vehicle ? ' · ' + r.vehicle : '')] }; } },
+          return { st: 'done', at: tim(s.at), by: s.by, planAt: promisedAt(r), lines: [r.gateNo + (r.gateKind === 'SAMPLE / OTHER' ? ' · Sample / Other' : '') + (r.vehicle ? ' · ' + r.vehicle : '')] }; } },
       { code: 'GATE_APPR', label: 'Gate Approval', doer: 'Approver', read: r => {
           const s = r.steps.GATE_APPR; if (!s || s.na) return { st: 'na' };
           if (s.status === 'APPROVED') return { st: 'done', at: tim(s.at), by: s.by };
@@ -239,12 +373,14 @@ const FLOWS = {
           if (d.verifiedAt) return { st: 'done', at: tim(d.verifiedAt), by: d.verifiedBy, lines: ls };
           return { st: 'wait', lines: ls, startAt: tim(d.raisedAt) }; } },
       checkStep('AC', 'Account Bill Check', 'Accounts')
-    ],
-    title: r => r.docNo || r.gateNo || '-',
-    sub: r => [r.gateNo && r.docNo ? 'Gate ' + r.gateNo : '', r.store, r.ref ? 'Ref ' + r.ref : '', r.vehicle].filter(Boolean).join(' · '),
+    ]),
+    title: r => r.docNo || r.gateNo || r.ref || '-',
+    sub: r => [r.preGate ? 'Not at the gate yet' : '', isFbRow(r) ? 'Field Boy PR' : '', r.gateNo && r.docNo ? 'Gate ' + r.gateNo : '', r.store, r.ref && !r.preGate ? 'Ref ' + r.ref : '',
+               prsOf(r).length ? 'PR ' + prsOf(r).map(p => p.no).join(', ') : '', r.vehicle].filter(Boolean).join(' · '),
     party: r => r.party || '-',
     unit: r => r.store === 'STORE 1' ? '1' : r.store === 'STORE 2' ? '2' : r.gate === 'G1' ? '1' : '2',
     hay: r => [r.docNo, r.gateNo, r.party, r.vehicle, r.ref, r.invoiceNo, r.entryType, r.store]
+      .concat(prsOf(r).flatMap(p => [p.no, p.by, p.dept, p.notes]), posOf(r).flatMap(p => [p.no, p.vendor]))
   },
   dispatch: {
     label: 'Dispatch',
@@ -293,7 +429,7 @@ function evalRow(flow, r, now) {
     // a step after the waiting one: its planned time follows the waiting step's plan (or now)
     if (stop) { s.st = 'later'; const hh = tat[s.code]; if (nextPlan && hh != null) { s.plan = new Date(nextPlan.getTime() + hh * 3600000); nextPlan = s.plan; } return; }
     const h = tat[s.code];
-    s.plan = prevAt && h != null ? new Date(prevAt.getTime() + h * 3600000) : null;
+    s.plan = s.planAt || (prevAt && h != null ? new Date(prevAt.getTime() + h * 3600000) : null);
     if (s.st === 'done') {
       if (s.plan && s.at && s.at > s.plan) { s.late = s.at - s.plan; lateAny = true; }
       prevAt = s.at || prevAt;
@@ -458,7 +594,7 @@ const sheetOpen = () => $('sheet').style.display !== 'none';
 function showRow(e) {
   const F = FLOWS[S.flow], r = e.r;
   const info = S.flow === 'inward'
-    ? [['Inward No.', r.docNo || 'Not booked yet'], ['Gate Entry', r.gateNo || '-'], ['Unit', r.store || '-'], ['Party', r.party || '-'], ['Bill / Invoice', r.invoiceNo || '-'], ['PO / Ref', r.ref || '-'], ['Vehicle', r.vehicle || '-']]
+    ? [['Inward No.', r.docNo || 'Not booked yet'], ['PR', prsOf(r).map(p => p.no).join(', ') || '-'], ['PO', posOf(r).map(p => p.no + ' (' + (p.status || '') + ')').join(', ') || '-'], ['Gate Entry', r.gateNo || (r.preGate ? 'Not at the gate yet' : '-')], ['Unit', r.store || '-'], ['Party', r.party || '-'], ['Bill / Invoice', r.invoiceNo || '-'], ['PO / Ref', r.ref || '-'], ['Vehicle', r.vehicle || '-']]
     : [['Vehicle', r.vehicle || '-'], ['Dharam Kanta slip', r.dkNo], ['Gate', r.gate === 'G1' ? 'Gate-1' : 'Gate-2'], ['Tare', num(r.tare) + ' Kg'], ['Dispatch entry', (r.dispNo || '-') + (r.outwardNo ? ' · ' + r.outwardNo : '')], ['Next DK slip of the vehicle', r.nextDkAt ? fmt(tim(r.nextDkAt)) : '-']];
   const tl = e.steps.map((s, k) => {
     const c = stCls(s) || 'later', icon = s.st === 'done' ? '✓' : s.st === 'rej' ? '✕' : s.st === 'na' || s.st === 'skip' ? '–' : String(k + 1);
@@ -471,7 +607,7 @@ function showRow(e) {
     if (s.at) ln.push('Actual <b>' + esc(fmt(s.at)) + '</b>');
     if (s.by) ln.push('By <b>' + esc(s.by) + '</b>');
     else if (s.st === 'wait' || s.st === 'hold') ln.push('To do: <b>' + esc(s.who || s.doer) + '</b>');
-    const sub = (s.items || []).length ? '<ul class="sub-list">' + s.items.map(x => '<li>' + esc(fmt(x.at)) + ' · ' + esc(x.txt) + (x.by ? ' · ' + esc(x.by) : '') + '</li>').join('') + '</ul>' : '';
+    const sub = (s.items || []).length ? '<ul class="sub-list">' + s.items.map(x => '<li>' + (x.at ? '<b>' + esc(fmt(x.at)) + '</b> · ' : '') + esc(x.txt) + (x.by ? ' · ' + esc(x.by) : '') + '</li>').join('') + '</ul>' : '';
     return '<div class="st ' + c + '"><div class="b">' + icon + '</div><div class="x"><div class="nm">' + esc(s.label) + ' ' + tag + '</div>'
       + (ln.length ? '<div class="ln">' + ln.join(' · ') + '</div>' : '') + (s.lines || []).map(l => '<div class="ln">' + esc(l) + '</div>').join('') + sub + '</div></div>';
   }).join('');

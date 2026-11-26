@@ -33749,8 +33749,12 @@ function srvProofView_(id){
        Normal Camera Photo   the phone's own camera app
    At least one of the two stays on (the server refuses NEED_ONE); a box that takes no pictures (CSV / JSON / PSD /
    PDF only) has files only. Only changed rows are sent, with the Admin PIN, like every Admin Panel save.
-   "Hide" takes an old box (one that no longer exists in the code) out of the list and out of the rules. */
-const UPC={rows:null,draft:{},q:'',page:'',show:'ACTIVE',err:'',busy:false};
+   "Hide" takes an old box (one that no longer exists in the code) out of the list and out of the rules.
+   PHOTO QUALITY % (2026-11-26): per photo box, how much of the photo's own pixels a page may keep at least (100 % =
+   as taken) and its JPEG quality (0.6 + 0.4 × %); empty = the page's own shrink. Kept in app_settings 'upload_quality'
+   {key: %} (admin_save_setting + the same Admin PIN, no migration), applied by upload-guard.js (PHOTO QUALITY). */
+const UPC={rows:null,draft:{},q:'',page:'',show:'ACTIVE',err:'',busy:false,qmap:{}};
+const UPC_QUALITY=['','100','90','80','70','60','50','40','30'];
 const UPC_PAGE={'index.html':'ERP','mobile.html':'Mobile approvals','my-requests.html':'Track My Store Request','task_manager.html':'Task Manager','complaint.html':'Complaint',
   'gate_2.html':'Gate-2','packing.html':'Packing','unloader.html':'Unloader Supervisor','issuer.html':'Issue Supervisor','bill-check.html':'Bill Check','sop.html':'SOP',
   'order-form.html':'Order Form','notepad.html':'My Notepad','launcher.html':'Launcher','catalog_maker.html':'Catalog Maker','price_list_generator.html':'Price List',
@@ -33764,6 +33768,9 @@ async function sarvUpLoad_(){
     if(r.error)throw r.error;
     if(r.data&&r.data.success===false)throw new Error(r.data.error==='NOT_ALLOWED'?'Only an Admin can see this list.':String(r.data.error||'Error'));
     UPC.rows=(r.data&&r.data.rows)||[];UPC.err='';
+    // PHOTO QUALITY %: the saved map, one value per row ('' = the page's own)
+    try{const qr=await SB.from('app_settings').select('value').eq('key','upload_quality').maybeSingle();UPC.qmap=(qr.data&&qr.data.value&&typeof qr.data.value==='object')?qr.data.value:{};}catch(e){UPC.qmap={};}
+    UPC.rows.forEach(x=>{const v=UPC.qmap[x.key];x.quality=v!=null&&v!==''?String(v):'';});
   }catch(e){
     const m=String((e&&e.message)||e);
     UPC.err=/up_admin_list|could not find|schema cache|does not exist/i.test(m)?'Not set up yet. Admin: run sql/UPLOAD_POLICY_MIGRATION.sql in the Supabase SQL Editor.':m;
@@ -33806,13 +33813,15 @@ function sarvUpRender_(){
       +'<button type="button" class="btn btn-success" id="ap_upSave" style="height:32px;font-size:11px;">Save</button></div>'
       +'<div id="ap_upInfo" class="ap-hint" style="margin:6px 2px 8px;display:block"></div>'
       +'<div class="table-container"><table class="ap-table up-tbl"><thead><tr><th>#</th><th>Screen</th><th>Upload point</th>'
-      +'<th style="text-align:center;">Upload from Files /<br>device storage</th><th style="text-align:center;">Camera<br>Upload</th><th style="text-align:center;">Camera type</th><th style="text-align:center;">Hide</th></tr></thead>'
+      +'<th style="text-align:center;">Upload from Files /<br>device storage</th><th style="text-align:center;">Camera<br>Upload</th><th style="text-align:center;">Camera type</th><th style="text-align:center;" title="How much of the photo\'s own pixels are kept (100 % = as taken) and its JPEG quality. Empty = the screen\'s own shrink.">Photo quality<br>(pixels kept)</th><th style="text-align:center;">Hide</th></tr></thead>'
       +'<tbody id="ap_upTable"></tbody></table></div>'
       +'<div class="ap-note">New upload boxes appear here by themselves the first time anyone opens that screen after an update. A new box starts with what its screen offers, so nothing changes until you change it here. '
       +'<b>Live Photo Required</b> opens the in-app camera only (the photo is stamped with the name and time, a gallery photo is not possible); <b>Normal Camera Photo</b> opens the phone\'s camera. '
-      +'With both Files and Camera on, the user is asked which one. Changes reach every phone within 10 minutes (at once on a page opened after the save).</div>';
+      +'With both Files and Camera on, the user is asked which one. <b>Photo quality</b>: the least share of the photo\'s own pixels a screen keeps on each side (100 % = the photo exactly as taken, at most 4096 px) and a matching JPEG quality; <i>Screen default</i> = the screen shrinks it as it always did. A higher % gives sharper but bigger files (slower on a weak network). '
+      +'Changes reach every phone within 10 minutes (at once on a page opened after the save).</div>';
     box.addEventListener('input',e=>{if(e.target.id==='ap_upQ'){UPC.q=e.target.value;sarvUpRender_();}});
-    box.addEventListener('change',e=>{if(e.target.id==='ap_upPage'){UPC.page=e.target.value;sarvUpRender_();}if(e.target.id==='ap_upShow'){UPC.show=e.target.value;sarvUpRender_();}});
+    box.addEventListener('change',e=>{if(e.target.id==='ap_upPage'){UPC.page=e.target.value;sarvUpRender_();}if(e.target.id==='ap_upShow'){UPC.show=e.target.value;sarvUpRender_();}
+      const qs=e.target.closest&&e.target.closest('[data-upq]');if(qs)sarvUpSet_(qs.dataset.key,'quality',qs.value);});
     box.addEventListener('click',e=>{
       const t=e.target;
       if(t.closest('#ap_upReload')){if(Object.keys(UPC.draft).length&&!confirm('Drop the changes that are not saved?'))return;UPC.draft={};return sarvUpLoad_();}
@@ -33828,8 +33837,8 @@ function sarvUpRender_(){
   byId('ap_upShow').value=UPC.show;
   const nChg=Object.keys(UPC.draft).length;
   const sv=byId('ap_upSave');sv.textContent=nChg?'Save '+nChg+' change'+(nChg>1?'s':''):'Save';sv.disabled=!nChg;
-  if(UPC.busy&&!UPC.rows){tb.innerHTML='<tr><td colspan="7" class="ap-empty">Loading…</td></tr>';return;}
-  if(UPC.err&&!rows.length){tb.innerHTML='<tr><td colspan="7" class="ap-empty">'+escText(UPC.err)+'</td></tr>';byId('ap_upInfo').textContent='';return;}
+  if(UPC.busy&&!UPC.rows){tb.innerHTML='<tr><td colspan="8" class="ap-empty">Loading…</td></tr>';return;}
+  if(UPC.err&&!rows.length){tb.innerHTML='<tr><td colspan="8" class="ap-empty">'+escText(UPC.err)+'</td></tr>';byId('ap_upInfo').textContent='';return;}
   const list=rows.filter(r=>{
     const arch=sarvUpVal_(r,'archived');
     if(UPC.show==='ACTIVE'&&arch)return false;
@@ -33855,27 +33864,46 @@ function sarvUpRender_(){
       +'<td style="text-align:center;">'+(r.image?sw('camera',c):sw('camera',false,true,'This box takes no pictures (files only)')+'<div class="up-sub">Files only</div>')+'</td>'
       +'<td style="text-align:center;">'+(c?'<span class="up-mode"><button type="button" class="'+(m==='LIVE'?'on live':'')+'" data-upmode="LIVE" data-key="'+escText(r.key)+'">Live Photo Required</button>'
         +'<button type="button" class="'+(m!=='LIVE'?'on':'')+'" data-upmode="NORMAL" data-key="'+escText(r.key)+'">Normal Camera Photo</button></span>':'<span class="up-sub">—</span>')+'</td>'
+      +'<td style="text-align:center;">'+(r.image?'<select class="form-control" data-upq="1" data-key="'+escText(r.key)+'" style="height:30px;font-size:11px;min-width:118px;'+(String(sarvUpVal_(r,'quality')||'')?'font-weight:800;color:#0f766e;':'')+'">'
+        +UPC_QUALITY.map(v=>'<option value="'+v+'"'+(String(sarvUpVal_(r,'quality')||'')===v?' selected':'')+'>'+(v?v+' %'+(v==='100'?' (original)':''):'Screen default')+'</option>').join('')+'</select>'
+        :'<span class="up-sub">—</span>')+'</td>'
       +'<td style="text-align:center;">'+sw('archived',arch)+'</td></tr>';
-  }).join(''):'<tr><td colspan="7" class="ap-empty">'+(UPC.busy?'Loading…':'Nothing matches.')+'</td></tr>';
+  }).join(''):'<tr><td colspan="8" class="ap-empty">'+(UPC.busy?'Loading…':'Nothing matches.')+'</td></tr>';
 }
 async function sarvUpSave_(){
   const keys=Object.keys(UPC.draft);if(!keys.length)return;
-  const rows=keys.map(k=>{const r=UPC.rows.find(x=>x.key===k);return {key:k,file:!!sarvUpVal_(r,'file'),camera:!!sarvUpVal_(r,'camera')&&r.image,mode:sarvUpVal_(r,'mode')||'NORMAL',archived:!!sarvUpVal_(r,'archived')};});
+  // the box rules (server up_policy_save) only for rows whose switches changed; the Photo quality % on its own
+  const ruleKeys=keys.filter(k=>Object.keys(UPC.draft[k]).some(x=>x!=='quality'));
+  const qKeys=keys.filter(k=>Object.prototype.hasOwnProperty.call(UPC.draft[k],'quality'));
+  const rows=ruleKeys.map(k=>{const r=UPC.rows.find(x=>x.key===k);return {key:k,file:!!sarvUpVal_(r,'file'),camera:!!sarvUpVal_(r,'camera')&&r.image,mode:sarvUpVal_(r,'mode')||'NORMAL',archived:!!sarvUpVal_(r,'archived')};});
   const bad=rows.filter(x=>!x.archived&&!x.file&&!x.camera);
   if(bad.length)return showToast('Keep Files or Camera on for: '+bad.map(x=>escText((UPC.rows.find(r=>r.key===x.key)||{}).label||x.key)).join(', '),'warn');
-  const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To save '+rows.length+' upload rule'+(rows.length>1?'s':''),
+  const nAll=rows.length+qKeys.length;
+  const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:'To save '+nAll+' upload change'+(nAll>1?'s':''),
     recordInfo:'Applies on every screen and phone (within 10 minutes)',label:'Admin PIN',confirmText:'Save'});
   if(pin==null)return;
   if(!pin.trim())return showToast('The Admin PIN cannot be empty','warn');
   try{
-    const r=await SB.rpc('up_policy_save',{p_token:srsToken_(),p_admin_pin:pin.trim(),p_rows:rows});
-    if(r.error)throw r.error;
-    const d=r.data||{};
-    if(d.success===false){
-      const E={PIN_INVALID:'Incorrect Admin PIN',NOT_ALLOWED:'Only an Admin can change these rules',NEED_ONE:'Keep Files or Camera on for: '+(d.detail||''),NOT_FOUND:'Not found: '+(d.detail||'')+' (refresh the list)'};
-      return showToast(escText(E[d.error]||d.error||'Not saved'),'error');
+    let d={};
+    if(rows.length){
+      const r=await SB.rpc('up_policy_save',{p_token:srsToken_(),p_admin_pin:pin.trim(),p_rows:rows});
+      if(r.error)throw r.error;
+      d=r.data||{};
+      if(d.success===false){
+        const E={PIN_INVALID:'Incorrect Admin PIN',NOT_ALLOWED:'Only an Admin can change these rules',NEED_ONE:'Keep Files or Camera on for: '+(d.detail||''),NOT_FOUND:'Not found: '+(d.detail||'')+' (refresh the list)'};
+        return showToast(escText(E[d.error]||d.error||'Not saved'),'error');
+      }
     }
-    showToast(escText((d.saved||rows.length)+' upload rule'+(rows.length>1?'s':'')+' saved'));
+    // PHOTO QUALITY %: the whole map, read fresh so another Admin's change is kept
+    if(qKeys.length){
+      const cur=await SB.from('app_settings').select('value').eq('key','upload_quality').maybeSingle();
+      const map=Object.assign({},(cur.data&&cur.data.value&&typeof cur.data.value==='object')?cur.data.value:{});
+      qKeys.forEach(k=>{const v=String(UPC.draft[k].quality||'');if(v)map[k]=Number(v);else delete map[k];});
+      const w=await SB.rpc('admin_save_setting',{p_key:'upload_quality',p_value:map,p_admin_pin:pin.trim()});
+      if(w.error)throw w.error;
+      if(w.data===false)return showToast('Incorrect Admin PIN: the Photo quality was not saved','error');
+    }
+    showToast(escText([rows.length?(d.saved||rows.length)+' upload rule'+(rows.length>1?'s':''):'',qKeys.length?qKeys.length+' photo quality setting'+(qKeys.length>1?'s':''):''].filter(Boolean).join(' + ')+' saved'));
     UPC.draft={};
     if(window.SARV_UPLOAD&&window.SARV_UPLOAD.reload)window.SARV_UPLOAD.reload();
     sarvUpLoad_();
