@@ -26,6 +26,342 @@
    cached by the native CdnCacheWebViewClient — so code + data both work
    offline.
    ════════════════════════════════════════════════════════════════════ */
+
+/* ═══ ERP LOGIN ON EVERY TABLE REQUEST (SECURITY PHASE 2, 2026-11-26) ═══
+   Every page (browser AND APK) sends the user's ERP session token as the header x-sarv-token on its
+   Supabase table requests (/rest/v1/…), so the database can let only a logged-in ERP user read / write
+   the tables (RLS: public.sarv_req_ok_(), sql/SECURITY_PHASE2_MIGRATION.sql) instead of anyone holding
+   the public anon key. Installed BEFORE supabase-js captures fetch and before the offline cache below.
+   Safe start: the header is only sent once a probe request with it has gone through on this device
+   (localStorage sarv_hdr_ok '1', probed again once a day); a server / network that refuses the header
+   ('0') keeps the requests exactly as before. RPCs carry the token in their body already; the header
+   just rides along. Never sent to any other host. */
+(function () {
+  'use strict';
+  if (window.__sarvTokHdr || !window.fetch) return;
+  window.__sarvTokHdr = true;
+  var HOST = 'jdlzgjgxxjkjejkhvdij.supabase.co', HDR = 'x-sarv-token', K_OK = 'sarv_hdr_ok', K_AT = 'sarv_hdr_at';
+  var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk';
+  var orig = window.fetch.bind(window);
+  var ls = function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  var lsSet = function (k, v) { try { localStorage.setItem(k, v); } catch (e) {} };
+  function want(url) { return typeof url === 'string' && url.indexOf(HOST) >= 0 && url.indexOf('/rest/v1/') >= 0; }
+  /* Storage (uploads / overwrites / deletes / private files, SECURITY PHASE 3): the same header on /storage/v1/,
+     never on a public file link (/object/public/: a plain download needs nothing). Its own flag sarv_hdr_st_ok,
+     probed the same way (the storage API answers its own CORS). */
+  var K_SOK = 'sarv_hdr_st_ok', K_SAT = 'sarv_hdr_st_at';
+  function wantSt(url) { return typeof url === 'string' && url.indexOf(HOST) >= 0 && url.indexOf('/storage/v1/') >= 0 && url.indexOf('/object/public/') < 0; }
+  if (ls(K_SOK) !== '1' || Date.now() - Number(ls(K_SAT) || 0) > 86400000) {
+    var tokS = ls('sarv_sso_token');
+    if (tokS) {
+      var su = 'https://' + HOST + '/storage/v1/bucket/sarv-pdfs', sh = { apikey: ANON, Authorization: 'Bearer ' + ANON };
+      orig(su, { headers: Object.assign({ 'x-sarv-token': tokS }, sh) })
+        .then(function () { lsSet(K_SOK, '1'); lsSet(K_SAT, String(Date.now())); })   // any answer = the header passed CORS
+        .catch(function () {
+          orig(su, { headers: sh }).then(function () { lsSet(K_SOK, '0'); lsSet(K_SAT, String(Date.now())); }).catch(function () {});
+        });
+    }
+  }
+  /* One probe a day per device: does the API take the header? The header is sent unless a probe said NO
+     ('0'): since Phase 2 the tables answer only with it, so a new device must send it from its very first
+     request (the API's CORS was checked to allow it). A probe that fails is tried once more WITHOUT the
+     header: only "with fails, without works" (= the header itself is refused) writes '0'; both failing
+     = simply offline, nothing is written. */
+  if (ls(K_OK) !== '1' || Date.now() - Number(ls(K_AT) || 0) > 86400000) {
+    var tok0 = ls('sarv_sso_token');
+    if (tok0) {
+      var pu = 'https://' + HOST + '/rest/v1/app_settings?select=key&limit=1', ph = { apikey: ANON, Authorization: 'Bearer ' + ANON };
+      orig(pu, { headers: Object.assign({ 'x-sarv-token': tok0 }, ph) })
+        .then(function (r) { lsSet(K_OK, r.ok ? '1' : '0'); lsSet(K_AT, String(Date.now())); })
+        .catch(function () {
+          orig(pu, { headers: ph }).then(function (r) { if (r.ok) { lsSet(K_OK, '0'); lsSet(K_AT, String(Date.now())); } }).catch(function () {});
+        });
+    }
+  }
+  /* Console test for Security Phase 3: type  sarvStorageTest()  in F12 › Console of any ERP page.
+     Uploads one tiny text file to the private test bucket 'sarv-hdr-test' (sql/SECURITY_PHASE3_PRECHECK.sql)
+     A) with the real token (should pass) and B) with a wrong one (should be refused), and shows both. */
+  window.sarvStorageTest = function () {
+    var base = 'https://' + HOST + '/storage/v1/object/sarv-hdr-test/', tok = ls('sarv_sso_token');
+    var go = function (name, t) {
+      return orig(base + name + '_' + Date.now() + '.txt', { method: 'POST', body: 'ok',
+        headers: { apikey: ANON, Authorization: 'Bearer ' + ANON, 'Content-Type': 'text/plain', 'x-sarv-token': t } })
+        .then(function (r) { return r.text().then(function (x) { return r.status + ' ' + x; }); })
+        .catch(function (e) { return 'NETWORK / CORS ERROR: ' + (e && e.message); });
+    };
+    if (!tok) { console.log('Not logged in: open this page after the launcher login.'); return 'no token'; }
+    return go('a', tok).then(function (a) {
+      return go('b', 'wrong-token').then(function (b) {
+        var msg = 'A (real token): ' + a + '\nB (wrong token): ' + b + '\nstorage flag: ' + ls(K_SOK);
+        console.log(msg); try { alert(msg); } catch (e) {}
+        return msg;
+      });
+    });
+  };
+  window.fetch = function (input, init) {
+    try {
+      var url = typeof input === 'string' ? input : (input && input.url) || '';
+      var tok = ls('sarv_sso_token');
+      if (tok && ((ls(K_OK) !== '0' && want(url)) || (ls(K_SOK) === '1' && wantSt(url)))) {
+        var h = new Headers((init && init.headers) || (typeof Request !== 'undefined' && input instanceof Request ? input.headers : undefined));
+        if (!h.has(HDR)) h.set(HDR, tok);
+        init = Object.assign({}, init || {}, { headers: h });
+      }
+    } catch (e) {}
+    return orig(input, init);
+  };
+})();
+
+/* ═══ PRIVATE FILES (SECURITY PHASE 5, 2026-11-26) ═══
+   The file buckets sarv-pdfs / packing-slips / sales-orders / printing-lot become PRIVATE
+   (sql/SECURITY_PHASE5_FILES_PRIVATE.sql). Every link saved in the database still reads
+   https://<project>/storage/v1/object/public/<bucket>/<path>; this block turns such a link, wherever a page
+   uses it, into a SIGNED link (storage /object/sign, asked with the ERP login token x-sarv-token, which the
+   sarv_st_* storage rules accept) so no page had to change:
+     fetch()                pdf.js previews, PDF / photo downloads, html2canvas, pdf-lib  → signed (1 h)
+     <img> / <iframe> / <embed> / <object> / <source> src, inline style url(...)  → rewritten (MutationObserver,
+                            and the <img>.src property for images made in code)
+     window.open(link)      → opened signed (a blank tab first on a PC, so the popup is still allowed)
+     a click on <a href>    → opened signed (only when the page did not handle the click itself)
+     WhatsApp links (wa.me / api.whatsapp.com) in window.open / a click, navigator.share text / url,
+     navigator.clipboard.writeText → every file link inside gets a 30-DAY signed link (sent to vendors /
+                            buyers, who have no login)
+   Links are signed in batches (one request per bucket every ~25 ms) and kept until 2 minutes before they
+   expire. No login token / a refused signing = the original link is used (it still works while the bucket is
+   public, so this block can run before the switch). Console check: sarvFilesTest(). */
+(function () {
+  'use strict';
+  if (window.__sarvFiles || !window.fetch) return;
+  window.__sarvFiles = true;
+  var HOST = 'jdlzgjgxxjkjejkhvdij.supabase.co', BASE = 'https://' + HOST + '/storage/v1';
+  var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk';
+  var PRIV = { 'sarv-pdfs': 1, 'packing-slips': 1, 'sales-orders': 1, 'printing-lot': 1 };
+  var VIEW_SEC = 3600, LINK_SEC = 86400, SHARE_SEC = 30 * 86400;
+  var fetch0 = window.fetch.bind(window);
+  var ls = function (k) { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  var native = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+
+  var RE1 = /^https?:\/\/jdlzgjgxxjkjejkhvdij\.supabase\.co\/storage\/v1\/object\/public\/([^\/?#]+)\/([^?#]+)/;
+  var reAll = function () { return /https?:\/\/jdlzgjgxxjkjejkhvdij\.supabase\.co\/storage\/v1\/object\/(?:public\/[^\s"'<>)]+|sign\/[^\s"'<>)?]+\?token=[^\s"'<>)&]+)/g; };
+  var RE_SIGNED = /^https?:\/\/jdlzgjgxxjkjejkhvdij\.supabase\.co\/storage\/v1\/object\/sign\/([^\/?#]+)\/([^?#]+)\?token=/;
+  function parse(u) {
+    if (u && typeof u !== 'string') u = String(u);
+    var m = u ? RE1.exec(u) : null;
+    if (!m || !PRIV[m[1]]) return null;
+    var p; try { p = decodeURIComponent(m[2]); } catch (e) { p = m[2]; }
+    return { bucket: m[1], path: p, raw: u };
+  }
+  // for a link that LEAVES the ERP: a public link, or one already signed for a short time (an <a> of a page)
+  function parseShare(u) {
+    var r = parse(u); if (r) return r;
+    var m = u ? RE_SIGNED.exec(String(u)) : null;
+    if (!m || !PRIV[m[1]]) return null;
+    var p; try { p = decodeURIComponent(m[2]); } catch (e) { p = m[2]; }
+    return { bucket: m[1], path: p, raw: String(u) };
+  }
+
+  // ── signing, in batches ──
+  var CACHE = {}, Q = {};
+  function sign(info, sec) {
+    var key = info.bucket + '|' + sec + '|' + info.path, c = CACHE[key];
+    if (c && c.until > Date.now()) return Promise.resolve(c.url);
+    return new Promise(function (res) {
+      var qk = info.bucket + '|' + sec, q = Q[qk] || (Q[qk] = { paths: {}, raw: {}, t: 0 });
+      (q.paths[info.path] = q.paths[info.path] || []).push(res);
+      q.raw[info.path] = info.raw;
+      if (!q.t) q.t = setTimeout(function () { flush(qk, info.bucket, sec); }, 25);
+    });
+  }
+  function flush(qk, bucket, sec) {
+    var q = Q[qk]; delete Q[qk];
+    var paths = Object.keys(q.paths);
+    var done = function (map) {
+      paths.forEach(function (p) {
+        var u = map[p] || q.raw[p];   // not signed = the original link
+        if (map[p]) CACHE[bucket + '|' + sec + '|' + p] = { url: u, until: Date.now() + (sec - 120) * 1000 };
+        q.paths[p].forEach(function (r) { r(u); });
+      });
+    };
+    var tok = ls('sarv_sso_token');
+    if (!tok) return done({});
+    fetch0(BASE + '/object/sign/' + bucket, {
+      method: 'POST', body: JSON.stringify({ expiresIn: sec, paths: paths }),
+      headers: { apikey: ANON, Authorization: 'Bearer ' + ANON, 'Content-Type': 'application/json', 'x-sarv-token': tok }
+    }).then(function (r) { return r.ok ? r.json() : []; })
+      .then(function (arr) {
+        var map = {};
+        (Array.isArray(arr) ? arr : []).forEach(function (x) { if (x && x.signedURL && !x.error && x.path) map[x.path] = encodeURI(BASE + x.signedURL); });
+        done(map);
+      })
+      .catch(function () { done({}); });
+  }
+  // every file link inside a text / an (encoded) WhatsApp link → its signed link
+  function signText(s, sec) {
+    s = String(s == null ? '' : s);
+    var dec; try { dec = decodeURIComponent(s); } catch (e) { dec = s; }
+    var found = [];
+    (dec.match(reAll()) || []).concat(s.match(reAll()) || []).forEach(function (u) { if (parseShare(u) && found.indexOf(u) < 0) found.push(u); });
+    if (!found.length) return Promise.resolve(s);
+    return Promise.all(found.map(function (u) { return sign(parseShare(u), sec); })).then(function (sg) {
+      var out = s;
+      found.forEach(function (u, i) { out = out.split(encodeURIComponent(u)).join(encodeURIComponent(sg[i])).split(u).join(sg[i]); });
+      return out;
+    });
+  }
+  function hasFile(s) {
+    s = String(s || ''); var dec; try { dec = decodeURIComponent(s); } catch (e) { dec = s; }
+    return (dec.match(reAll()) || []).some(function (u) { return !!parseShare(u); });
+  }
+  var isWa = function (s) { return /^(https?:)?\/\/(wa\.me|api\.whatsapp\.com|web\.whatsapp\.com)\//i.test(String(s || '')) || /^whatsapp:/i.test(String(s || '')); };
+
+  // ── fetch ──
+  var fetchPrev = window.fetch;
+  window.fetch = function (input, init) {
+    try {
+      var url = typeof input === 'string' ? input : (typeof URL !== 'undefined' && input instanceof URL) ? String(input) : '';
+      var m = url && (!init || !init.method || /^GET$/i.test(init.method)) ? parse(url) : null;
+      if (m) return sign(m, VIEW_SEC).then(function (su) { return fetchPrev(su, init); });
+    } catch (e) {}
+    return fetchPrev(input, init);
+  };
+
+  // ── window.open ──
+  var open0 = window.open;
+  window.open = function (url, name, feat) {
+    var s = url == null ? '' : String(url), m = parse(s), wa = isWa(s) && hasFile(s);
+    if (!m && !wa) return open0.apply(window, arguments);
+    var job = m ? sign(m, VIEW_SEC) : signText(s, SHARE_SEC);
+    if (native) { job.then(function (u) { open0.call(window, u, name, feat); }); return null; }
+    var w = open0.call(window, 'about:blank', name || '_blank', feat);
+    job.then(function (u) {
+      if (w && !w.closed) { try { w.location.replace(u); } catch (e) { try { w.location = u; } catch (e2) {} } }
+      else open0.call(window, u, name, feat);
+    });
+    return w;
+  };
+
+  /* ── <a href> ──
+     Pages build their PDF links as <a href="…public…" target="_blank" onclick="event.stopPropagation()">, so a click
+     never reaches a listener on the page. So every such link gets its SIGNED href as soon as it appears (fix() below:
+     24 h; a WhatsApp link: 30 days), and a click / middle-click / "open in new tab" simply follows it. Only a click in
+     the moment before the signing came back is caught here, in the CAPTURE phase (it runs before the link's own
+     onclick), and opened signed. A page left open is re-signed when it comes back to the screen after 20 h. */
+  document.addEventListener('click', function (e) {
+    if (e.button !== 0) return;
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    var href = a.getAttribute('href') || '', m = parse(href), wa = isWa(href) && hasFile(href) && !a.hasAttribute('data-sarv-at');
+    if (!m && !wa) return;
+    e.preventDefault();
+    var tgt = String(a.getAttribute('target') || '').toLowerCase();
+    if (wa || tgt === '_blank' || e.ctrlKey || e.metaKey || e.shiftKey || a.hasAttribute('download')) window.open(href, '_blank');
+    else sign(m, VIEW_SEC).then(function (u) { location.href = u; });
+  }, true);
+  function fixA(el) {
+    var v = el.getAttribute('href') || '';
+    if (v && v === el.getAttribute('data-sarv-out')) return;   // the signed href this block set itself
+    var m = parse(v), wa = !m && isWa(v) && hasFile(v);
+    if (!m && !wa) return;
+    el.removeAttribute('data-sarv-at');
+    el.setAttribute('data-sarv-href', v);
+    (m ? sign(m, LINK_SEC) : signText(v, SHARE_SEC)).then(function (u) {
+      if (el.getAttribute('href') === v && u !== v) {
+        el.setAttribute('data-sarv-out', u); el.setAttribute('data-sarv-at', String(Date.now())); el.setAttribute('href', u);
+      }
+    });
+  }
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible') return;
+    var old = document.querySelectorAll('a[data-sarv-at]'), now = Date.now();
+    for (var i = 0; i < old.length; i++) {
+      var a = old[i];
+      if (now - Number(a.getAttribute('data-sarv-at') || 0) > 20 * 3600e3 && a.getAttribute('data-sarv-href')) {
+        a.removeAttribute('data-sarv-at'); a.removeAttribute('data-sarv-out'); a.setAttribute('href', a.getAttribute('data-sarv-href'));   // fix() signs it again
+      }
+    }
+  });
+
+  // ── navigator.share / clipboard: links leave the ERP → 30-day links ──
+  if (navigator.share) {
+    var share0 = navigator.share.bind(navigator);
+    navigator.share = function (data) {
+      if (!data || !(hasFile(data.text) || hasFile(data.url))) return share0(data);
+      return Promise.all([data.text ? signText(data.text, SHARE_SEC) : null, data.url ? signText(data.url, SHARE_SEC) : null])
+        .then(function (r) { var d = Object.assign({}, data); if (r[0] != null) d.text = r[0]; if (r[1] != null) d.url = r[1]; return share0(d); });
+    };
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    var clip0 = navigator.clipboard.writeText.bind(navigator.clipboard);
+    navigator.clipboard.writeText = function (t) { return hasFile(t) ? signText(t, SHARE_SEC).then(clip0) : clip0(t); };
+  }
+
+  // ── <img> / <iframe> / … src and inline style url(...) ──
+  var ATTR = { IMG: 'src', IFRAME: 'src', EMBED: 'src', SOURCE: 'src', VIDEO: 'src', AUDIO: 'src', OBJECT: 'data' };
+  function fix(el) {
+    if (!el || el.nodeType !== 1) return;
+    if (el.tagName === 'A') fixA(el);
+    var a = ATTR[el.tagName];
+    if (a) {
+      var v = el.getAttribute(a), m = parse(v);
+      if (m) sign(m, VIEW_SEC).then(function (u) { if (el.getAttribute(a) === v && u !== v) el.setAttribute(a, u); });
+    }
+    var st = el.getAttribute('style');
+    if (st && st.indexOf('/object/public/') >= 0 && hasFile(st)) signText(st, VIEW_SEC).then(function (ns) { if (el.getAttribute('style') === st && ns !== st) el.setAttribute('style', ns); });
+  }
+  function fixTree(n) {
+    if (!n || n.nodeType !== 1) return;
+    fix(n);
+    if (n.querySelectorAll) { var l = n.querySelectorAll('img,iframe,embed,source,video,audio,object,a[href],[style*="/object/public/"]'); for (var i = 0; i < l.length; i++) fix(l[i]); }
+  }
+  function startObs() {
+    fixTree(document.documentElement);
+    try {
+      new MutationObserver(function (ms) {
+        for (var i = 0; i < ms.length; i++) {
+          var r = ms[i];
+          if (r.type === 'attributes') fix(r.target);
+          else for (var j = 0; j < r.addedNodes.length; j++) fixTree(r.addedNodes[j]);
+        }
+      }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'data', 'style', 'href'] });
+    } catch (e) {}
+  }
+  if (document.documentElement) startObs(); else document.addEventListener('DOMContentLoaded', startObs);
+  // images made in code: img.src = link (new Image(), canvas / PDF builders)
+  try {
+    var d = Object.getOwnPropertyDescriptor(HTMLImageElement.prototype, 'src');
+    if (d && d.set && d.get) Object.defineProperty(HTMLImageElement.prototype, 'src', {
+      configurable: true, enumerable: d.enumerable,
+      get: function () { return d.get.call(this); },
+      set: function (v) {
+        var m = parse(v), el = this;
+        if (!m) return d.set.call(el, v);
+        sign(m, VIEW_SEC).then(function (u) { d.set.call(el, u); });
+      }
+    });
+  } catch (e) {}
+
+  /* Console check: sarvFilesTest()  signs the newest file of sarv-pdfs and opens nothing; shows whether
+     signing works for this login (needs SECURITY_PHASE3_MIGRATION.sql). */
+  window.sarvFilesTest = function (link) {
+    var t0 = Date.now();
+    var go = function (u) {
+      var m = parse(u);
+      if (!m) { console.log('Not a file link of a private bucket: ' + u); return Promise.resolve('n/a'); }
+      return sign(m, 60).then(function (su) {
+        var ok = su !== u;
+        return fetch0(su, { method: 'GET', headers: { Range: 'bytes=0-15' } }).then(function (r) {
+          var msg = (ok ? 'SIGNED' : 'NOT signed (original link)') + ' in ' + (Date.now() - t0) + ' ms · download: HTTP ' + r.status + '\n' + su.slice(0, 160) + '…';
+          console.log(msg); try { alert(msg); } catch (e) {}
+          return msg;
+        });
+      });
+    };
+    if (link) return go(link);
+    var img = document.querySelector('[data-sarv-test]');
+    return go(img ? img.getAttribute('data-sarv-test') : BASE + '/object/public/sarv-pdfs/' + (prompt('A sarv-pdfs file path (e.g. inward/…/…_SINGLE.pdf), or give the whole link to sarvFilesTest(link):') || ''));
+  };
+})();
+
 (function () {
   'use strict';
   if (window.__sarvNet) return; // loaded twice on one page

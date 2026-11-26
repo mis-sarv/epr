@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<head><script src="offline-sync.js?v=20261126f"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
 <meta charset="UTF-8">
 <!-- Pinch zoom stays allowed (maximum-scale 5, user-scalable yes): this is a
@@ -333,6 +333,7 @@ const ICONS = {
   list:'<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
   slip:'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M8 13h8M8 17h5"/>',
   chev:'<path d="M9 6l6 6-6 6"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
 };
 const ico = (k, cls) => '<svg class="ico ' + (cls || '') + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + (ICONS[k] || '') + '</svg>';
 /* Phone or desktop: one breakpoint for the CSS (767px) and the script.
@@ -359,6 +360,7 @@ const VIEWS = [
   { key:'slips',     label:'Slip-wise',    ico:'slip'  },
   { key:'matrix',    label:'Matrix',       ico:'grid'  },
   { key:'xwise',     label:'X-wise',       ico:'grid'  },
+  { key:'ovd',       label:'Order vs Dispatch', ico:'target' },
   { key:'analytics', label:'Analytics',    ico:'chart' },
   { key:'grid',      label:'Explorer',     ico:'list'  },
 ];
@@ -382,6 +384,8 @@ const S = {
   // X-wise: rows / columns = any fields of the report line (and of the server row), value = a measure
   xw: Object.assign({ rows:['party'], cols:['category'], metric:'qty', sort:'value' }, (prefs.xw && typeof prefs.xw === 'object') ? prefs.xw : {}),
   loading: false, reqId: 0,
+  // ORDER VS DISPATCH: server answer of pk_order_vs_dispatch (orders + day-wise dispatch + targets + scores)
+  ovd: null, ovdErr: null, ovdF: { scope:'all', q:'', show:200, sort:'date' }, ovdOpen: {},
 };
 let charts = [];
 
@@ -439,12 +443,13 @@ DR.load = async function(){
   const len = daysBetween(S.from, S.to) + 1;
   const pFrom = addDays(S.from, -len), pTo = addDays(S.from, -1);
   try {
-    const [cur, prev] = await Promise.all([
+    const [cur, prev, ovd] = await Promise.all([
       fetchRange(S.from, S.to),
       fetchRange(pFrom, pTo).catch(() => null),   // comparison is a nice-to-have
+      fetchOvd(S.from, S.to).then(d => { S.ovdErr = null; return d; }).catch(e => { S.ovdErr = e; return null; }),   // ORDER VS DISPATCH
     ]);
     if (id !== S.reqId) return;
-    S.rows = cur; S.prevRows = prev;
+    S.rows = cur; S.prevRows = prev; S.ovd = ovd;
     syncUrl();
     buildSlicers();
     apply();
@@ -651,6 +656,7 @@ function renderKpis(){
     { l:'Total Qty',     v:qtyf(t.qty),            s:delta(t.qty, prev && prev.qty) || 'Packs / bundles', c:'text-slate-900' },
     { l:'Net Amount',    v:money(t.amount),        s:delta(t.amount, prev && prev.amount) || 'Incl. ' + (RULES.GST * 100) + '% GST', c:'text-brand-700' },
     { l:'Weight',        v:kg(t.weight),           s:delta(t.weight, prev && prev.weight) || 'Total dispatched', c:'text-slate-900' },
+    ovdKpiCard(),
     { l:'Pieces',        v:qtyf(t.pcs),            s:'Excl. packing material', c:'text-slate-900' },
     { l:'Slips',         v:qtyf(slips),            s:parties + ' part' + (parties === 1 ? 'y' : 'ies'), c:'text-slate-900' },
     { l:'Products',      v:qtyf(items),            s:'Distinct qualities', c:'text-slate-900' },
@@ -694,6 +700,7 @@ function empty(msg){ return '<div class="card p-10 text-center text-slate-400 fo
 function renderView(){
   charts.forEach(c => { try { c.destroy(); } catch (e) {} }); charts = [];
   const el = $('view');
+  if (S.view === 'ovd') return viewOvd(el);   // orders may be there without any dispatch in the range
   if (!S.filtered.length){ el.innerHTML = empty(S.rows.length ? 'No lines match these filters.' : 'No dispatch in this date range.'); return; }
   ({ party:viewParty, product:viewProduct, slips:viewSlips, matrix:viewMatrix, xwise:viewXwise, analytics:viewAnalytics, grid:viewGrid }[S.view] || viewParty)(el);
 }
@@ -1024,6 +1031,357 @@ DR.exportCsv = function(){
   const a = document.createElement('a'); a.href = url; a.download = 'Dispatch_Report-' + tags + '-' + stamp + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
+
+/* ════════════════════════════════════════════════════════════════════
+   ORDER VS DISPATCH + ITEM TYPE TARGETS  (sql/PACKING_ORDER_TARGET_MIGRATION.sql + PACKING_ITEM_TARGET_MIGRATION.sql)
+   TARGET = per ITEM TYPE (BORA, BOX, BALE, ROLL, LOOSE PCS, PVC BAG …), not per order / quality: in a period
+   (from – to) dispatch this much (packs; pieces for PVC / loose items). Set / changed / removed only by the
+   Admin / MD (the server says so: ovd.setter, and checks it again), a reason for a change / removal, every
+   step in the target log; no two targets of one item type with overlapping periods. Achieved = dispatched of
+   that item type on slips dated in the period (the server works it out, every quality). The day after the
+   period ends the server FREEZES the score (score history). States: UPCOMING (not started), ON TRACK / BEHIND
+   (running: done % against the share of the period gone), MET / PARTIAL / MISSED (ended).
+   Below the targets: the item type-wise Order vs Dispatch summary and the order list (day-wise dispatch per
+   order, the packed_qty rule) — ordered in the date range or still open.
+   "Target Achieved" on top of every view = the targets whose period ENDS in the chosen range (frozen score,
+   else live %); none ending = the running ones, live.
+   ════════════════════════════════════════════════════════════════════ */
+async function fetchOvd(from, to){
+  const token = (window.SARV_GATE && SARV_GATE.token) || '';
+  const { data, error } = await DB.rpc('pk_order_vs_dispatch', { p_token: token, p_from: from, p_to: to, p_open: true });
+  if (error) throw error;
+  if (!data || data.success !== true){ const e = new Error((data && data.error) || 'No answer'); e.code = 'PK_' + String((data && data.error) || 'ERR'); throw e; }
+  (data.orders || []).forEach(o => { o.daily = (o.daily || []).map(x => [String(x[0]), num(x[1])]); o.qty = num(o.qty); });
+  data.itemTargets = data.itemTargets || []; data.itemScores = data.itemScores || [];
+  data.itemTotals = data.itemTotals || []; data.defaults = Array.isArray(data.defaults) ? data.defaults : [];
+  return data;
+}
+const ovdToday = () => (S.ovd && S.ovd.today) || today();
+const tok = () => (window.SARV_GATE && SARV_GATE.token) || '';
+const cumAt = (o, d) => o.daily.reduce((s, x) => s + (x[0] <= d ? x[1] : 0), 0);
+const inRange = o => o.daily.reduce((s, x) => s + (x[0] >= S.from && x[0] <= S.to ? x[1] : 0), 0);
+const itemKey = v => String(v || '').trim().toUpperCase();
+const ovdScoreOf = t => S.ovd && S.ovd.itemScores.find(x => String(x.targetId) === String(t.id) && Number(x.v) === Number(t.v));
+// One item type target now: achieved, %, expected by today (pro-rata), state
+function tState(t){
+  const td = ovdToday(), sc = t.to < td ? ovdScoreOf(t) : null;
+  const ach = sc ? num(sc.achieved) : num(t.achieved), qty = num(t.qty), pct = qty ? ach / qty * 100 : 0;
+  const span = daysBetween(t.from, t.to) + 1, gone = Math.min(span, Math.max(0, daysBetween(t.from, td) + 1));
+  const expect = td < t.from ? 0 : qty * gone / span;
+  let st;
+  if (td < t.from) st = 'UPCOMING';
+  else if (ach >= qty) st = 'MET';
+  else if (t.to < td) st = ach > 0 ? 'PARTIAL' : 'MISSED';
+  else st = ach + 0.0001 >= expect ? 'ON TRACK' : 'BEHIND';
+  return { ach, pct, st, expect, frozen: !!sc, left: daysBetween(td, t.to), started: td >= t.from, ended: t.to < td };
+}
+const ST_CLS = { 'MET':'bg-emerald-100 text-emerald-800', 'ON TRACK':'bg-sky-100 text-sky-800', 'BEHIND':'bg-amber-100 text-amber-800',
+                 'PARTIAL':'bg-orange-100 text-orange-800', 'MISSED':'bg-rose-100 text-rose-800', 'UPCOMING':'bg-slate-100 text-slate-600' };
+const stPill = st => '<span class="inline-block rounded-full px-2 py-0.5 text-[11px] font-bold ' + (ST_CLS[st] || 'bg-slate-100 text-slate-700') + '">' + esc(st) + '</span>';
+const pctCls = p => p >= 100 ? 'text-emerald-700' : p >= 75 ? 'text-sky-700' : p >= 40 ? 'text-amber-700' : 'text-rose-700';
+
+// the Category slicer of the page = the item type here
+const ovdItemOk = item => S.f.cat === 'ALL' || itemKey(item) === S.f.cat;
+// Targets for the KPI: period ends in the range → score; none → the running ones, live
+function ovdDue(){
+  if (!S.ovd) return { list: [], running: false };
+  const list = S.ovd.itemTargets.filter(t => ovdItemOk(t.item) && t.to >= S.from && t.to <= S.to).map(t => ({ t, ts: tState(t) }));
+  if (list.length) return { list, running: false };
+  const td = ovdToday();
+  return { list: S.ovd.itemTargets.filter(t => ovdItemOk(t.item) && t.from <= td && t.to >= td).map(t => ({ t, ts: tState(t) })), running: true };
+}
+function ovdKpiCard(){
+  if (S.ovdErr || !S.ovd) return { l:'Target Achieved', v:'-', s:S.ovdErr ? 'Run PACKING_ITEM_TARGET_MIGRATION.sql' : 'Loading…', c:'text-slate-400' };
+  const d = ovdDue();
+  if (!d.list.length) return { l:'Target Achieved', v:'-', s:'No item type target in this range', c:'text-slate-400' };
+  const avg = d.list.reduce((a, x) => a + Math.min(100, x.ts.pct), 0) / d.list.length, met = d.list.filter(x => x.ts.st === 'MET').length;
+  return { l:'Target Achieved', v:avg.toFixed(1) + '%', s:(d.running ? 'running · ' : '') + met + ' of ' + d.list.length + ' item type target(s) met', c:pctCls(avg) };
+}
+
+// orders: the page's slicers (party, quality, category = item type) + own scope / search
+function ovdPasses(o){
+  const f = S.f;
+  if (f.party !== 'ALL' && String(o.party || '').trim() !== f.party) return false;
+  if (f.item !== 'ALL' && String(o.quality || '').trim() !== f.item) return false;
+  if (!ovdItemOk(o.item)) return false;
+  const q = (S.ovdF.q || f.q || '').toLowerCase();
+  if (q){ const hay = [o.orderNo, o.party, o.quality, o.item, o.status, o.type].join(' ').toLowerCase(); if (!q.split(/\s+/).every(w => hay.includes(w))) return false; }
+  const sc = S.ovdF.scope, st = String(o.status || '').toUpperCase();
+  if (sc === 'open' && !['PENDING', 'IN PROGRESS', 'PARTIAL HOLD'].includes(st)) return false;
+  if (sc === 'range' && !(o.date >= S.from && o.date <= S.to)) return false;
+  if (sc === 'disp' && !inRange(o)) return false;
+  if (sc === 'done' && !(st === 'COMPLETED' || st === 'CLOSED')) return false;
+  return true;
+}
+
+DR.ovdScope = function(k){ S.ovdF.scope = k; S.ovdF.show = 200; renderView(); };
+DR.ovdSearch = function(v){ S.ovdF.q = String(v || '').trim(); clearTimeout(DR._ot); DR._ot = setTimeout(() => { S.ovdF.show = 200; renderView(); const b = $('ovdQ'); if (b){ b.focus(); b.setSelectionRange(b.value.length, b.value.length); } }, 200); };
+DR.ovdMore = function(){ S.ovdF.show += 200; renderView(); };
+DR.ovdToggle = function(no){ S.ovdOpen[no] = !S.ovdOpen[no]; renderView(); };
+DR.ovdSort = function(k){ S.ovdF.sort = k; renderView(); };
+
+function viewOvd(el){
+  if (S.ovdErr){
+    const m = /PGRST202|42883|pk_order_vs_dispatch|Could not find/i.test(String(S.ovdErr.message || '') + (S.ovdErr.code || ''));
+    el.innerHTML = '<div class="card p-6 text-sm text-slate-600">' + (m ? 'Order vs Dispatch needs <code>sql/PACKING_ORDER_TARGET_MIGRATION.sql</code> and then <code>sql/PACKING_ITEM_TARGET_MIGRATION.sql</code> (run once in the Supabase SQL Editor).' : 'Order vs Dispatch could not be loaded: ' + esc(S.ovdErr.message || S.ovdErr)) + '</div>';
+    return;
+  }
+  if (!S.ovd){ el.innerHTML = empty('Loading orders…'); return; }
+  el.innerHTML = ovdTargetsHtml() + ovdItemSummaryHtml() + ovdOrdersHtml() + ovdHistoryHtml();
+}
+
+// ── 1. Item type targets ──
+function ovdTargetsHtml(){
+  const setter = !!S.ovd.setter, list = S.ovd.itemTargets.filter(t => ovdItemOk(t.item));
+  const defTxt = S.ovd.defaults.length ? 'Default when none is set: ' + S.ovd.defaults.map(d => esc(d.item) + ' ' + qtyf(d.qty) + '/day' + (d.skipSunday === false ? '' : ' (not Sunday)')).join(', ') : 'No default target';
+  let h = '<div class="card mb-4">' + sectionHead('target', 'Item Type targets · ' + list.length,
+      '<span class="text-[11px] text-slate-500">' + defTxt + '</span>'
+      + (setter ? ' <button class="chip" onclick="DR.ovdDefaults()">Default target</button> <button class="chip on" onclick="DR.ovdEdit(null)">+ Add target</button>' : ' <span class="text-[11px] text-slate-400">Set by the Admin / MD</span>'));
+  if (!list.length) return h + '<div class="p-5 text-sm text-slate-500">No item type target in this range.' + (setter ? ' Press <b>+ Add target</b>: item type, period, qty to dispatch.' : '') + '</div></div>';
+  h += '<div class="overflow-x-auto"><table class="w-full"><thead><tr><th class="th">Item Type</th><th class="th">Period</th><th class="th r">Target</th><th class="th r">Dispatched</th><th class="th r">Achieved</th><th class="th">State</th>'
+    + '<th class="th r m-hide">Due by today</th><th class="th r m-hide">Ordered in period</th><th class="th r m-hide">Pending orders</th><th class="th m-hide">Note / set by</th><th class="th"></th></tr></thead><tbody>'
+    + list.map(t => {
+      const x = tState(t), o = t.orders || {}, w = Math.min(100, x.pct);
+      return '<tr class="hover:bg-slate-50"><td class="td font-bold">' + esc(t.item) + ' <span class="text-[10px] text-slate-400">' + esc(t.unit) + '</span>' + (t.auto ? ' <span class="inline-block rounded px-1 text-[10px] font-bold bg-violet-100 text-violet-700" title="Made by itself: no target was set for that day">DEFAULT</span>' : '') + '</td>'
+        + '<td class="td whitespace-nowrap">' + dmy(t.from) + ' – ' + dmy(t.to) + '<div class="text-[11px] text-slate-400">' + (x.ended ? 'ended' + (x.frozen ? ' · scored' : '') : !x.started ? 'starts in ' + daysBetween(ovdToday(), t.from) + ' day(s)' : x.left === 0 ? 'last day' : x.left + ' day(s) left') + (t.v > 1 ? ' · v' + esc(t.v) : '') + '</div></td>'
+        + '<td class="td r num">' + qtyf(t.qty) + '</td>'
+        + '<td class="td r num">' + qtyf(x.ach) + '<div class="bar"><i style="width:' + w.toFixed(1) + '%"></i></div></td>'
+        + '<td class="td r num font-bold ' + pctCls(x.pct) + '">' + x.pct.toFixed(1) + '%</td>'
+        + '<td class="td">' + stPill(x.st) + '</td>'
+        + '<td class="td r num m-hide">' + (x.started && !x.ended ? qtyf(Math.round(x.expect)) : '—') + '</td>'
+        + '<td class="td r num m-hide">' + qtyf(o.ordered || 0) + ' <span class="text-[10px] text-slate-400">(' + (o.orders || 0) + ')</span></td>'
+        + '<td class="td r num m-hide">' + qtyf(o.pending || 0) + ' <span class="text-[10px] text-slate-400">(' + (o.openOrders || 0) + ')</span></td>'
+        + '<td class="td m-hide text-[12px]">' + esc(t.note || '') + '<div class="text-[10px] text-slate-400">' + esc(t.by || '') + (t.at ? ' · ' + new Date(t.at).toLocaleString('en-IN') : '') + '</div></td>'
+        + '<td class="td whitespace-nowrap">' + (setter ? '<button class="chip" onclick="DR.ovdEdit(' + t.id + ')">Edit</button> <button class="chip" onclick="DR.ovdRemove(' + t.id + ')">✕</button> ' : '')
+        + '<button class="chip" onclick="DR.ovdLog(' + t.id + ')">Log</button></td></tr>'
+        + '<tr id="ovdLogRow_' + t.id + '" class="hidden"><td class="td bg-slate-50" colspan="11"><div id="ovdLog_' + t.id + '"></div></td></tr>';
+    }).join('') + '</tbody></table></div>';
+  return h + '<div class="px-4 py-2 text-[11px] text-slate-400">Target = dispatch of the item type (every quality) on slips dated inside the period. Due by today = the target spread evenly over the period. A period that has ended is scored the next day and kept in the history below.</div></div>';
+}
+
+// ── 2. Item type-wise Order vs Dispatch ──
+// UP TO TODAY = every order of the item type, any date (server itemTotals: ordered, dispatched = packed_qty,
+// pending of the open orders; cancelled left out; the page's filters do not apply). THIS RANGE = orders dated
+// in the range (the order list) and the dispatch lines of the range (S.filtered: the page's filters apply).
+const pcsItem = k => /^(PVC BAG|LOOSE BAG|LOOSE PCS)$/.test(k) || /^PVC\b/.test(k);
+function ovdItemSummaryHtml(){
+  const td = ovdToday(), m = new Map();
+  const get = k => { let a = m.get(k); if (!a){ a = { k, unit: pcsItem(k) ? 'pcs' : 'packs', tot: null, rOrd:0, rN:0, rDisp:0 }; m.set(k, a); } return a; };
+  S.ovd.itemTotals.forEach(x => { const k = itemKey(x.item); if (k && ovdItemOk(k)) get(k).tot = x; });
+  S.ovd.orders.filter(o => o.date >= S.from && o.date <= S.to && String(o.status || '').toUpperCase() !== 'CANCELLED' && ovdPasses(Object.assign({}, o)))
+    .forEach(o => { const a = get(itemKey(o.item) || '-'); a.rOrd += num(o.qty); a.rN++; });
+  S.filtered.forEach(r => { const k = r.category; if (!ovdItemOk(k)) return; const a = get(k); a.rDisp += pcsItem(k) ? num(r._raw && r._raw.bd_pcs) : r.qty; });
+  const list = [...m.values()].sort((a, b) => catSort(a.k, b.k));
+  const running = k => S.ovd.itemTargets.find(t => itemKey(t.item) === k && t.from <= td && t.to >= td);
+  const T = list.reduce((a, x) => { if (x.tot){ a.o += num(x.tot.ordered); a.d += num(x.tot.dispatched); a.p += num(x.tot.pending); } a.ro += x.rOrd; a.rd += x.rDisp; return a; }, { o:0, d:0, p:0, ro:0, rd:0 });
+  return '<div class="card mb-4">' + sectionHead('box', 'Item Type-wise Order vs Dispatch', '<span class="text-[11px] text-slate-400">Up to today = every order, any date · This range = ' + dmy(S.from) + ' – ' + dmy(S.to) + '</span>')
+    + '<div class="overflow-x-auto"><table class="w-full"><thead>'
+    + '<tr><th class="th"></th><th class="th text-center bg-slate-200" colspan="4">Up to today</th><th class="th text-center m-hide" colspan="2">This range</th><th class="th m-hide"></th></tr>'
+    + '<tr><th class="th">Item Type</th><th class="th r">Total Orders</th><th class="th r">Total Dispatch</th><th class="th r">Pending Orders</th><th class="th r">Fill %</th>'
+    + '<th class="th r m-hide">Ordered</th><th class="th r m-hide">Dispatched</th><th class="th m-hide">Running target</th></tr></thead><tbody>'
+    + (list.length ? list.map(a => {
+        const o = a.tot ? num(a.tot.ordered) : 0, d = a.tot ? num(a.tot.dispatched) : 0, p = a.tot ? num(a.tot.pending) : 0, f = o ? d / o * 100 : 0;
+        const rt = running(a.k), x = rt ? tState(rt) : null;
+        return '<tr class="hover:bg-slate-50 cursor-pointer" data-pick="cat|' + esc(a.k) + '" title="Show only ' + esc(a.k) + '"><td class="td font-bold">' + esc(a.k) + ' <span class="text-[10px] text-slate-400">' + esc(a.unit) + '</span></td>'
+          + '<td class="td r num">' + qtyf(o) + (a.tot ? ' <span class="text-[10px] text-slate-400">(' + a.tot.orders + ')</span>' : '') + '</td>'
+          + '<td class="td r num">' + qtyf(d) + '</td>'
+          + '<td class="td r num ' + (p ? 'text-amber-700 font-bold' : 'text-slate-400') + '">' + qtyf(p) + (a.tot && a.tot.openOrders ? ' <span class="text-[10px] text-slate-400">(' + a.tot.openOrders + ' open)</span>' : '') + '</td>'
+          + '<td class="td r num font-bold ' + pctCls(f) + '">' + f.toFixed(1) + '%<div class="bar"><i style="width:' + Math.min(100, f).toFixed(1) + '%"></i></div></td>'
+          + '<td class="td r num m-hide">' + qtyf(a.rOrd) + (a.rN ? ' <span class="text-[10px] text-slate-400">(' + a.rN + ')</span>' : '') + '</td>'
+          + '<td class="td r num m-hide">' + qtyf(a.rDisp) + '</td>'
+          + '<td class="td m-hide">' + (x ? qtyf(x.ach) + ' / ' + qtyf(rt.qty) + ' · <b class="' + pctCls(x.pct) + '">' + x.pct.toFixed(1) + '%</b> ' + stPill(x.st) : '<span class="text-slate-400">—</span>') + '</td></tr>';
+      }).join('') : '<tr><td class="td text-center text-slate-400" colspan="8">No item type.</td></tr>')
+    + '</tbody><tfoot><tr class="bg-slate-50 font-bold"><td class="td">TOTAL</td><td class="td r num">' + qtyf(T.o) + '</td><td class="td r num">' + qtyf(T.d) + '</td><td class="td r num">' + qtyf(T.p)
+    + '</td><td class="td r num">' + (T.o ? (T.d / T.o * 100).toFixed(1) : '0.0') + '%</td><td class="td r num m-hide">' + qtyf(T.ro) + '</td><td class="td r num m-hide">' + qtyf(T.rd) + '</td><td class="td m-hide"></td></tr></tfoot>'
+    + '</table></div><div class="px-4 py-2 text-[11px] text-slate-400">Totals mix packs and pieces (PVC / loose items count pieces). Up to today leaves cancelled orders out; Pending Orders = what the open orders still need.</div></div>';
+}
+
+// ── 3. The orders ──
+function ovdOrdersHtml(){
+  const td = ovdToday(), rows = S.ovd.orders.filter(ovdPasses);
+  const sorters = {
+    date: (a, b) => String(b.date || '').localeCompare(String(a.date || '')) || a.orderNo.localeCompare(b.orderNo),
+    party: (a, b) => String(a.party || '').localeCompare(String(b.party || '')) || a.orderNo.localeCompare(b.orderNo),
+    pending: (a, b) => (num(b.qty) - cumAt(b, td)) - (num(a.qty) - cumAt(a, td)),
+    fill: (a, b) => (a.qty ? cumAt(a, td) / a.qty : 1) - (b.qty ? cumAt(b, td) / b.qty : 1),
+  };
+  rows.sort(sorters[S.ovdF.sort] || sorters.date);
+  const SC = [['all', 'All'], ['open', 'Open'], ['range', 'Ordered in range'], ['disp', 'Dispatched in range'], ['done', 'Completed']];
+  const shown = rows.slice(0, S.ovdF.show);
+  return '<details class="card mb-4"' + openAttr() + '><summary class="px-4 py-3 font-bold text-sm text-slate-800 cursor-pointer">Orders · ' + rows.length + '</summary>'
+    + '<div class="px-3 pb-2 flex flex-wrap gap-2 items-center">'
+    + SC.map(([k, l]) => '<button class="chip' + (S.ovdF.scope === k ? ' on' : '') + '" onclick="DR.ovdScope(\'' + k + '\')">' + l + '</button>').join('')
+    + '<input id="ovdQ" class="ml-auto border border-slate-300 rounded-md px-2 py-1 text-sm w-full md:w-64" placeholder="Search order / party / quality" value="' + esc(S.ovdF.q) + '" oninput="DR.ovdSearch(this.value)">'
+    + '<select class="border border-slate-300 rounded-md px-2 py-1 text-sm" onchange="DR.ovdSort(this.value)">'
+    + [['date', 'Newest order'], ['party', 'Party A-Z'], ['pending', 'Most pending'], ['fill', 'Lowest fill %']].map(([k, l]) => '<option value="' + k + '"' + (S.ovdF.sort === k ? ' selected' : '') + '>' + l + '</option>').join('')
+    + '</select><button class="chip" onclick="DR.ovdCsv()">CSV</button></div>'
+    + '<div class="overflow-x-auto"><table class="w-full"><thead><tr><th class="th"></th><th class="th">Order</th><th class="th">Party</th><th class="th m-hide">Quality</th><th class="th">Item</th><th class="th r">Ordered</th><th class="th r">Dispatched</th><th class="th r">Pending</th><th class="th r m-hide">In range</th><th class="th m-hide">Status</th></tr></thead><tbody>'
+    + (shown.length ? shown.map(o => {
+      const d = cumAt(o, td), pend = Math.max(0, num(o.qty) - d), fill = o.qty ? Math.min(100, d / num(o.qty) * 100) : 0, open = !!S.ovdOpen[o.orderNo];
+      let r = '<tr class="hover:bg-slate-50"><td class="td"><button class="text-slate-500" title="Day-wise dispatch" onclick="DR.ovdToggle(\'' + esc(o.orderNo) + '\')">' + (open ? '▾' : '▸') + '</button></td>'
+        + '<td class="td font-semibold whitespace-nowrap">' + esc(o.orderNo) + '<div class="text-[11px] text-slate-400 font-normal">' + dmy(o.date) + (o.type ? ' · ' + esc(o.type) : '') + '</div></td>'
+        + '<td class="td">' + esc(o.party || '-') + '</td><td class="td m-hide">' + esc(o.quality || '-') + '</td><td class="td">' + esc(o.item || '-') + '</td>'
+        + '<td class="td r num">' + qtyf(o.qty) + ' <span class="text-[10px] text-slate-400">' + esc(o.unit) + '</span></td>'
+        + '<td class="td r num">' + qtyf(d) + '<div class="bar"><i style="width:' + fill.toFixed(1) + '%"></i></div></td>'
+        + '<td class="td r num ' + (pend ? 'text-amber-700' : 'text-slate-400') + '">' + qtyf(pend) + '</td><td class="td r num m-hide">' + qtyf(inRange(o)) + '</td><td class="td m-hide text-[12px]">' + esc(o.status || '') + '</td></tr>';
+      if (open){
+        let run = 0;
+        r += '<tr><td class="td bg-slate-50" colspan="10">' + (o.daily.length ? '<table class="w-full md:w-1/2"><thead><tr><th class="th">Date</th><th class="th r">Dispatched</th><th class="th r">Total so far</th></tr></thead><tbody>'
+          + o.daily.map(x => { run += x[1]; return '<tr><td class="td">' + dmy(x[0]) + '</td><td class="td r num">' + qtyf(x[1]) + '</td><td class="td r num">' + qtyf(run) + '</td></tr>'; }).join('')
+          + '</tbody></table>' : '<div class="text-sm text-slate-400">Nothing dispatched yet.</div>') + '</td></tr>';
+      }
+      return r;
+    }).join('') : '<tr><td class="td text-center text-slate-400" colspan="10">No order matches.</td></tr>')
+    + '</tbody></table>' + (rows.length > shown.length ? '<div class="p-3 text-center"><button class="chip" onclick="DR.ovdMore()">Show ' + Math.min(200, rows.length - shown.length) + ' more of ' + (rows.length - shown.length) + '</button></div>' : '') + '</div></details>';
+}
+
+// ── 4. Score history (frozen item type targets whose period ended in the range) ──
+function ovdHistoryHtml(){
+  const sc = S.ovd.itemScores.filter(x => ovdItemOk(x.item));
+  if (!sc.length) return '<div class="card p-4 text-sm text-slate-500"><b>Target score history</b> — no item type target with a period ending in this range has been scored yet. A target is scored (frozen) the day after its period ends.</div>';
+  const by = keyFn => { const m = new Map(); sc.forEach(x => { const k = keyFn(x); const a = m.get(k) || { k, n:0, sum:0, met:0 }; a.n++; a.sum += num(x.score); if (x.result === 'MET') a.met++; m.set(k, a); }); return [...m.values()]; };
+  const items = by(x => itemKey(x.item)).sort((a, b) => catSort(a.k, b.k));
+  const months = by(x => String(x.to).slice(0, 7)).sort((a, b) => a.k.localeCompare(b.k));
+  const tot = sc.reduce((a, x) => a + num(x.score), 0) / sc.length;
+  const sumTable = (title, head, list, fmt) => '<div><div class="text-xs font-bold text-slate-600 mb-1">' + title + '</div><table class="w-full"><thead><tr><th class="th">' + head + '</th><th class="th r">Targets</th><th class="th r">Met</th><th class="th r">Avg %</th></tr></thead><tbody>'
+    + list.map(a => '<tr><td class="td">' + esc(fmt ? fmt(a.k) : a.k) + '</td><td class="td r num">' + a.n + '</td><td class="td r num">' + a.met + '</td><td class="td r num font-bold ' + pctCls(a.sum / a.n) + '">' + (a.sum / a.n).toFixed(1) + '%</td></tr>').join('') + '</tbody></table></div>';
+  return '<details class="card"' + openAttr() + '><summary class="px-4 py-3 font-bold text-sm text-slate-800 cursor-pointer">Target score history · ' + sc.length + ' scored · average ' + tot.toFixed(1) + '% <button class="chip ml-2" onclick="event.preventDefault();DR.ovdScoreCsv()">CSV</button></summary>'
+    + '<div class="p-4 grid md:grid-cols-2 gap-4">' + sumTable('By item type', 'Item Type', items) + sumTable('By month (period end)', 'Month', months, k => k.slice(5, 7) + '/' + k.slice(0, 4)) + '</div>'
+    + '<div class="overflow-x-auto px-4 pb-4"><table class="w-full"><thead><tr><th class="th">Item Type</th><th class="th">Period</th><th class="th r">Target</th><th class="th r">Achieved</th><th class="th r">%</th><th class="th">Result</th><th class="th r m-hide">Ordered in period</th><th class="th m-hide">Set by</th><th class="th m-hide">Scored</th></tr></thead><tbody>'
+    + sc.map(x => '<tr><td class="td font-bold">' + esc(x.item) + (num(x.v) > 1 ? ' <span class="text-[10px] text-slate-400">v' + esc(x.v) + '</span>' : '') + '</td><td class="td whitespace-nowrap">' + dmy(x.from) + ' – ' + dmy(x.to) + '</td><td class="td r num">' + qtyf(x.qty) + ' <span class="text-[10px] text-slate-400">' + esc(x.unit || '') + '</span></td><td class="td r num">' + qtyf(x.achieved) + '</td><td class="td r num font-bold ' + pctCls(num(x.pct)) + '">' + num(x.pct).toFixed(1) + '%</td><td class="td">' + stPill(x.result) + '</td><td class="td r num m-hide">' + qtyf(x.ordered) + '</td><td class="td m-hide text-[12px]">' + esc(x.by || '') + '</td><td class="td m-hide text-[11px]">' + (x.at ? new Date(x.at).toLocaleString('en-IN') : '') + '</td></tr>').join('')
+    + '</tbody></table></div></details>';
+}
+
+// ── the target editor (Admin / MD) ──
+function ovdItemOptions(cur){
+  const set = new Set(RULES.CATEGORY_ORDER);
+  (S.ovd ? S.ovd.orders : []).forEach(o => { const k = itemKey(o.item); if (k) set.add(k); });
+  S.rows.forEach(r => { if (r.category) set.add(r.category); });
+  if (cur) set.add(itemKey(cur));
+  return [...set].sort(catSort).map(k => '<option value="' + esc(k) + '"' + (itemKey(cur) === k ? ' selected' : '') + '>' + esc(k) + '</option>').join('');
+}
+function ovdModal(html){
+  let ov = $('ovdModal'); if (ov) ov.remove();
+  ov = document.createElement('div'); ov.id = 'ovdModal';
+  ov.style.cssText = 'position:fixed;inset:0;z-index:9999;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;padding:12px';
+  ov.innerHTML = '<div class="card w-full max-w-lg max-h-[90vh] overflow-auto p-4">' + html + '</div>';
+  document.body.appendChild(ov);
+  return ov;
+}
+const OVD_ERR = { REASON_REQUIRED: 'Write the reason: a saved target is changed / removed.', NOT_ALLOWED: 'Only the Admin / MD can set targets.', BAD_PERIOD: 'Choose a valid period (To on or after From).',
+                  BAD_QTY: 'The target qty must be above 0.', ITEM_REQUIRED: 'Choose the Item Type.', OVERLAP: 'This item type already has a target in (part of) this period: change that one instead.', NOT_FOUND: 'That target was not found (refresh).' };
+async function ovdSave(id, row, remove, reason){
+  const { data, error } = await DB.rpc('pk_item_target_save', { p_token: tok(), p_id: id, p_row: row || {}, p_remove: !!remove, p_reason: reason || '' });
+  if (error) throw error;
+  if (!data || !data.success) throw new Error(OVD_ERR[data && data.error] || (data && data.error) || 'Not saved');
+  S.ovd = await fetchOvd(S.from, S.to);
+  renderKpis(); renderView();
+  return data;
+}
+DR.ovdEdit = function(id){
+  const t = id ? S.ovd.itemTargets.find(x => x.id === id) : null, td = ovdToday();
+  const mStart = td.slice(0, 8) + '01', mEnd = (() => { const d = parseIso(mStart); return iso(new Date(d.getFullYear(), d.getMonth() + 1, 0)); })();
+  ovdModal('<div class="flex items-start gap-2 mb-2"><div class="flex-1 text-base font-extrabold text-slate-900">' + (t ? 'Change target' : 'New Item Type target') + '</div><button class="text-slate-500 text-xl" onclick="$(\'ovdModal\').remove()">✕</button></div>'
+    + '<div class="text-[12px] text-slate-500 mb-3">How much of this item type (every quality) is to be dispatched in the period: packs, or pieces for PVC / loose items.</div>'
+    + '<label class="text-xs font-bold text-slate-600">Item Type</label><select id="otItem" class="border border-slate-300 rounded px-2 py-1 text-sm w-full mb-2">' + (t ? '' : '<option value="">— choose —</option>') + ovdItemOptions(t ? t.item : (S.f.cat !== 'ALL' ? S.f.cat : '')) + '</select>'
+    + '<div class="flex flex-wrap gap-1 mb-2"><span class="text-xs font-bold text-slate-600 mr-1 self-center">Period:</span>'
+    + [['1', 'Next Day'], ['7', 'Next Week'], ['10', 'Next 10 days'], ['30', 'Next 30 days']].map(([n, l]) => '<button type="button" class="chip ot-p" data-n="' + n + '">' + l + '</button>').join('') + '</div>'
+    + '<div class="grid grid-cols-2 gap-2 mb-2"><div><label class="text-xs font-bold text-slate-600">From</label><input id="otFrom" type="date" class="border border-slate-300 rounded px-2 py-1 text-sm w-full" value="' + esc(t ? t.from : mStart) + '"></div>'
+    + '<div><label class="text-xs font-bold text-slate-600">To</label><input id="otTo" type="date" class="border border-slate-300 rounded px-2 py-1 text-sm w-full" value="' + esc(t ? t.to : mEnd) + '"></div></div>'
+    + '<label class="text-xs font-bold text-slate-600">Target qty to dispatch</label><input id="otQty" type="number" min="0" step="any" class="border border-slate-300 rounded px-2 py-1 text-sm w-full mb-2" value="' + esc(t ? t.qty : '') + '">'
+    + '<label class="text-xs font-bold text-slate-600">Note (optional)</label><input id="otNote" class="border border-slate-300 rounded px-2 py-1 text-sm w-full mb-2" maxlength="300" value="' + esc(t ? t.note || '' : '') + '">'
+    + (t ? '<label class="text-xs font-bold text-slate-600">Reason for the change *</label><input id="otReason" class="border border-slate-300 rounded px-2 py-1 text-sm w-full mb-2" maxlength="300">' : '')
+    + '<div id="otErr" class="text-sm text-rose-700"></div><div class="flex justify-end gap-2 mt-3"><button class="chip" onclick="$(\'ovdModal\').remove()">Cancel</button><button class="chip on" id="otSave">Save</button></div>');
+  // Next Day = tomorrow; Next Week / 10 / 30 days = from tomorrow, that many days
+  document.querySelectorAll('#ovdModal .ot-p').forEach(b => b.onclick = () => {
+    const n = Number(b.dataset.n), a = addDays(td, 1);
+    $('otFrom').value = a; $('otTo').value = addDays(td, n);
+    document.querySelectorAll('#ovdModal .ot-p').forEach(x => x.classList.toggle('on', x === b));
+  });
+  $('otSave').onclick = async () => {
+    const row = { item: $('otItem').value, from: $('otFrom').value, to: $('otTo').value, qty: $('otQty').value, note: $('otNote').value };
+    if (!row.item) return $('otErr').textContent = OVD_ERR.ITEM_REQUIRED;
+    if (!row.from || !row.to || row.to < row.from) return $('otErr').textContent = OVD_ERR.BAD_PERIOD;
+    if (!(Number(row.qty) > 0)) return $('otErr').textContent = OVD_ERR.BAD_QTY;
+    if (t && !$('otReason').value.trim()) return $('otErr').textContent = OVD_ERR.REASON_REQUIRED;
+    const b = $('otSave'); b.disabled = true; b.textContent = 'Saving…';
+    try { await ovdSave(t ? t.id : null, row, false, t ? $('otReason').value : ''); $('ovdModal').remove(); banner('info', 'Target of ' + esc(row.item) + ' saved.'); }
+    catch (e) { $('otErr').textContent = e.message || String(e); b.disabled = false; b.textContent = 'Save'; }
+  };
+};
+// DEFAULT TARGET: an item type + qty a day, made for today / tomorrow by the server when no target covers the day
+DR.ovdDefaults = function(){
+  const rows = S.ovd.defaults.length ? S.ovd.defaults : [];
+  const rowHtml = d => '<tr><td class="td"><select class="df-i border border-slate-300 rounded px-1 py-0.5 text-sm">' + ovdItemOptions(d.item || '') + '</select></td>'
+    + '<td class="td"><input type="number" min="0" step="any" class="df-q border border-slate-300 rounded px-1 py-0.5 text-sm w-24 text-right" value="' + esc(d.qty == null ? '' : d.qty) + '"></td>'
+    + '<td class="td text-center"><input type="checkbox" class="df-s"' + (d.skipSunday === false ? '' : ' checked') + '></td>'
+    + '<td class="td"><button class="text-rose-600 font-bold" onclick="this.closest(\'tr\').remove()">✕</button></td></tr>';
+  ovdModal('<div class="flex items-start gap-2 mb-2"><div class="flex-1 text-base font-extrabold text-slate-900">Default target</div><button class="text-slate-500 text-xl" onclick="$(\'ovdModal\').remove()">✕</button></div>'
+    + '<div class="text-[12px] text-slate-500 mb-2">For a day with NO target of the item type, this one-day target is made by itself (today and tomorrow, every night). It is an ordinary target: scored, and you can change or remove it for a day. A target you set for a period stops the default inside it.</div>'
+    + '<table class="w-full"><thead><tr><th class="th">Item Type</th><th class="th">Qty / day</th><th class="th">Skip Sunday</th><th class="th"></th></tr></thead><tbody id="dfRows">' + rows.map(rowHtml).join('') + '</tbody></table>'
+    + '<button class="chip mt-2" id="dfAdd">+ Add item type</button>'
+    + '<div class="mt-3"><label class="text-xs font-bold text-slate-600">Reason *</label><input id="dfReason" class="border border-slate-300 rounded px-2 py-1 text-sm w-full" maxlength="300"></div>'
+    + '<div id="dfErr" class="text-sm text-rose-700 mt-2"></div><div class="flex justify-end gap-2 mt-3"><button class="chip" onclick="$(\'ovdModal\').remove()">Cancel</button><button class="chip on" id="dfSave">Save</button></div>');
+  $('dfAdd').onclick = () => $('dfRows').insertAdjacentHTML('beforeend', rowHtml({ item: '', qty: '', skipSunday: true }));
+  if (!rows.length) $('dfAdd').click();
+  $('dfSave').onclick = async () => {
+    const list = [...$('dfRows').querySelectorAll('tr')].map(tr => ({ item: tr.querySelector('.df-i').value, qty: tr.querySelector('.df-q').value, skipSunday: tr.querySelector('.df-s').checked }));
+    if (list.some(r => !r.item || !(Number(r.qty) > 0))) return $('dfErr').textContent = 'Every row needs an item type and a qty above 0 (remove an empty row with ✕).';
+    if (!$('dfReason').value.trim()) return $('dfErr').textContent = OVD_ERR.REASON_REQUIRED;
+    const b = $('dfSave'); b.disabled = true; b.textContent = 'Saving…';
+    try {
+      const { data, error } = await DB.rpc('pk_item_target_defaults_save', { p_token: tok(), p_rows: list, p_reason: $('dfReason').value });
+      if (error) throw error;
+      if (!data || !data.success) throw new Error({ DUPLICATE_ITEM: 'An item type is twice in the list.' }[data && data.error] || OVD_ERR[data && data.error] || (data && data.error) || 'Not saved');
+      S.ovd = await fetchOvd(S.from, S.to); renderKpis(); renderView();
+      $('ovdModal').remove(); banner('info', 'Default target saved.');
+    } catch (e) { $('dfErr').textContent = e.message || String(e); b.disabled = false; b.textContent = 'Save'; }
+  };
+};
+DR.ovdRemove = function(id){
+  const t = S.ovd.itemTargets.find(x => x.id === id); if (!t) return;
+  ovdModal('<div class="text-base font-extrabold text-slate-900 mb-1">Remove target</div><div class="text-sm text-slate-600 mb-3">' + esc(t.item) + ' · ' + dmy(t.from) + ' – ' + dmy(t.to) + ' · ' + qtyf(t.qty) + '. A score already frozen stays in the history.</div>'
+    + '<label class="text-xs font-bold text-slate-600">Reason *</label><input id="otReason" class="border border-slate-300 rounded px-2 py-1 text-sm w-full" maxlength="300">'
+    + '<div id="otErr" class="text-sm text-rose-700 mt-2"></div><div class="flex justify-end gap-2 mt-3"><button class="chip" onclick="$(\'ovdModal\').remove()">Cancel</button><button class="chip on" id="otDel">Remove</button></div>');
+  $('otDel').onclick = async () => {
+    if (!$('otReason').value.trim()) return $('otErr').textContent = OVD_ERR.REASON_REQUIRED;
+    const b = $('otDel'); b.disabled = true;
+    try { await ovdSave(id, null, true, $('otReason').value); $('ovdModal').remove(); banner('info', 'Target removed.'); }
+    catch (e) { $('otErr').textContent = e.message || String(e); b.disabled = false; }
+  };
+};
+DR.ovdLog = async function(id){
+  const row = $('ovdLogRow_' + id), box = $('ovdLog_' + id); if (!row || !box) return;
+  if (!row.classList.contains('hidden')){ row.classList.add('hidden'); return; }
+  row.classList.remove('hidden'); box.innerHTML = '<div class="text-xs text-slate-400">Loading…</div>';
+  try {
+    const { data, error } = await DB.rpc('pk_item_target_log', { p_token: tok(), p_id: id });
+    if (error) throw error;
+    const L = (data && data.log) || [];
+    const f = v => v ? [v.item, v.from && v.to ? dmy(v.from) + ' – ' + dmy(v.to) : '', v.qty != null ? qtyf(v.qty) : '', v.note || ''].filter(Boolean).join(' · ') : '';
+    box.innerHTML = L.length ? '<table class="w-full"><tbody>' + L.map(l => '<tr><td class="td text-[11px] whitespace-nowrap">' + new Date(l.at).toLocaleString('en-IN') + '</td><td class="td text-[11px] font-bold">' + esc(l.action) + '</td><td class="td text-[11px]">' + esc(f(l.old)) + (l.old && l.new ? ' → ' : '') + esc(f(l.new)) + (l.reason ? '<div class="text-slate-500">' + esc(l.reason) + '</div>' : '') + '</td><td class="td text-[11px]">' + esc(l.by || '') + '</td></tr>').join('') + '</tbody></table>' : '<div class="text-xs text-slate-400">No change yet.</div>';
+  } catch (e) { box.innerHTML = '<div class="text-xs text-rose-600">' + esc(e.message || e) + '</div>'; }
+};
+
+// CSV of the orders / of the score history
+function ovdCsvDownload(name, head, lines){
+  const q = v => { const s = v == null ? '' : String(v); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csv = [head, ...lines].map(r => r.map(q).join(',')).join('\r\n');
+  const url = URL.createObjectURL(new Blob(['﻿' + csv], { type:'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a'); a.href = url; a.download = name + '_' + S.from + '_to_' + S.to + '.csv';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+DR.ovdCsv = function(){
+  if (!S.ovd) return;
+  const td = ovdToday();
+  ovdCsvDownload('Order_vs_Dispatch', ['Order', 'Order Date', 'Type', 'Party', 'Quality', 'Item Type', 'Unit', 'Ordered', 'Dispatched', 'Pending', 'Dispatched in range', 'Status'],
+    S.ovd.orders.filter(ovdPasses).map(o => { const d = cumAt(o, td); return [o.orderNo, dmy(o.date), o.type || '', o.party || '', o.quality || '', o.item || '', o.unit, o.qty, d, Math.max(0, num(o.qty) - d), inRange(o), o.status || '']; }));
+};
+DR.ovdScoreCsv = function(){
+  if (!S.ovd) return;
+  ovdCsvDownload('Item_Target_Score_History', ['Item Type', 'Version', 'From', 'To', 'Unit', 'Target Qty', 'Achieved', 'Achieved %', 'Score %', 'Result', 'Ordered in period', 'Set by', 'Scored at'],
+    S.ovd.itemScores.map(x => [x.item, x.v, dmy(x.from), dmy(x.to), x.unit || '', x.qty, x.achieved, x.pct, x.score, x.result, x.ordered, x.by || '', x.at ? new Date(x.at).toLocaleString('en-IN') : '']));
 };
 
 /* ── Start ────────────────────────────────────────────────────────── */
