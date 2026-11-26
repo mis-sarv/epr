@@ -350,7 +350,7 @@ function paintIcons(root){ (root || document).querySelectorAll('[data-ico]').for
    works the same without them (private window, blocked storage). */
 const PREF_KEY = 'sarv_dispatch_report_prefs';
 function loadPrefs(){ try { return JSON.parse(localStorage.getItem(PREF_KEY) || '{}') || {}; } catch (e) { return {}; } }
-function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ view:S.view, density:S.density, metric:S.metric })); } catch (e) {} }
+function savePrefs(){ try { localStorage.setItem(PREF_KEY, JSON.stringify({ view:S.view, density:S.density, metric:S.metric, xw:S.xw })); } catch (e) {} }
 
 /* ── State ────────────────────────────────────────────────────────── */
 const VIEWS = [
@@ -358,6 +358,7 @@ const VIEWS = [
   { key:'product',   label:'Product-wise', ico:'box'   },
   { key:'slips',     label:'Slip-wise',    ico:'slip'  },
   { key:'matrix',    label:'Matrix',       ico:'grid'  },
+  { key:'xwise',     label:'X-wise',       ico:'grid'  },
   { key:'analytics', label:'Analytics',    ico:'chart' },
   { key:'grid',      label:'Explorer',     ico:'list'  },
 ];
@@ -378,6 +379,8 @@ const S = {
   density: prefs.density === 'compact' ? 'compact' : 'standard',
   metric: ['qty', 'amount', 'weight'].includes(prefs.metric) ? prefs.metric : 'qty',
   sort: { key:'date', asc:true },
+  // X-wise: rows / columns = any fields of the report line (and of the server row), value = a measure
+  xw: Object.assign({ rows:['party'], cols:['category'], metric:'qty', sort:'value' }, (prefs.xw && typeof prefs.xw === 'object') ? prefs.xw : {}),
   loading: false, reqId: 0,
 };
 let charts = [];
@@ -409,6 +412,7 @@ function toLine(r){
     orderId: r.order_id || '', invoice: r.actual_invoice_no || '', chalan: r.chalan_no || '',
     vehicle: r.tempo_no || '', contractor: r.loading_contractor || '', preparedBy: r.prepared_by_name || '',
     marka: r.private_marka || '', shipTo: r.ship_to || '', dispatchTo: r.dispatch_to || '',
+    month: String(r.slip_date || '').slice(0, 7), _raw: r,
   };
 }
 async function fetchRange(from, to){
@@ -691,7 +695,7 @@ function renderView(){
   charts.forEach(c => { try { c.destroy(); } catch (e) {} }); charts = [];
   const el = $('view');
   if (!S.filtered.length){ el.innerHTML = empty(S.rows.length ? 'No lines match these filters.' : 'No dispatch in this date range.'); return; }
-  ({ party:viewParty, product:viewProduct, slips:viewSlips, matrix:viewMatrix, analytics:viewAnalytics, grid:viewGrid }[S.view] || viewParty)(el);
+  ({ party:viewParty, product:viewProduct, slips:viewSlips, matrix:viewMatrix, xwise:viewXwise, analytics:viewAnalytics, grid:viewGrid }[S.view] || viewParty)(el);
 }
 const sectionHead = (icon, title, right) => '<div class="bg-slate-50 border-b border-slate-200 px-5 py-3 flex flex-wrap gap-2 justify-between items-center"><h2 class="text-sm font-bold text-slate-800 flex items-center gap-2">'
   + ico(icon, 'text-brand-600') + esc(title) + '</h2>' + (right || '') + '</div>';
@@ -802,6 +806,121 @@ function viewMatrix(el){
     + '<tr class="font-bold bg-slate-100"><td class="td sticky left-0 bg-slate-100 z-10">TOTAL</td>' + parties.map(p => '<td class="td r num">' + M.f(val(p)) + '</td>').join('')
     + '<td class="td r num bg-brand-100 text-brand-900">' + M.f(val(t)) + '</td></tr></tbody></table></div></div></div>';
 }
+
+/* 4b. X-WISE (2026-11-26): ANY one or more fields as the rows (X) and any one or more as the columns (Y), any measure in
+   the cells, with row / column / grand totals, heat shading and its own CSV. The fields = the report line's own
+   (Date, Month, Party, Category, Item …) plus every other column the server row carries (r._raw), so a new column in
+   pk_dispatch_report is offered here by itself. No column field = one Total column (a plain X-wise list). */
+const XW_FIELDS = [
+  { k:'party', l:'Party' }, { k:'category', l:'Category / Item Type' }, { k:'item', l:'Item / Quality' }, { k:'bill', l:'Bill / Non-Bill' },
+  { k:'date', l:'Date', f:dmy }, { k:'month', l:'Month' }, { k:'slipNo', l:'Slip No' }, { k:'dispatchTo', l:'Dispatch To' }, { k:'shipTo', l:'Ship To' },
+  { k:'vehicle', l:'Vehicle / Tempo' }, { k:'contractor', l:'Loading Contractor' }, { k:'preparedBy', l:'Prepared By' }, { k:'marka', l:'Private Marka' },
+  { k:'orderId', l:'Order' }, { k:'invoice', l:'Invoice' }, { k:'chalan', l:'Chalan' }, { k:'basis', l:'Rate Basis' },
+  { k:'rate', l:'Rate', f:v => v == null ? '-' : fN.format(v) }, { k:'disc', l:'Disc %' }
+];
+// server columns already covered by a field above, or numbers that belong in the cells (not a grouping)
+const XW_RAW_SKIP = ['slip_date', 'slip_no', 'slip_id', 'packing_type', 'party_name', 'item_type', 'quality', 'pack_count', 'bd_pcs', 'bd_weight', 'rate', 'discount',
+  'order_id', 'actual_invoice_no', 'chalan_no', 'tempo_no', 'loading_contractor', 'prepared_by_name', 'private_marka', 'ship_to', 'dispatch_to', 'saved_amount', 'saved_basis'];
+const XW_METRICS = {
+  qty:{ l:'Qty (packs)', v:a => a.qty, f:qtyf }, pcs:{ l:'Pieces', v:a => a.pcs, f:qtyf }, weight:{ l:'Weight', v:a => a.weight, f:kg },
+  amount:{ l:'Net Amount', v:a => amt(a), f:money }, lines:{ l:'Lines', v:a => a.n, f:qtyf },
+  slips:{ l:'Slips (distinct)', v:a => new Set(a.rows.map(r => r.slipNo)).size, f:qtyf },
+  parties:{ l:'Parties (distinct)', v:a => new Set(a.rows.map(r => r.party)).size, f:qtyf }
+};
+function xwFields(){
+  const own = XW_FIELDS.slice(), seen = new Set(own.map(x => x.k));
+  const raw = (S.rows.find(r => r._raw) || {})._raw || {};
+  Object.keys(raw).filter(k => !XW_RAW_SKIP.includes(k)).forEach(k => {
+    const id = 'raw:' + k; if (seen.has(id)) return;
+    const v = raw[k]; if (v != null && typeof v === 'object') return;
+    own.push({ k:id, l:k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) + ' (column)' });
+  });
+  return own;
+}
+const xwVal = (r, k) => { const v = k.indexOf('raw:') === 0 ? (r._raw || {})[k.slice(4)] : r[k]; return v == null || v === '' ? '(blank)' : String(v); };
+const xwShow = (k, v) => { const f = XW_FIELDS.find(x => x.k === k); return f && f.f && v !== '(blank)' ? f.f(v) : v; };
+const xwKey = (r, ks) => ks.map(k => xwVal(r, k)).join('\u0001');
+const xwLabel = (key, ks) => key.split('\u0001').map((v, i) => xwShow(ks[i], v)).join(' · ');
+DR.xwToggle = function(side, k){
+  const X = S.xw, list = X[side], other = side === 'rows' ? X.cols : X.rows;
+  const i = list.indexOf(k);
+  if (i >= 0) list.splice(i, 1); else { list.push(k); const j = other.indexOf(k); if (j >= 0) other.splice(j, 1); }
+  savePrefs(); renderView();
+};
+DR.xwSet = function(k, v){ S.xw[k] = v; savePrefs(); renderView(); };
+DR.xwSwap = function(){ const X = S.xw, t = X.rows; X.rows = X.cols; X.cols = t; savePrefs(); renderView(); };
+DR.xwClear = function(side){ S.xw[side] = []; savePrefs(); renderView(); };
+function xwBuild(){
+  if (!Array.isArray(S.xw.rows)) S.xw.rows = []; if (!Array.isArray(S.xw.cols)) S.xw.cols = [];
+  const X = S.xw, M = XW_METRICS[X.metric] || XW_METRICS.qty, rk = X.rows, ck = X.cols;
+  const rowsM = agg(S.filtered, r => rk.length ? xwKey(r, rk) : 'TOTAL');
+  const colsM = agg(S.filtered, r => ck.length ? xwKey(r, ck) : 'TOTAL');
+  const cell = new Map();
+  S.filtered.forEach(r => { const k = (rk.length ? xwKey(r, rk) : 'TOTAL') + '\u0000' + (ck.length ? xwKey(r, ck) : 'TOTAL'); if (!cell.has(k)) cell.set(k, []); cell.get(k).push(r); });
+  const num0 = a => { const v = M.v(a); return v == null ? -Infinity : v; };
+  const byVal = (a, b) => num0(b) - num0(a) || a.key.localeCompare(b.key, undefined, { numeric:true });
+  const byKey = (a, b) => a.key.localeCompare(b.key, undefined, { numeric:true });
+  const rows = [...rowsM.values()].sort(X.sort === 'name' ? byKey : byVal);
+  let cols = [...colsM.values()].sort(X.sort === 'name' ? byKey : byVal);
+  const MAXC = 80, hidden = cols.length > MAXC ? cols.length - MAXC : 0;
+  if (hidden) cols = cols.slice(0, MAXC);
+  return { X, M, rk, ck, rows, cols, cell, hidden, t:totals(S.filtered) };
+}
+function viewXwise(el){
+  const fields = xwFields(), B = xwBuild(), { X, M, rk, ck, rows, cols, cell, hidden, t } = B;
+  const chipsFor = side => fields.map(f => {
+    const pos = X[side].indexOf(f.k);
+    return '<button class="chip' + (pos >= 0 ? ' on' : '') + '" onclick="DR.xwToggle(\'' + side + '\',\'' + esc(f.k) + '\')" title="' + (pos >= 0 ? 'Remove' : 'Add') + ' ' + esc(f.l) + '">'
+      + (pos >= 0 ? '<b>' + (pos + 1) + '.</b> ' : '') + esc(f.l) + '</button>';
+  }).join('');
+  const nameOf = k => (fields.find(f => f.k === k) || { l:k }).l;
+  const metricOpts = Object.keys(XW_METRICS).map(k => '<option value="' + k + '"' + (k === X.metric ? ' selected' : '') + '>' + XW_METRICS[k].l + '</option>').join('');
+  const pick = '<div class="card p-3 md:p-4 space-y-3 no-print">'
+    + '<div><div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-2">Rows (X) · ' + (rk.length ? rk.map(nameOf).map(esc).join(' › ') : 'none = one Total row')
+    + (rk.length ? ' <button class="chip !py-0.5 !text-[11px]" onclick="DR.xwClear(\'rows\')">Clear</button>' : '') + '</div><div class="flex flex-wrap gap-1.5">' + chipsFor('rows') + '</div></div>'
+    + '<div><div class="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 flex items-center gap-2">Columns (Y) · ' + (ck.length ? ck.map(nameOf).map(esc).join(' › ') : 'none = one Total column')
+    + (ck.length ? ' <button class="chip !py-0.5 !text-[11px]" onclick="DR.xwClear(\'cols\')">Clear</button>' : '') + '</div><div class="flex flex-wrap gap-1.5">' + chipsFor('cols') + '</div></div>'
+    + '<div class="flex flex-wrap gap-2 items-center"><label class="text-xs font-semibold text-slate-600">Value <select class="ml-1 border border-slate-300 rounded-md px-2 py-1 text-sm" onchange="DR.xwSet(\'metric\', this.value)">' + metricOpts + '</select></label>'
+    + '<label class="text-xs font-semibold text-slate-600">Sort <select class="ml-1 border border-slate-300 rounded-md px-2 py-1 text-sm" onchange="DR.xwSet(\'sort\', this.value)"><option value="value"' + (X.sort !== 'name' ? ' selected' : '') + '>Largest first</option><option value="name"' + (X.sort === 'name' ? ' selected' : '') + '>A → Z</option></select></label>'
+    + '<button class="chip" onclick="DR.xwSwap()">⇄ Swap X / Y</button><button class="chip" onclick="DR.xwCsv()">⬇ CSV of this table</button>'
+    + '<span class="text-xs text-slate-500 ml-auto">' + rows.length + ' rows × ' + cols.length + ' columns' + (hidden ? ' · ' + hidden + ' more columns not shown (narrow with the filters)' : '') + '</span></div></div>';
+  const vals = []; rows.forEach(r => cols.forEach(c => { const rs = cell.get(r.key + '\u0000' + c.key); if (rs) { const v = M.v(totals(rs)); if (v != null) vals.push(v); } }));
+  const max = Math.max(1, ...vals);
+  const head = '<tr><th class="th sticky left-0 z-30 align-bottom" style="min-width:200px">' + esc(rk.length ? rk.map(nameOf).join(' · ') : '') + (ck.length ? ' \\ ' + esc(ck.map(nameOf).join(' · ')) : '') + '</th>'
+    + (ck.length ? cols.map(c => '<th class="th rot" title="' + esc(xwLabel(c.key, ck)) + '"><span>' + esc(xwLabel(c.key, ck)) + '</span></th>').join('') : '')
+    + '<th class="th ' + (ck.length ? 'rot ' : 'r ') + 'bg-brand-50"><span>TOTAL ' + esc(M.l) + '</span></th></tr>';
+  const body = rows.map(r => '<tr><td class="td sticky left-0 bg-white z-10 font-semibold">' + esc(rk.length ? xwLabel(r.key, rk) : 'TOTAL') + '</td>'
+    + (ck.length ? cols.map(c => {
+        const rs = cell.get(r.key + '\u0000' + c.key);
+        if (!rs) return '<td class="td text-center text-slate-300">-</td>';
+        const v = M.v(totals(rs)), op = v == null ? 0 : Math.min(.55, .08 + v / max * .47);
+        return '<td class="td r num" style="background:rgba(20,184,166,' + op.toFixed(2) + ')">' + M.f(v) + '</td>';
+      }).join('') : '')
+    + '<td class="td r num font-bold bg-brand-50">' + M.f(M.v(r)) + '</td></tr>').join('');
+  const foot = rk.length ? '<tr class="font-bold bg-slate-100"><td class="td sticky left-0 bg-slate-100 z-10">TOTAL</td>' + (ck.length ? cols.map(c => '<td class="td r num">' + M.f(M.v(c)) + '</td>').join('') : '')
+    + '<td class="td r num bg-brand-100 text-brand-900">' + M.f(M.v(t)) + '</td></tr>' : '';
+  el.innerHTML = '<div class="space-y-4 md:space-y-5">' + pick
+    + '<div class="card overflow-hidden">' + sectionHead('grid', 'X-wise · ' + (rk.length ? rk.map(nameOf).join(' · ') : 'Total') + ' × ' + (ck.length ? ck.map(nameOf).join(' · ') : 'Total'), '<span class="text-xs text-slate-500">' + esc(M.l) + ' · follows the date range and filters above</span>')
+    + '<div class="overflow-auto sb max-h-[70vh] md:max-h-[640px]"><table class="pivot min-w-full text-xs border-collapse"><thead class="sticky top-0 z-20">' + head + '</thead><tbody>' + body + foot + '</tbody></table></div></div></div>';
+}
+DR.xwCsv = function(){
+  if (!S.filtered.length) return banner('warn', 'Nothing to export: no lines in the current range / filters.');
+  const fields = xwFields(), nameOf = k => (fields.find(f => f.k === k) || { l:k }).l;
+  const { M, rk, ck, rows, cols, cell, t } = xwBuild();
+  const q = v => { const x = v == null ? '' : String(v); return /[",\r\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; };
+  const raw = a => { const v = M.v(a); return v == null ? '' : (typeof v === 'number' ? round2(v) : v); };
+  const out = [[(rk.map(nameOf).join(' · ') || 'Rows') + (ck.length ? ' \\ ' + ck.map(nameOf).join(' · ') : '')].concat(ck.length ? cols.map(c => xwLabel(c.key, ck)) : [], ['TOTAL ' + M.l])];
+  rows.forEach(r => out.push([rk.length ? xwLabel(r.key, rk) : 'TOTAL'].concat(ck.length ? cols.map(c => { const rs = cell.get(r.key + '\u0000' + c.key); return rs ? raw(totals(rs)) : ''; }) : [], [raw(r)])));
+  if (rk.length) out.push(['TOTAL'].concat(ck.length ? cols.map(raw) : [], [raw(t)]));
+  const csv = out.map(r => r.map(q).join(',')).join('\r\n');
+  const range = S.from === S.to ? dmy(S.from).replace(/\//g, '.') : dmy(S.from).replace(/\//g, '.') + '_to_' + dmy(S.to).replace(/\//g, '.');
+  const z = n => String(n).padStart(2, '0'), d = new Date();
+  const url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type:'text/csv;charset=utf-8;' }));
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'Dispatch_Xwise-' + fileTag(rk.map(nameOf).join('+') || 'Total') + '_x_' + fileTag(ck.map(nameOf).join('+') || 'Total') + '-' + range + '-' + z(d.getDate()) + '-' + z(d.getMonth() + 1) + '-' + d.getFullYear() + '_' + z(d.getHours()) + '-' + z(d.getMinutes()) + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+};
 
 // 5. Charts. Each one is rebuilt from the filtered rows on every change.
 const PALETTE = ['#0d9488', '#2563eb', '#d97706', '#7c3aed', '#db2777', '#0891b2', '#65a30d', '#dc2626', '#475569', '#ca8a04'];

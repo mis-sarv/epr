@@ -172,7 +172,8 @@
         .field select { padding: 12px; margin-top: 6px; background: #f8fafc; border: 2px solid #94a3b8; border-radius: 10px;
                         font-size: 16px; font-weight: bold; width: 100%; color: #0f172a; }
         .field select:focus { outline: none; border-color: #2563eb; box-shadow: 0 0 10px rgba(37, 99, 235, 0.2); background: #ffffff; }
-        .field select.need { border-color: #dc2626; background: #fef2f2; }
+        .field select.need, .field input.need { border-color: #dc2626 !important; background: #fef2f2 !important; }
+        .field .req { color: #dc2626; font-weight: 800; }
         #yuSerialNo { background: #e2e8f0; color: #1d4ed8; letter-spacing: .5px; cursor: not-allowed; }
         .yu-hint { font-size: 11px; font-weight: 600; color: #64748b; margin-top: 4px; }
 
@@ -919,7 +920,7 @@
         document.getElementById('entry-screen').style.display = 'block';
         document.getElementById('inputRows').innerHTML = '';
         document.querySelectorAll('.top-meta-fields input, .header-fields input').forEach(i => i.value = '');
-        document.getElementById('cUnit').value = ''; document.getElementById('cUnit').classList.remove('need');
+        document.getElementById('cUnit').value = ''; document.getElementById('cUnit').classList.remove('need'); document.querySelectorAll('.field .need').forEach(x => x.classList.remove('need'));
         localStorage.removeItem('yarn_data');
         setSyncStatus(sb ? 'ready' : 'off');
         uSum();
@@ -1018,11 +1019,29 @@
         } else { addNewBox(); }
     }
 
-    function startSave() { 
+    // the form's fields, all compulsory on Save (startSave); a field typed in loses its red mark (input listener below)
+    const YU_REQUIRED = [['cUnit', 'Company Unit'], ['billDate', 'Bill Date'], ['invoiceNo', 'Invoice No'], ['poNumber', 'PO Number'],
+        ['gateEntry', 'Gate Entry'], ['recvDate', 'Recv Date'], ['pName', 'Party Name'], ['gNo', 'Gaadi No'], ['yBrand', 'Brand'],
+        ['yDenier', 'Denier'], ['bNo', 'Batch No'], ['uName', 'Unloader'], ['uRate', 'Rate (Per Box)']];
+    YU_REQUIRED.forEach(([id]) => { const el = document.getElementById(id); if (!el) return;
+        const off = () => { if (String(el.value || '').trim()) el.classList.remove('need'); };
+        el.addEventListener('input', off); el.addEventListener('change', off);
+        // a red * after the label text, so the field reads as compulsory before Save
+        const f = el.closest('.field'); if (f && f.firstChild && f.firstChild.nodeType === 3 && !f.querySelector('.req')) f.firstChild.after(Object.assign(document.createElement('span'), { className: 'req', textContent: '* ' }));
+    });
+    function startSave() {
         const count = document.querySelectorAll('.filled-row').length;
         if(count === 0) return alert("Please enter at least one box weight before saving!");
-        const cu = document.getElementById('cUnit');
-        if (!cu.value) { cu.classList.add('need'); cu.scrollIntoView({ behavior: 'smooth', block: 'center' }); cu.focus(); return alert("Please choose the Company Unit (Unit-1 / Unit-2) before saving!"); }
+        // EVERY field of the form is compulsory (2026-11-26): the first empty one is marked red, scrolled to and focused
+        const miss = YU_REQUIRED.filter(([id]) => { const el = document.getElementById(id); return el && !String(el.value || '').trim(); });
+        YU_REQUIRED.forEach(([id]) => { const el = document.getElementById(id); if (el) el.classList.toggle('need', miss.some(m => m[0] === id)); });
+        if (miss.length) {
+            const el = document.getElementById(miss[0][0]);
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' }); setTimeout(() => el.focus(), 250);
+            return alert("Please fill every field before saving:\n\n" + miss.map(m => '• ' + m[1]).join('\n'));
+        }
+        const rate = parseFloat(document.getElementById('uRate').value);
+        if (!(rate > 0)) { const el = document.getElementById('uRate'); el.classList.add('need'); el.focus(); return alert("Rate (Per Box) must be more than 0!"); }
         currentStep = 1;
         // FIX: पिछली बार CANCEL किया हो तो पुराना सिग्नेचर कैनवास पर पड़ा रह जाता था
         recvSigData = null; inchargeSigData = null;

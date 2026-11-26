@@ -5829,25 +5829,36 @@
                 return !(k && lastByVeh[k] && lastByVeh[k] >= (Date.parse(d.inTime) || 0));
             });   // newest first, like gateEntries
         }
+        /* (2026-11-26) A slip's Dispatch Packing entry FREES the vehicle once the vehicle may go, not only after a Mark Out
+           (guards often let it go on the green "All Okay" card / an approved Done without pressing Out): the entry is Out /
+           Closed, OR needs no approval, OR its approval is Done (dispDoneAt: approved Done, or a rejected one Closed). Only
+           an entry still waiting for its approval keeps the vehicle. A slip is also free when the same vehicle went out
+           through ANY Dispatch Packing entry at / after the slip's time, or when the vehicle has a NEWER Dharam Kanta slip
+           (only the newest one of a vehicle can block). */
+        const dkDispGone = p => !!p && !p.deleted_at && (p.status === 'OUT' || p.status === 'CLOSED' || !p.needApproval || !!p.dispDoneAt);
         function dkPendingSlips() {
-            const disp = {};
+            const disp = {}, goneByVeh = {}, newestDk = {};
             gateEntries.forEach(e => {
-                if (e.category !== 'DISPATCH PACKING') return;
+                if (e.category === 'DHARAM KANTA' && !e.deleted_at) { const k = dkVehKey(e.vehicle), t = Date.parse(e.inTime) || 0; if (k && t > (newestDk[k] || 0)) newestDk[k] = t; }
+                if (e.category !== 'DISPATCH PACKING' || e.deleted_at) return;
                 const m = /DK: ([^ |]+)/.exec(e.host || '');
                 if (m) (disp[m[1]] = disp[m[1]] || []).push(e);
+                if (dkDispGone(e)) { const k = dkVehKey(e.vehicle), t = Date.parse(e.inTime) || 0; if (k && t > (goneByVeh[k] || 0)) goneByVeh[k] = t; }
             });
             const out = [];
             gateEntries.forEach(d => {
                 if (d.category !== 'DHARAM KANTA' || d.deleted_at || d.status === 'OUT' || !dkVehKey(d.vehicle)) return;
-                const ps = disp[d.id] || [];
-                if (ps.some(p => p.status === 'OUT')) return;   // dispatched and gone: the vehicle is free again
-                out.push({ key: dkVehKey(d.vehicle), slip: d, disp: ps[0] || null });
+                const ps = disp[d.id] || [], k = dkVehKey(d.vehicle), t = Date.parse(d.inTime) || 0;
+                if (ps.some(dkDispGone)) return;                    // dispatched and allowed to go: the vehicle is free again
+                if (goneByVeh[k] && goneByVeh[k] >= t) return;      // the vehicle went out through another Dispatch Packing entry since
+                if ((newestDk[k] || 0) > t) return;                 // an older slip: a newer slip of the vehicle took its place
+                out.push({ key: k, slip: d, disp: ps[0] || null });
             });
             return out;   // newest first, like gateEntries
         }
         const dkPendingFor = veh => { const k = dkVehKey(veh); return k ? dkPendingSlips().find(x => x.key === k) || null : null; };
         function dkBlockText(p) {
-            return `Vehicle ${p.slip.vehicle} already has Slip ${p.slip.id}: ${p.disp ? 'Dispatch Packing entry made, vehicle not out yet' : 'Dispatch Packing slip pending'}. A new slip is possible after its Dispatch Packing entry is Out, or if that slip is deleted.`;
+            return `Vehicle ${p.slip.vehicle} already has Slip ${p.slip.id}: ${p.disp ? 'Dispatch Packing entry ' + p.disp.id + ' is waiting for its approval' : 'Dispatch Packing slip pending'}. A new slip is possible once its Dispatch Packing entry is approved (Done) or Out, or if that slip is deleted.`;
         }
         /* Dharam Kanta › Vehicle No.: letters and numbers only (A-Z, 0-9, capitals). A space, dash, dot or any other
            character is dropped the moment it is typed, pasted or comes from the vehicle list ("HR 58 G-9222" →
