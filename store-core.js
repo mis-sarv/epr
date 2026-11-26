@@ -2963,6 +2963,13 @@ let sarvRepairOutwardCatalog=[];
    allowed; if it doesn't, the picker stays single-pick and says why. */
 let sarvSelectedRepairOutNos=[];
 let sarvRepairLineLinkSupported=null;   // null = not probed yet
+/* REPAIR RETURN EDIT (2026-11-26): opening a saved Return (Nature of Inward = Repaired) for edit keeps the outward(s)
+   it was booked against in the list and ticked, even when this Return itself brought their balance to 0: its own
+   quantities are left out of "received" (so the Balance shown is what was open before it), the outward is read
+   without the store filter if needed, and the row says "this entry". Picking another outward reloads the item rows
+   as for a new Return. Only for the record being edited ({id} = sarvEditingInwardId); a new entry is unchanged. */
+let sarvRepairEdit=null;   // {id, nos, applied}
+const sarvRepairEditCtx_=()=>(sarvRepairEdit&&sarvEditingInwardId&&String(sarvRepairEdit.id)===String(sarvEditingInwardId))?sarvRepairEdit:null;
 async function probeRepairLineLink(){
   if(sarvRepairLineLinkSupported!==null)return sarvRepairLineLinkSupported;
   try{
@@ -2992,7 +2999,8 @@ function renderRepairOutwardPanel(){
       return '<label style="display:flex;align-items:center;gap:8px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:11px;font-weight:600;">'
         +'<input type="'+(multi?'checkbox':'radio')+'" name="sarvRepairOpt" class="sarv-repair-opt" value="'+escText(o.document_no)+'"'+checked+'>'
         +'<span>'+escText(o.document_no)+' <span style="color:#64748b;font-weight:500;">— '+escText(o.party_name||'Party')
-        +' — Balance: '+pNum(o.balance)+(pNum(o.received)>0?' (Partial)':'')+'</span></span>'
+        +' — Balance: '+pNum(o.balance)+(pNum(o.received)>0?' (Partial)':'')+'</span>'
+        +(o.thisEntry?' <span style="color:#0f766e;font-weight:800;">· this entry</span>':'')+'</span>'
         +'</label>';
     }).join('');
   }
@@ -3023,6 +3031,15 @@ async function loadRepairOutwardDropdown(){
   const oq=await sarvStoreQ(SB.from('outward_entries').select('*').eq('nature_of_dispatch','Repair')).order('outward_date',{ascending:false});
   if(oq.error){console.warn('[SARV] Repair outward dropdown unavailable:',oq.error.message);return}
   const outwards=oq.data||[];sarvRepairOutwardCatalog=[];
+  // REPAIR RETURN EDIT: the edited Return's own outward(s), even from the other store / not in the list above
+  const ed=sarvRepairEditCtx_();
+  if(ed&&ed.nos.length){
+    const miss=ed.nos.filter(no=>!outwards.some(o=>o.document_no===no));
+    if(miss.length){
+      const mq=await SB.from('outward_entries').select('*').in('document_no',miss);
+      if(!mq.error)(mq.data||[]).forEach(o=>outwards.push(o));
+    }
+  }
   if(!outwards.length)return;
   const outIds=outwards.map(o=>o.id);
   const olq=await SB.from('outward_lines').select('*').in('outward_id',outIds);
@@ -3031,14 +3048,22 @@ async function loadRepairOutwardDropdown(){
   const docNos=outwards.map(o=>o.document_no);
   const iq=await SB.from('inward_entries').select('id,document_no,gate_pass_no').eq('nature_of_inward','Repaired').in('gate_pass_no',docNos);
   const inwardEntriesByDoc={};
-  (iq.data||[]).forEach(e=>{(inwardEntriesByDoc[e.gate_pass_no]=inwardEntriesByDoc[e.gate_pass_no]||[]).push(e)});
-  const allInwardIds=(iq.data||[]).map(e=>e.id);
-  const recv=await repairReceivedByDoc_(allInwardIds,inwardEntriesByDoc,docNos);
+  // REPAIR RETURN EDIT: the Return being edited never counts as received (its own qty is part of the edit)
+  const iqRows=(iq.data||[]).filter(e=>!(ed&&String(e.id)===String(ed.id)));
+  iqRows.forEach(e=>{(inwardEntriesByDoc[e.gate_pass_no]=inwardEntriesByDoc[e.gate_pass_no]||[]).push(e)});
+  const allInwardIds=iqRows.map(e=>e.id);
+  const recv=await repairReceivedByDoc_(allInwardIds,inwardEntriesByDoc,docNos,ed&&ed.id);
   sarvRepairOutwardCatalog=outwards.map(o=>{
     const sent=sentByOut[o.id]||0;
     const received=recv.byDoc[o.document_no]||0;
-    return {...o,sent,received,balance:Math.max(0,sent-received),receivedDocs:recv.docsByOut[o.document_no]||[]};
-  }).filter(o=>o.balance>0);
+    const thisEntry=!!(ed&&ed.nos.includes(o.document_no));
+    return {...o,sent,received,balance:Math.max(0,sent-received),receivedDocs:recv.docsByOut[o.document_no]||[],thisEntry};
+  }).filter(o=>o.balance>0||o.thisEntry);
+  // the edited Return's own outward(s) first, ticked once (no reload of the saved item rows)
+  if(ed){
+    sarvRepairOutwardCatalog.sort((a,b)=>(b.thisEntry?1:0)-(a.thisEntry?1:0));
+    if(!ed.applied){ed.applied=true;sarvSelectedRepairOutNos=ed.nos.filter(no=>sarvRepairOutwardCatalog.some(x=>x.document_no===no));}
+  }
   // Drop any tick whose outward is no longer open.
   sarvSelectedRepairOutNos=sarvSelectedRepairOutNos.filter(no=>sarvRepairOutwardCatalog.some(x=>x.document_no===no));
   renderRepairOutwardPanel();
@@ -3053,7 +3078,7 @@ async function loadRepairOutwardDropdown(){
    An inward is attributed line-by-line if ANY of its lines carry the column,
    otherwise it falls back to its header. That keeps historic entries counted
    and makes sure nothing is counted twice. */
-async function repairReceivedByDoc_(inwardIds,inwardEntriesByDoc,docNos){
+async function repairReceivedByDoc_(inwardIds,inwardEntriesByDoc,docNos,excludeInwardId){
   const byDoc={},docsByOut={};
   const addDoc=(outNo,inwNo)=>{
     if(!outNo||!inwNo)return;
@@ -3075,6 +3100,8 @@ async function repairReceivedByDoc_(inwardIds,inwardEntriesByDoc,docNos){
       .in('repair_outward_no',docNos);
     if(!lq.error)lineRows=lq.data||[];
   }
+  // (REPAIR RETURN EDIT) the Return being edited is left out
+  if(excludeInwardId)lineRows=lineRows.filter(l=>String(l.inward_id)!==String(excludeInwardId));
   const inwardsWithLineLink=new Set(lineRows.map(l=>l.inward_id));
   lineRows.forEach(l=>{
     const outNo=l.repair_outward_no;
@@ -18475,6 +18502,10 @@ async function loadInwardForEdit(id,no){
   // CHALLAN ENTRY: and still says it came against a challan
   sarvInwChallanLoaded=(e.challan_info&&typeof e.challan_info==='object')?e.challan_info:null;
   sarvEditingInwardPoLineIds=lines.map(l=>l.po_line_id).filter(Boolean);
+  // REPAIR RETURN EDIT: the outward(s) this Return was booked against stay in the Repair Outward list (loadRepairOutwardDropdown)
+  sarvRepairEdit=String(e.nature_of_inward||'')==='Repaired'
+    ?{id:e.id,nos:[...new Set(lines.map(l=>String(l.repair_outward_no||'').trim()).concat([String(e.gate_pass_no||'').trim()]).filter(Boolean))],applied:false}
+    :null;
   // The requirements this record credits as it stands — header req_no plus each
   // line's own, so a PR removed during the edit is still re-graded on save.
   sarvEditingInwardReqNos=[...new Set(
@@ -20379,9 +20410,33 @@ window.addEventListener('DOMContentLoaded',()=>{
       Copy (Inward / NB) and the Receiver Copy (Outward); d.__gateQr is set by buildStoreNativePdfBlob only for
       those. The band is as tall as the QR when that is taller, the heading stays centred in it, and the bill
       no. and the whole details grid start UNDER the band at full width, so nothing is drawn over the QR. */
-   const QR_MM=20;
-   let qrW=0, bandH=13.2*K;
-   if(d.__gateQr&&window.SarvQR&&SarvQR.drawPdf(doc,d.__gateQr,x,y,QR_MM)){
+   /* GATE CODE (2026-11-26): PDF Settings › Gate code BAR (default) = the bill no. as a Code 128 BARCODE in the QR's
+      place, top-left of the band, as wide as the room beside the heading allows (bars at least BAR_MOD mm, the
+      number printed under it); too little room (or the barcode library did not load) = the QR instead, larger
+      (QR_MM). QR = only the QR (QR_MM). BOTH = the QR top-left + the barcode strip under the band (below).
+      The band grows to the code's height; the heading stays centred and clear of it. */
+   const QR_MM=26, BAR_MOD=0.25, BAR_H=12;
+   let qrW=0, bandH=13.2*K, barLeft=false;
+   const gMode=d.__gateMode||'BOTH';
+   if(gMode==='BAR'&&d.__gateBar&&window.SarvQR&&SarvQR.barModules&&SarvQR.drawBarcodePdf){
+     const mods=String(SarvQR.barModules(d.__gateBar)||'').length;
+     if(mods){
+       // room left of the heading: half of what the code / entry type lines leave free
+       doc.setFont(undefined,'bold');
+       doc.setFontSize(FS('head.code',15*K));const cW=doc.getTextWidth(TX('head.code',sarvStoreCode_(d&&d.store)));
+       doc.setFontSize(FS('head.type',9.5*K));const tW=doc.getTextWidth(String(d.entryType||(isOut?'OUTWARD':'INWARD')));
+       const room=Math.min(95,(w-Math.max(cW,tW))/2-5), need=(mods+20)*BAR_MOD;
+       if(room>=need){
+         const bw=Math.min(room,(mods+20)*0.34);
+         if(SarvQR.drawBarcodePdf(doc,d.__gateBar,x,y+0.6,bw,BAR_H)){
+           doc.setFont(undefined,'normal');doc.setFontSize(6.5*K);doc.setTextColor(0,0,0);
+           doc.text(String(d.__gateBar),x+bw/2,y+0.6+BAR_H+2.6*K,{align:'center'});
+           qrW=bw+2; bandH=Math.max(bandH,BAR_H+3.6*K+1.2); barLeft=true;
+         }
+       }
+     }
+   }
+   if(!barLeft&&d.__gateQr&&window.SarvQR&&SarvQR.drawPdf(doc,d.__gateQr,x,y,QR_MM)){
      qrW=QR_MM+2; bandH=Math.max(bandH,QR_MM+1.2);
    }
    const hy=y+(bandH-13.2*K)/2;   // the heading's own top, centred in the band
@@ -20411,7 +20466,7 @@ window.addEventListener('DOMContentLoaded',()=>{
    /* Gate barcode (sarv-qr.js drawBarcodePdf): the bill number as a long horizontal Code 128, centred in its own
       strip under the band, the number printed under it. Wide bars (~0.3 mm) so a phone reads it from a distance;
       at most 100 mm / 62 % of the copy. d.__gateBar is set by buildStoreNativePdfBlob (PDF Settings › Gate code). */
-   if(d.__gateBar&&window.SarvQR&&SarvQR.drawBarcodePdf){
+   if(gMode==='BOTH'&&d.__gateBar&&window.SarvQR&&SarvQR.drawBarcodePdf){
      const bw=Math.min(100,w*0.62),bh=10,by=y+bandH+1.8;
      if(SarvQR.drawBarcodePdf(doc,d.__gateBar,x+(w-bw)/2,by,bw,bh)){
        doc.setFont(undefined,'normal');doc.setFontSize(6.5*K);doc.setTextColor(0,0,0);
@@ -20959,12 +21014,14 @@ window.addEventListener('DOMContentLoaded',()=>{
         (this store's own setting, SARV_PDF_STORE). A library that cannot load leaves its code out, never the PDF. */
      if(variant==='SUPPLIER_ONE'&&(kind==='INWARD'||kind==='OUTWARD')&&!sarvIsIssueReturn_(d)){
        const gc=sarvPdfOpt_('store','gateCode');
-       if(gc!=='BAR'){try{if(window.SarvQR&&await SarvQR.ready())d.__gateQr=sarvStoreGateQr_(kind,d,items);}catch(e){console.warn('[store pdf] gate QR skipped',e);}}
+       d.__gateMode=gc;
+       // the QR is made for BAR too: it is printed when the barcode has no room / could not load (GATE CODE in drawStoreCopyNative_)
+       try{if(window.SarvQR&&await SarvQR.ready())d.__gateQr=sarvStoreGateQr_(kind,d,items);}catch(e){console.warn('[store pdf] gate QR skipped',e);}
        const bno=String((kind==='OUTWARD'?d.outwardNo:d.inwardNo)||'').trim();
        if(gc!=='QR'&&bno){try{if(window.SarvQR&&SarvQR.barReady&&await SarvQR.barReady())d.__gateBar=bno;}catch(e){console.warn('[store pdf] gate barcode skipped',e);}}
      }
      try{drawStoreCopyNative_(doc,kind,d,items,variant==='ACCOUNT_BASE'?copyATitle:copyBTitle,margin,margin,pageW-margin*2,pageH-margin*2);}
-     finally{delete d.__remarksBox;delete d.__gateQr;delete d.__gateBar;}
+     finally{delete d.__remarksBox;delete d.__gateQr;delete d.__gateBar;delete d.__gateMode;}
    } else if(isTwoPage){
      const margin=sarvPdfOpt_('store','marginTwo');
      drawStoreCopyNative_(doc,kind,d,items,copyATitle,margin,margin,pageW-margin*2,pageH-margin*2);
@@ -31601,8 +31658,8 @@ const SARV_PDF_DEFS=[
        barcode of the bill number (fast from a distance; the gate gets the details from the server) and / or
        the small QR (party, PO / PR, items inside, works offline). sarv-qr.js draws both. */
     {g:'Gate code (Supplier / Receiver Copy)',opts:[
-      {k:'gateCode',l:'Code printed for the gate scanner',type:'select',def:'BOTH',choices:[['BOTH','Barcode + small QR'],['BAR','Barcode only'],['QR','QR only']],
-        hint:'Barcode = a long horizontal bar code of the bill number under the heading, quick to scan. The small QR (top-left) carries the party, PO / PR and items, so the gate also works offline with it.'}]}]},
+      {k:'gateCode',l:'Code printed for the gate scanner',type:'select',def:'BAR',choices:[['BAR','Barcode (top-left, in place of the QR)'],['QR','QR only (large)'],['BOTH','QR + barcode strip under the heading']],
+        hint:'Barcode = the bill number as a bar code top-left, wide bars so a printout scans easily at the gate; when the heading leaves too little room for it the larger QR is printed there instead. The QR carries the party, PO / PR and items, so the gate also works offline with it.'}]}]},
   {doc:'pr',label:'Purchase Requirement (PR)',groups:[
     {g:'Text size',opts:[
       {k:'scale',l:'Text size',type:'num',unit:'%',def:100,min:85,max:125,step:1,hint:'Every text of the PR PDF, here and in the mobile app. This layout has fixed columns: above 100%, check the preview with a long PR.'}]}]},
