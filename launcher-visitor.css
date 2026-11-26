@@ -30,6 +30,10 @@ a.app.lv-tile.lv-new{animation:lvPulse 1.6s ease-out 2;}
 .lv-tx{flex:1; min-width:0;}
 .lv-tx b{display:block; font-size:16px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
 .lv-tx small{display:block; font-size:12.5px; color:var(--ls-txt2); line-height:1.35; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+/* second details line may take two lines; the chips go in one small row under the details (rowHtml) */
+.lv-tx small.l2{white-space:normal; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;}
+.lv-chips{display:flex; flex-wrap:wrap; gap:4px; margin-top:4px;}
+.lv-chips .lv-chip{font-size:10.5px; padding:2px 7px; line-height:1.3;}
 .lv-chip{flex:0 0 auto; font-size:11px; font-weight:700; border-radius:999px; padding:3px 8px; background:rgba(245,158,11,.18); color:#f59e0b;}
 .lv-chip.ok{background:rgba(48,209,88,.18); color:var(--ls-green);}
 .lv-chip.no{background:rgba(255,69,58,.16); color:var(--ls-red);}
@@ -40,9 +44,16 @@ a.app.lv-tile.lv-new{animation:lvPulse 1.6s ease-out 2;}
 /* ── detail ── */
 .lv-photos{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin:6px 0 4px;}
 .lv-photos.one{grid-template-columns:1fr;}
-.lv-ph{position:relative; border-radius:16px; overflow:hidden; background:var(--ls-bg2); aspect-ratio:1 / 1; cursor:zoom-in; border:0; padding:0;}
-.lv-photos.one .lv-ph{aspect-ratio:4 / 3;}
-.lv-ph img{width:100%; height:100%; object-fit:cover; display:block;}
+/* AUTO FIT (2026-11-24): every preview box takes the photo's OWN shape and shows the whole photo at the full
+   width of its column (never cropped, no letterbox bands): a tall bill is tall, a wide vehicle is wide, each up to
+   55 % of the screen height (then fitted inside). Tap = full screen (zoom). */
+.lv-ph{position:relative; border-radius:16px; overflow:hidden; background:#111; cursor:zoom-in; border:0; padding:0; display:block; align-self:start; min-height:96px;}
+.lv-ph img{width:100%; height:auto; max-height:55vh; object-fit:contain; display:block; margin:0 auto;}
+.lv-photos{align-items:start;}
+.lv-photos.one .lv-ph[data-src] img{max-height:62vh;}
+.lv-ph.wait{aspect-ratio:4 / 3; background:var(--ls-bg2);}
+/* an odd last tile (3 photos) gets the full row, so it is not squeezed next to an empty cell */
+.lv-photos:not(.one) > .lv-ph:last-child:nth-child(odd){grid-column:1 / -1;}
 .lv-ph span{position:absolute; left:8px; bottom:8px; font-size:11px; font-weight:700; color:#fff; background:rgba(0,0,0,.55); border-radius:999px; padding:3px 8px;}
 .lv-ph.wait{display:flex; align-items:center; justify-content:center; color:var(--ls-txt2); font-size:13px; cursor:default;}
 .lv-kv{display:flex; justify-content:space-between; gap:14px; padding:11px 14px; position:relative; font-size:15px;}
@@ -76,7 +87,12 @@ a.app.lv-tile.lv-new{animation:lvPulse 1.6s ease-out 2;}
 /* ── full-screen photo ── */
 .lv-zoom{position:fixed; inset:0; z-index:9200; background:rgba(0,0,0,.92); display:flex; align-items:center; justify-content:center; cursor:zoom-out; opacity:0; transition:opacity .2s ease;}
 .lv-zoom.in{opacity:1;}
-.lv-zoom img{max-width:96vw; max-height:92vh; object-fit:contain; border-radius:10px;}
+/* Full screen: the photo fits the WHOLE screen (contain); a round X top right closes it (also Esc / a tap) */
+.lv-zoom img{width:100vw; height:100vh; height:100dvh; object-fit:contain; display:block;}   /* a small photo is enlarged to fit too */
+.lv-zoom-x{position:absolute; z-index:2; top:calc(12px + env(safe-area-inset-top, 0px)); right:calc(12px + env(safe-area-inset-right, 0px)); width:44px; height:44px; padding:0; display:flex; align-items:center; justify-content:center; border:1px solid rgba(255,255,255,.35); border-radius:50%; background:rgba(0,0,0,.6); color:#fff; cursor:pointer; box-shadow:0 4px 14px rgba(0,0,0,.4); -webkit-backdrop-filter:blur(8px); backdrop-filter:blur(8px);}
+.lv-zoom-x svg{width:20px; height:20px; display:block;}
+.lv-zoom-x:hover{background:#dc2626; border-color:#dc2626;}
+.lv-zoom-x:focus-visible{outline:2px solid #fff; outline-offset:2px;}
 
 @media (prefers-reduced-motion: reduce){
   a.app.lv-tile.lv-new{animation:none;}

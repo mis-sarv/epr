@@ -34217,8 +34217,40 @@ function inwGateInfo_(){
     +(warns.length?'<div style="margin-top:6px;background:#fef3c7;border:1px solid #f59e0b;border-radius:6px;padding:6px 9px;color:#92400e;font-weight:700;">'+warns.map(escText).join(' · ')+'</div>'
       :errs.length?'':'<div style="margin-top:6px;color:#15803d;font-weight:700;">Matches this Inward.</div>');
 }
-/* Picked: fill what is still empty. Supplier Name when blank; the gate's PO (or Field Boy PR) when nothing is
-   ticked, no item row is filled and no MD-approved draft is loaded, through the pickers' own state + loaders. */
+/* GATE ENTRY CHANGE (2026-11-26): what a picked gate entry filled in (sarvInwGateFill {no, party, refType, pending})
+   is taken off the form FIRST when another Gate Entry No. (or none) is chosen: the Supplier Name it gave, its PO / PR
+   ticks with their item rows, a Repair Return's outwards + Nature of Inward. Typed Invoice No. / Date, Remarks and the
+   like stay. Then the new entry fills the form, but ONLY when it is ready for the Store entry (inwGateReady_, the
+   pipeline's own rule: Unloader done / no Unloader step); one still waiting is shown with its pipeline and fills the
+   form by itself once it turns ready (inwGateRefresh_). Never on an edit or with an MD-approved draft on the form. */
+var sarvInwGateFill=null;
+function inwGateReady_(r){ return !!r&&/ready for store entry/i.test(inwGateStepTxt_(r)); }
+async function inwGateClearFill_(newNo){
+  const F=sarvInwGateFill;
+  if(!F||F.no===newNo||sarvEditingInwardId||sarvInwDraftActive)return false;
+  sarvInwGateFill=null;
+  if(F.pending)return false;   // it never filled anything
+  const sup=byId('supplierName');
+  if(sup&&F.party&&!sup.readOnly&&!sup.disabled&&yulKey_(sup.value)===yulKey_(F.party)){
+    sup.value='';sup.dispatchEvent(new Event('input',{bubbles:true}));sup.dispatchEvent(new Event('change',{bubbles:true}));
+  }
+  try{
+    if(/^REPAIR$/i.test(F.refType||'')){
+      if(getSelectedRepairOutNos().length){setSelectedRepairOutNos([]);await loadRepairOutwardIntoInward();}
+      const nat=byId('inwNatureOfInward');
+      if(nat&&!nat.disabled&&nat.value==='Repaired'){nat.value='Purchase';nat.dispatchEvent(new Event('change'));}
+    }
+    // its PO / PR ticks and their item rows (rows typed by hand with nothing ticked stay)
+    const hadPr=getSelectedPrNos().length>0, hadPo=getSelectedPoNos().length>0;
+    if(hadPr){setSelectedPrNos([]);updatePrNumberBtnText();await loadPrsIntoInward();}
+    if(hadPo){setSelectedPoNos([]);updatePoNumberBtnText();await loadPoIntoInward();}   // nothing ticked = the PO box hidden, the lock off and one blank item row
+    updateStoreTotals();
+  }catch(e){console.warn('[SARV] previous gate entry not cleared:',e.message||e);}
+  return true;
+}
+/* Picked: the previous gate entry's data off the form (inwGateClearFill_), then fill from this one when it is ready
+   for the Store entry. Supplier Name when blank; the gate's PO (or Field Boy PR) when nothing is ticked, no item row
+   is filled and no MD-approved draft is loaded, through the pickers' own state + loaders. */
 async function inwGatePicked_(){
   // STORE INWARD NO.: an entry submitted earlier is loaded back as a whole
   {const raw=byId('inwGateEntryNo')?.value||'';
@@ -34230,6 +34262,8 @@ async function inwGatePicked_(){
      clearInwardForm();if(sel)sel.value=raw;
    }}
   sarvInwGate.want=pVal('inwGateEntryNo');
+  // GATE ENTRY CHANGE: the entry picked before takes its data off the form first
+  if(await inwGateClearFill_(sarvInwGate.want))showToast('The data of the Gate Entry No. chosen before was cleared from the form');
   // UNLOADING BILL: no gate photos, no PO; Supplier Name = the Unloader when it is still empty
   {const ur=inwGateUlPayRow_(sarvInwGate.want);
    if(ur){
@@ -34242,7 +34276,14 @@ async function inwGatePicked_(){
   // the Unloader's Photos / Original Invoice of this gate entry into the photo box (and those of one picked before out)
   inwGateUlApply_(r||null);
   inwGatePhotosLoad_(r||null);   // and every photo of the delivery under the box, to look at (GATE ENTRY PHOTOS)
-  if(r&&!sarvEditingInwardId){
+  // not ready for the Store entry yet (Unloader to be assigned / to upload): nothing is filled in; it fills itself later
+  if(r&&!sarvEditingInwardId&&!inwGateReady_(r)){
+    sarvInwGateFill={no:r.no,party:r.party||'',refType:r.refType||'',pending:true};
+    renderPoNumberPanel();
+    showToast('Gate '+escText(r.no)+': '+escText(inwGateStepTxt_(r))+'. The form is filled from it only when it is ready for the Store entry (it fills by itself then).','warn');
+  }
+  else if(r&&!sarvEditingInwardId){
+    sarvInwGateFill={no:r.no,party:r.party||'',refType:r.refType||''};   // GATE ENTRY CHANGE: what to take off on the next change
     const sup=byId('supplierName');
     // the gate entry's party IS the supplier of this Inward (its PO may change, only within that supplier)
     if(sup&&r.party&&!sup.readOnly&&!sup.disabled&&yulKey_(sup.value)!==yulKey_(r.party)){
@@ -34316,6 +34357,12 @@ async function inwGateRefresh_(force){
   else inwGateInfo_();
   // the Unloader uploaded while the Store waited on the form: their photos come in by themselves
   const r=(sarvInwGate.list||[]).find(x=>x.no===inwGateVal_());
+  // GATE ENTRY CHANGE: the chosen entry was waiting (Unloader) and is ready for the Store entry now: fill the form from it
+  {const F=sarvInwGateFill;
+   if(r&&F&&F.pending&&F.no===r.no&&inwGateReady_(r)&&!sarvEditingInwardId&&!sarvInwDraftActive){
+     sarvInwGateFill=null;showToast('Gate '+escText(r.no)+' is ready for the Store entry now: the form is filled from it');
+     await inwGatePicked_();return;
+   }}
   // an entry opened for edit (or picked before the list arrived): its photos too; an upload since = read again
   {const ul=inwGateUlOf_(r),sig=r?r.uid+'|'+(ul?ul.status+(ul.photoCount||0):''):'';if(sig!==sarvInwGatePh.sig)inwGatePhotosLoad_(r||null);}
   const ul=inwGateUlOf_(r);
@@ -34515,6 +34562,7 @@ function inwGatePhotoView_(start){
 function inwGateReset_(){
   if(!sarvInwGate)return;
   const S=sarvInwGate;S.want='';S.editHad=false;S.editUlHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';sarvInwGateUlPay='';
+  sarvInwGateFill=null;   // the form is blank again: nothing of a gate entry is on it
   if(typeof sarvInwGateUl!=='undefined'){sarvInwGateUl.no='';sarvInwGateUl.err='';}
   if(typeof sarvInwGatePh!=='undefined')inwGatePhotosLoad_(null);
   const sel=byId('inwGateEntryNo');if(sel)sel.value='';

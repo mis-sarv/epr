@@ -36,7 +36,7 @@
   if (window.self !== window.top) return;
 
   var K_TOKEN = 'sarv_sso_token', K_LOCK = 'sarv_launcher_locked';
-  var POLL_MS = 45000, AUTO_MS = 600;
+  var POLL_MS = 5000, AUTO_MS = 600;   // approvals list: data sync every 5 s (only while the launcher is on screen)
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   function tok() { try { return localStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; } }
@@ -59,6 +59,8 @@
   var isSmp = function (v) { return !!v && v.category === 'SAMPLE / OTHER'; };
   // a gate Inward of material (Gate › Inward › New Inward Entry, approval like a Hydra): bill + item photos, PO / PR
   var isInw = function (v) { return !!v && v.category === 'INWARD'; };
+  // (2026-11-25) a Sample / Other entry follows the Inward workflow: Unloader + Unloading type at Approve, Assign / Change later
+  var withUnloader = function (v) { return isInw(v) || isSmp(v); };
   // a gate Dispatch Packing Slip whose Net Wt needs approval (GATE_DISPATCH_APPROVAL_MIGRATION.sql): vehicle photo, Net / Gross / Tare in purpose
   var isDsp = function (v) { return !!v && v.category === 'DISPATCH PACKING'; };
   var inwRef = function (v) { return v.refNo ? (v.refType || 'Ref') + ': ' + v.refNo : ''; };
@@ -120,11 +122,21 @@
         return '<option value="' + esc(u.id) + '"' + (String(u.id) === sel ? ' selected' : '') + '>' + esc(u.name) + (sub ? ' — ' + esc(sub) : '') + '</option>';
       }).join('') + '</select>';
   }
+  /* UNLOADING TYPE (sql/GATE_INWARD_UL_PAYABLE_MIGRATION.sql): FOC = free, the usual workflow; PAYABLE = the Unloader
+     is paid: after the Store books the Inward, ERP › Inward NB lists the unloading under the Unloader's name for its
+     bill. Chosen with the Unloader (compulsory), changed later with Change Unloader (gate_ul_set_charge). */
+  var CHG = { FOC: 'FOC (free)', PAYABLE: 'Payable' };
+  function chargeSelect(pre) {
+    var v = CHG[pre] ? pre : '';
+    return '<select class="lv-sel lv-chg" aria-label="Unloading type"><option value="">Unloading type: choose…</option>'
+      + Object.keys(CHG).map(function (k) { return '<option value="' + k + '"' + (k === v ? ' selected' : '') + '>' + esc(CHG[k]) + '</option>'; }).join('') + '</select>';
+  }
   function unloaderLine(ul) {
     if (!ul) return '';
-    return ul.status === 'DONE'
+    var chg = ul.chargeType ? ' · Unloading ' + esc(CHG[ul.chargeType] || ul.chargeType) : '';
+    return (ul.status === 'DONE'
       ? esc(ul.doneBy || ul.to || '-') + ' · ' + esc(ul.photoCount || 0) + ' photo(s) uploaded · ' + esc(when(ul.doneAt))
-      : esc(ul.to || '-') + (ul.toEmp ? ' (' + esc(ul.toEmp) + ')' : '') + ' · photos not uploaded yet';
+      : esc(ul.to || '-') + (ul.toEmp ? ' (' + esc(ul.toEmp) + ')' : '') + ' · photos not uploaded yet') + chg;
   }
   async function refresh() {
     if (busy || NOMIG || !loggedIn()) return;
@@ -228,8 +240,11 @@
       : (v.purpose || '-') + ' · ' + when(v.inTime || v.requestedAt);
     return '<button class="lv-row" data-uid="' + esc(v.uid) + '">'
       + '<span class="lv-av' + (kind === 'recent' ? (st === 'APPROVED' ? '' : st === 'REJECTED' ? ' r' : ' g') : '') + '">' + esc(av) + '</span>'
-      + '<span class="lv-tx"><b>' + esc(v.name || '-') + '</b><small>' + esc((isSmp(v) ? (v.person || '-') + ' · ' + smpType(v) + ' · ' : '') + (isInw(v) ? inwRef(v) || 'Inward' : (v.mobile || '')) + (v.vehicle && v.vehicle !== 'N/A' ? ' · ' + v.vehicle : '') + ' · ' + (v.entryId || '')) + '</small><small>' + esc(line2) + '</small></span>'
-      + chip + '<span class="lv-chev">' + IC.chev + '</span></button>';
+      // the chips (Gate-x · kind · status / time) sit in one small line UNDER the details, so the details keep the
+      // row's whole width (three chips beside them squeezed the text column to nothing on a phone)
+      + '<span class="lv-tx"><b>' + esc(v.name || '-') + '</b><small>' + esc((isSmp(v) ? (v.person || '-') + ' · ' + smpType(v) + ' · ' : '') + (isInw(v) ? inwRef(v) || 'Inward' : (v.mobile || '')) + (v.vehicle && v.vehicle !== 'N/A' ? ' · ' + v.vehicle : '') + ' · ' + (v.entryId || '')) + '</small><small class="l2">' + esc(line2) + '</small>'
+      + '<span class="lv-chips">' + chip + '</span></span>'
+      + '<span class="lv-chev">' + IC.chev + '</span></button>';
   }
   function renderList() {
     if (!SHEET || SHEET.kind !== 'list') return;
@@ -278,7 +293,8 @@
     var h = '<div class="ls-nav"><button class="ls-back lv-back">' + IC.back + ' Approvals</button></div>'
       + '<div class="ls-title">' + esc(v.name || (hyd ? 'Hydra / JCB' : 'Visitor')) + '</div>'
       + '<p class="ls-sub">' + (v.gate ? (v.gate === 'G1' ? 'Gate-1 (Unit-1) · ' : 'Gate-2 (Unit-2) · ') : '') + (hyd ? 'Hydra / JCB · ' : smp ? 'Sample / Other · ' + smpType(v) + ' · Inward ' : inw ? 'Inward material · ' : dsp ? 'Dispatch Packing Slip · ' : '') + esc(v.entryId || '') + (v.inTime ? ' · at the gate since ' + esc(when(v.inTime)) : '') + '</p>';
-    h += dsp ? '<div class="lv-photos one">' + photoTile(p && p.vehiclePhoto, 'Loaded vehicle', !p) + '</div>'
+    var hasDk = dsp && ((p && p.billPhoto) || keys.indexOf('billPhoto') >= 0);   // the Dharam Kanta Photo of a Dispatch slip
+    h += dsp ? '<div class="lv-photos' + (hasDk ? '' : ' one') + '">' + photoTile(p && p.vehiclePhoto, 'Loaded vehicle', !p) + (hasDk ? photoTile(p && p.billPhoto, 'Dharam Kanta', !p) : '') + '</div>'
       : inw ? '<div class="lv-photos">' + photoTile(p && p.billPhoto, 'Bill', !p) + photoTile(p && p.itemPhoto, 'Item', !p) + (hasVeh ? photoTile(p && p.vehiclePhoto, 'Vehicle', !p) : '') + '</div>'
       : smp ? '<div class="lv-photos">' + photoTile(p && p.billPhoto, 'Bill', !p) + photoTile(p && p.itemPhoto, 'Item', !p) + '</div>'
       : '<div class="lv-photos' + (hasVeh ? '' : ' one') + '">' + (hyd ? photoTile(p && p.inwardPhoto, 'Hydra / JCB', !p) : photoTile(p && p.visitorPhoto, 'Visitor', !p)) + (hasVeh ? photoTile(p && p.vehiclePhoto, 'Vehicle', !p) : '') + '</div>';
@@ -312,9 +328,12 @@
     if (DET.canDecide && v.status === 'PENDING') {
       if (v.mine === false) h += '<div class="lv-state wait">' + (hyd ? 'This Hydra / JCB is for' : smp ? 'This Sample / Other entry is for' : inw ? 'This inward is for' : 'This visitor came for') + ' <b>' + esc(v.host || '-') + '</b>' + (v.hostFound ? '' : ' (no ERP login)') + '. As Admin you approve on his behalf: your name and signature print on the pass.</div>';
       h += '<div class="lv-acts"><button class="ls-btn red lv-rej">Reject</button><button class="ls-btn green lv-apr"' + (DET.photos ? '' : ' disabled') + '>Approve</button></div>';
-    } else if (inw && v.status === 'APPROVED' && v.unloader && v.unloader.status === 'ASSIGNED' && (v.mine !== false || (INBOX && INBOX.isAdmin))) {
-      // the Unloader is away / busy: move it to another one until the photos are uploaded
-      h += '<div class="lv-acts"><button class="ls-btn gray lv-back2">Back</button><button class="ls-btn blue lv-chul">Change Unloader</button></div>';
+    } else if (withUnloader(v) && v.status === 'APPROVED' && (!v.unloader || v.unloader.status === 'ASSIGNED') && (v.mine !== false || (INBOX && INBOX.isAdmin))) {
+      // the Unloader is away / busy: move it to another one until the photos are uploaded. Approved WITHOUT one
+      // (before GATE_INWARD_UNLOADER_MIGRATION.sql): assign one now, the ERP books the Inward only after the
+      // Unloader is done (gate_ul_change, sql/GATE_INWARD_UL_LATE_MIGRATION.sql)
+      if (!v.unloader) h += '<div class="lv-state wait">No Unloader is assigned to this ' + (smp ? 'Sample / Other entry' : 'Inward') + '. The Store can book it only after an Unloader uploads its Photos / Original Invoice.</div>';
+      h += '<div class="lv-acts"><button class="ls-btn gray lv-back2">Back</button><button class="ls-btn blue lv-chul">' + (v.unloader ? 'Change Unloader' : 'Assign Unloader') + '</button></div>';
     } else {
       h += '<div class="lv-acts"><button class="ls-btn gray lv-back2">Back</button></div>';
     }
@@ -333,11 +352,12 @@
   /* ── Change Unloader (approved Inward, photos not uploaded yet) ─────── */
   async function changeUnloader() {
     if (!SHEET || !DET) return;
-    var v = DET.row || {}, cur = (v.unloader || {}).toId;
+    var v = DET.row || {}, cur = (v.unloader || {}).toId, isNew = !v.unloader;
     SHEET.body.innerHTML = '<div class="ls-nav"><button class="ls-back lv-back">' + IC.back + ' ' + esc(v.name || 'Inward') + '</button></div>'
-      + '<div class="ls-title">Change Unloader</div>'
-      + '<p class="ls-sub">Now with <b>' + esc((v.unloader || {}).to || '-') + '</b>. The new Unloader uploads the Photos / Original Invoice of ' + esc(v.entryId || '') + '.</p>'
+      + '<div class="ls-title">' + (isNew ? 'Assign Unloader' : 'Change Unloader') + '</div>'
+      + '<p class="ls-sub">' + (isNew ? 'No Unloader yet.' : 'Now with <b>' + esc((v.unloader || {}).to || '-') + '</b>.') + ' The ' + (isNew ? '' : 'new ') + 'Unloader uploads the Photos / Original Invoice of ' + esc(v.entryId || '') + '.</p>'
       + '<div class="lv-unlbox"><p class="lv-unlmsg">Loading the Unloader users…</p></div>'
+      + '<div class="lv-sec">Unloading · FOC (free) or Payable to the Unloader</div>' + chargeSelect((v.unloader || {}).chargeType || '')
       + '<div class="lv-err" aria-live="polite"></div>'
       + '<div class="lv-acts"><button class="ls-btn gray lv-cancel">Cancel</button><button class="ls-btn green lv-go" disabled>Save</button></div>';
     var q = function (s) { return SHEET.body.querySelector(s); };
@@ -350,30 +370,51 @@
     box.innerHTML = unloaderSelect(cur);
     go.disabled = false;
     go.addEventListener('click', async function () {
-      var to = box.querySelector('.lv-unl').value;
+      var to = box.querySelector('.lv-unl').value, chg = (q('.lv-chg') || {}).value || '';
       if (!to) { err.textContent = 'Choose the Unloader'; return; }
+      if (!chg) { err.textContent = ERR.CHARGE_REQUIRED; return; }
       go.disabled = true; go.textContent = 'Saving...';
       var r = await rpc('gate_ul_change', { p_uid: DET.uid, p_unloader: to });
       if (!SHEET || !DET) return;
       if (!r.ok) {
         go.disabled = false; go.textContent = 'Save';
-        err.textContent = ERR[r.error] || ('Not saved: ' + (r.detail || r.error));
+        err.textContent = isNew && r.error === 'NOT_FOUND' ? 'The server needs GATE_INWARD_UL_LATE_MIGRATION.sql (Admin) to assign an Unloader after the approval.' : (ERR[r.error] || ('Not saved: ' + (r.detail || r.error)));
         return;
       }
       try { localStorage.setItem(K_LAST_UL, to); } catch (e) { }
       DET.row.unloader = r.data.unloader || DET.row.unloader;
-      toast('Unloader changed to ' + ((DET.row.unloader || {}).to || '-'));
+      // the Unloading type, when it differs (an older server answers NO_MIGRATION: said, the Unloader is saved)
+      if ((DET.row.unloader || {}).chargeType !== chg) {
+        var c = await rpc('gate_ul_set_charge', { p_uid: DET.uid, p_charge: chg });
+        if (!SHEET || !DET) return;
+        if (c.ok) DET.row.unloader = c.data.unloader || DET.row.unloader;
+        else toast(c.error === 'NO_MIGRATION' ? 'Unloader saved. The Unloading type needs GATE_INWARD_UL_PAYABLE_MIGRATION.sql (Admin).' : 'Unloader saved, Unloading type not changed: ' + (ERR[c.error] || c.error));
+      }
+      toast((isNew ? 'Unloader assigned: ' : 'Unloader changed to ') + ((DET.row.unloader || {}).to || '-'));
       renderDetail();
     });
   }
   function backToList() { DET = null; if (SHEET) SHEET.kind = 'list'; renderList(); refresh(); }
 
+  // Full-screen photo: a red Close button top right (a tap anywhere else or Esc closes too). Esc is caught on the
+  // way down, so it closes only the photo and not the sheet under it.
   function zoom(src) {
     var z = document.createElement('div'); z.className = 'lv-zoom';
-    z.innerHTML = '<img alt="">'; z.querySelector('img').src = src;
+    z.setAttribute('role', 'dialog'); z.setAttribute('aria-modal', 'true'); z.setAttribute('aria-label', 'Photo');
+    z.innerHTML = '<button type="button" class="lv-zoom-x" aria-label="Close photo" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button><img alt="">';
+    z.querySelector('img').src = src;
     document.body.appendChild(z);
     requestAnimationFrame(function () { z.classList.add('in'); });
-    z.addEventListener('click', function () { z.classList.remove('in'); setTimeout(function () { z.remove(); }, 200); });
+    var shut = false;
+    function close() {
+      if (shut) return; shut = true;
+      window.removeEventListener('keydown', key, true);
+      z.classList.remove('in'); setTimeout(function () { z.remove(); }, 200);
+    }
+    function key(e) { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } }
+    window.addEventListener('keydown', key, true);
+    z.addEventListener('click', close);
+    z.querySelector('.lv-zoom-x').focus();
   }
 
   /* ── PIN step: Approve (PIN only) / Reject (reason + PIN) ───────────── */
@@ -382,12 +423,13 @@
     if (!SHEET || !DET) return;
     var v = DET.row || {}, rej = act === 'REJECT';
     // an Inward is approved together with the Unloader who will upload its Photos / Original Invoice
-    var withUl = !rej && isInw(v) && !UL_NOMIG;
+    var withUl = !rej && withUnloader(v) && !UL_NOMIG;
     SHEET.body.innerHTML = '<div class="ls-nav"><button class="ls-back lv-back">' + IC.back + ' ' + esc(v.name || 'Visitor') + '</button></div>'
       + '<div class="ls-title">' + (rej ? 'Reject ' : 'Approve ') + (isHyd(v) ? 'Hydra / JCB' : isSmp(v) ? 'Sample / Other' : isInw(v) ? 'inward material' : isDsp(v) ? 'dispatch slip' : 'visitor') + '</div>'
       + '<p class="ls-sub">' + (rej ? 'Write why ' + esc(v.name || 'the visitor') + ' is not allowed, then your PIN.' : 'Enter your PIN to let <b>' + esc(v.name || 'the visitor') + '</b> in. Your signature prints on ' + (isHyd(v) ? 'the Hydra / JCB pass' : isSmp(v) ? 'the Sample / Other inward pass' : isInw(v) ? 'the inward gate pass' : isDsp(v) ? 'the dispatch gate pass' : 'his Digital Visitor Pass') + '.') + '</p>'
       + (rej ? '<textarea class="lv-reason" placeholder="Reason (the gate sees it)" maxlength="300"></textarea>' : '')
-      + (withUl ? '<div class="lv-sec">Unloader · uploads the Photos / Original Invoice</div><div class="lv-unlbox"><p class="lv-unlmsg">Loading the Unloader users…</p></div>' : '')
+      + (withUl ? '<div class="lv-sec">Unloader · uploads the Photos / Original Invoice</div><div class="lv-unlbox"><p class="lv-unlmsg">Loading the Unloader users…</p></div>'
+        + '<div class="lv-chgbox" style="display:none"><div class="lv-sec">Unloading · FOC (free) or Payable to the Unloader</div>' + chargeSelect('') + '</div>' : '')
       + '<div class="lv-pinbox"><input class="lv-pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="PIN" aria-label="Your PIN" name="lv-approve-pin"></div>'
       + '<div class="lv-err" aria-live="polite"></div>'
       + '<div class="lv-acts"><button class="ls-btn gray lv-cancel">Cancel</button><button class="ls-btn ' + (rej ? 'red' : 'green') + ' lv-go">' + (rej ? 'Reject' : 'Approve') + '</button></div>';
@@ -402,7 +444,7 @@
       // approve sends itself AUTO_MS after the last digit once 4+ are typed (a longer PIN is not tried at 4); a reject waits for the button
       clearTimeout(autoT);
       // with an Unloader box: only once one is chosen (else submit would just complain)
-      var ulOk = !withUl || !q('.lv-unl') || !!q('.lv-unl').value;
+      var ulOk = !withUl || !q('.lv-unl') || (!!q('.lv-unl').value && !!(q('.lv-chg') || {}).value);
       if (!rej && ulOk && pin.value.length >= 4) autoT = setTimeout(function () { submit(act); }, AUTO_MS);
     });
     pin.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(autoT); submit(act); } });
@@ -415,7 +457,9 @@
         // nobody to assign: approved without one (the ERP then sends it to the Unloader Supervisor on Submit, as before)
         if (!list.length) { box.dataset.skip = '1'; box.innerHTML = '<p class="lv-unlmsg">No login has the Unloader Supervisor app, so this is approved without an Unloader. Admin: switch it on (Admin Panel › Users › Apps) for the Unloaders.</p>'; return; }
         box.innerHTML = unloaderSelect('');
-        box.querySelector('.lv-unl').addEventListener('change', function () { var e = q('.lv-err'); if (e) e.textContent = ''; pin.focus(); });
+        box.querySelector('.lv-unl').addEventListener('change', function () { var e = q('.lv-err'); if (e) e.textContent = ''; if (q('.lv-chg') && !q('.lv-chg').value) q('.lv-chg').focus(); else pin.focus(); });
+        var cb = q('.lv-chgbox'); if (cb) cb.style.display = '';
+        if (q('.lv-chg')) q('.lv-chg').addEventListener('change', function () { var e = q('.lv-err'); if (e) e.textContent = ''; pin.focus(); });
       });
     }
   }
@@ -423,7 +467,9 @@
     WRONG_PIN: 'Incorrect PIN', REASON_REQUIRED: 'Write the reason first', NOT_ALLOWED: 'Only the person he came to meet (or the Admin) can decide',
     NOT_FOUND: 'This visitor entry is no longer at the gate', NO_SESSION: 'Your session ended. Log in again.', NET: 'No internet. Try again.', NO_MIGRATION: 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin)',
     UNLOADER_REQUIRED: 'Choose the Unloader first', NOT_UNLOADER: 'That login has no Unloader Supervisor app any more. Choose another Unloader.',
-    ALREADY_UPLOADED: 'The Unloader has already uploaded the photos, so it cannot be moved now.'
+    ALREADY_UPLOADED: 'The Unloader has already uploaded the photos, so it cannot be moved now.',
+    CHARGE_REQUIRED: 'Choose the Unloading type: FOC or Payable', BAD_CHARGE: 'Choose the Unloading type: FOC or Payable',
+    UL_BILL_BOOKED: 'The Store has already booked the unloading bill, so the type cannot be changed now.'
   };
   async function submit(act) {
     if (sending || !SHEET || !DET) return;
@@ -432,13 +478,17 @@
     if (!pin) return;
     if (act === 'REJECT' && !(reason && reason.value.trim())) { err.textContent = ERR.REASON_REQUIRED; reason.focus(); return; }
     // an Inward's Unloader (the box is there while the server has the Unloader migration)
-    var ulSel = q('.lv-unl'), ulBox = q('.lv-unlbox'), unl = ulSel ? ulSel.value : '';
+    var ulSel = q('.lv-unl'), ulBox = q('.lv-unlbox'), unl = ulSel ? ulSel.value : '', chgSel = q('.lv-chg'), chg = chgSel ? chgSel.value : '';
     if (act === 'APPROVE' && ulBox && !ulBox.dataset.skip && !UL_NOMIG && !unl) { err.textContent = ulSel ? ERR.UNLOADER_REQUIRED : 'Wait for the Unloader list (or open Approve again)'; if (ulSel) ulSel.focus(); return; }
+    if (act === 'APPROVE' && unl && !chg) { err.textContent = ERR.CHARGE_REQUIRED; if (chgSel) chgSel.focus(); return; }
     if (pin.value.length < 4) { err.textContent = 'Enter your PIN'; pin.focus(); return; }
     sending = true; go.disabled = true; go.textContent = act === 'REJECT' ? 'Rejecting...' : 'Approving...';
     var uid = DET.uid, name = (DET.row || {}).name || 'Visitor';
     var args = { p_uid: uid, p_action: act, p_pin: pin.value, p_remarks: reason ? reason.value.trim() : null };
-    var r = unl ? await rpc('gate_vis_decide_ul', Object.assign({ p_unloader: unl }, args)) : await rpc('gate_vis_decide', args);
+    var r = unl ? await rpc('gate_vis_decide_ul', Object.assign({ p_unloader: unl, p_charge: chg || 'FOC' }, args)) : await rpc('gate_vis_decide', args);
+    // a server without the Unloading type (GATE_INWARD_UL_PAYABLE_MIGRATION.sql): the Unloader alone, as before (FOC)
+    var chgLost = false;
+    if (unl && !r.ok && r.error === 'NO_MIGRATION') { r = await rpc('gate_vis_decide_ul', Object.assign({ p_unloader: unl }, args)); chgLost = r.ok && chg === 'PAYABLE'; }
     // the server has no Unloader step yet: approve as before (said in the toast)
     if (unl && !r.ok && r.error === 'NO_MIGRATION') { UL_NOMIG = true; unl = ''; r = await rpc('gate_vis_decide', args); }
     sending = false;
@@ -457,7 +507,8 @@
     buzz(20);
     if (unl) { try { localStorage.setItem(K_LAST_UL, unl); } catch (e) { } }
     var ulName = unl ? (((r.data || {}).unloader || {}).to || '') : '';
-    toast(act === 'REJECT' ? name + ' rejected. The gate sees it now.' : name + ' approved. The gate ' + (isHyd(DET && DET.row) ? 'can start the work now.' : isSmp(DET && DET.row) ? 'can complete the inward now.' : isInw(DET && DET.row) ? 'can allow the unloading now' + (ulName ? '; ' + ulName + ' uploads the photos.' : '.') : isDsp(DET && DET.row) ? 'can let the vehicle out after Done.' : 'can print his pass now.'));
+    if (chgLost) toast('Approved as FOC: the server needs GATE_INWARD_UL_PAYABLE_MIGRATION.sql (Admin) for Payable unloading.');
+    else toast(act === 'REJECT' ? name + ' rejected. The gate sees it now.' : name + ' approved. The gate ' + (isHyd(DET && DET.row) ? 'can start the work now.' : isSmp(DET && DET.row) ? 'can allow the unloading now.' : isInw(DET && DET.row) ? 'can allow the unloading now' + (ulName ? '; ' + ulName + ' uploads the photos' + (chg === 'PAYABLE' ? ' (Unloading Payable).' : '.') : '.') : isDsp(DET && DET.row) ? 'can let the vehicle out after Done.' : 'can print his pass now.'));
     backToList();
   }
 
