@@ -7910,6 +7910,29 @@ const SARV_TABS=[
   {key:'WS_REPORT',label:'Reports (all bills)',hint:'The Reports tab: every bill of every user, date / month / item / party / slip reports, bill view, Gate Pass photo, reprint. Without it a user sees only his own bills in the Waiting list',def:'ALL',lock:['ADMIN_PIN']},
   {key:'WS_DELETE',label:'Delete a bill',hint:'Delete Bill in the bill view (own PIN + reason, soft delete; its Slip No is never given again). Admin only by default',def:['ADMIN_PIN'],lock:['ADMIN_PIN']},
   {key:'WS_PAYMENT',label:'Payment (Pending / Udhar follow-up)',hint:'The Payment tab: every unpaid bill, Follow-up (new paying expected date + what the party said, with history) and Mark Paid. The follow-up employees who get the EA task are set in Task Manager › Score Master',def:'ALL',lock:['ADMIN_PIN']},
+  /* packing.html's tabs (2026-11-26). USER-WISE only: Users › Manage access ON / OFF per user. A user with no
+     ON / OFF of their own gets the tab by their PACKING role (packing.profiles.role), as before: `pk` = that
+     default ('ALL' = every role, 'NO_DE' = every role but Data Entry, or a list of Packing roles), worked out by
+     sarvPkTabDef_ here and by pkTabOn_ in packing.html (keep the two in step). Rows with `pk` are left out of the
+     role-wise Tab Visibility matrix (ERP roles are not Packing roles) and an untouched one is never written on
+     Save, so the Packing role keeps deciding until the Admin sets the user's own ON / OFF. Only the tab button /
+     screen: the server functions behind a tab still check the Packing role (e.g. Freight saves). */
+  {group:'Packing & Dispatch › Tabs (packing.html)',pk:'ALL'},
+  {key:'PK_TAB_PACKING',label:'Packing (slip form)',hint:'The Packing Slip entry form. Default: every Packing role',def:'ALL',pk:'ALL'},
+  {key:'PK_TAB_APS',label:'Approve PS / My PS Requests',hint:'Data Entry slips sent to the Packing Incharge (Data Entry sees own requests). Default: Packing Incharge, Admin, MD, Data Entry',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE','DATA_ENTRY']},
+  {key:'PK_TAB_VERIFY',label:'Verify',hint:'Saved slips: verify, Save Rates, edit, PDFs. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_ORDERS',label:'Orders',hint:'Orders list, new / edit order, Set Status. Default: every role but Data Entry',def:'ALL',pk:'NO_DE'},
+  {key:'PK_TAB_PARTIES',label:'Parties',hint:'Party Master. Default: every role but Data Entry',def:'ALL',pk:'NO_DE'},
+  {key:'PK_TAB_QUICKPACK',label:'Quick Pack',hint:'Drafts assigned to Data Entry. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_VEHICLES',label:'Vehicles',hint:'Vehicle list, documents, photo, Standard Tare. Default: every Packing role',def:'ALL',pk:'ALL'},
+  {key:'PK_TAB_SHIFTING',label:'Shifting',hint:'Shifting entries. Default: every Packing role',def:'ALL',pk:'ALL'},
+  {key:'PK_TAB_FIXPDF',label:'Fix PDFs',hint:'Rebuild missing slip PDFs. Default: Admin, MD',def:'ALL',pk:['ADMIN','MD']},
+  {key:'PK_TAB_REPORTS',label:'Reports',hint:'Dispatch Report inside Packing. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_FREIGHT',label:'Freight',hint:'Tempu payment sheet. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_TEMPOBILL',label:'Tempo-Bill',hint:'Tempo-Bill per Dharam Kanta trip. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_LABOUR',label:'Labour',hint:'Loading Contractor labour sheets. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_DFU',label:'Dispatch Follow-Up',hint:'Dispatch follow-up workflow. Default: Packing Incharge, Admin, MD',def:'ALL',pk:['ADMIN','MD','PACKING_INCHARGE']},
+  {key:'PK_TAB_SETTINGS',label:'Settings',hint:'Packing Settings (the MD sees it view only; saves are Admin-only on the server). Default: Admin, MD',def:'ALL',pk:['ADMIN','MD']},
   /* fms.html's rights inside the FMS View. Server-checked (fms_perms_ in
      sql/FMS_MIGRATION.sql); defaults MUST match fms_perm_default_() there.
      Per-user ON/OFF: Users › Apps. */
@@ -8459,6 +8482,7 @@ function sarvRenderMatrix_(tableId,defs,which){
     +'<span class="ap-c1-grip" title="Drag to make this column wider or narrower. Double-click: back to automatic width"></span></th>'
     +SARV_PERM_ROLES.map(r=>'<th data-ap-col="'+r.code+'" title="Click: the whole column YES / NO">'+escText(r.label)+'</th>').join('')+'</tr></thead><tbody>';
   defs.forEach(d=>{
+    if(d.pk)return;   // Packing tabs: user-wise only (Users › Manage access), see the PK_TAB_ rows
     if(d.group){h+='<tr class="ap-group"><td colspan="'+(SARV_PERM_ROLES.length+1)+'">'+escText(d.group)+'</td></tr>';return;}
     const dirty=SARV_PERM_ROLES.some(r=>!!(m[d.key]||{})[r.code]!==!!(saved[d.key]||{})[r.code]);
     h+='<tr data-ap-key="'+d.key+'"'+(dirty?' class="ap-dirty"':'')+'><th data-ap-row="'+d.key+'" title="Click: the whole row YES / NO">'+escText(d.label)+(d.hint?'<small>'+escText(d.hint)+'</small>':'')+'</th>';
@@ -8640,6 +8664,7 @@ const SARV_APP_INNER_GROUPS=[
   {title:'HR & Payroll rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('HR_')===0).map(t=>t.key)},
   {title:'Yarn Unloading buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('YU_')===0).map(t=>t.key)},
   {title:'Waste Sale buttons',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('WS_')===0).map(t=>t.key)},
+  {title:'Packing & Dispatch tabs',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('PK_TAB_')===0).map(t=>t.key)},
   {title:'FMS rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('FMS_')===0).map(t=>t.key)},
   {title:'Task Tracker rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('TT_')===0).map(t=>t.key)},
   {title:'Print History / Reports rights',keys:SARV_TABS.filter(t=>t.key&&t.key.indexOf('RPT_')===0).map(t=>t.key)}
@@ -8680,6 +8705,27 @@ const SARV_PK_ROLES=[
   {v:'PACKING_INCHARGE',l:'Packing Incharge',hint:'orders, packing, verify, reports, parties'},
   {v:'DATA_ENTRY',l:'Data Entry',hint:'packing slips from drafts assigned in Quick Pack; no orders / parties / reports'}
 ];
+/* A Packing tab (SARV_TABS row with `pk`) for a user with no ON / OFF of their own: by the Packing role.
+   pkRole '' = not known (yet) / no Packing account: only the 'ALL' / 'NO_DE' tabs. Keep in step
+   with pkTabOn_ in packing.html. */
+const sarvPkTabRow_=k=>SARV_TABS.find(t=>t.key===k&&t.pk);
+function sarvPkTabDef_(k,pkRole){
+  const d=sarvPkTabRow_(k);if(!d)return null;
+  const r=String(pkRole||'').toUpperCase();
+  if(d.pk==='ALL')return true;
+  if(d.pk==='NO_DE')return r!=='DATA_ENTRY';
+  return Array.isArray(d.pk)&&d.pk.indexOf(r)>=0;
+}
+/* The user form: its Packing Role (read later, or changed by the Admin) moves every Packing tab switch the
+   Admin has not touched to that role's default. */
+function sarvPkTabsRefresh_(ov){
+  const pk=ov.querySelector('[data-f="pkrole"]');ov.__pkRole=pk?pk.value:'';
+  ov.querySelectorAll('select[data-app^="PK_TAB_"]').forEach(s=>{
+    if(s.dataset.set==='1'||s.value!==s.dataset.init)return;   // the Admin's own choice stays
+    const v=sarvPkTabDef_(s.dataset.app,ov.__pkRole)?'1':'0';
+    s.value=v;s.dataset.init=v;s.style.background=v==='1'?'#dcfce7':'#fee2e2';
+  });
+}
 const SARV_PK_ROLE_ERR={BAD_PIN:'incorrect Admin PIN',BAD_ROLE:'unknown role',USER_NOT_FOUND:'user not found',
   NO_PACKING_ACCOUNT:'this user has no Packing account yet: switch Packing & Dispatch ON under Apps and Save'};
 
@@ -8771,6 +8817,7 @@ async function sarvSyncExternalAppAccount_(adminPin,userId,appKey,on){
    default, except the apps in SARV_NEW_USER_OFF, which a new login never
    gets until the Admin switches them ON. */
 function sarvUserAppStart_(u,k){
+  if(sarvPkTabRow_(k))return sarvPkTabDef_(k,(u&&u.__pkRole)||'');   // Packing tab: by the Packing role
   const roles=(u&&u.roles&&u.roles.length)?u.roles:(u&&u.role?[u.role]:[]);
   if(u&&roles.length)return roles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
   if(SARV_NEW_USER_OFF.indexOf(k)>=0)return false;
@@ -8883,7 +8930,7 @@ function sarvAccKeyLabel_(k){
   return SARV_APP_LABEL[k]||(SARV_TABS.find(t=>t.key===k)||{}).label||k;
 }
 // Inner buttons / rights shown under their app (by key prefix).
-const SARV_ACCESS_PARENT={TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',WS_:'HOME_WASTE_SALE',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER',RPT_:'HOME_REPORTS'};
+const SARV_ACCESS_PARENT={PK_TAB_:'HOME_PACKING',TM_:'HOME_TASK_MANAGER',HR_:'HOME_HR_PAYROLL',YU_:'HOME_YARN_UNLOADING',WS_:'HOME_WASTE_SALE',FMS_:'HOME_FMS_VIEW',TT_:'HOME_TASK_TRACKER',RPT_:'HOME_REPORTS'};
 const sarvAccParentOf_=k=>{const p=Object.keys(SARV_ACCESS_PARENT).find(x=>k.indexOf(x)===0);return p?SARV_ACCESS_PARENT[p]:'';};
 function sarvAccCss_(){
   if(byId('acpCss'))return;
@@ -8975,6 +9022,7 @@ function sarvAccModel_(ov,u){
   };
   // What the roles ticked in the form give (Save uses the same for an untouched key).
   const roleVal=k=>{
+    if(sarvPkTabRow_(k)){const pk=f('pkrole');return sarvPkTabDef_(k,pk?pk.value:(ov.__pkRole||''));}   // Packing tab: by the Packing role
     const rs=roles();
     if(!rs.length)return sarvUserAppStart_(null,k);
     if(!u&&SARV_NEW_USER_OFF.indexOf(k)>=0)return false;
@@ -9668,6 +9716,7 @@ function sarvOpenUserModal(id,presetRole){
      select is locked and says so, and Save skips it. */
   if(f('pkrole')){
     const pk=f('pkrole'),ph=f('pkrolehint'),first=pk.options[0];
+    pk.addEventListener('change',()=>sarvPkTabsRefresh_(ov));
     const say=(t,c)=>{ph.textContent=t;ph.style.color=c||'#64748b';};
     if(!u)say('Applied after the Packing account is created by this Save (Packing & Dispatch ON under Apps).');
     else SB.rpc('pk_admin_get_role',{p_user_id:String(u.id)}).then(r=>{
@@ -9690,6 +9739,7 @@ function sarvOpenUserModal(id,presetRole){
       }
       first.textContent='— Choose —';
       pk.value=cur;pk.dataset.init=cur;
+      sarvPkTabsRefresh_(ov);   // Packing tab switches not set for this user = this role's default
       say(d.active===false?'The Packing account is INACTIVE (Packing & Dispatch OFF). The role is kept for when it is switched ON again.':'Applies the next time this user opens Packing.',
           d.active===false?'#b45309':'#64748b');
     });
@@ -9927,6 +9977,7 @@ function sarvOpenUserModal(id,presetRole){
             [...aw.querySelectorAll('select[data-app]')].forEach(s=>{
               const k=s.dataset.app;
               if(s.dataset.set==='1'||s.value!==s.dataset.init){touched[k]=1;acc[k]=s.value==='1';return;}
+              if(sarvPkTabRow_(k))return;   // Packing tab not set for this user: packing.html follows the Packing role
               acc[k]=(!u&&SARV_NEW_USER_OFF.indexOf(k)>=0)?false
                 :finalRoles.some(r=>sarvMatrixVal_(sarvSettings.tab_visibility,SARV_TABS,k,r));
             });
