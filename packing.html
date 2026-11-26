@@ -624,6 +624,7 @@
         .sl-types-list { margin-top: 4px; border: 1px solid var(--border); border-radius: 8px; padding: 4px 8px; max-height: 220px; overflow-y: auto; background: var(--surface); }
         .sl-types-list label { display: flex; align-items: center; gap: 6px; font-size: 12px; padding: 3px 0; cursor: pointer; white-space: nowrap; }
         .sl-types-list input { width: auto; }
+        .sl-types summary.sl-all { color: var(--text-muted); font-weight: 500; }
         .item-table-wrap .item-table { min-width: 640px; }
         .sub-row select.sub-to, .sub-row select.sub-shift, .sub-row select.sub-load { width: 100%; padding: 6px 2px; font-size: 11px; font-weight: 600; border: 1.5px solid #93c5fd; border-radius: 5px; background: #fff; }
         .sub-row td.sl-person-cell { min-width: 104px; }
@@ -977,11 +978,14 @@
             <label>Tempo No <span class="required-star">*</span></label>
             <!-- Only a Tempo No of the Vehicles list (or SELF): onTempoBlur clears
                  anything else, handleFinish blocks it (tempoFromList_) -->
+            <!-- The list offers only vehicles weighed at a gate Dharam Kanta (PK DK VEHICLES, pk_dk_vehicles) + SELF -->
             <input type="text" id="tempo-no" placeholder="Type to search tempo..." onblur="onTempoBlur(this)"
                 list="dl-tempo" autocomplete="off" required
-                oninput="this.value=this.value.toUpperCase();"
+                oninput="this.value=this.value.toUpperCase(); updateWeightGate();"
+                onfocus="pkDkvLoad(false)"
                 onchange="onTempoChange(this)"
                 style="font-weight:600;">
+            <div id="tempo-dkv-hint" style="display:none;margin-top:4px;font-size:11.5px;font-weight:600;color:#64748b;"></div>
             <!-- The vehicle's Dharam Kanta slip from the gate (PACKING DK SLIP, pkDkPaint); no slip = the Tempo No. is refused -->
             <div id="tempo-dk-box" style="display:none;margin-top:8px;"></div>
         </div>
@@ -1419,8 +1423,9 @@
     <div class="card" id="sl-rates-card">
         <div class="card-title">Settings · Labour Rates · Item Type wise (Shift By / Load By)</div>
         <p style="font-size:12px;color:var(--text-muted);margin:0 0 10px;">
-            One row per <b>Item Type group + From + To</b>, rate per pack (one Sr. row of a packing slip), the same for every person.
-            Tick several Item Types in one row (e.g. BORA + BOX) when they share the same rates; an Item Type + From + To can be in one row only.
+            One row per <b>Item Type group + From + To</b>, rate per pack (one Sr. row of a packing slip).
+            Tick several Item Types in one row (e.g. BORA + BOX) when they share the same rates.
+            <b>Shift By / Load By Persons</b>: tick the persons (Loading Contractor Name list, Dropdown Master) a row is for; none ticked = every person. The Shift By rate is taken from the row of the slip row's Shift By person, the Load By rate from the row of its Load By person, and a row for the person beats a row for every person. An Item Type + From + To + person can be in one row only.
             AMOUNT of a slip row = the <b>Shift By Rate</b> + the <b>Load By Rate</b> of the rate row matching its Item Type, FROM and TO.
             From / To left at <b>Any</b> = every place: the most exact row wins (same From and To, then same From, then same To, then Any / Any).
             Who shifted / loaded is picked on the slip row (Loading Contractor names) and paid in the Labour tab › Slip Labour Expense.
@@ -4973,13 +4978,14 @@ function checkTempoInput_(input) {
 // Leaving the box with a value not in the list: the value is removed (and the
 // driver fields with it), so nothing else can stay written there
 function onTempoBlur(input) {
-    if (checkTempoInput_(input)) return;
+    if (checkTempoInput_(input)) { updateWeightGate(); return; }
     var bad = String(input.value || '').trim();
     input.value = '';
     input.setCustomValidity('');
     setDriverNameOptions('', '', false);
     var mob = document.getElementById('driver-mobile');
     if (mob) mob.value = '';
+    updateWeightGate();
     setTimeout(function() { input.style.borderColor = ''; }, 2500);
     showToast('"' + bad + '" is not in the Vehicles list. Choose a Tempo No from the list (add a new vehicle in the Vehicles tab).');
 }
@@ -4988,11 +4994,7 @@ function buildVehicleDatalist(vehicles) {
     vehicleMap.clear();
     vehicleCleanMap.clear();
 
-    var old = document.getElementById('dl-tempo');
-    if (old) old.remove();
-    var dl = document.createElement('datalist');
-    dl.id = 'dl-tempo';
-
+    PK_DKV.all = [];
     vehicles.forEach(function (v) {
         if (!v || !v.tempoNo) return; // skip malformed rows instead of crashing the whole init flow
         vehicleMap.set(v.tempoNo.toUpperCase(), {
@@ -5001,12 +5003,84 @@ function buildVehicleDatalist(vehicles) {
         });
         var ck = vehCleanTempo(v.tempoNo);
         if (ck && !vehicleCleanMap.has(ck)) vehicleCleanMap.set(ck, v.tempoNo.toUpperCase());
+        PK_DKV.all.push(v.tempoNo);
+    });
+    pkDkvPaintList_();
+    pkDkvLoad(false);
+}
+
+// ══════════════════════════════════════════════════════
+// PK DK VEHICLES  (sql/PACKING_DK_SLIP_LINK_MIGRATION.sql, pk_dk_vehicles)
+//   (2026-11-26) The Tempo No. list of the New Packing Slip offers ONLY the vehicles with a gate
+//   Dharam Kanta slip still waiting for its dispatch (either gate, the pk_dk_slip_for_vehicle rule),
+//   plus SELF. The Vehicles list itself stays whole in vehicleMap / vehicleCleanMap (driver lookup,
+//   old slips, drafts); only the offered options are narrowed. Read when the list is built, when the
+//   Tempo box gets the cursor (at most every 10 s) and every PK_DKV_MS while the form is on screen.
+//   No migration = the whole list as before (pkDkCheck still refuses a vehicle without a slip);
+//   a failed read keeps the last answer.
+// ══════════════════════════════════════════════════════
+var PK_DKV_MS = 30000;
+var PK_DKV = { all: [], keys: null, rows: [], at: 0, busy: false, state: '' };   // state '' / ok / nomig / error
+async function pkDkvLoad(force) {
+    if (PK_DKV.busy || !pkDkToken_()) return;
+    if (!force && PK_DKV.at && Date.now() - PK_DKV.at < 10000) return;
+    PK_DKV.busy = true;
+    try {
+        var r = await sarvPublic().rpc('pk_dk_vehicles', { p_token: pkDkToken_(), p_days: 30 });
+        if (r.error) throw r.error;
+        var d = r.data || {};
+        if (d.success === false) throw new Error(d.error || 'FAILED');
+        PK_DKV.rows = Array.isArray(d.rows) ? d.rows : [];
+        PK_DKV.keys = new Set(PK_DKV.rows.map(function (x) { return vehCleanTempo(x.key || x.vehicle); }).filter(Boolean));
+        PK_DKV.state = 'ok';
+    } catch (e) {
+        var m = String((e && (e.message || e.details)) || e);
+        if (/pk_dk_vehicles|schema cache|PGRST202|42883|Could not find the function/i.test(m)) { PK_DKV.state = 'nomig'; PK_DKV.keys = null; }
+        else if (PK_DKV.state !== 'ok') PK_DKV.state = 'error';
+    } finally { PK_DKV.at = Date.now(); PK_DKV.busy = false; }
+    pkDkvPaintList_();
+}
+// May this Tempo No. be offered? SELF always; without an answer from the server every vehicle
+function pkDkvOffered_(tempo) {
+    var k = vehCleanTempo(tempo);
+    if (!k) return false;
+    if (k === VEH_SELF || !PK_DKV.keys) return true;
+    return PK_DKV.keys.has(k);
+}
+function pkDkvPaintList_() {
+    var old = document.getElementById('dl-tempo');
+    if (old) old.remove();
+    var dl = document.createElement('datalist');
+    dl.id = 'dl-tempo';
+    var seen = new Set();
+    PK_DKV.all.forEach(function (t) {
+        var k = vehCleanTempo(t);
+        if (!k || seen.has(k) || !pkDkvOffered_(t)) return;
+        seen.add(k);
         var opt = document.createElement('option');
-        opt.value = v.tempoNo;
+        opt.value = t;
+        // the slip it was weighed on, shown beside the number in the list
+        var row = PK_DKV.keys && PK_DKV.rows.find(function (x) { return vehCleanTempo(x.key || x.vehicle) === k; });
+        if (row) opt.label = (row.slip || '') + (row.tare ? ' · Tare ' + row.tare + ' Kg' : '');
         dl.appendChild(opt);
     });
     document.body.appendChild(dl);
+    var hint = document.getElementById('tempo-dkv-hint');
+    if (hint) {
+        if (PK_DKV.state === 'ok') {
+            var n = seen.size - (seen.has(VEH_SELF) ? 1 : 0);
+            hint.textContent = n ? n + ' vehicle' + (n > 1 ? 's' : '') + ' weighed at the gate Dharam Kanta (only these are listed, + SELF)'
+                                 : 'No vehicle is waiting at the gate Dharam Kanta: weigh the empty vehicle there first (only SELF can be chosen now)';
+            hint.style.color = n ? '#64748b' : '#b45309';
+            hint.style.display = '';
+        } else hint.style.display = 'none';
+    }
 }
+setInterval(function () {
+    var inp = document.getElementById('tempo-no');
+    if (document.hidden || navigator.onLine === false || !inp || !inp.offsetParent) return;
+    pkDkvLoad(true);
+}, PK_DKV_MS);
 
 document.addEventListener('DOMContentLoaded', function () {
     // Init IndexedDB + Network Status
@@ -5463,7 +5537,9 @@ function pkDkRefuse_() {
         inp.value = '';
         setDriverNameOptions('', '', false);
         var mob = document.getElementById('driver-mobile'); if (mob) mob.value = '';
+        updateWeightGate();
     }
+    pkDkvLoad(true);   // the list was out of date: read it again
     showToast('Tempo ' + PK_DK.tempo + ' has no Dharam Kanta Tare slip at the gate. Weigh the empty vehicle at the gate Dharam Kanta first, then choose it again.');
 }
 function pkDkFmt_(iso) { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } }
@@ -5600,6 +5676,7 @@ function onTempoChange(tempoInput) {
     var listed = tempoFromList_(tempoInput.value);
     if (listed && tempoInput.value !== listed) tempoInput.value = listed;
     const tempoNo = tempoInput.value.toUpperCase().trim();
+    updateWeightGate();   // weights open only with a Tempo No. (FIELD GATES)
     if (!tempoNo) { pkDkCheck(''); return; }
 
     const vehicle = vehicleMap.get(tempoNo);
@@ -5812,8 +5889,9 @@ function addSubRow(blockIdx, qty, wt, from, lab) {
     var blockEl = document.getElementById('item-block-' + blockIdx);
     var orderSel = blockEl ? blockEl.querySelector('.item-order-id') : null;
     var isOrderFilled = orderSel && !!orderSel.value;
-    var canFillWt = isPartyFilled && isOrderFilled;
-    var wtPlaceholder = !isPartyFilled ? 'Fill in the party' : (!isOrderFilled ? 'Select an Order ID' : '0.00');
+    var isTempoOk = pkWtTempoOk_();
+    var canFillWt = isTempoOk && isPartyFilled && isOrderFilled;
+    var wtPlaceholder = pkWtPlaceholder_(isTempoOk, isPartyFilled, isOrderFilled);
     tr.innerHTML = `
         <td class="sr-cell">${srNum}</td>
         <td class="from-cell">
@@ -5910,7 +5988,10 @@ function firstRowFrom(subRows) {
 // the Load By rate of the item's Type, from Settings › Labour Rates › Item
 // Type wise (packing.slip_labour_rates): one Shift By Rate and one Load By
 // Rate per Item Type GROUP (item_types, e.g. BORA + BOX) + FROM + TO (empty = any; the most exact row wins,
-// slRateOf_ = the server's slip_labour_rate_of_), the same for every person.
+// slRateOf_ = the server's slip_labour_rate_of_). A rate row may also name the Shift By / Load By
+// PERSONS it is for (persons, 2026-11-26; empty = every person): the Shift By rate is looked up with
+// the row's Shift By person, the Load By rate with its Load By person, and a row naming the person
+// beats a row for every person.
 // Per pack, never × Qty.
 // The amount shown here is a preview: the SERVER fills the rates and the
 // amount of every saved row from the same table (trigger in
@@ -5979,7 +6060,13 @@ function slOnRowPick(selectEl) {
 async function slLoadRates() {
     try {
         var { data, error } = await supabaseClient.from('slip_labour_rates')
-            .select('id, item_types, from_place, to_place, shift_rate, load_rate, updated_by, updated_at').order('id');
+            .select('id, item_types, from_place, to_place, persons, shift_rate, load_rate, updated_by, updated_at').order('id');
+        SL.persOn = true;
+        if (error && /persons/i.test(error.message || '')) {   // persons column not there yet: re-run the migration
+            SL.persOn = false;
+            ({ data, error } = await supabaseClient.from('slip_labour_rates')
+                .select('id, item_types, from_place, to_place, shift_rate, load_rate, updated_by, updated_at').order('id'));
+        }
         if (error) throw error;
         SL.rates = data || []; SL.fromDb = true;
     } catch (e) {
@@ -5991,26 +6078,30 @@ async function slLoadRates() {
     return SL.fromDb;
 }
 
-// The rate row of Item Type + FROM + TO: empty From / To on a rate row = any;
-// same From and To beats same From, beats same To, beats Any / Any.
-// Keep in step with slip_labour_rate_of_ (sql/PACKING_SLIP_LABOUR_MIGRATION.sql).
-function slRateOf_(type, from, to) {
-    var t = slName_(type), fr = slName_(from), tp = slName_(to), best = null, bestScore = -1;
+// The rate row of Item Type + FROM + TO for one person: empty From / To on a rate row = any,
+// empty persons = every person; a row naming the person beats a row for every person, then
+// same From and To beats same From, beats same To, beats Any / Any. No person = only the
+// rows for every person. Keep in step with slip_labour_rate_of_ (sql/PACKING_SLIP_LABOUR_MIGRATION.sql).
+function slRateOf_(type, from, to, person) {
+    var t = slName_(type), fr = slName_(from), tp = slName_(to), pn = slName_(person), best = null, bestScore = -1;
     (SL.rates || []).forEach(function(r) {
         if ((r.item_types || []).map(slName_).indexOf(t) < 0) return;   // the row's group has this Item Type
-        var rf = slName_(r.from_place), rt = slName_(r.to_place);
+        var rf = slName_(r.from_place), rt = slName_(r.to_place), rp = (r.persons || []).map(slName_).filter(Boolean);
         if ((rf && rf !== fr) || (rt && rt !== tp)) return;
-        var score = (rf ? 2 : 0) + (rt ? 1 : 0);
+        if (rp.length && (!pn || rp.indexOf(pn) < 0)) return;          // a row for other persons
+        var score = (rp.length ? 4 : 0) + (rf ? 2 : 0) + (rt ? 1 : 0);
         if (score > bestScore) { best = r; bestScore = score; }
     });
     return best;
 }
 
-// One row: { amount, missing: ['Shift By', 'Load By'] } (sides with a person but no rate)
+// One row: { amount, missing: ['Shift By', 'Load By'] } (sides with a person but no rate);
+// each side's rate row is found with that side's person
 function slRowAmount_(type, from, to, shiftBy, loadBy) {
-    var out = { amount: 0, missing: [] }, r = slRateOf_(type, from, to);
+    var out = { amount: 0, missing: [] };
     [['Shift By', 'shift_rate', shiftBy], ['Load By', 'load_rate', loadBy]].forEach(function(p) {
         if (!slName_(p[2])) return;
+        var r = slRateOf_(type, from, to, p[2]);
         if (!r) out.missing.push(p[0]); else out.amount += Number(r[p[1]]) || 0;
     });
     out.amount = Math.round(out.amount * 100) / 100;
@@ -6030,7 +6121,7 @@ function slRefreshBlockAmounts_(blockIdx) {
         var miss = SL.loaded && a.missing.length > 0;
         cell.textContent = a.amount.toFixed(2);
         cell.classList.toggle('sl-norate', miss);
-        cell.title = miss ? 'No rate for ' + (slName_(type) || 'this type') + ' from ' + (v('.sub-from') || '?') + ' to ' + (v('.sub-to') || '?') + ' in Settings › Labour Rates' : '';
+        cell.title = miss ? 'No ' + a.missing.join(' / ') + ' rate for ' + (slName_(type) || 'this type') + ' from ' + (v('.sub-from') || '?') + ' to ' + (v('.sub-to') || '?') + ' (for this person) in Settings › Labour Rates' : '';
         sum += a.amount;
     });
     return Math.round(sum * 100) / 100;
@@ -6179,13 +6270,26 @@ function addRowCopyLast(blockIdx) {
 // FIELD GATES — restrict inputs until prerequisites are filled
 // ══════════════════════════════════════
 
-// Gate 1: Weight inputs disabled until Party Name is filled AND Order ID is selected
+// Gate 1: Weight inputs disabled until a Tempo No. is chosen AND Party Name is filled AND Order ID is selected
+// (2026-11-26) Tempo first: a weight can only be typed once the vehicle (with its gate Dharam Kanta slip,
+// PACKING DK SLIP) is in the box. pkWtTempoOk_ = a Tempo No. of the Vehicles list (or SELF); with the
+// Vehicles list not loaded (first start offline) any typed Tempo No. counts.
+function pkWtTempoOk_() {
+    var el = document.getElementById('tempo-no');
+    var v = String((el && el.value) || '').trim();
+    if (!v) return false;
+    return !vehicleCleanMap.size || !!tempoFromList_(v);
+}
+function pkWtPlaceholder_(tempoOk, partyFilled, orderFilled) {
+    return !tempoOk ? 'Select Tempo No.' : !partyFilled ? 'Fill in the party' : !orderFilled ? 'Select an Order ID' : '0.00';
+}
 function updateWeightGate() {
     var partyFilled = !!document.getElementById('party-name').value.trim();
+    var tempoOk = pkWtTempoOk_();
     document.querySelectorAll('.item-block').forEach(function(block) {
         var orderSel = block.querySelector('.item-order-id');
         var orderFilled = orderSel && !!orderSel.value;
-        var canFill = partyFilled && orderFilled;
+        var canFill = tempoOk && partyFilled && orderFilled;
         block.querySelectorAll('.sub-wt').forEach(function(wt) {
             if (canFill || window._restoringDraft) {
                 // Enable if gate passes OR if we're restoring a draft
@@ -6197,7 +6301,7 @@ function updateWeightGate() {
                 if (!wt.value || Number(wt.value) === 0) {
                     wt.value = '';
                 }
-                wt.placeholder = !partyFilled ? 'Fill in the party' : 'Select an Order ID';
+                wt.placeholder = pkWtPlaceholder_(tempoOk, partyFilled, orderFilled);
             }
         });
     });
@@ -7468,6 +7572,20 @@ async function handleFinish() {
         return;
     }
     if (!pkOwValidate()) return;   // Other Material Weight rows: label + weight both, or neither
+    // (2026-11-26) No Other Material Weight on the slip: a reminder first (Yes = a row is added to fill in, nothing saved)
+    var owKg = pkOwRead().reduce(function (a, r) { return a + (Number(r.weight) || 0); }, 0);
+    if (!(owKg > 0)) {
+        var owMsg = 'Kya koi Other Material Weight input karna hai ?';
+        var owAns = window.IosDialog && IosDialog.choose
+            ? await IosDialog.choose(owMsg, [{ label: 'Yes', value: 'yes', bold: true }, { label: 'No', value: 'no', cancel: true }], { title: 'Other Material Weight' })
+            : (confirm(owMsg + '\n\nOK = Yes, Cancel = No') ? 'yes' : 'no');
+        if (owAns === 'yes') {
+            var owBox = document.getElementById('pk-ow-rows');
+            if (owBox) owBox.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            await pkOwAdd();
+            return;
+        }
+    }
 
     // ═══ ALL VALID — now lock everything ═══
     isSubmitting = true;
@@ -16993,7 +17111,9 @@ async function slLoadRatesEditor() {
     await slLoadRates();
     document.getElementById('sl-rates-banner').innerHTML = SL.fromDb ? '' :
         '<div class="fr-note warn">Run <b>PACKING_SLIP_LABOUR_MIGRATION.sql</b> first; until then these rates cannot be saved and slips do not store TO / Shift By / Load By.</div>';
-    _sl.edit = SL.rates.map(function(r) { return Object.assign({}, r); });
+    if (SL.fromDb && SL.persOn === false) document.getElementById('sl-rates-banner').innerHTML =
+        '<div class="fr-note warn">Run <b>PACKING_SLIP_LABOUR_MIGRATION.sql</b> again for the <b>Shift By / Load By Persons</b> column; until then every rate is for every person and the column cannot be saved.</div>';
+    _sl.edit = SL.rates.map(function(r) { return Object.assign({}, r, { persons: (r.persons || []).slice() }); });
     slRenderRatesEditor();
 }
 function slRenderRatesEditor() {
@@ -17004,16 +17124,17 @@ function slRenderRatesEditor() {
     var sel = function(f, opts, cur, ph) {
         return '<select data-f="' + f + '"' + dis + '><option value="">' + ph + '</option>' + pkOptionsHtml(opts, cur) + '</select>';
     };
-    list.innerHTML = '<table class="fr-table"><thead><tr><th>#</th><th>Item Type</th><th>From</th><th>To</th><th class="num">Shift By Rate (₹ / pack)</th><th class="num">Load By Rate (₹ / pack)</th><th>Last changed</th><th></th></tr></thead><tbody>' +
+    list.innerHTML = '<table class="fr-table"><thead><tr><th>#</th><th>Item Type</th><th>From</th><th>To</th><th title="The Shift By / Load By persons this rate is for (Loading Contractor Name list, Dropdown Master). None ticked = every person. A rate for the person beats the one for every person.">Shift By / Load By Persons</th><th class="num">Shift By Rate (₹ / pack)</th><th class="num">Load By Rate (₹ / pack)</th><th>Last changed</th><th></th></tr></thead><tbody>' +
         (_sl.edit.length ? _sl.edit.map(function(r, i) {
             return '<tr data-i="' + i + '"><td>' + (i + 1) + '</td>' +
                 '<td>' + slTypesCell_(r, ro) + '</td>' +
                 '<td>' + sel('from_place', DISPATCH_FROM_OPTIONS, r.from_place, 'Any') + '</td>' +
                 '<td>' + sel('to_place', ROW_TO_OPTIONS, r.to_place, 'Any') + '</td>' +
+                '<td>' + slPersonsCell_(r, ro || SL.persOn === false) + '</td>' +
                 '<td>' + num('shift_rate', r.shift_rate) + '</td><td>' + num('load_rate', r.load_rate) + '</td>' +
                 '<td class="fr-sub">' + escapeHtmlJs((r.updated_by || '') + (r.updated_at ? ' · ' + new Date(r.updated_at).toLocaleString('en-IN') : '')) + '</td>' +
                 '<td>' + (ro ? '' : '<button type="button" class="fr-btn ghost" style="padding:4px 10px;" title="Remove this rate" onclick="slRemoveRateRow(' + i + ')">✕</button>') + '</td></tr>';
-        }).join('') : '<tr><td colspan="8" style="text-align:center;color:var(--text-muted);">No rate yet. Press ＋ Add Rate.</td></tr>') + '</tbody></table>';
+        }).join('') : '<tr><td colspan="9" style="text-align:center;color:var(--text-muted);">No rate yet. Press ＋ Add Rate.</td></tr>') + '</tbody></table>';
     list.querySelectorAll('tr[data-i]').forEach(function(tr) {
         tr.querySelectorAll('[data-f]').forEach(function(el) {
             el.addEventListener('change', function() { _sl.edit[+tr.dataset.i][el.dataset.f] = el.value; });
@@ -17025,6 +17146,15 @@ function slRenderRatesEditor() {
                 r.item_types = Array.from(tr.querySelectorAll('input[data-t]:checked')).map(function(x) { return x.getAttribute('data-t'); });
                 var sm = tr.querySelector('.sl-types summary');
                 sm.textContent = slTypesLabel_(r.item_types); sm.classList.toggle('sl-none', !r.item_types.length);
+            });
+        });
+        // Persons: the same, in their own list
+        tr.querySelectorAll('input[data-p]').forEach(function(cb) {
+            cb.addEventListener('change', function() {
+                var r = _sl.edit[+tr.dataset.i];
+                r.persons = Array.from(tr.querySelectorAll('input[data-p]:checked')).map(function(x) { return x.getAttribute('data-p'); });
+                var sm = tr.querySelector('.sl-pers summary');
+                sm.textContent = slPersonsLabel_(r.persons); sm.classList.toggle('sl-all', !r.persons.length);
             });
         });
     });
@@ -17042,11 +17172,24 @@ function slTypesCell_(r, ro) {
             return '<label><input type="checkbox" data-t="' + escapeHtmlAttr(n) + '"' + (cur.indexOf(n) >= 0 ? ' checked' : '') + (ro ? ' disabled' : '') + '> ' + escapeHtmlJs(t) + '</label>';
         }).join('') + '</div></details>';
 }
+// Shift By / Load By persons of a rate row: one tick box per name of the Loading Contractor Name list
+// (Dropdown Master erp_pkLoadingContractor, slPersons_) + any saved name no longer in it; none = every person
+function slPersonsLabel_(p) { return (p && p.length) ? p.join(', ') + ' ▾' : 'All persons ▾'; }
+function slPersonsCell_(r, ro) {
+    var cur = (r.persons || []).map(slName_).filter(Boolean);
+    var all = slPersons_().slice();
+    cur.forEach(function(t) { if (all.map(slName_).indexOf(t) < 0) all.push(t); });
+    return '<details class="sl-types sl-pers"><summary' + (cur.length ? '' : ' class="sl-all"') + '>' + escapeHtmlJs(slPersonsLabel_(cur)) + '</summary>' +
+        '<div class="sl-types-list">' + (all.length ? all.map(function(t) {
+            var n = slName_(t);
+            return '<label><input type="checkbox" data-p="' + escapeHtmlAttr(n) + '"' + (cur.indexOf(n) >= 0 ? ' checked' : '') + (ro ? ' disabled' : '') + '> ' + escapeHtmlJs(t) + '</label>';
+        }).join('') : '<div style="font-size:12px;color:var(--text-muted);padding:3px 0;">No names in Dropdown Master › Loading Contractor Name</div>') + '</div></details>';
+}
 // ＋ Add Rate: an empty row (tick its Item Types), From / To = Any
 function slAddRateRow() {
     if (!SL.fromDb) { alert('Run PACKING_SLIP_LABOUR_MIGRATION.sql first.'); return; }
     var last = _sl.edit[_sl.edit.length - 1];
-    _sl.edit.push({ item_types: [], from_place: '', to_place: '', shift_rate: '', load_rate: '' });
+    _sl.edit.push({ item_types: [], from_place: '', to_place: '', persons: [], shift_rate: '', load_rate: '' });
     slRenderRatesEditor();
 }
 function slRemoveRateRow(i) {
@@ -17064,14 +17207,18 @@ async function slSaveRates() {
         (r.item_types || []).forEach(function(x) { x = slName_(x); if (x && types.indexOf(x) < 0) types.push(x); });
         var fr = slName_(r.from_place), tp = slName_(r.to_place), route = (fr || 'ANY') + ' → ' + (tp || 'ANY');
         var at = 'Row ' + (i + 1) + (types.length ? ' (' + types.join(' + ') + ', ' + route + ')' : '');
+        var pers = [];
+        (r.persons || []).forEach(function(x) { x = slName_(x); if (x && pers.indexOf(x) < 0) pers.push(x); });
         if (!types.length) bad.push(at + ': tick at least one Item Type');
-        types.forEach(function(t) {   // one Item Type + From + To in one row only
-            var k = t + '|' + fr + '|' + tp;
-            if (seen[k]) bad.push(at + ': ' + t + ' ' + route + ' is already in row ' + seen[k]); else seen[k] = i + 1;
+        types.forEach(function(t) {   // one Item Type + From + To + person in one row only (and one "all persons" row)
+            (pers.length ? pers : ['']).forEach(function(p) {
+                var k = t + '|' + fr + '|' + tp + '|' + p;
+                if (seen[k]) bad.push(at + ': ' + t + ' ' + route + (p ? ' for ' + p : ' for all persons') + ' is already in row ' + seen[k]); else seen[k] = i + 1;
+            });
         });
         if (!okRate(r.shift_rate)) bad.push(at + ': Shift By Rate must be 0 or more');
         if (!okRate(r.load_rate)) bad.push(at + ': Load By Rate must be 0 or more');
-        return { id: r.id || null, item_types: types, from_place: fr || null, to_place: tp || null, shift_rate: Number(r.shift_rate), load_rate: Number(r.load_rate) };
+        return { id: r.id || null, item_types: types, from_place: fr || null, to_place: tp || null, persons: pers, shift_rate: Number(r.shift_rate), load_rate: Number(r.load_rate) };
     });
     if (bad.length) { alert('Please correct:\n\n' + bad.join('\n')); return; }
     var btn = document.getElementById('sl-rates-save-btn');
@@ -17096,7 +17243,7 @@ async function slLoadRateLog() {
         if (!data || !data.length) { el.innerHTML = '<p style="color:var(--text-muted);">No changes yet.</p>'; return; }
         var d = function(v) {
             if (!v) return '—';
-            return ((v.item_types || []).join(' + ') || v.item_type || '') + ' · ' + (v.from_place || 'ANY') + ' → ' + (v.to_place || 'ANY') + (v.shift_rate != null ? ' · Shift By ₹' + v.shift_rate + (v.shift_by ? ' (' + v.shift_by + ')' : '') : '') +
+            return ((v.item_types || []).join(' + ') || v.item_type || '') + ' · ' + (v.from_place || 'ANY') + ' → ' + (v.to_place || 'ANY') + ((v.persons && v.persons.length) ? ' · for ' + v.persons.join(', ') : '') + (v.shift_rate != null ? ' · Shift By ₹' + v.shift_rate + (v.shift_by ? ' (' + v.shift_by + ')' : '') : '') +
                 (v.load_rate != null ? ' · Load By ₹' + v.load_rate + (v.load_by ? ' (' + v.load_by + ')' : '') : '');
         };
         el.innerHTML = '<div style="overflow-x:auto;"><table class="fr-table"><thead><tr><th>When</th><th>By</th><th>Action</th><th>Old</th><th>New</th></tr></thead><tbody>' +
