@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js"></script><script src="upload-guard.js?v=20261126a"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<head><script src="offline-sync.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script>
@@ -1801,6 +1801,7 @@ function renderHome(user){
   $('noApps').style.display   = n ? 'none' : 'block';
   notepadTile();
   leaveTile();
+  if (roles.indexOf('ADMIN_PIN') >= 0) liveAssistTile();   // LIVE ASSIST: Admin only (the la_* RPCs check it again)
   sopTile();
   // Visitor Approvals (launcher-visitor.js): visitors at Gate-2 waiting for this user's PIN; kept first in the grid
   if (window.visApprovalTile) visApprovalTile();
@@ -1842,6 +1843,29 @@ function notepadTile(){
    wait; it opens straight on the Approvals tab then. No migration / an
    error = the tile without a count. */
 let LV_INFO = null;
+/* ── Live Assist (Admin only) ───────────────────────────────────────────
+   live-assist.html: see an online user's ERP screen live after they press Allow on it, point / highlight /
+   message on it (sql/LIVE_ASSIST_MIGRATION.sql; the user side is live-assist.js in every app page). Not an
+   app key: shown to the ADMIN_PIN role, and the server refuses everyone else. */
+function liveAssistTile(){
+  const grid = $('appGrid');
+  const old = $('laTile');
+  if (old) old.remove();
+  if (!grid) return;
+  const el = document.createElement('a');
+  el.id = 'laTile';
+  el.className = 'app rise';
+  el.href = 'live-assist.html';
+  el.style.setProperty('--a', '#ff3b30');
+  el.innerHTML =
+      '<span class="tile"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/><circle cx="12" cy="10" r="2"/></svg></span>'
+    + '<span class="body"><span class="t">Live Assist</span>'
+    + '<span class="s">See an online user screen live (with their OK), point &amp; help</span></span>'
+    + '<span class="go">→</span>';
+  grid.appendChild(el);
+  $('appsHead').style.display = 'block';
+  $('noApps').style.display   = 'none';
+}
 function leaveTile(){
   const grid = $('appGrid');
   const old = $('lvTile');

@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><script src="offline-sync.js"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#f2f2f7">
+<title>Live Assist</title>
+<script src="sso-preboot.js"></script>
+<script src="sso-gate.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.css">
+<script src="https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4"></script>
+<link rel="stylesheet" href="ios-dialog.css"><script src="ios-dialog.js"></script>
+<!--
+  LIVE ASSIST — the ADMIN's viewer (server sql/LIVE_ASSIST_MIGRATION.sql, the user side is live-assist.js in every app page).
+    Online now   every open ERP tab of the last 25 s (la_online, re-read every 5 s): user, page, device, on screen or not.
+    Request view la_request_send on one tab (with an optional note) → the user sees Allow / Deny on that tab. Nothing is
+                 seen before Allow; not answered in 2 minutes = expired. While waiting: la_status every 2 s, Cancel = la_cancel.
+    Live         after Allow la_status gives the session's random channel; this page joins it on Supabase Realtime
+                 (broadcast) and says "hello", the user's page answers with a fresh rrweb snapshot and then every change
+                 (batches, gzip + base64, cut in pieces: reassembled here by batch no.). A new full snapshot (Re-sync, or
+                 the user moved to another page in that tab) rebuilds the Replayer. PIN / password boxes come blocked (striped).
+    Point        a click on the screen = a pulsing dot there on the USER's screen + a red frame around the element under it
+                 (rrweb node id, the same on both sides) for 12 s; the optional text goes with it as a label.
+    Box          drag = a dashed box on the user's screen (20 s). Message = a popup with OK on the user's screen. Clear.
+    End          la_cancel + "end" on the channel. The user can Stop any time (red bar on their screen); it also ends by
+                 itself after 60 minutes or when the tab has been gone for 2 minutes.
+    Recent sessions = la_sessions_list (7 days) with each one's log (request, allow / deny, end, by whom, when).
+  Admin role (ADMIN_PIN) only, decided by the server. Gate booted with app: null. No screen data is stored anywhere.
+-->
+<style>
+:root{--bg:#f2f2f7;--card:#fff;--text:#111;--muted:#6b7280;--sep:rgba(60,60,67,.16);--fill:#ececf1;--blue:#0a84ff;--red:#ff3b30;--green:#34c759;--orange:#ff9500;}
+*{box-sizing:border-box;}
+html,body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:14px;}
+header{position:sticky;top:0;z-index:20;background:rgba(249,249,249,.88);backdrop-filter:saturate(180%) blur(20px);-webkit-backdrop-filter:saturate(180%) blur(20px);border-bottom:1px solid var(--sep);padding:10px 16px;display:flex;align-items:center;gap:10px;}
+header h1{margin:0;font-size:17px;font-weight:800;flex:1;}
+header .who{font-size:12px;color:var(--muted);}
+.wrap{display:grid;grid-template-columns:340px 1fr;gap:14px;padding:14px 16px;align-items:start;}
+@media (max-width:900px){.wrap{grid-template-columns:1fr;}}
+.card{background:var(--card);border-radius:14px;box-shadow:0 1px 2px rgba(0,0,0,.05);overflow:hidden;}
+.card h2{margin:0;padding:11px 14px 6px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:flex;align-items:center;gap:8px;}
+.card h2 .n{background:var(--fill);color:#333;border-radius:20px;padding:1px 8px;font-size:11px;}
+.search{margin:4px 12px 8px;width:calc(100% - 24px);border:0;background:var(--fill);border-radius:10px;padding:9px 11px;font-size:14px;}
+.user{border-top:1px solid var(--sep);padding:9px 14px;}
+.user .nm{font-weight:800;font-size:14px;}
+.user .nm small{font-weight:600;color:var(--muted);margin-left:5px;font-size:11.5px;}
+.tab{display:flex;align-items:center;gap:8px;margin-top:7px;}
+.tab .inf{flex:1;min-width:0;}
+.tab .inf b{display:block;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.tab .inf span{display:block;font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto;background:var(--green);}
+.dot.off{background:#c7c7cc;}
+.btn{border:0;border-radius:10px;padding:7px 12px;font-size:12.5px;font-weight:800;cursor:pointer;background:var(--blue);color:#fff;white-space:nowrap;}
+.btn.ghost{background:var(--fill);color:#111;}
+.btn.red{background:var(--red);}
+.btn.on{background:#111;color:#fff;}
+.btn:disabled{opacity:.45;cursor:default;}
+.chip{font-size:10.5px;font-weight:800;border-radius:20px;padding:2px 8px;white-space:nowrap;}
+.chip.w{background:#fff4e0;color:#9a5b00;}.chip.l{background:#ffe5e3;color:#b3261e;}.chip.g{background:#e6f6ea;color:#1b7f3b;}
+.empty{padding:16px 14px;color:var(--muted);font-size:13px;}
+.vw-head{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--sep);flex-wrap:wrap;}
+.vw-head .t{flex:1;min-width:180px;}
+.vw-head .t b{display:block;font-size:15px;}
+.vw-head .t span{font-size:12px;color:var(--muted);}
+.tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:9px 14px;border-bottom:1px solid var(--sep);background:#fafafc;}
+.tools input{flex:1 1 200px;border:0;background:var(--fill);border-radius:10px;padding:8px 10px;font-size:13.5px;min-width:0;}
+.stage{position:relative;background:#e5e5ea;overflow:auto;min-height:320px;}
+.stage .inner{position:relative;transform-origin:0 0;}
+.stage .ov{position:absolute;left:0;top:0;cursor:crosshair;z-index:5;touch-action:none;}
+.stage .msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;text-align:center;padding:20px;}
+.replayer-wrapper{position:relative;}
+.replayer-mouse{z-index:4;}
+.mk-ping{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border-radius:50%;background:rgba(255,59,48,.85);box-shadow:0 0 0 3px #fff;pointer-events:none;animation:mkf 3s forwards;}
+.mk-hl{position:absolute;border:2.5px solid #ff3b30;border-radius:6px;pointer-events:none;box-shadow:0 0 0 3px rgba(255,59,48,.2);animation:mkf 6s forwards;}
+.mk-box{position:absolute;border:2.5px dashed #ff9500;background:rgba(255,149,0,.12);pointer-events:none;}
+@keyframes mkf{80%{opacity:1}to{opacity:0}}
+.hist{border-top:1px solid var(--sep);padding:8px 14px;font-size:12px;}
+.hist summary{cursor:pointer;font-weight:700;}
+.hist .lg{color:var(--muted);margin:3px 0 0 4px;font-size:11.5px;}
+.denied{padding:40px 20px;text-align:center;}
+</style>
+</head>
+<body data-no-caps>
+<header>
+  <h1>Live Assist</h1>
+  <span class="who" id="who"></span>
+  <a class="btn ghost" href="launcher.html" style="text-decoration:none;">Apps</a>
+</header>
+<div id="app" style="display:none;">
+  <div class="wrap">
+    <div>
+      <div class="card">
+        <h2>Online now <span class="n" id="onCount">0</span></h2>
+        <input class="search" id="q" placeholder="Search user / page" oninput="paintOnline()">
+        <div id="online"><div class="empty">Loading...</div></div>
+      </div>
+      <div class="card" style="margin-top:14px;">
+        <h2>Recent sessions (7 days)</h2>
+        <div id="hist"><div class="empty">Loading...</div></div>
+      </div>
+    </div>
+    <div class="card" id="viewer">
+      <div class="vw-head">
+        <div class="t"><b id="vwTitle">No screen open</b><span id="vwSub">Press Request view next to a user. The user has to Allow it on their screen.</span></div>
+        <span class="chip" id="vwChip" style="display:none;"></span>
+        <button class="btn ghost" id="btnResync" onclick="resync()" disabled title="Ask the user's page for a fresh full screen">Re-sync</button>
+        <button class="btn red" id="btnEnd" onclick="endSession()" disabled>End</button>
+      </div>
+      <div class="tools">
+        <button class="btn on" id="mPoint" onclick="setMode('point')" title="Click on the screen: a dot + a red frame around that element on the user's screen">Point</button>
+        <button class="btn ghost" id="mBox" onclick="setMode('box')" title="Drag on the screen: a box on the user's screen">Box</button>
+        <input id="txt" maxlength="200" placeholder="Text (optional): goes with Point / Box, or Send as message">
+        <button class="btn ghost" id="btnMsg" onclick="sendMsg()" disabled>Send message</button>
+        <button class="btn ghost" id="btnClear" onclick="clearMarks()" disabled>Clear</button>
+        <select id="fitSel" onchange="fit()" style="border:0;background:var(--fill);border-radius:10px;padding:7px 8px;font-size:12.5px;">
+          <option value="fit">Fit</option><option value="width">Width</option><option value="100">100%</option>
+        </select>
+      </div>
+      <div class="stage" id="stage">
+        <div class="inner" id="inner"></div>
+        <div class="ov" id="ov" style="display:none;"></div>
+        <div class="msg" id="stageMsg">The user's screen appears here after they press Allow.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="denied" class="denied" style="display:none;"></div>
+
+<script>
+const SUPABASE_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const tok = () => { try { return localStorage.getItem('sarv_sso_token') || ''; } catch (e) { return ''; } };
+async function rpc(fn, args) {
+  const r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON }, body: JSON.stringify(args) });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && (j.message || j.hint)) || ('HTTP ' + r.status));
+  return j || {};
+}
+const ago = iso => { const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000)); return s < 60 ? s + ' s ago' : Math.round(s / 60) + ' min ago'; };
+const when = iso => { try { return new Date(iso).toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return ''; } };
+const ERR = { NOT_ONLINE: 'That tab is not open any more.', ALREADY_OPEN: 'A request / view is already open on that tab.', NOT_ALLOWED: 'Only the Admin can do this.', NOT_FOUND: 'Not found.' };
+
+const S = { me: null, rows: [], sess: null, sb: null, ch: null, rep: null, meta: null, parts: {}, chain: Promise.resolve(), mode: 'point', scale: 1, statTimer: null };
+
+// ── Online list ──
+async function loadOnline() {
+  if (document.hidden) return;
+  try {
+    const d = await rpc('la_online', { p_token: tok() });
+    if (d.success === false) {
+      if (d.error === 'NOT_ALLOWED') return deny('Live Assist is for the Admin only.');
+      return;
+    }
+    S.rows = d.rows || []; paintOnline();
+  } catch (e) {
+    if (/la_online|PGRST202|schema cache|Could not find/i.test(e.message)) {
+      $('online').innerHTML = '<div class="empty">Run <b>sql/LIVE_ASSIST_MIGRATION.sql</b> in the Supabase SQL Editor first.</div>';
+    }
+  }
+}
+function paintOnline() {
+  const q = $('q').value.trim().toLowerCase();
+  const by = {};
+  S.rows.forEach(r => {
+    const hay = [r.name, r.emp, r.title, r.page, r.device].join(' ').toLowerCase();
+    if (q && !q.split(/\s+/).every(w => hay.indexOf(w) >= 0)) return;
+    (by[r.uid] = by[r.uid] || { name: r.name, emp: r.emp, tabs: [] }).tabs.push(r);
+  });
+  const users = Object.values(by);
+  $('onCount').textContent = S.rows.length;
+  if (!users.length) { $('online').innerHTML = '<div class="empty">' + (q ? 'Nobody matches.' : 'Nobody has an ERP page open right now.') + '</div>'; return; }
+  $('online').innerHTML = users.map(u => '<div class="user"><div class="nm">' + esc(u.name || '-') + (u.emp ? '<small>' + esc(u.emp) + '</small>' : '') + '</div>' +
+    u.tabs.map(t => {
+      const s = t.session;
+      const act = s ? (s.status === 'ACTIVE' ? '<span class="chip l">Live' + (s.mine ? '' : ' · ' + esc(s.admin || '')) + '</span>' : '<span class="chip w">Waiting</span>')
+                    : '<button class="btn" onclick="requestView(\'' + esc(t.tab) + '\')">Request view</button>';
+      return '<div class="tab"><span class="dot' + (t.visible ? '' : ' off') + '" title="' + (t.visible ? 'On screen' : 'Page open in the background') + '"></span>' +
+        '<div class="inf"><b>' + esc(t.title || t.page || '-') + '</b><span>' + esc(t.page || '') + ' · ' + esc(t.device || '') + ' · ' + esc(ago(t.seen)) + '</span></div>' + act + '</div>';
+    }).join('') + '</div>').join('');
+}
+
+// ── Request → wait → live ──
+async function requestView(tab) {
+  if (S.sess && (S.sess.status === 'PENDING' || S.sess.status === 'ACTIVE')) {
+    if (!(await IosDialog.confirm('End the current screen view and ask for this one?'))) return;
+    await endSession(true);
+  }
+  const r = S.rows.find(x => x.tab === tab) || {};
+  const note = await IosDialog.prompt('Request to see the screen of ' + (r.name || 'this user') + '\n' + (r.title || r.page || '') + '\n\nA note for the user (optional):', '');
+  if (note === null) return;
+  try {
+    const d = await rpc('la_request_send', { p_token: tok(), p_tab: tab, p_note: note || '' });
+    if (d.success === false) return IosDialog.alert(ERR[d.error] || d.error || 'Not sent');
+    S.sess = { id: d.id, status: 'PENDING', name: r.name, page: r.title || r.page, tab };
+    paintHead(); loadOnline(); watchStatus();
+  } catch (e) { IosDialog.alert('Not sent: ' + e.message); }
+}
+function watchStatus() {
+  clearInterval(S.statTimer);
+  S.statTimer = setInterval(checkStatus, 2000);
+  checkStatus();
+}
+async function checkStatus() {
+  if (!S.sess) return clearInterval(S.statTimer);
+  try {
+    const d = await rpc('la_status', { p_token: tok(), p_id: S.sess.id });
+    if (d.success === false) return;
+    const was = S.sess.status;
+    S.sess.status = d.status;
+    if (d.status === 'ACTIVE' && d.channel && !S.ch) { join(d.channel); clearInterval(S.statTimer); S.statTimer = setInterval(checkStatus, 5000); }
+    if (d.status === 'DENIED' || d.status === 'EXPIRED' || d.status === 'ENDED') {
+      const why = d.status === 'DENIED' ? (S.sess.name || 'The user') + ' pressed Deny.'
+        : d.status === 'EXPIRED' ? 'The user did not answer in 2 minutes.'
+        : 'The view has ended' + (d.endedBy ? ' (' + d.endedBy + ')' : '') + '.';
+      closeLive(why);
+    }
+    if (was !== d.status) { paintHead(); loadOnline(); }
+  } catch (e) {}
+}
+function paintHead() {
+  const s = S.sess, chip = $('vwChip');
+  $('vwTitle').textContent = s ? (s.name || '-') : 'No screen open';
+  $('vwSub').textContent = s ? (s.page || '') + (s.dev ? ' · ' + s.dev : '') : 'Press Request view next to a user. The user has to Allow it on their screen.';
+  chip.style.display = s ? '' : 'none';
+  if (s) {
+    chip.className = 'chip ' + (s.status === 'ACTIVE' ? 'l' : s.status === 'PENDING' ? 'w' : 'g');
+    chip.textContent = s.status === 'ACTIVE' ? 'Live' : s.status === 'PENDING' ? 'Waiting for Allow' : s.status;
+  }
+  const live = !!(s && s.status === 'ACTIVE' && S.ch);
+  $('btnEnd').disabled = !(s && (s.status === 'ACTIVE' || s.status === 'PENDING'));
+  $('btnEnd').textContent = s && s.status === 'PENDING' ? 'Cancel' : 'End';
+  ['btnResync', 'btnMsg', 'btnClear'].forEach(id => $(id).disabled = !live);
+  if (s && s.status === 'PENDING') stageMsg('Waiting for ' + (s.name || 'the user') + ' to press Allow on their screen...');
+}
+function stageMsg(t) { const m = $('stageMsg'); m.style.display = t ? '' : 'none'; m.textContent = t || ''; }
+
+function join(channel) {
+  if (!S.sb) S.sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: 'sarv-la-admin' } });
+  stageMsg('Connecting to the user\'s screen...');
+  const ch = S.sb.channel(channel, { config: { broadcast: { self: false, ack: false } } });
+  ch.on('broadcast', { event: 'ev' }, m => onPart(m.payload || {}))
+    .on('broadcast', { event: 'ack' }, m => { const p = m.payload || {}; if (S.sess) { S.sess.page = p.title || p.page || S.sess.page; S.sess.dev = p.dev || ''; paintHead(); } })
+    .on('broadcast', { event: 'msgok' }, () => toastLocal('The user pressed OK on your message.'))
+    .on('broadcast', { event: 'end' }, () => { closeLive('The user pressed Stop.'); loadOnline(); loadHist(); });
+  ch.subscribe(st => {
+    if (st === 'SUBSCRIBED') { S.ch = ch; ch.send({ type: 'broadcast', event: 'hello', payload: { at: Date.now() } }); paintHead(); }
+  });
+  S.chRaw = ch;
+}
+function resync() { if (S.ch) S.ch.send({ type: 'broadcast', event: 'hello', payload: { at: Date.now() } }); }
+
+// ── stream in: pieces → batch → events ──
+function unb64(s) { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; }
+async function unpack(z, d) {
+  if (!z) return d;
+  return new Response(new Blob([unb64(d)]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+}
+function onPart(p) {
+  if (!p.b) return;
+  const slot = S.parts[p.b] = S.parts[p.b] || { n: p.n, z: p.z, got: 0, d: [] };
+  if (slot.d[p.i] == null) { slot.d[p.i] = p.d; slot.got++; }
+  if (slot.got < slot.n) return;
+  delete S.parts[p.b];
+  const all = slot.d.join('');
+  S.chain = S.chain.then(() => unpack(slot.z, all)).then(txt => {
+    let evs = [];
+    try { evs = JSON.parse(txt); } catch (e) { return; }
+    evs.forEach(onEvent);
+  }).catch(e => console.warn('[Live Assist] batch', e));
+  // pieces of a batch that never completed (a lost message) are dropped after a while
+  Object.keys(S.parts).forEach(k => { if (Number(k) < p.b - 40) delete S.parts[k]; });
+}
+function onEvent(e) {
+  if (e.type === 4) { S.meta = e; return; }                 // Meta (page size, url)
+  if (e.type === 2) { build(S.meta ? [S.meta, e] : [e]); return; }   // FullSnapshot: a fresh screen
+  if (S.rep) { try { S.rep.addEvent(e); } catch (x) {} }
+}
+function build(evs) {
+  const inner = $('inner');
+  try { if (S.rep) S.rep.pause(); } catch (e) {}
+  inner.innerHTML = '';
+  S.rep = new rrweb.Replayer(evs, {
+    root: inner, liveMode: true, mouseTail: false, showWarning: false, triggerFocus: false, blockClass: 'rr-block',
+    insertStyleRules: ['.rr-block{background:repeating-linear-gradient(45deg,#e5e7eb,#e5e7eb 6px,#f3f4f6 6px,#f3f4f6 12px)!important;}']
+  });
+  S.rep.startLive(evs[evs.length - 1].timestamp - 500);
+  try { S.rep.on('resize', () => setTimeout(fit, 30)); } catch (e) {}
+  stageMsg('');
+  $('ov').style.display = '';
+  setTimeout(fit, 50);
+}
+function fit() {
+  if (!S.rep || !S.rep.iframe) return;
+  const ifr = S.rep.iframe, w = Number(ifr.width) || ifr.offsetWidth || 1, h = Number(ifr.height) || ifr.offsetHeight || 1;
+  const st = $('stage'), mode = $('fitSel').value;
+  const avW = st.clientWidth - 2, avH = Math.max(260, window.innerHeight - st.getBoundingClientRect().top - 18);
+  let s = mode === '100' ? 1 : mode === 'width' ? avW / w : Math.min(avW / w, avH / h);
+  s = Math.max(0.15, Math.min(s, 2));
+  S.scale = s;
+  const inner = $('inner');
+  inner.style.transform = 'scale(' + s + ')';
+  inner.style.width = w + 'px'; inner.style.height = h + 'px';
+  st.style.height = mode === 'fit' ? (h * s + 2) + 'px' : Math.min(h * s + 2, avH) + 'px';
+  const ov = $('ov');
+  ov.style.width = (w * s) + 'px'; ov.style.height = (h * s) + 'px';
+}
+window.addEventListener('resize', fit);
+setInterval(fit, 1500);
+
+// ── point / box / message ──
+function setMode(m) { S.mode = m; $('mPoint').className = 'btn ' + (m === 'point' ? 'on' : 'ghost'); $('mBox').className = 'btn ' + (m === 'box' ? 'on' : 'ghost'); }
+// The element under a point of the replayed screen, digging into same-origin iframes; {el, ox, oy} = its frame's offset
+function hit(x, y) {
+  let doc = S.rep && S.rep.iframe && S.rep.iframe.contentDocument, ox = 0, oy = 0, el = null;
+  for (let k = 0; doc && k < 4; k++) {
+    el = doc.elementFromPoint(x - ox, y - oy);
+    if (el && el.tagName === 'IFRAME') {
+      try { const r = el.getBoundingClientRect(), d2 = el.contentDocument; if (!d2) break; ox += r.left; oy += r.top; doc = d2; continue; } catch (e) { break; }
+    }
+    break;
+  }
+  return { el, ox, oy };
+}
+function nodeId(el) {
+  if (!el) return null;
+  if (el.__sn && el.__sn.id) return el.__sn.id;
+  try { const m = S.rep.getMirror && S.rep.getMirror(); const id = m && m.getId && m.getId(el); return id > 0 ? id : null; } catch (e) { return null; }
+}
+function mark(cls, css, ms) {
+  const d = document.createElement('div'); d.className = cls; Object.assign(d.style, css);
+  $('ov').appendChild(d);
+  if (ms) setTimeout(() => d.remove(), ms);
+  return d;
+}
+function clearMarks() { $('ov').innerHTML = ''; if (S.ch) S.ch.send({ type: 'broadcast', event: 'clear', payload: {} }); }
+let drag = null;
+$('ov').addEventListener('pointerdown', ev => {
+  if (!S.ch) return;
+  const r = $('ov').getBoundingClientRect(), x = (ev.clientX - r.left) / S.scale, y = (ev.clientY - r.top) / S.scale;
+  if (S.mode === 'box') {
+    drag = { x, y, el: mark('mk-box', { left: x * S.scale + 'px', top: y * S.scale + 'px', width: '0px', height: '0px' }) };
+    $('ov').setPointerCapture(ev.pointerId);
+    return;
+  }
+  const text = $('txt').value.trim();
+  const h = hit(x, y), tag = h.el && h.el.tagName;
+  const id = (tag && tag !== 'HTML' && tag !== 'BODY') ? nodeId(h.el) : null;
+  $('ov').querySelectorAll('.mk-ping,.mk-hl').forEach(n => n.remove());
+  mark('mk-ping', { left: x * S.scale + 'px', top: y * S.scale + 'px' }, 3000);
+  if (id && h.el.getBoundingClientRect) {
+    const b = h.el.getBoundingClientRect();
+    mark('mk-hl', { left: (b.left + h.ox) * S.scale - 3 + 'px', top: (b.top + h.oy) * S.scale - 3 + 'px', width: b.width * S.scale + 6 + 'px', height: b.height * S.scale + 6 + 'px' }, 6000);
+  }
+  S.ch.send({ type: 'broadcast', event: 'point', payload: { x: Math.round(x), y: Math.round(y), id, label: (S.me && S.me.name) || 'Admin', msg: text } });
+});
+$('ov').addEventListener('pointermove', ev => {
+  if (!drag) return;
+  const r = $('ov').getBoundingClientRect(), x = (ev.clientX - r.left) / S.scale, y = (ev.clientY - r.top) / S.scale;
+  const l = Math.min(x, drag.x), t = Math.min(y, drag.y), w = Math.abs(x - drag.x), h = Math.abs(y - drag.y);
+  Object.assign(drag.el.style, { left: l * S.scale + 'px', top: t * S.scale + 'px', width: w * S.scale + 'px', height: h * S.scale + 'px' });
+  drag.box = { x: Math.round(l), y: Math.round(t), w: Math.round(w), h: Math.round(h) };
+});
+$('ov').addEventListener('pointerup', () => {
+  if (!drag) return;
+  const b = drag.box, el = drag.el; drag = null;
+  setTimeout(() => el.remove(), 20000);
+  if (!b || b.w < 6 || b.h < 6) { el.remove(); return; }
+  if (S.ch) S.ch.send({ type: 'broadcast', event: 'box', payload: Object.assign(b, { msg: $('txt').value.trim() }) });
+});
+function sendMsg() {
+  const t = $('txt').value.trim();
+  if (!t || !S.ch) return;
+  S.ch.send({ type: 'broadcast', event: 'msg', payload: { text: t } });
+  $('txt').value = '';
+  toastLocal('Message sent.');
+}
+function toastLocal(t) { $('vwSub').textContent = t; setTimeout(paintHead, 3500); }
+
+// ── end ──
+async function endSession(quiet) {
+  const s = S.sess;
+  if (!s) return;
+  if (S.ch) { try { await S.ch.send({ type: 'broadcast', event: 'end', payload: { by: 'admin' } }); } catch (e) {} }
+  try { await rpc('la_cancel', { p_token: tok(), p_id: s.id, p_reason: s.status === 'PENDING' ? 'Request cancelled by the Admin' : 'Ended by the Admin' }); } catch (e) {}
+  closeLive(quiet ? '' : 'You ended the view.');
+  loadOnline(); loadHist();
+}
+function closeLive(why) {
+  clearInterval(S.statTimer);
+  if (S.chRaw && S.sb) { try { S.sb.removeChannel(S.chRaw); } catch (e) {} }
+  S.ch = null; S.chRaw = null;
+  try { if (S.rep) S.rep.pause(); } catch (e) {}
+  S.rep = null; S.meta = null; S.parts = {};
+  $('inner').innerHTML = ''; $('ov').innerHTML = ''; $('ov').style.display = 'none'; $('stage').style.height = '';
+  if (S.sess) S.sess.status = 'ENDED';
+  paintHead();
+  stageMsg(why || 'The user\'s screen appears here after they press Allow.');
+  S.sess = null;
+  setTimeout(paintHead, 2500);
+}
+
+// ── history ──
+async function loadHist() {
+  try {
+    const d = await rpc('la_sessions_list', { p_token: tok(), p_days: 7 });
+    if (d.success === false) return;
+    const rows = d.rows || [];
+    $('hist').innerHTML = rows.length ? rows.slice(0, 60).map(s =>
+      '<details class="hist"><summary>' + esc(when(s.at)) + ' · ' + esc(s.target || '-') + ' · ' + esc(s.status) + '</summary>' +
+      '<div class="lg">By ' + esc(s.admin || '-') + ' · ' + esc(s.page || '') + (s.note ? ' · Note: ' + esc(s.note) : '') + '</div>' +
+      (s.log || []).map(l => '<div class="lg">' + esc(when(l.at)) + ' · ' + esc(l.action) + (l.by ? ' · ' + esc(l.by) : '') + (l.detail ? ' · ' + esc(l.detail) : '') + '</div>').join('') +
+      '</details>').join('') : '<div class="empty">No sessions yet.</div>';
+  } catch (e) { $('hist').innerHTML = '<div class="empty">Not available.</div>'; }
+}
+
+function deny(t) { $('app').style.display = 'none'; const d = $('denied'); d.style.display = ''; d.innerHTML = '<h2>' + esc(t) + '</h2><p><a href="launcher.html">Back to Apps</a></p>'; }
+
+(async function boot() {
+  let u = null;
+  try { u = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: null, label: 'Live Assist' }); }
+  finally { if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone(); }
+  S.me = u || SARV_GATE.user || {};
+  $('who').textContent = S.me.name || '';
+  if (!SARV_GATE.hasRole('ADMIN_PIN')) return deny('Live Assist is for the Admin only.');
+  $('app').style.display = '';
+  if (typeof DecompressionStream === 'undefined') stageMsg('This browser cannot unpack the stream. Use a current Chrome / Edge / Safari.');
+  await loadOnline(); loadHist();
+  setInterval(loadOnline, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadOnline(); });
+  window.addEventListener('beforeunload', () => { if (S.sess && S.ch) { try { S.ch.send({ type: 'broadcast', event: 'end', payload: { by: 'admin' } }); } catch (e) {} } });
+})();
+</script>
+</body>
+</html>
