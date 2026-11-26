@@ -6914,6 +6914,7 @@ function apsStart() {
     var open = false;
     try { open = sessionStorage.getItem('pk_open_aps') === '1'; sessionStorage.removeItem('pk_open_aps'); } catch (e) {}
     if (!apsIsApprover_() && !apsIsMaker_()) return;
+    if (!pkTabOn_('PK_TAB_APS')) return;   // Approve PS tab switched OFF for this user (TAB ACCESS)
     apsBadge_();
     if (!APS.badgeTimer) APS.badgeTimer = setInterval(apsBadge_, APS_BADGE_MS);
     if (open) showApprovePsPanel();
@@ -15735,6 +15736,7 @@ async function tbcConfirm_() {
 }
 function tbcStart() {
     if (tbcTimer || !session || String(session.role || '').toUpperCase() !== 'PACKING_INCHARGE') return;
+    if (!pkTabOn_('PK_TAB_TEMPOBILL')) return;   // Tempo-Bill tab switched OFF for this user (TAB ACCESS)
     setTimeout(tbcRun_, 8000);
     tbcTimer = setInterval(tbcRun_, TBC_MS);
     document.addEventListener('visibilitychange', function () { if (!document.hidden) tbcRun_(); });
@@ -18042,39 +18044,70 @@ function hideAllPanels() {
     });
 }
 
-// CENTRALIZED NAV — sets ALL button visibility based on active panel + role
+// ══════════════════════════════════════════════════════
+// TAB ACCESS (2026-11-26) — every tab can be switched ON / OFF per user in the ERP: Admin Panel › Users ›
+// Manage access › Packing & Dispatch tabs (PK_TAB_* rows of SARV_TABS in store-core.js, kept in the
+// user's app_access, which the gate hands over in window.__SARV_SSO). A user's own ON / OFF wins; with
+// none the tab follows the Packing role as before (PK_TABS.def = sarvPkTabDef_ in store-core.js, keep
+// in step). Only what is shown: the server functions behind a tab still check the Packing role.
+// A screen whose tab is OFF is never shown: updateNavButtons moves to the first tab still ON.
+// ══════════════════════════════════════════════════════
+var PK_TABS = [
+    { key: 'PK_TAB_PACKING',   btn: 'formNavBtn',       panel: 'packing-slip-form',  show: 'showPackingForm',      def: 'ALL' },
+    { key: 'PK_TAB_APS',       btn: 'apsNavBtn',        panel: 'approve-ps-panel',   show: 'showApprovePsPanel',   def: ['ADMIN', 'MD', 'PACKING_INCHARGE', 'DATA_ENTRY'] },
+    { key: 'PK_TAB_VERIFY',    btn: 'verifyNavBtn',     panel: 'verification-panel', show: 'showVerificationPanel', def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_ORDERS',    btn: 'orderNavBtn',      panel: 'order-panel',        show: 'showOrderPanel',       def: 'NO_DE' },
+    { key: 'PK_TAB_PARTIES',   btn: 'partyNavBtn',      panel: 'party-master-panel', show: 'showPartyMasterPanel', def: 'NO_DE' },
+    { key: 'PK_TAB_QUICKPACK', btn: 'packOrdersNavBtn', panel: 'pack-orders-panel',  show: 'showPackOrdersPanel',  def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_VEHICLES',  btn: 'vehicleNavBtn',    panel: 'vehicle-panel',      show: 'showVehiclePanel',     def: 'ALL' },
+    { key: 'PK_TAB_SHIFTING',  btn: 'shiftNavBtn',      panel: 'shifting-panel',     show: 'showShiftingPanel',    def: 'ALL' },
+    { key: 'PK_TAB_FIXPDF',    btn: 'repairPdfNavBtn',  panel: 'pdf-repair-panel',   show: 'showPdfRepairPanel',   def: ['ADMIN', 'MD'] },
+    { key: 'PK_TAB_REPORTS',   btn: 'reportsNavBtn',    panel: 'reports-panel',      show: 'showReportsPanel',     def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_FREIGHT',   btn: 'freightNavBtn',    panel: 'freight-panel',      show: 'showFreightPanel',     def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_TEMPOBILL', btn: 'tempoBillNavBtn',  panel: 'tempo-bill-panel',   show: 'showTempoBillPanel',   def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_LABOUR',    btn: 'labourNavBtn',     panel: 'labour-panel',       show: 'showLabourPanel',      def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_DFU',       btn: 'dfuNavBtn',        panel: 'dfu-panel',          show: 'showDfuPanel',         def: ['ADMIN', 'MD', 'PACKING_INCHARGE'] },
+    { key: 'PK_TAB_SETTINGS',  btn: 'settingsNavBtn',   panel: 'settings-panel',     show: 'showSettingsPanel',    def: ['ADMIN', 'MD'] }   // MD: view only (SETTINGS VIEW ONLY)
+];
+function pkTabOn_(key) {
+    var t = PK_TABS.find(function (x) { return x.key === key; });
+    if (!t) return true;
+    var acc = (window.__SARV_SSO && window.__SARV_SSO.app_access) || {};
+    if (acc && typeof acc === 'object' && typeof acc[key] === 'boolean') return acc[key];   // the user's own ON / OFF
+    var r = session ? String(session.role || '').toUpperCase() : '';
+    if (t.def === 'ALL') return true;
+    if (t.def === 'NO_DE') return r !== 'DATA_ENTRY';
+    return t.def.indexOf(r) >= 0;
+}
+// Is this panel's tab ON? (a panel with no tab entry is always allowed)
+function pkPanelOn_(panel) {
+    var t = PK_TABS.find(function (x) { return x.panel === panel; });
+    return !t || pkTabOn_(t.key);
+}
+var PK_NAV = { last: '', moving: false };
+
+// CENTRALIZED NAV — sets ALL button visibility based on active panel + the tab access (TAB ACCESS)
 function updateNavButtons(activePanel) {
     var r = session ? session.role : '';
-    var isMD      = r === 'MD';
-    var isAdmin   = r === 'ADMIN';
-    var canVerify = r === 'PACKING_INCHARGE' || isAdmin || isMD;
-    var canOrders = r !== 'DATA_ENTRY';
-    var canPack   = r === 'PACKING_INCHARGE' || isAdmin || isMD;
-
-    var btnMap = {
-        'formNavBtn':       activePanel !== 'packing-slip-form',
-        'verifyNavBtn':     canVerify && activePanel !== 'verification-panel',
-        'orderNavBtn':      canOrders && activePanel !== 'order-panel',
-        'partyNavBtn':      canOrders && activePanel !== 'party-master-panel',
-        'vehicleNavBtn':    activePanel !== 'vehicle-panel',
-        'shiftNavBtn':      activePanel !== 'shifting-panel',
-        'packOrdersNavBtn': canPack && activePanel !== 'pack-orders-panel',
-        'repairPdfNavBtn':  (isAdmin || isMD) && activePanel !== 'pdf-repair-panel',
-        'reportsNavBtn':    canVerify && activePanel !== 'reports-panel',
-        'freightNavBtn':    canVerify && activePanel !== 'freight-panel',
-        'tempoBillNavBtn':  canVerify && activePanel !== 'tempo-bill-panel',
-        'labourNavBtn':     canVerify && activePanel !== 'labour-panel',
-        'dfuNavBtn':        canVerify && activePanel !== 'dfu-panel',
-        'settingsNavBtn':   (isAdmin || isMD) && activePanel !== 'settings-panel',   // MD: view only (SETTINGS VIEW ONLY)
-        'apsNavBtn':        (canVerify || r === 'DATA_ENTRY') && activePanel !== 'approve-ps-panel'   // PS APPROVAL
-    };
+    PK_NAV.last = activePanel;
+    PK_TABS.forEach(function (t) {
+        var el = document.getElementById(t.btn);
+        if (el) el.style.display = (pkTabOn_(t.key) && activePanel !== t.panel) ? '' : 'none';
+    });
     var apsLbl = document.getElementById('apsNavLbl');
     if (apsLbl) apsLbl.textContent = r === 'DATA_ENTRY' ? 'My PS Requests' : 'Approve PS';
 
-    Object.keys(btnMap).forEach(function(id) {
-        var el = document.getElementById(id);
-        if (el) el.style.display = btnMap[id] ? '' : 'none';
-    });
+    // A screen whose tab is OFF for this user: go to the first tab still ON instead
+    if (!pkPanelOn_(activePanel) && !PK_NAV.moving) {
+        var to = PK_TABS.find(function (t) { return pkTabOn_(t.key) && typeof window[t.show] === 'function'; });
+        if (to) {
+            PK_NAV.moving = true;
+            setTimeout(function () { try { window[to.show](); } finally { PK_NAV.moving = false; } }, 0);
+        } else {
+            hideAllPanels();
+            showToast('No Packing tab is switched ON for you. Ask the Admin (ERP › Admin Panel › Users › Manage access).');
+        }
+    }
 }
 
 // CENTRALIZED DATA STORE — fetch once, use everywhere

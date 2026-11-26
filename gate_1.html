@@ -1257,6 +1257,17 @@
                         </div>
                     </div>
 
+                    <!-- DK ALLOT: which app may use this slip's vehicle (Packing = packing.html Tempo No., Waste / Others = WasteEntry.html Vehicle) -->
+                    <div>
+                        <label class="block text-[11px] font-bold text-gray-400 uppercase mb-1">Vehicle allot for Packing or Waste Sale ? *</label>
+                        <select id="dkAllot" required onchange="dkAllotHint()" class="w-full px-3.5 py-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-bold text-gray-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:bg-white">
+                            <option value="">— Select —</option>
+                            <option value="PACKING">Packing</option>
+                            <option value="WASTE">Waste Others</option>
+                        </select>
+                        <p id="dkAllotHint" class="text-[10.5px] font-semibold text-gray-400 mt-1 leading-tight">Packing = only the Packing app gets this vehicle · Waste Others = only the Waste Sale app</p>
+                    </div>
+
                     <!-- Gross Weight, Tare Weight & LOCKED Auto-Calculated Net Weight -->
                     <div class="grid grid-cols-3 gap-2.5">
                         <div>
@@ -5986,6 +5997,7 @@
                     <button type="button" onclick="openPassModal('${esc(d.id)}')" class="ios-btn min-w-0 flex-1 text-left">
                         <span class="block font-mono text-[13px] font-extrabold ${n ? 'text-emerald-900' : 'text-gray-900'} truncate">${esc(d.vehicle || '-')}</span>
                         <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc(d.id)} · Tare ${esc(parseTareFromDkEntry(d))} Kg${gross ? ' · Gross ' + esc(gross) + ' Kg' : ''} · ${esc(fmt(d.inTime))}</span>
+                        ${d.allotFor === 'PACKING' || d.allotFor === 'WASTE' ? `<span class="mt-1 mr-1 inline-flex items-center text-[10px] font-extrabold px-2 py-0.5 rounded-full ${d.allotFor === 'WASTE' ? 'bg-orange-100 text-orange-800' : 'bg-cyan-100 text-cyan-800'}">For ${d.allotFor === 'WASTE' ? 'Waste Others' : 'Packing'}</span>` : ''}
                         ${n ? `<span class="mt-1 inline-flex items-center gap-1 text-[10px] font-extrabold text-white bg-emerald-600 px-2 py-0.5 rounded-full"><i class="fa-solid fa-box"></i> ${dkLoadedTxt(ld)} loaded · ${esc((Math.round((ld.weight || 0) * 100) / 100).toLocaleString('en-IN'))} Kg</span>` : ''}
                     </button>
                     <button type="button" onclick="dkGoDispatch('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white flex items-center gap-1" title="Open the Dispatch Packing Slip form with this slip"><i class="fa-solid fa-truck-fast"></i> Dispatch Slip</button>
@@ -5998,9 +6010,28 @@
             if (mCnt) mCnt.textContent = rows.length;
         }
 
+        /* DK ALLOT (2026-11-26): "Vehicle allot for Packing or Waste Sale ?" is compulsory on a new Dharam Kanta slip and
+           kept as entry.allotFor PACKING / WASTE. The SERVER decides who sees the vehicle: packing.html's Tempo No. list and
+           its slip check (pk_dk_vehicles / pk_dk_slip_for_vehicle) leave WASTE slips out, WasteEntry.html's Vehicle list and
+           its save (ws_dk_vehicles / ws_dk_open_) leave PACKING slips out; an older slip without it counts for both. */
+        const DK_ALLOT = { PACKING: 'Packing', WASTE: 'Waste Others' };
+        function dkAllotHint() {
+            const v = (document.getElementById('dkAllot') || {}).value || '', h = document.getElementById('dkAllotHint');
+            if (!h) return;
+            h.textContent = v === 'PACKING' ? 'Only the Packing app (Packing Slip › Tempo No.) gets this vehicle'
+                : v === 'WASTE' ? 'Only the Waste Sale app (Vehicle box) gets this vehicle'
+                : 'Packing = only the Packing app gets this vehicle · Waste Others = only the Waste Sale app';
+            h.className = 'text-[10.5px] font-semibold mt-1 leading-tight ' + (v ? 'text-cyan-700' : 'text-gray-400');
+        }
         document.getElementById('formDharamKanta').addEventListener('submit', async function(e) {
             e.preventDefault();
             if (gateSaving.DK) return;
+            const allotFor = (document.getElementById('dkAllot') || {}).value || '';
+            if (!DK_ALLOT[allotFor]) {
+                showIosBanner('Choose "Vehicle allot for Packing or Waste Sale ?" (Packing / Waste Others)', 'error');
+                document.getElementById('dkAllot').focus();
+                return;
+            }
             const grossVal = parseFloat(document.getElementById('dkGrossWeight').value) || 0;
             const tareVal = parseFloat(document.getElementById('dkTareWeight').value) || 0;
 
@@ -6060,7 +6091,8 @@
                 tareWeight: tareVal,
                 netWeight: parseFloat(netVal),
                 host: grossVal > 0 ? `Gross: ${grossVal.toFixed(2)} Kg | Tare: ${tareVal.toFixed(2)} Kg` : `Tare: ${tareVal.toFixed(2)} Kg`,
-                purpose: (grossVal > 0 ? `Net Weight: ${netVal} Kg • Vehicle Photo ✓` : `Tare Weight noted • Vehicle Photo ✓`)
+                allotFor: allotFor,
+                purpose: `For ${DK_ALLOT[allotFor]} • ` + (grossVal > 0 ? `Net Weight: ${netVal} Kg • Vehicle Photo ✓` : `Tare Weight noted • Vehicle Photo ✓`)
                     + (tareCheck ? ` • Tare ${tc.diff > 0 ? '+' : ''}${tc.diff} Kg vs Standard ${tc.std} Kg: ${tareCheck.desc}` : ''),
                 stdTare: tc.std, tareDiff: tc.diff, tareCheck: tareCheck,
                 itemPhoto: itemPhoto,
@@ -6074,6 +6106,7 @@
 
             commitEntry(newDkEntry);
             this.reset();
+            dkAllotHint();
             pinLock('dkGrossWeight');   // the next slip starts locked again
             dkTareExtraReset();
             dkVehicleCheck();
