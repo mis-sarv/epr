@@ -365,20 +365,13 @@
                         <span id="inwRetBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-violet-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
                         <i class="fa-solid fa-chevron-right text-violet-500 text-xs"></i>
                     </button>
-                    <button onclick="showView('inwardPending')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-orange-500/10 border border-orange-500/25 rounded-[20px] text-left">
-                        <div class="w-12 h-12 rounded-2xl bg-orange-500 text-white flex items-center justify-center text-xl shadow-md shadow-orange-500/30 shrink-0"><i class="fa-solid fa-user-clock"></i></div>
+                    <!-- INWARD STATUS (2026-11-27): Approval Pending + Existing Inward in ONE list (approval status, Allow Unloading,
+                         Send Back and Out), view-inwardExisting; showView('inwardPending') lands here too -->
+                    <button onclick="INW_EXIST_TAB = 'in'; showView('inwardExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] text-left">
+                        <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-500/30 shrink-0"><i class="fa-solid fa-clipboard-list"></i></div>
                         <div class="min-w-0 flex-1">
-                            <span class="block text-[13px] font-extrabold text-orange-800 uppercase tracking-wide">Approval Pending</span>
-                            <span id="inwPendSub" class="block text-[11px] font-semibold text-orange-700/80">Waiting for the approver's PIN</span>
-                        </div>
-                        <span id="inwPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-orange-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
-                        <i class="fa-solid fa-chevron-right text-orange-500 text-xs"></i>
-                    </button>
-                    <button onclick="showView('inwardExisting')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-[20px] text-left">
-                        <div class="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center text-xl shadow-md shadow-emerald-500/30 shrink-0"><i class="fa-solid fa-truck-ramp-box"></i></div>
-                        <div class="min-w-0 flex-1">
-                            <span class="block text-[13px] font-extrabold text-emerald-800 uppercase tracking-wide">Existing Inward</span>
-                            <span class="block text-[11px] font-semibold text-emerald-700/80">Inside (unloading): Out with vehicle photo + remarks</span>
+                            <span class="block text-[13px] font-extrabold text-emerald-800 uppercase tracking-wide">Inward Status</span>
+                            <span id="inwPendSub" class="block text-[11px] font-semibold text-emerald-700/80">Approval status, Allow Unloading and Out: one list</span>
                         </div>
                         <span id="inwInsideBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-emerald-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
                         <i class="fa-solid fa-chevron-right text-emerald-500 text-xs"></i>
@@ -386,31 +379,20 @@
                 </div>
             </div>
 
-            <!-- VIEW 2B: INWARD APPROVAL PENDING (waiting / approved -> Allow Unloading / rejected -> Send Back) -->
-            <div id="view-inwardPending" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
-                <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
-                    <button onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
-                        <i class="fa-solid fa-chevron-left"></i> Back
-                    </button>
-                    <h2 class="text-[16px] font-bold text-gray-900">Inward Approval Pending</h2>
-                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="inwPollIcon" class="fa-solid fa-rotate"></i></button>
-                </div>
-                <p id="inwPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
-                <div id="inwPendList" class="space-y-2.5"></div>
-            </div>
-
-            <!-- VIEW 2C: EXISTING INWARD (approved and unloading inside -> Out with a photo; + the ones out in the last 2 days) -->
+            <!-- VIEW 2C: INWARD STATUS (2026-11-27; was Approval Pending + Existing Inward): Active = waiting for approval
+                 (status, Allow Unloading, Send Back) then inside / unloading (Out); Out = the last 2 days -->
             <div id="view-inwardExisting" class="view-section bg-white rounded-[24px] p-5 shadow-[0_8px_30px_rgba(0,0,0,0.06)] ios-sheet">
                 <div class="flex items-center justify-between pb-3.5 mb-3 border-b border-gray-100">
                     <button onclick="showView('inwardMenu')" class="ios-btn flex items-center gap-1 text-blue-600 font-semibold text-sm">
                         <i class="fa-solid fa-chevron-left"></i> Back
                     </button>
-                    <h2 class="text-[16px] font-bold text-gray-900">Existing Inward</h2>
-                    <span class="w-10"></span>
+                    <h2 class="text-[16px] font-bold text-gray-900">Inward Status</h2>
+                    <button onclick="visPollNow(true)" class="ios-btn w-8 h-8 rounded-full bg-gray-100 text-gray-600 flex items-center justify-center text-xs" title="Check the approvals now"><i id="inwPollIcon" class="fa-solid fa-rotate"></i></button>
                 </div>
+                <p id="inwPendNote" class="hidden text-[11px] font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3"></p>
                 <input type="text" id="inwExistSearch" oninput="renderInwardExisting()" autocomplete="off" placeholder="Search party, PO / PR, vehicle, inward no..." class="w-full px-3.5 py-2.5 mb-3 bg-gray-100/80 border border-gray-200/80 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white">
                 <div class="grid grid-cols-2 gap-1 bg-gray-100 p-1 rounded-xl mb-3">
-                    <button id="inwTabIn" onclick="inwExistTab('in')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Inside <span id="inwTabInN"></span></button>
+                    <button id="inwTabIn" onclick="inwExistTab('in')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Active <span id="inwTabInN"></span></button>
                     <button id="inwTabOut" onclick="inwExistTab('out')" class="py-1.5 rounded-lg text-xs font-bold transition-all">Out · last 2 days <span id="inwTabOutN"></span></button>
                 </div>
                 <div id="inwExistList" class="space-y-3"></div>
@@ -665,19 +647,8 @@
                         <span class="flex items-center gap-2"><span id="dspOutBadge" class="hidden min-w-[22px] h-5 px-1.5 rounded-full bg-amber-500 text-white text-[10px] font-extrabold flex items-center justify-center"></span><i class="fa-solid fa-chevron-right text-indigo-600"></i></span>
                     </button>
 
-                    <!-- SAMPLE / OTHER RETURN (the returnable Sample & Other entries waiting to go back) -->
-                    <button onclick="showView('sampleReturn')" class="ios-btn w-full p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl flex items-center justify-between">
-                        <div class="flex items-center gap-3.5">
-                            <div class="w-11 h-11 rounded-xl bg-rose-500 text-white flex items-center justify-center text-lg shadow-sm">
-                                <i class="fa-solid fa-rotate-left"></i>
-                            </div>
-                            <div class="text-left">
-                                <h3 class="text-sm font-extrabold text-gray-900">SAMPLE / OTHER RETURN</h3>
-                                <p class="text-[11px] text-gray-500">Returnable items: item photo + Outward No.</p>
-                            </div>
-                        </div>
-                        <span class="flex items-center gap-2"><span id="smpRetBadge2" class="hidden min-w-[22px] h-5 px-1.5 rounded-full bg-rose-500 text-white text-[10px] font-extrabold flex items-center justify-center"></span><i class="fa-solid fa-chevron-right text-rose-500"></i></span>
-                    </button>
+                    <!-- (2026-11-27) no SAMPLE / OTHER RETURN button here any more: a returnable Sample & Other item
+                         goes back from Inward Material › Inward Status (Return · Outward on its card) -->
 
                     <!-- OUT FROM ADMIN OFFICE -->
                     <button onclick="showComingSoon('Out From Admin Office')" class="ios-btn w-full p-4 bg-gray-100/80 border border-gray-200/70 rounded-2xl flex items-center justify-between">
@@ -1376,15 +1347,8 @@
                         <span id="smpPendBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-amber-500 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
                         <i class="fa-solid fa-chevron-right text-amber-500 text-xs"></i>
                     </button>
-                    <button onclick="showView('sampleReturn')" class="ios-btn w-full flex items-center gap-3.5 p-4 bg-blue-500/10 border border-blue-500/20 rounded-[20px] text-left">
-                        <div class="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center text-xl shadow-md shadow-blue-500/30 shrink-0"><i class="fa-solid fa-rotate-left"></i></div>
-                        <div class="min-w-0 flex-1">
-                            <span class="block text-[13px] font-extrabold text-blue-800 uppercase tracking-wide">Return Pending</span>
-                            <span class="block text-[11px] font-semibold text-blue-700/80">Returnable items: Outward with item photo + Outward No.</span>
-                        </div>
-                        <span id="smpRetBadge" class="hidden min-w-[24px] h-6 px-2 rounded-full bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center"></span>
-                        <i class="fa-solid fa-chevron-right text-blue-500 text-xs"></i>
-                    </button>
+                    <!-- (2026-11-27) no Return Pending button here any more: a returnable item waiting to go back is in
+                         Inward Material › Inward Status (Return · Outward on its card) -->
                 </div>
             </div>
 
@@ -1851,6 +1815,47 @@
     </div>
 
     <!-- Visitor / Hydra Out: out photo (camera) + remarks, both compulsory (texts set by openVisitorOut for a Hydra) -->
+    <!-- INWARD EARLY OUT (8D-2): Out pressed while the Store Inward entry is still pending -> vehicle photo -> one Purchaser approves on the launcher -->
+    <div id="eoModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
+        <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="eoClose()"></div>
+        <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
+            <div class="px-5 py-3.5 border-b border-gray-100 shrink-0 flex items-center justify-between gap-3">
+                <h3 id="eoTitle" class="text-base font-bold text-gray-900">Store Entry Pending</h3>
+                <button type="button" onclick="eoClose()" class="ios-btn w-7 h-7 rounded-full bg-gray-100 text-gray-500 flex items-center justify-center text-xs"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-5 overflow-y-auto space-y-3.5">
+                <div id="eoWho" class="flex items-center gap-3"></div>
+                <div id="eoStep1" class="p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-center space-y-3">
+                    <i class="fa-solid fa-triangle-exclamation text-3xl text-amber-500"></i>
+                    <p class="text-base font-black text-amber-900 leading-snug">STORE ENTRY PENDING HAI !<br>KIRPYA VEHICLE PHOTO KHICHE</p>
+                    <label class="ios-btn w-full py-3.5 rounded-2xl bg-amber-500 text-white text-sm font-black flex items-center justify-center gap-2 cursor-pointer">
+                        <span>👉</span> TAKE PHOTO
+                        <input type="file" id="eoPhoto" data-up="gate-inward-early-out" accept="image/*" capture="environment" class="hidden" onchange="eoPhotoPicked(this)">
+                    </label>
+                    <p id="eoPhotoMsg" class="text-[11px] font-semibold text-amber-800/80">The photo goes to the Purchaser with the request.</p>
+                </div>
+                <div id="eoStep2" class="hidden space-y-3">
+                    <div class="relative">
+                        <img id="eoPreview" alt="Vehicle photo" class="w-full max-h-56 object-contain rounded-2xl bg-gray-100">
+                        <label class="ios-btn absolute bottom-2 right-2 px-3 py-1.5 rounded-xl bg-white/90 text-gray-800 text-[11px] font-extrabold shadow cursor-pointer">
+                            <i class="fa-solid fa-camera"></i> Retake
+                            <input type="file" id="eoPhoto2" data-up="gate-inward-early-out" accept="image/*" capture="environment" class="hidden" onchange="eoPhotoPicked(this)">
+                        </label>
+                    </div>
+                    <div>
+                        <p class="text-[11px] font-extrabold text-gray-500 uppercase mb-1.5">Send to Approval · choose ONE Purchaser *</p>
+                        <div id="eoList" class="rounded-2xl border border-gray-200 divide-y divide-gray-100 overflow-hidden"></div>
+                    </div>
+                    <p id="eoErr" class="text-[11px] font-bold text-red-600 min-h-[1em]" aria-live="polite"></p>
+                    <div class="flex gap-2">
+                        <button type="button" onclick="eoClose()" class="ios-btn flex-1 py-3 rounded-2xl bg-gray-100 text-gray-700 text-sm font-extrabold">Cancel</button>
+                        <button type="button" id="eoSend" onclick="eoSend()" class="ios-btn flex-[2] py-3 rounded-2xl bg-emerald-600 text-white text-sm font-extrabold flex items-center justify-center gap-2"><i class="fa-solid fa-paper-plane"></i> Send to Approval</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="visOutModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeVisitorOut()"></div>
         <div class="bg-white rounded-t-[28px] sm:rounded-[28px] w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden relative z-10 ios-sheet shadow-2xl">
@@ -2785,6 +2790,7 @@
             if (document.hidden) return;
             await gateSync(false);
             await visPollNow(false);
+            await inwTrackNow(false);
         }
         // "10:42:15 am" today, "23 Nov, 10:42:15 am" on an older day
         function gateSyncStamp(iso) {
@@ -3067,8 +3073,8 @@
         // [id, icon, colour, Hinglish title, Hindi line, where, meanings, extra words, run]
         const GS_TASKS = [
             ['inw_new', 'fa-box-open', 'blue', () => 'Naya maal aaya · Inward entry', 'नया माल आया – इनवर्ड एंट्री भरें', 'Inward › New Inward Entry', 'IN MATERIAL NEW VEHICLE', 'inward bill po pr party nb', () => { showView('inwardMenu'); inwOpenNew(); }],
-            ['inw_pend', 'fa-user-clock', 'orange', () => 'Inward approval pending', 'इनवर्ड मंजूरी बाकी – देखें / अनलोडिंग दें', 'Inward › Approval Pending', 'IN MATERIAL PENDING', 'unloading allow', gsGo('inwardPending')],
-            ['inw_out', 'fa-truck-ramp-box', 'emerald', () => 'Inward gaadi bahar karna (khali gaadi)', 'माल उतारने के बाद गाड़ी बाहर करें', 'Inward › Existing Inward', 'IN MATERIAL VEHICLE OUT EXISTING', 'unload khali empty', gsGo('inwardExisting')],
+            ['inw_pend', 'fa-user-clock', 'orange', () => 'Inward approval pending', 'इनवर्ड मंजूरी बाकी – देखें / अनलोडिंग दें', 'Inward › Inward Status', 'IN MATERIAL PENDING', 'unloading allow status', gsGo('inwardPending')],
+            ['inw_out', 'fa-truck-ramp-box', 'emerald', () => 'Inward gaadi bahar karna (khali gaadi)', 'माल उतारने के बाद गाड़ी बाहर करें', 'Inward › Inward Status', 'IN MATERIAL VEHICLE OUT EXISTING', 'unload khali empty status', gsGo('inwardExisting')],
             ['out_store', 'fa-warehouse', 'orange', () => 'Store se maal bahar · Out From Store', 'स्टोर से माल बाहर – गेट पास से', 'Outward › Out From Store', 'OUT MATERIAL STORE', 'gate pass outward bill', gsGo('outwardStoreForm')],
             ['out_disp', 'fa-truck-fast', 'orange', () => 'Dispatch gaadi bahar · Packing slip', 'डिस्पैच / पैकिंग स्लिप वाली गाड़ी बाहर', 'Outward › Out From Dispatch', 'OUT DISPATCH VEHICLE MATERIAL', 'packing slip tempo', gsGo('outwardDispatchForm')],
             ['vis_new', 'fa-user-plus', 'emerald', () => 'Naya visitor andar · Visitor entry', 'नया विज़िटर – पास बनाएं, मंजूरी भेजें', 'Visitor › New Visitor Entry', 'VISITOR NEW IN', 'pass photo mobile milne', gsGo('visitorForm')],
@@ -3087,7 +3093,7 @@
             ['hyd_out', 'fa-stopwatch', 'blue', () => 'Hydra timer / kaam khatam / bahar', 'हाइड्रा टाइमर, काम पूरा, बाहर करें', 'Hydra / JCB › Existing', 'HYDRA OUT EXISTING', 'timer stop store entry', gsGo('hydraExisting')],
             ['smp_new', 'fa-boxes-packing', 'rose', () => 'Sample / other item aaya · Nayi entry', 'सैंपल / अन्य सामान की नई एंट्री', 'Sample & Other › New Entry', 'SAMPLE NEW IN MATERIAL', 'returnable non returnable', gsGo('sampleForm')],
             ['smp_pend', 'fa-user-clock', 'orange', () => 'Sample approval pending', 'सैंपल मंजूरी बाकी', 'Sample & Other › Approval Pending', 'SAMPLE PENDING', 'done inward', gsGo('samplePending')],
-            ['smp_ret', 'fa-rotate-left', 'blue', () => 'Sample wapas karna · Return outward', 'सैंपल वापस करें – रिटर्न', 'Sample & Other › Return Pending', 'SAMPLE RETURN OUT', 'returnable', gsGo('sampleReturn')],
+            ['smp_ret', 'fa-rotate-left', 'blue', () => 'Sample wapas karna · Return outward', 'सैंपल वापस करें – रिटर्न', 'Inward › Inward Status', 'SAMPLE RETURN OUT', 'returnable', gsGo('inwardExisting')],
             ['scan', 'fa-qrcode', 'gray', () => 'QR scan karna (slip / bill / pass)', 'क्यूआर स्कैन करें – पर्ची, बिल, पास', 'Scan QR', 'SCAN', 'camera', () => { if (typeof openScanner === 'function') openScanner(); }],
             ['verify', 'fa-shield-halved', 'indigo', () => 'Gate pass check / verify karna', 'गेट पास जांचें', 'Verify Pass', 'VERIFY', 'mark out', () => { if (typeof openQrVerifyModal === 'function') openQrVerifyModal(); }],
             ['pass_new', 'fa-receipt', 'orange', () => 'Naya store gate pass banana', 'नया स्टोर गेट पास बनाएं', 'Masters › Store Gate Pass', 'STORE NEW VERIFY', 'gate pass', () => { if (typeof openMasterModal === 'function') openMasterModal('passes'); }],
@@ -3258,7 +3264,7 @@
         function initInwardCombos() {
             gateCombo({ inputId: 'inPartyName', listId: 'inPartyList', options: inwardPartyOptions, emptyText: 'No such party. Use Add Party if it is new.', onPick: inwardPartyPicked });
             gateCombo({ inputId: 'inVehicle', listId: 'inVehicleList', options: inwardVehicleOptions, emptyText: 'No such vehicle in the list.' });
-            gateCombo({ inputId: 'dispDkSlipNo', listId: 'dispDkSlipList', options: dispDkSlipOptions, emptyText: 'No saved Dharam Kanta Slip. Create one in Dharam Kanta first.', onPick: lookupDispatchDkSlip });
+            gateCombo({ inputId: 'dispDkSlipNo', listId: 'dispDkSlipList', options: dispDkSlipOptions, emptyText: 'No Dharam Kanta Slip with a packing slip / waste bill on its vehicle. Weigh the empty vehicle in Dharam Kanta, then make its packing slip in the ERP.', onPick: lookupDispatchDkSlip });
             gateCombo({ inputId: 'storePassSelect', listId: 'storePassList', options: storePassOptions, emptyText: "No Store Outward of today to check out. Tap the refresh button at the top if one was just made.", onPick: fetchStoreGatePassDetails });
             gateCombo({ inputId: 'hostName', listId: 'hostNameList', options: visHostOptions, emptyText: 'No such ERP user. Only a person with an ERP login can approve a visitor.' });
             gateCombo({ inputId: 'visFirm', listId: 'visFirmList', options: hydraSupplierOptions, emptyText: 'No such party. Use Add Party if it is new.' });
@@ -3547,11 +3553,14 @@
         // 4. VIEW SWITCHING & NAVIGATION
         // ==========================================
         function showView(viewId) {
+            // INWARD STATUS: the old Approval Pending view is the Active tab of Inward Status now (Pass, Scan, search, Allow Unloading)
+            if (viewId === 'inwardPending') { viewId = 'inwardExisting'; INW_EXIST_TAB = 'in'; }
+            // (2026-11-27) the Sample & Other Return list lives in Inward Status now (its buttons are gone from both menus)
+            if (viewId === 'sampleReturn') { viewId = 'inwardExisting'; INW_EXIST_TAB = 'in'; }
             if (viewId !== 'outwardDispatchForm' && typeof DISP_EDIT !== 'undefined' && DISP_EDIT) DISP_EDIT = null;   // 6E: leaving the form ends an edit
             const views = [
                 'view-actionMenu',
                 'view-inwardMenu',
-                'view-inwardPending',
                 'view-inwardExisting',
                 'view-inwardForm',
                 'view-outwardMenu',
@@ -4428,6 +4437,7 @@
             tempPhotos.dispVehicle = null;
             tempPhotos.dispDk = null;
             dispScanSet(null);   // a slip read by Scan QR is set again by gateScanPackingSlip after this
+            DISP_DK_FORCE = '';  // a new form: only the loaded, unused slips (a picked one is set again by selectDispatchDkChip)
 
             const ed = dispEditEntry_();
             document.getElementById('dispDkSlipNo').disabled = !!ed;   // an edit stays on its own Dharam Kanta slip
@@ -4469,21 +4479,34 @@
             document.getElementById('dispDkPreviewImg').classList.add('hidden');
         }
 
+        // a slip the code picks (Dispatch Slip button, Scan QR, the edit of a rejected slip) is always in the list (dispDkSlipOptions)
+        var DISP_DK_FORCE = '';
         function selectDispatchDkChip(slipId) {
+            DISP_DK_FORCE = slipId || '';
             if (GATE_COMBOS.dispDkSlipNo) GATE_COMBOS.dispDkSlipNo.set(slipId);   // commits + runs the lookup (onPick)
             else { document.getElementById('dispDkSlipNo').value = slipId; lookupDispatchDkSlip(); }
         }
         // Saved Slips · Dispatch slip pending (Dharam Kanta form) → straight into the Dispatch Packing Slip form with this slip
         function dkGoDispatch(slipId) {
+            // only a vehicle with a packing slip (or waste bill) on it (dkDispState, the button's own rule)
+            const dk = getAllDharamKantaSlips().find(x => x.id === slipId), s = dk ? dkDispState(dk) : { on: true };
+            if (!s.on) { showIosBanner(slipId + ': ' + s.why, 'info'); return; }
             showView('outwardDispatchForm');
             selectDispatchDkChip(slipId);
             showIosBanner('Dharam Kanta slip ' + slipId + ' chosen: weigh the loaded vehicle and enter the Gross', 'info');
         }
-        // Saved Dharam Kanta slips, newest first. A slip already used by a Dispatch Packing entry is marked, not hidden.
+        /* The Dharam Kanta Slip No. list (2026-11-27): ONLY the slips still waiting for their Dispatch Packing entry
+           (dkAwaitingDispatch: a used one is left out) whose tempo has a packing slip or a Waste Sale bill on it (dkDispState,
+           the rule of the Dispatch Slip button: not loaded / still being checked = left out; cannot be checked because
+           offline / not set up = listed). Loaded ones first. A slip the code picks itself (DISP_DK_FORCE) stays listed. */
         function dispDkSlipOptions() {
-            const used = new Set();
-            gateEntries.forEach(e => { if (e.category === 'DISPATCH PACKING') { const m = /DK: ([^ |]+)/.exec(e.host || ''); if (m) used.add(m[1]); } });
-            return getAllDharamKantaSlips().filter(x => !x.deleted_at).map(x => ({ value: x.id, sub: [x.vehicle, 'Tare ' + parseTareFromDkEntry(x) + ' Kg', used.has(x.id) ? 'used' : ''].filter(Boolean).join(' · ') }));
+            const pend = dkAwaitingDispatch();
+            try { dkLoadedRefresh(pend); } catch (e) { }   // reads the loaded state of the ones not read yet
+            const forced = DISP_DK_FORCE ? getAllDharamKantaSlips().filter(x => x.id === DISP_DK_FORCE && !pend.some(p => p.id === x.id)) : [];
+            return pend.filter(d => d.id === DISP_DK_FORCE || dkDispState(d).on).concat(forced).map(x => {
+                const ld = DK_LOADED && DK_LOADED[x.id];
+                return { value: x.id, sub: [x.vehicle, 'Tare ' + parseTareFromDkEntry(x) + ' Kg', ld && ld.n ? dkLoadedTxt(ld) + ' loaded' : ''].filter(Boolean).join(' · ') };
+            });
         }
 
         function lookupDispatchDkSlip() {
@@ -5649,6 +5672,9 @@
             // an inward still waiting for approval goes back from Approval Pending (Send Back), not from here
             const inw = isInward(e);
             if (inw && isInwPending(e)) { closePassModal(); closeQrVerifyModal(); showView('inwardPending'); showIosBanner('Waiting for approval: use Send Back to return it', 'info'); return; }
+            // every Out of an Inward (card, pass, Verify, scan) first passes the Unloader / Store entry check (8D-2)
+            if (inw && INW_OUT_PASS !== id) { closePassModal(); closeQrVerifyModal(); inwOutPress(id); return; }
+            INW_OUT_PASS = null;
             VIS_OUT_ID = id;
             tempPhotos.visOut = null;
             const inp = document.getElementById('visOutPhoto');
@@ -6060,6 +6086,17 @@
             const pk = ld.pk != null ? ld.pk : ld.n, ws = ld.ws || 0;
             return [pk ? pk + ' packing slip' + (pk > 1 ? 's' : '') : '', ws ? ws + ' waste bill' + (ws > 1 ? 's' : '') : ''].filter(Boolean).join(' + ');
         }
+        /* DISPATCH SLIP ONLY FOR A LOADED VEHICLE (2026-11-27): the Dispatch Slip button of a pending Dharam Kanta slip is
+           on only when the ERP has a packing slip (or a Waste Sale bill) on that tempo since the slip (gate_dk_loaded,
+           DK_LOADED). Not loaded = grey and off; not checked yet = off while it is read; cannot be checked (offline /
+           server not set up / read failed) = on, so a gate without internet is never stuck. dkGoDispatch checks again. */
+        function dkDispState(d) {
+            const ld = DK_LOADED && DK_LOADED[d.id];
+            if (ld && ld.ok) return ld.n > 0 ? { on: true } : { on: false, why: 'No packing slip on this vehicle yet', label: 'No packing slip yet', notLoaded: true };
+            if (ld && !ld.ok) return { on: true, why: 'Could not check the packing slips (server not reachable / not set up)' };
+            if (GATE_OFFLINE || navigator.onLine === false) return { on: true, why: 'Offline: the packing slips could not be checked' };
+            return { on: false, why: 'Checking the packing slips of this vehicle…', label: 'Checking…' };
+        }
         function renderDkPending() {
             const box = document.getElementById('dkPendingBox'), list = document.getElementById('dkPendingList');
             if (!box || !list) return;
@@ -6082,7 +6119,10 @@
                         ${d.allotFor === 'PACKING' || d.allotFor === 'WASTE' ? `<span class="mt-1 mr-1 inline-flex items-center text-[10px] font-extrabold px-2 py-0.5 rounded-full ${d.allotFor === 'WASTE' ? 'bg-orange-100 text-orange-800' : 'bg-cyan-100 text-cyan-800'}">For ${d.allotFor === 'WASTE' ? 'Waste Others' : 'Packing'}</span>` : ''}
                         ${n ? `<span class="mt-1 inline-flex items-center gap-1 text-[10px] font-extrabold text-white bg-emerald-600 px-2 py-0.5 rounded-full"><i class="fa-solid fa-box"></i> ${dkLoadedTxt(ld)} loaded · ${esc((Math.round((ld.weight || 0) * 100) / 100).toLocaleString('en-IN'))} Kg</span>` : ''}
                     </button>
-                    <button type="button" onclick="dkGoDispatch('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white flex items-center gap-1" title="Open the Dispatch Packing Slip form with this slip"><i class="fa-solid fa-truck-fast"></i> Dispatch Slip</button>
+                    ${(() => { const s = dkDispState(d); return s.on
+                        ? `<button type="button" onclick="dkGoDispatch('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white flex items-center gap-1" title="${esc(s.why || 'Open the Dispatch Packing Slip form with this slip')}"><i class="fa-solid fa-truck-fast"></i> Dispatch Slip</button>`
+                        : `<button type="button" disabled aria-disabled="true" class="shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-gray-200 text-gray-400 flex items-center gap-1 cursor-not-allowed" title="${esc(s.why)}"><i class="fa-solid fa-truck-fast"></i> ${esc(s.label)}</button>`
+                          + (s.notLoaded ? `<button type="button" onclick="dkChangeAllot('${esc(d.id)}')" class="ios-btn shrink-0 text-[10.5px] font-extrabold px-2.5 py-1.5 rounded-xl bg-white border border-cyan-300 text-cyan-800 flex items-center gap-1" title="Change: Vehicle allot for Packing or Waste Sale (nothing is loaded on it yet)"><i class="fa-solid fa-right-left"></i> Change</button>` : ''); })()}
                     ${admin ? `<button type="button" onclick="confirmDeleteEntry('${esc(d.id)}')" class="ios-btn w-7 h-7 bg-red-50 text-red-500 rounded-lg text-[11px] flex items-center justify-center shrink-0" title="Delete this slip (PIN)"><i class="fa-solid fa-trash"></i></button>` : ''}
                 </div>`;
             }).join('');
@@ -6097,6 +6137,37 @@
            its slip check (pk_dk_vehicles / pk_dk_slip_for_vehicle) leave WASTE slips out, WasteEntry.html's Vehicle list and
            its save (ws_dk_vehicles / ws_dk_open_) leave PACKING slips out; an older slip without it counts for both. */
         const DK_ALLOT = { PACKING: 'Packing', WASTE: 'Waste Others' };
+        /* CHANGE THE ALLOTMENT (2026-11-27): a pending Dharam Kanta slip whose vehicle has NOTHING loaded on it yet (no
+           packing slip / waste bill, dkDispState notLoaded; its Dispatch Slip button is off) can be switched between Packing
+           and Waste Others from the Saved slips list (⇄ Change). The entry's allotFor + the purpose's "For …" part change,
+           allotLog keeps who / when / from / to, and the entry syncs (touchEntry): the server lists the vehicle in the
+           other app from then on (pk_dk_vehicles / ws_dk_vehicles read data.allotFor). Read again first: a vehicle loaded
+           meanwhile is not changed. */
+        async function dkChangeAllot(slipId) {
+            const e = gateEntries.find(x => x.id === slipId && x.category === 'DHARAM KANTA' && !x.deleted_at);
+            if (!e) { showIosBanner('Slip ' + slipId + ' is not on this phone any more', 'error'); return; }
+            if (DK_LOADED && DK_LOADED[e.id]) DK_LOADED[e.id].at = 0;
+            await dkLoadedRefresh([e]);
+            const s = dkDispState(e);
+            if (!s.notLoaded) {
+                showIosBanner(s.on ? slipId + ': this vehicle already has a packing slip / waste bill, so its allotment cannot change'
+                    : slipId + ': the packing slips could not be checked just now. Try again in a moment.', 'error');
+                renderDkPending(); return;
+            }
+            const cur = e.allotFor || '', cap = k => 'For ' + DK_ALLOT[k] + (cur === k ? ' (now)' : '');
+            const pick = window.IosDialog && IosDialog.choose
+                ? await IosDialog.choose(`${slipId} · ${e.vehicle || ''}\nVehicle allot for Packing or Waste Sale ?\nNothing is loaded on it yet.`,
+                    [{ label: cap('PACKING'), value: 'PACKING', bold: cur !== 'PACKING' }, { label: cap('WASTE'), value: 'WASTE', bold: cur !== 'WASTE' }, { label: 'Cancel', cancel: true }])
+                : (confirm(slipId + ': change to ' + (cur === 'WASTE' ? 'Packing' : 'Waste Others') + '?') ? (cur === 'WASTE' ? 'PACKING' : 'WASTE') : null);
+            if (!pick || !DK_ALLOT[pick] || pick === cur) return;
+            e.allotLog = (Array.isArray(e.allotLog) ? e.allotLog : []).concat({ from: cur || null, to: pick, at: new Date().toISOString(), by: (GATE_USER && GATE_USER.name) || appSettings.guardName || '' });
+            e.allotFor = pick;
+            const p = String(e.purpose || '');
+            e.purpose = /^For (Packing|Waste Others) • /.test(p) ? p.replace(/^For (Packing|Waste Others) • /, 'For ' + DK_ALLOT[pick] + ' • ') : 'For ' + DK_ALLOT[pick] + ' • ' + p;
+            touchEntry(e, false);   // saved on the phone + sent to the server (the other app sees it after the sync)
+            renderDkPending();
+            showIosBanner(slipId + ' is now For ' + DK_ALLOT[pick] + ': ' + (pick === 'WASTE' ? 'the Waste Sale app' : 'the Packing app') + ' gets this vehicle', 'success');
+        }
         function dkAllotHint() {
             const v = (document.getElementById('dkAllot') || {}).value || '', h = document.getElementById('dkAllotHint');
             if (!h) return;
@@ -6276,9 +6347,13 @@
             const pend = gateEntries.filter(isInwPending), inside = gateEntries.filter(isInwInside);
             const ready = pend.filter(e => visAprStatus(e) === 'APPROVED').length;
             const set = (id, n) => { const b = document.getElementById(id); if (b) { b.textContent = n; b.classList.toggle('hidden', !n); } };
-            set('inwPendBadge', pend.length); set('inwInsideBadge', inside.length);
+            const sPend = gateEntries.filter(isSmpPending), sRet = gateEntries.filter(isSmpReturnPending);
+            set('inwInsideBadge', pend.length + inside.length + sPend.length + sRet.length);   // INWARD STATUS = waiting for approval + inside + Sample & Other
             const sub = document.getElementById('inwPendSub');
-            if (sub) sub.textContent = ready ? `${ready} approved: press Allow Unloading` : "Waiting for the approver's PIN";
+            if (sub) sub.textContent = ready ? `${ready} approved: press Allow Unloading`
+                : pend.length || inside.length || sPend.length || sRet.length ? [pend.length ? pend.length + ' waiting for approval' : '', inside.length ? inside.length + ' inside' : '',
+                    sPend.length || sRet.length ? (sPend.length + sRet.length) + ' Sample / Other' : ''].filter(Boolean).join(' · ')
+                : 'Approval status, Allow Unloading and Out: one list';
             const mb = document.getElementById('inwMainBadge');
             if (mb) {
                 const txt = ready ? ready + ' APPROVED' : pend.length ? pend.length + ' PENDING' : inside.length ? inside.length + ' INSIDE' : '';
@@ -6286,23 +6361,22 @@
                 mb.classList.toggle('bg-emerald-600', !!ready); mb.classList.toggle('bg-amber-500', !ready && !!pend.length); mb.classList.toggle('bg-blue-600', !ready && !pend.length);
             }
             const active = id => { const v = document.getElementById(id); return v && v.classList.contains('active'); };
-            if (active('view-inwardPending')) renderInwardPending();
             const ae = document.activeElement;
             if (active('view-inwardExisting') && !(ae && ae.id === 'inwExistSearch')) renderInwardExisting();
         }
 
-        // ── Approval Pending ──
-        function renderInwardPending() {
-            const box = document.getElementById('inwPendList'), note = document.getElementById('inwPendNote');
-            if (!box) return;
-            const rows = gateEntries.filter(isInwPending).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+        // ── Approval status (INWARD STATUS › Active, the "Waiting for approval" part) ──
+        // kept for the callers of the old Approval Pending view: it is part of Inward Status now
+        function renderInwardPending() { renderInwardExisting(); }
+        // the note above the list: no server set-up / older set-up / offline
+        function inwPendNoteMsg() {
             const offline = !GATE_USER || GATE_OFFLINE || navigator.onLine === false;
-            const msg = VIS_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin: run it in the Supabase SQL Editor). Until then Allow Unloading works without approval.'
+            return VIS_NOMIG ? 'The server needs GATE2_VISITOR_APPROVAL_MIGRATION.sql (Admin: run it in the Supabase SQL Editor). Until then Allow Unloading works without approval.'
                 : HYD_NOSRV ? 'The server has an older approval set-up: the Admin must run GATE2_VISITOR_APPROVAL_MIGRATION.sql and GATE1_UNIT1_MIGRATION.sql again for Inward approvals. Until then Allow Unloading needs no approval.'
                 : offline ? 'No internet: new entries are sent for approval as soon as the net is back.' : '';
-            note.textContent = msg; note.classList.toggle('hidden', !msg);
-            if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No inward is waiting for approval.</p>'; return; }
-            box.innerHTML = rows.map(e => {
+        }
+        // one entry still waiting for approval: its status, Allow Unloading once approved, Send Back
+        function inwPendCard(e) {
                 const a = visApr(e), st = a ? a.status : '';
                 let badge, line;
                 if (!e._syncedAt) {
@@ -6339,12 +6413,12 @@
                             <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
                         </div>
                     </div>
+                    ${inwPipeHtml(e)}
                     <div class="flex gap-2">${acts}</div>
                 </div>`;
-            }).join('');
         }
 
-        // Approved -> the vehicle may go in and unload; the entry moves to Existing Inward
+        // Approved -> the vehicle may go in and unload; the entry moves to the Inside part of Inward Status
         function inwMarkDone(id) {
             const e = gateEntries.find(x => x.id === id);
             if (!e || !isInwPending(e)) return;
@@ -6375,33 +6449,65 @@
             showIosBanner(`${e.id} sent back without unloading`, 'success');
         }
 
-        // ── Existing Inward ──
+        /* ── INWARD STATUS (2026-11-27: Approval Pending + Existing Inward in one view) ──
+           Active = "Waiting for approval" (approved ones first: they need Allow Unloading now; inwPendCard) followed by
+           "Inside · unloading" (Out); Out = the last VIS_OUT_DAYS days. One search box over both. */
         function inwExistTab(tab) { INW_EXIST_TAB = tab === 'out' ? 'out' : 'in'; renderInwardExisting(); }
         function renderInwardExisting() {
             const list = document.getElementById('inwExistList');
             if (!list) return;
+            const note = document.getElementById('inwPendNote');
+            if (note) { const msg = INW_EXIST_TAB === 'in' ? inwPendNoteMsg() : ''; note.textContent = msg; note.classList.toggle('hidden', !msg); }
             const words = String((document.getElementById('inwExistSearch') || {}).value || '').trim().toUpperCase().split(/\s+/).filter(Boolean);
-            const hit = e => !words.length || words.every(w => [e.id, inwEntryTypeOf(e), e.name, e.vehicle, e.approver, inwRef(e), e.storeRef, e.outRemarks].join(' ').toUpperCase().indexOf(w) >= 0);
+            const hit = e => !words.length || words.every(w => (isSample(e)
+                ? [e.id, 'SAMPLE OTHER', smpTypeLabel(e), e.outwardNo, e.name, e.personName, e.mobile, smpItemText(e), e.vehicle, e.approver, e.outRemarks]
+                : [e.id, inwEntryTypeOf(e), e.name, e.vehicle, e.approver, inwRef(e), e.storeRef, e.outRemarks]).join(' ').toUpperCase().indexOf(w) >= 0);
+            const rank = e => visAprStatus(e) === 'APPROVED' ? 0 : 1;   // approved first: waiting for Allow Unloading
+            const pend = gateEntries.filter(isInwPending).sort((a, b) => rank(a) - rank(b) || new Date(b.inTime) - new Date(a.inTime));
             const inside = gateEntries.filter(isInwInside).sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
-            const out = gateEntries.filter(isInwRecentOut).sort((a, b) => new Date(b.outTime || inwDoneAt(b)) - new Date(a.outTime || inwDoneAt(a)));
-            document.getElementById('inwTabInN').textContent = '(' + inside.length + ')';
+            // (2026-11-27) Sample & Other entries too: waiting for approval / Done · Inward, then the returnable ones
+            // waiting to go back (Return · Outward); their finished ones join the Out tab
+            const sPend = gateEntries.filter(isSmpPending).sort((a, b) => rank(a) - rank(b) || new Date(b.inTime) - new Date(a.inTime));
+            const sRet = gateEntries.filter(isSmpReturnPending).sort((a, b) => new Date(a.inTime) - new Date(b.inTime));   // oldest first: the longest out
+            const outAt = e => new Date(isSample(e) ? smpDoneTime(e) : (e.outTime || inwDoneAt(e)));
+            const out = gateEntries.filter(e => isInwRecentOut(e) || isSmpRecentDone(e)).sort((a, b) => outAt(b) - outAt(a));
+            document.getElementById('inwTabInN').textContent = '(' + (pend.length + inside.length + sPend.length + sRet.length) + ')';
             document.getElementById('inwTabOutN').textContent = '(' + out.length + ')';
             const on = 'bg-white text-gray-900 shadow-sm', off = 'text-gray-500';
             document.getElementById('inwTabIn').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (INW_EXIST_TAB === 'in' ? on : off);
             document.getElementById('inwTabOut').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (INW_EXIST_TAB === 'out' ? on : off);
-            const rows = (INW_EXIST_TAB === 'in' ? inside : out).filter(hit);
-            if (!rows.length) {
-                list.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${INW_EXIST_TAB === 'in' ? 'No inward vehicle inside.' : 'No inward went out in the last ' + VIS_OUT_DAYS + ' days.'}</p>`;
+            const head = (t, n, cls) => `<p class="text-[11px] font-extrabold uppercase tracking-wide ${cls} px-1 pt-1">${t} · ${n}</p>`;
+            if (INW_EXIST_TAB === 'in') {
+                const p = pend.filter(hit), ins = inside.filter(hit), sp = sPend.filter(hit), sr = sRet.filter(hit);
+                if (!p.length && !ins.length && !sp.length && !sr.length) {
+                    list.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${words.length ? 'Nothing matches the search.' : 'No inward is waiting for approval or inside.'}</p>`;
+                    return;
+                }
+                list.innerHTML = (p.length ? head('Waiting for approval', p.length, 'text-orange-700') + p.map(inwPendCard).join('') : '')
+                    + (ins.length ? head('Inside · unloading', ins.length, 'text-emerald-700') + ins.map(e => inwExistCard(e, true)).join('') : '')
+                    + (sp.length ? head('Sample &amp; Other · waiting for approval', sp.length, 'text-rose-700') + sp.map(smpPendCard).join('') : '')
+                    + (sr.length ? head('Sample &amp; Other · return pending', sr.length, 'text-blue-700') + sr.map(e => smpRetCard(e, true)).join('') : '');
                 return;
             }
-            list.innerHTML = rows.map(e => {
-                const a = visApr(e), inTab = INW_EXIST_TAB === 'in';
+            const rows = out.filter(hit);
+            if (!rows.length) {
+                list.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${words.length ? 'Nothing matches the search.' : 'No inward went out in the last ' + VIS_OUT_DAYS + ' days.'}</p>`;
+                return;
+            }
+            list.innerHTML = rows.map(e => isSample(e) ? smpRetCard(e, false) : inwExistCard(e, false)).join('');
+        }
+        // one entry inside (Out) or gone out (no action)
+        function inwExistCard(e, inTab) {
+                const a = visApr(e);
                 const since = Math.max(0, Math.round((Date.now() - new Date(e.inDoneAt || e.inTime).getTime()) / 60000));
                 const dur = since >= 60 ? Math.floor(since / 60) + 'h ' + (since % 60) + 'm' : since + 'm';
-                const badge = inTab ? visBadge('Inside ' + dur, since > 1440 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')
+                const eo = inTab ? inwEoOf(e) : null, eoOk = !!eo && eo.status === 'APPROVED';
+                const badge = eoOk ? visBadge('Out Approved', 'bg-emerald-600 text-white')
+                    : inTab ? visBadge('Inside ' + dur, since > 1440 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-800')
                     : e.status === 'IN' ? visBadge('Field Boy · No Out needed', 'bg-violet-100 text-violet-800')
                     : visBadge(e.inStage === 'SENT_BACK' ? 'Sent back' : 'Out', e.inStage === 'SENT_BACK' ? 'bg-red-100 text-red-700' : 'bg-gray-200 text-gray-700');
-                return `<div class="rounded-2xl border border-gray-200 bg-white p-3 space-y-2.5">
+                const ul = inwUlState(e), outOn = inTab && (!ul.need || ul.done);
+                return `<div class="rounded-2xl border ${eoOk ? 'border-emerald-400 bg-emerald-50/60' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
                     <div class="flex items-start gap-3">
                         ${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                         <div class="min-w-0 flex-1">
@@ -6415,12 +6521,217 @@
                                 : `<p class="text-[11px] font-semibold text-cyan-800">DK ${esc(d.slip)} · G ${esc(d.gross)} · T ${esc(d.tare)} · Net ${esc(Number(d.net).toFixed(2))} Kg</p>`; })()}
                         </div>
                     </div>
+                    ${inwPipeHtml(e)}
                     <div class="flex gap-2">
                         <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>
-                        ${inTab ? `<button onclick="openVisitorOut('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>` : ''}
+                        ${!inTab ? '' : outOn
+                            ? `<button onclick="inwOutPress('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl ${eoOk ? 'bg-emerald-600' : 'bg-blue-600'} text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Out</button>`
+                            : `<button disabled title="${esc(ul.txt)}" class="flex-[2] py-2 rounded-xl bg-gray-200 text-gray-500 text-[11px] font-extrabold flex items-center justify-center gap-1 cursor-not-allowed"><i class="fa-solid fa-lock"></i> Out · after Unloader done</button>`}
                     </div>
                 </div>`;
-            }).join('');
+        }
+
+        /* ── 8D-2. INWARD PIPELINE + EARLY OUT (2026-11-27, sql/GATE_INWARD_EARLY_OUT_MIGRATION.sql) ──
+           Every Inward card of Inward Status shows five steps with their time: Gate Entry → Approval → Unloader →
+           Store Inward Entry → Gate Out. Out is enabled only once the Unloader is DONE (inwUlState; entries from
+           before the approval flow need none). Out then asks the server (gate_inw_track, also read every tick into
+           INW_TRK) whether the Store has booked the Inward (inward_entries.gate_entry_no = the entry id): booked → the
+           normal Out sheet. Not booked → "STORE ENTRY PENDING HAI ! KIRPYA VEHICLE PHOTO KHICHE" → photo → ONE
+           Purchaser (gate_out_purchasers) → gate_out_request. The Purchaser decides on the launcher with his PIN
+           (launcher-visitor.js, gate_out_decide); APPROVED = the card turns green ("Out Approved") and Out opens the
+           normal Out sheet. The request lives only on the server (never in the register), so every phone sees it.
+           No migration = the old Out (no check); offline = Out waits (the Store status cannot be known). */
+        var INW_TRK = {}, INW_TRK_NOMIG = false, INW_TRK_BUSY = false, INW_TRK_AT = 0, INW_OUT_PASS = null;   // var: read by functions that may run before this line
+        var INW_PURCH_KEY = 'gate2_out_purch_v1';
+        function inwTrkOf(e) { return (e && e.uid && INW_TRK[e.uid]) || null; }
+        function inwEoOf(e) { const t = inwTrkOf(e); return t && t.out && t.out.status !== 'CANCELLED' ? t.out : null; }
+        // the Unloader step: {need, done, txt}
+        function inwUlState(e) {
+            const a = visApr(e);
+            if (!e.needApproval) return { need: false, done: true, txt: '' };
+            if (!a) return hydNoApproval() ? { need: false, done: true, txt: '' } : { need: true, done: false, txt: 'Waiting for approval' };
+            const u = a.unloader;
+            if (!u) return { need: true, done: false, txt: 'No Unloader assigned yet (approver / Admin: Assign Unloader on the launcher)' };
+            return u.status === 'DONE' ? { need: true, done: true, txt: '' } : { need: true, done: false, txt: 'Unloader ' + (u.to || '') + ' has not uploaded the photos yet' };
+        }
+        // read the Store side + early-out request of the Inward entries on screen (every tick; 5 s while Inward Status is open, else 20 s)
+        async function inwTrackNow(force) {
+            if (INW_TRK_BUSY || INW_TRK_NOMIG || !GATE_USER || GATE_OFFLINE || navigator.onLine === false) return false;
+            const view = document.getElementById('view-inwardExisting'), open = view && view.classList.contains('active');
+            if (!force && Date.now() - INW_TRK_AT < (open ? 4500 : 20000)) return false;
+            const uids = gateEntries.filter(e => e.uid && e._syncedAt && (isInwPending(e) || isInwInside(e) || isInwRecentOut(e)
+                || isSmpPending(e) || isSmpReturnPending(e) || isSmpRecentDone(e))).map(e => e.uid).slice(0, 300);
+            if (!uids.length) { INW_TRK_AT = Date.now(); return true; }
+            INW_TRK_BUSY = true;
+            const r = await gateRpc('gate_inw_track', gateArgs({ p_uids: uids }));
+            INW_TRK_BUSY = false; INW_TRK_AT = Date.now();
+            if (!r.ok) { if (r.error === 'NO_MIGRATION') { INW_TRK_NOMIG = true; inwRefreshUi(); } return false; }
+            const rows = r.data.rows || {};
+            let changed = false;
+            uids.forEach(u => {
+                const nw = rows[u] || null, old = INW_TRK[u] || null;
+                if (JSON.stringify(nw) === JSON.stringify(old)) return;
+                changed = true;
+                const was = old && old.out ? old.out.status : '', now = nw && nw.out ? nw.out.status : '';
+                if (was === 'PENDING' && (now === 'APPROVED' || now === 'REJECTED')) {
+                    const e = gateEntries.find(x => x.uid === u);
+                    showIosBanner(`${e ? e.id + ' ' + e.name : 'Inward'}: Early Out ${now === 'APPROVED' ? 'APPROVED' : 'rejected'} by ${nw.out.decidedBy || nw.out.approver}`, now === 'APPROVED' ? 'success' : 'error');
+                }
+                if (nw) INW_TRK[u] = nw; else delete INW_TRK[u];
+            });
+            if (changed) inwRefreshUi();
+            return true;
+        }
+        // the five steps, each: state (ok / wait / bad / todo), text, time
+        function inwPipeHtml(e) {
+            const a = visApr(e), st = a ? a.status : '', t = inwTrkOf(e), eo = inwEoOf(e), ul = inwUlState(e);
+            const tm = iso => iso ? esc(formatDateTimeShort(iso)) : '';
+            const steps = [];
+            steps.push(['Gate Entry', 'ok', 'In by ' + esc(e.guard || '-'), tm(e.inTime)]);
+            // 2. approval
+            if (!e.needApproval) steps.push(['Approval', 'ok', 'Not needed (older entry)', '']);
+            else if (!e._syncedAt) steps.push(['Approval', 'wait', 'Waiting to send to ' + esc(e.approver || '-'), '']);
+            else if (!a) steps.push(['Approval', hydNoApproval() ? 'ok' : 'wait', hydNoApproval() ? 'No approval system on the server' : 'Request being made', '']);
+            else if (st === 'APPROVED') steps.push(['Approval', 'ok', 'Approved by <b>' + esc(a.decidedBy || a.host || '-') + '</b>' + (isSample(e)
+                ? (e.smpDoneAt ? ' · inward done ' + tm(e.smpDoneAt) : ' · press Done · Inward')
+                : (e.inDoneAt ? ' · unloading allowed ' + tm(e.inDoneAt) : ' · press Allow Unloading')), tm(a.decidedAt)]);
+            else if (st === 'REJECTED') steps.push(['Approval', 'bad', 'Rejected by <b>' + esc(a.decidedBy || a.host || '-') + '</b>: ' + esc(a.remarks || '-'), tm(a.decidedAt)]);
+            else steps.push(['Approval', 'wait', 'Waiting for <b>' + esc(a.host || e.approver || '-') + '</b>', tm(a.requestedAt)]);
+            // 3. unloader
+            const u = a && a.unloader;
+            if (!ul.need) steps.push(['Unloader', 'ok', 'Not needed (older entry)', '']);
+            else if (u && u.status === 'DONE') steps.push(['Unloader', 'ok', 'Done by <b>' + esc(u.doneBy || u.to || '-') + '</b> · ' + esc(u.photoCount || 0) + ' photo(s)', tm(u.doneAt)]);
+            else if (u) steps.push(['Unloader', 'wait', '<b>' + esc(u.to || '-') + '</b> · photos not uploaded yet' + (u.chargeType === 'PAYABLE' ? ' · Payable' : ''), tm(u.at)]);
+            else steps.push(['Unloader', st === 'APPROVED' ? 'wait' : 'todo', st === 'APPROVED' ? 'No Unloader assigned yet' : 'After the approval', '']);
+            // 4. store inward entry
+            const s = t && t.store;
+            if (INW_TRK_NOMIG) steps.push(['Store Inward Entry', 'todo', 'Server needs GATE_INWARD_EARLY_OUT_MIGRATION.sql', '']);
+            else if (s && s.booked) steps.push(['Store Inward Entry', 'ok', '<b>' + esc(s.no || '-') + '</b>' + (s.type ? ' · ' + esc(s.type) : ''), tm(s.at)]);
+            else if (s && s.pending) steps.push(['Store Inward Entry', 'wait', 'No. <b>' + esc(s.pending.no || '-') + '</b> taken · waiting for ' + (s.pending.needUl && s.pending.needMd ? 'Unloader Supervisor + MD' : s.pending.needMd ? 'MD approval' : s.pending.needUl ? 'Unloader Supervisor' : 'Final Submit'), tm(s.pending.at)]);
+            else if (t) steps.push(['Store Inward Entry', e.status === 'OUT' ? 'bad' : 'wait', e.status === 'OUT' ? 'Not booked yet' : 'Pending in the ERP', '']);
+            else steps.push(['Store Inward Entry', 'todo', e._syncedAt ? 'Checking...' : 'After the sync', '']);
+            // 5. gate out
+            if (isSample(e)) {
+                // a Sample & Other entry: Non-Returnable closes at Done; a Returnable one goes back with an Outward
+                if (e.status === 'CLOSED') steps.push(['Gate Out', 'ok', 'Non-Returnable · closed at Done', tm(e.closedAt)]);
+                else if (e.status === 'OUT' && e.smpStage === 'SENT_BACK') steps.push(['Gate Out', 'bad', 'Closed without inward: ' + esc(e.outRemarks || '-'), tm(e.outTime)]);
+                else if (e.status === 'OUT') steps.push(['Gate Out', 'ok', 'Returned' + (e.outwardNo ? ' · Outward <b>' + esc(e.outwardNo) + '</b>' : '') + (e.outGuard ? ' · ' + esc(e.outGuard) : ''), tm(e.outTime)]);
+                else if (e.smpDoneAt && smpReturnable(e)) steps.push(['Gate Out', 'wait', 'Returnable · press Return · Outward when it goes back', '']);
+                else steps.push(['Gate Out', 'todo', smpReturnable(e) ? 'Returnable · goes back after Done' : 'Non-Returnable · closes at Done', '']);
+            }
+            else if (e.status === 'OUT') steps.push(['Gate Out', e.inStage === 'SENT_BACK' ? 'bad' : 'ok', (e.inStage === 'SENT_BACK' ? 'Sent back: ' : 'Out by ' + esc(e.outGuard || '-') + (e.outRemarks ? ' · ' : '')) + esc(e.outRemarks || ''), tm(e.outTime)]);
+            else if (eo && eo.status === 'APPROVED') steps.push(['Gate Out', 'okg', 'Early Out <b>APPROVED</b> by <b>' + esc(eo.decidedBy || eo.approver || '-') + '</b> · press Out', tm(eo.decidedAt)]);
+            else if (eo && eo.status === 'PENDING') steps.push(['Gate Out', 'wait', 'Store entry pending · Early Out waiting for <b>' + esc(eo.approver || '-') + '</b> (launcher)', tm(eo.requestedAt)]);
+            else if (eo && eo.status === 'REJECTED') steps.push(['Gate Out', 'bad', 'Early Out rejected by <b>' + esc(eo.decidedBy || '-') + '</b>: ' + esc(eo.remarks || '-'), tm(eo.decidedAt)]);
+            else if (isInwInside(e) && ul.done) steps.push(['Gate Out', 'todo', s && s.booked ? 'Ready: press Out' : 'Out needs the Store entry or a Purchaser approval', '']);
+            else steps.push(['Gate Out', 'todo', 'After unloading', '']);
+            const dot = { ok: 'bg-emerald-500 text-white', okg: 'bg-emerald-600 text-white', wait: 'bg-amber-400 text-white', bad: 'bg-red-500 text-white', todo: 'bg-gray-200 text-gray-500' };
+            const ico = { ok: 'fa-check', okg: 'fa-check-double', wait: 'fa-hourglass-half', bad: 'fa-xmark', todo: 'fa-minus' };
+            const txt = { ok: 'text-gray-700', okg: 'text-emerald-800 font-extrabold', wait: 'text-amber-800', bad: 'text-red-700', todo: 'text-gray-400' };
+            return `<div class="rounded-xl bg-gray-50/80 border border-gray-100 px-2.5 py-2 space-y-1.5">` + steps.map((x, i) => `
+                <div class="flex items-start gap-2">
+                    <span class="w-4 h-4 mt-px rounded-full ${dot[x[1]]} flex items-center justify-center text-[8px] shrink-0"><i class="fa-solid ${ico[x[1]]}"></i></span>
+                    <div class="min-w-0 flex-1 flex items-start justify-between gap-2">
+                        <p class="text-[10.5px] leading-tight ${txt[x[1]]}"><span class="font-extrabold text-gray-800">${i + 1}. ${x[0]}</span> · ${x[2]}</p>
+                        ${x[3] ? `<span class="text-[9.5px] font-bold text-gray-400 whitespace-nowrap">${x[3]}</span>` : ''}
+                    </div>
+                </div>`).join('') + `</div>`;
+        }
+        // Out from Inward Status / pass / Verify: Unloader done → Store booked or Early Out approved → the normal Out sheet
+        async function inwOutPress(id) {
+            const e = gateEntries.find(x => x.id === id);
+            if (!e || e.status !== 'IN' || !isInward(e)) return;
+            const go = () => { INW_OUT_PASS = id; openVisitorOut(id); };
+            const ul = inwUlState(e);
+            if (ul.need && !ul.done) { showIosBanner('Out only after the Unloader is done: ' + ul.txt, 'error'); return; }
+            if (INW_TRK_NOMIG || !e.uid) { go(); return; }
+            if (!e._syncedAt) { showIosBanner('This entry is not on the server yet: sync first, then press Out', 'error'); gateSyncSoon(); return; }
+            if (navigator.onLine === false || GATE_OFFLINE) { showIosBanner('No internet: the Store entry status cannot be checked. Press Out again when online.', 'error'); return; }
+            INW_TRK_AT = 0;
+            const ok = await inwTrackNow(true);
+            if (INW_TRK_NOMIG) { go(); return; }
+            if (!ok) { showIosBanner('Could not check the Store entry. Try again.', 'error'); return; }
+            const t = inwTrkOf(e), eo = inwEoOf(e);
+            if (t && t.store && t.store.booked) { go(); return; }
+            if (eo && eo.status === 'APPROVED') { go(); return; }
+            if (eo && eo.status === 'PENDING') {
+                const pick = window.IosDialog && IosDialog.choose
+                    ? await IosDialog.choose(`Store entry pending.\nEarly Out request is waiting for ${eo.approver || 'the Purchaser'} (sent ${formatDateTimeShort(eo.requestedAt)}). The vehicle can go out once it is approved.`, [{ label: 'Wait', value: 'wait', bold: true, cancel: true }, { label: 'Send to another Purchaser', value: 'again' }])
+                    : 'wait';
+                if (pick !== 'again') return;
+            }
+            eoOpen(e);
+        }
+        // ── the Early Out sheet: step 1 = photo, step 2 = one Purchaser + Send ──
+        var EO = null;   // { id, photo, pick }
+        function eoOpen(e) {
+            EO = { id: e.id, photo: null, pick: null };
+            const eo = inwEoOf(e);
+            document.getElementById('eoWho').innerHTML = `${inwThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
+                <div class="min-w-0"><p class="text-sm font-extrabold text-gray-900 truncate">${esc(e.name)}</p>
+                <p class="text-[11px] font-semibold text-gray-500 truncate">${esc(e.id)} · ${esc(e.vehicle)} · ${esc(inwRef(e))}</p>
+                ${eo && eo.status === 'REJECTED' ? `<p class="text-[11px] font-bold text-red-700">Last request rejected by ${esc(eo.decidedBy || '-')}: ${esc(eo.remarks || '-')}</p>` : ''}</div>`;
+            ['eoPhoto', 'eoPhoto2'].forEach(i => { const x = document.getElementById(i); if (x) x.value = ''; });
+            document.getElementById('eoPhotoMsg').textContent = 'The photo goes to the Purchaser with the request.';
+            document.getElementById('eoStep1').classList.remove('hidden');
+            document.getElementById('eoStep2').classList.add('hidden');
+            document.getElementById('eoErr').textContent = '';
+            document.getElementById('eoModal').classList.remove('hidden');
+            eoLoadPurchasers();
+        }
+        function eoClose() { document.getElementById('eoModal').classList.add('hidden'); EO = null; }
+        async function eoPhotoPicked(input) {
+            if (!EO || !input.files || !input.files[0]) return;
+            const msg = document.getElementById('eoPhotoMsg');
+            msg.textContent = 'Compressing...';
+            try { EO.photo = await compressImageFile(input.files[0], 1000, 0.7); }
+            catch (err) { msg.textContent = 'Could not read the photo. Take it again.'; return; }
+            document.getElementById('eoPreview').src = EO.photo;
+            document.getElementById('eoStep1').classList.add('hidden');
+            document.getElementById('eoStep2').classList.remove('hidden');
+            eoPaintList();
+        }
+        async function eoLoadPurchasers() {
+            const r = await gateRpc('gate_out_purchasers', gateArgs({}));
+            if (r.ok) writeLS(INW_PURCH_KEY, { at: new Date().toISOString(), rows: r.data.rows || [] });
+            eoPaintList();
+        }
+        function eoPaintList() {
+            const box = document.getElementById('eoList'); if (!box || !EO) return;
+            const rows = (readLS(INW_PURCH_KEY, null) || {}).rows || [];
+            if (!rows.length) { box.innerHTML = '<p class="p-3 text-[11px] font-semibold text-gray-400">Loading the Purchasers...</p>'; return; }
+            box.innerHTML = rows.map(p => `<label class="flex items-center gap-3 px-3 py-2.5 cursor-pointer ${EO.pick === p.id ? 'bg-emerald-50' : 'bg-white'}">
+                    <input type="radio" name="eoPick" value="${esc(p.id)}" ${EO.pick === p.id ? 'checked' : ''} onchange="eoPickSet(this.value)" class="w-4 h-4 accent-emerald-600">
+                    <span class="min-w-0"><span class="block text-[13px] font-extrabold text-gray-900 truncate">${esc(p.name)}</span>
+                    <span class="block text-[10.5px] font-semibold text-gray-500 truncate">${esc([p.emp, p.desig].filter(Boolean).join(' · ') || 'Purchaser')}</span></span>
+                </label>`).join('');
+        }
+        function eoPickSet(v) { if (!EO) return; EO.pick = v; document.getElementById('eoErr').textContent = ''; eoPaintList(); }
+        async function eoSend() {
+            if (!EO) return;
+            const e = gateEntries.find(x => x.id === EO.id), err = document.getElementById('eoErr'), btn = document.getElementById('eoSend');
+            if (!e) { eoClose(); return; }
+            if (!EO.photo) { err.textContent = 'Take the vehicle photo first'; return; }
+            if (!EO.pick) { err.textContent = 'Choose the Purchaser who approves'; return; }
+            btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sending...';
+            const r = await gateRpc('gate_out_request', gateArgs({ p_entry_uid: e.uid, p_approver: EO.pick, p_photo: EO.photo }));
+            btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Send to Approval';
+            if (!r.ok) {
+                const d = r.data || {};
+                if (r.error === 'STORE_BOOKED' || r.error === 'ALREADY_APPROVED') {
+                    INW_TRK[e.uid] = Object.assign({}, INW_TRK[e.uid] || {}, d.store ? { store: d.store } : {}, d.out ? { out: d.out } : {});
+                    eoClose(); inwRefreshUi();
+                    showIosBanner(r.error === 'STORE_BOOKED' ? 'The Store has booked the Inward now: Out is allowed' : 'Early Out is already approved', 'success');
+                    INW_OUT_PASS = e.id; openVisitorOut(e.id); return;
+                }
+                err.textContent = ({ UNLOADER_PENDING: 'The Unloader has not uploaded the photos yet', NOT_PURCHASER: 'That login is not a Purchaser any more: choose another',
+                    PHOTO_REQUIRED: 'Take the vehicle photo again', ALREADY_OUT: 'This vehicle is already out', NOT_FOUND: 'This entry is not on the server',
+                    NO_MIGRATION: 'The server needs GATE_INWARD_EARLY_OUT_MIGRATION.sql (Admin)', NET: 'No internet. Try again.' })[r.error] || ('Not sent: ' + (r.detail || r.error));
+                return;
+            }
+            INW_TRK[e.uid] = Object.assign({}, INW_TRK[e.uid] || {}, { out: r.data.out });
+            eoClose(); inwRefreshUi();
+            showIosBanner(`${e.id}: sent to ${(r.data.out || {}).approver || 'the Purchaser'} for approval`, 'success');
         }
 
         // ==========================================
@@ -6959,7 +7270,7 @@
             document.getElementById('smpTypeRET').className = SMP_TYPE === 'RETURNABLE' ? on + 'text-blue-700' : off;
             document.getElementById('smpTypeNON').className = SMP_TYPE === 'NON-RETURNABLE' ? on + 'text-gray-900' : off;
             document.getElementById('smpTypeNote').textContent = SMP_TYPE === 'RETURNABLE'
-                ? 'Returnable: after the inward it waits in Return Pending until it goes back (item photo + Outward No.).'
+                ? 'Returnable: after the inward it waits in Inward Material › Inward Status until it goes back (item photo + Outward No.).'
                 : 'Non-Returnable: the inward is closed once approved; nothing goes back.';
             document.getElementById('smpFields').classList.remove('hidden');
         }
@@ -7094,7 +7405,10 @@
                 : offline ? 'No internet: new entries are sent for approval as soon as the net is back.' : '';
             note.textContent = msg; note.classList.toggle('hidden', !msg);
             if (!rows.length) { box.innerHTML = '<p class="text-center text-xs font-semibold text-gray-400 py-10">No Sample / Other entry is waiting for approval.</p>'; return; }
-            box.innerHTML = rows.map(e => {
+            box.innerHTML = rows.map(smpPendCard).join('');
+        }
+        // one Sample / Other entry waiting for approval / Done (Approval Pending here and Inward Material › Inward Status)
+        function smpPendCard(e) {
                 const a = visApr(e), st = a ? a.status : '';
                 let badge, line;
                 if (!e._syncedAt) {
@@ -7132,9 +7446,9 @@
                             <p class="text-[11px] font-semibold text-gray-700 mt-0.5">${line}</p>
                         </div>
                     </div>
+                    ${inwPipeHtml(e)}
                     <div class="flex gap-2">${acts}</div>
                 </div>`;
-            }).join('');
         }
 
         // Approved -> the inward is complete: non-returnable = closed, returnable = waits in Return Pending
@@ -7169,8 +7483,11 @@
                 e.host = `Approver: ${e.approver || '-'} • Inward Done (Non-Returnable)`;
             }
             touchEntry(e);
-            showIosBanner(smpReturnable(e) ? `${e.id}: inward done, waiting in Return Pending` : `${e.id}: inward done and closed`, 'success');
-            if (smpReturnable(e)) showView('sampleReturn'); else renderSamplePending();
+            showIosBanner(smpReturnable(e) ? `${e.id}: inward done, waiting to go back (Inward Status)` : `${e.id}: inward done and closed`, 'success');
+            // pressed in Inward Material › Inward Status: stay there (the card moves to its Return pending part)
+            const inStatus = (document.getElementById('view-inwardExisting') || { classList: { contains: () => false } }).classList.contains('active');
+            if (inStatus) renderInwardExisting();
+            else if (smpReturnable(e)) { INW_EXIST_TAB = 'in'; showView('inwardExisting'); } else renderSamplePending();
         }
 
         // Pending / rejected and the person takes it back: closed with a reason (status OUT, so the server drops the request)
@@ -7208,12 +7525,15 @@
             document.getElementById('smpTabDone').className = 'py-1.5 rounded-lg text-xs font-bold transition-all ' + (SMP_RET_TAB === 'done' ? on : off);
             const rows = (SMP_RET_TAB === 'pend' ? pend : done).filter(hit);
             if (!rows.length) { box.innerHTML = `<p class="text-center text-xs font-semibold text-gray-400 py-10">${SMP_RET_TAB === 'pend' ? 'No returnable item is waiting to go back.' : 'Nothing completed in the last ' + VIS_OUT_DAYS + ' days.'}</p>`; return; }
-            box.innerHTML = rows.map(e => {
+            box.innerHTML = rows.map(e => smpRetCard(e, SMP_RET_TAB === 'pend')).join('');
+        }
+        // one Sample / Other entry inward-done: pend = waiting to go back (Return · Outward), else returned / closed
+        function smpRetCard(e, pend) {
                 const days = Math.floor((Date.now() - new Date(e.inTime).getTime()) / 86400000);
-                const state = SMP_RET_TAB === 'pend' ? visBadge(days >= 1 ? 'Pending ' + days + ' d' : 'Pending', days >= 7 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800')
+                const state = pend ? visBadge(days >= 1 ? 'Pending ' + days + ' d' : 'Pending', days >= 7 ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800')
                     : e.smpStage === 'RETURNED' ? visBadge('Returned', 'bg-emerald-100 text-emerald-800')
                     : e.status === 'CLOSED' ? visBadge('Inward done', 'bg-gray-200 text-gray-700') : visBadge('Closed', 'bg-gray-200 text-gray-700');
-                return `<div class="rounded-2xl border ${SMP_RET_TAB === 'pend' && days >= 7 ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
+                return `<div class="rounded-2xl border ${pend && days >= 7 ? 'border-red-200 bg-red-50/30' : 'border-gray-200 bg-white'} p-3 space-y-2.5">
                     <div class="flex items-start gap-3">
                         ${smpThumb(e, 'w-12 h-12 rounded-xl shrink-0')}
                         <div class="min-w-0 flex-1">
@@ -7224,12 +7544,12 @@
                             ${e.outRemarks ? `<p class="text-[11px] font-semibold text-gray-700 mt-0.5">Remarks: ${esc(e.outRemarks)}</p>` : ''}
                         </div>
                     </div>
+                    ${inwPipeHtml(e)}
                     <div class="flex gap-2">
                         <button onclick="openPassModal('${esc(e.id)}')" class="ios-btn flex-1 py-2 rounded-xl bg-blue-50 text-blue-700 text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-receipt"></i> Pass</button>
-                        ${SMP_RET_TAB === 'pend' ? `<button onclick="smpOpenReturn('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Return · Outward</button>` : ''}
+                        ${pend ? `<button onclick="smpOpenReturn('${esc(e.id)}')" class="ios-btn flex-[2] py-2 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center justify-center gap-1"><i class="fa-solid fa-right-from-bracket"></i> Return · Outward</button>` : ''}
                     </div>
                 </div>`;
-            }).join('');
         }
 
         // ── Return (Outward): item photo + the next Outward No. ──

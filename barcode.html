@@ -1,0 +1,1692 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head><script src="offline-sync.js?v=20261127a"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Amazon Barcode</title>
+    <!-- the launcher's Dark / Light choice (localStorage sarv_theme), set before the first paint so there is no flash -->
+    <script>try { var t = localStorage.getItem('sarv_theme'); if (t === 'dark' || (!t && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches)) document.documentElement.classList.add('dark'); } catch (e) {}</script>
+    <script src="date-dmy.js"></script>
+    <script src="caps-input.js"></script>
+    <script src="hover-tip.js"></script>
+    <script src="sso-preboot.js"></script>
+    <script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script>
+    <!--
+      SARV & AMAZON BARCODE SOFTWARE (launcher app HOME_AMAZON_BARCODE; server sql/AMAZON_BARCODE_MIGRATION.sql)
+        Until 2026-11-27 the catalog, the POs and the queue lived only in ONE browser's localStorage. Now:
+        * Catalog (Parent SKU -> its Slave SKUs), Amazon POs and the custom field list are on the server (amz_* RPCs,
+          token-checked; every save sends the rev it opened, a newer one = CONFLICT and the page reloads). The server
+          checks every rule again: unique Parent SKU / SKU / ASIN / live PO No., SP <= MRP, whole qty, dates.
+        * Add / Edit = real forms (Parent form with its first Slave rows saved all together, Slave form with photo
+          and custom fields); Delete = Admin only (a parent only once it has no slaves; a PO with a reason).
+        * The thermal print QUEUE stays on this device (localStorage sarv_amz_queue_v1): it is a printer's to-do list.
+        * The last server answer is kept (sarv_amz_cache_v1) so the lists and labels still open without internet;
+          nothing is saved while offline.
+        * The old browser-only data (sarv_amazon_barcode_v9_pdf_exact) and the built-in PDF v9 list can be uploaded
+          once by the Admin (Settings, amz_import: adds only what the server does not have, never overwrites).
+    -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        ios: {
+                            blue: '#007AFF', green: '#34C759', indigo: '#5856D6', orange: '#FF9500', pink: '#FF2D55',
+                            purple: '#AF52DE', red: '#FF3B30', teal: '#5AC8FA', yellow: '#FFCC00', gray: '#8E8E93',
+                            gray2: '#AEAEB2', gray3: '#C7C7CC', gray4: '#D1D1D6', gray5: '#E5E5EA', gray6: '#F2F2F7',
+                            darkBg: '#000000', darkCard: '#1C1C1E', darkCardHeader: '#2C2C2E'
+                        }
+                    },
+                    fontFamily: { sf: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Display"', '"SF Pro Text"', '"Helvetica Neue"', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="ios-ui.css?v=20261118a">
+    <link rel="stylesheet" href="ios-dropdown.css?v=20261120a">
+    <link rel="stylesheet" href="ios-dialog.css?v=20261120a">
+    <script src="ios-ui.js?v=20261118a" defer></script>
+    <script src="ios-dropdown.js?v=20261120a" defer></script>
+    <script src="ios-dialog.js?v=20261120a"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            touch-action: manipulation;
+        }
+        .ios-nav-blur { backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); }
+        .ios-segmented { background-color: rgba(120, 120, 128, 0.16); border-radius: 9px; padding: 2px; }
+        .dark .ios-segmented { background-color: rgba(118, 118, 128, 0.24); }
+        .ios-segmented-btn { border-radius: 7px; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); }
+        .ios-segmented-btn.active { background-color: #FFFFFF; box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.12), 0px 3px 1px rgba(0, 0, 0, 0.04); color: #000000; }
+        .dark .ios-segmented-btn.active { background-color: #636366; color: #FFFFFF; box-shadow: 0px 3px 8px rgba(0, 0, 0, 0.3); }
+        /* MRP and selling price are never struck through (Amazon label rule) */
+        .no-cut, .no-cut * { text-decoration: none !important; text-decoration-line: none !important; }
+        /* form boxes */
+        .fx { width: 100%; font-size: 12px; background: #f1f5f9; padding: 10px; border-radius: 12px; border: 1px solid #e2e8f0; outline: none; }
+        .dark .fx { background: #262626; border-color: #404040; color: #fff; }
+        .fx:focus { box-shadow: 0 0 0 2px #007AFF; }
+        .fx.bad { border-color: #FF3B30; box-shadow: 0 0 0 1px #FF3B30; }
+        .fx[readonly] { opacity: .7; cursor: not-allowed; }
+        .fl { display: block; font-size: 11px; font-weight: 700; color: #475569; margin-bottom: 4px; }
+        .dark .fl { color: #cbd5e1; }
+        .fl i.req { color: #FF3B30; font-style: normal; }
+        .fe { display: block; min-height: 0; font-size: 10.5px; font-weight: 700; color: #FF3B30; margin-top: 3px; }
+        .fe:empty { display: none; }
+        .fh { display: block; font-size: 10px; color: #94a3b8; margin-top: 3px; }
+
+        /* Print = the 100 mm x 100 mm thermal labels only, one label per page */
+        #printContainer { display: none; }
+        @media print {
+            @page { size: 100mm 100mm; margin: 0; }
+            html, body { background: #fff !important; margin: 0 !important; padding: 0 !important; }
+            body > *:not(#printContainer) { display: none !important; }
+            #printContainer { display: block !important; }
+            .label-page { width: 100mm; height: 100mm; box-sizing: border-box; overflow: hidden; break-after: page; page-break-after: always; }
+            .label-page:last-child { break-after: auto; page-break-after: auto; }
+        }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(142, 142, 147, 0.3); border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-[#F2F2F7] dark:bg-black text-slate-900 dark:text-white min-h-full pb-28 font-sf transition-colors duration-200 selection:bg-ios-blue selection:text-white">
+
+    <header class="sticky top-0 z-40 ios-nav-blur bg-white/80 dark:bg-black/75 border-b border-slate-200/80 dark:border-neutral-800 px-4 py-3 transition-colors duration-200">
+        <div class="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-2xl bg-ios-blue flex items-center justify-center text-white shadow-sm font-bold text-xl">S</div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-none tracking-tight text-slate-900 dark:text-white">SARV &amp; AMAZON BARCODE SOFTWARE</h1>
+                        <p id="dbStatus" class="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Connecting to the server...</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 md:hidden">
+                    <button onclick="reloadAll(true)" title="Read the data again" aria-label="Refresh" class="w-9 h-9 rounded-full bg-slate-200/60 dark:bg-neutral-800 flex items-center justify-center text-slate-700 dark:text-slate-200"><i class="fa-solid fa-rotate dbSpin"></i></button>
+                    <button onclick="toggleDarkMode()" title="Dark / Light" aria-label="Dark / Light" class="w-9 h-9 rounded-full bg-slate-200/60 dark:bg-neutral-800 flex items-center justify-center text-slate-700 dark:text-amber-400 transition">
+                        <i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:inline"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="flex items-center gap-3 w-full md:w-auto">
+                <div class="relative flex-1 md:w-64">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm"></i>
+                    <input type="text" id="globalSearchInput" oninput="handleGlobalSearch(this.value)" placeholder="Search SKU, ASIN, Title, PO..." class="w-full bg-slate-200/70 dark:bg-neutral-800/90 text-sm rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-ios-blue transition">
+                </div>
+                <button onclick="openAcceptPOModal()" class="bg-ios-blue text-white px-4 py-2 rounded-xl font-semibold text-sm shadow-sm hover:opacity-95 active:scale-95 transition flex items-center gap-2 whitespace-nowrap">
+                    <i class="fa-solid fa-square-plus text-base"></i><span>ACCEPT AMAZON PO</span>
+                </button>
+                <button onclick="reloadAll(true)" title="Read the data again" aria-label="Refresh" class="hidden md:flex w-9 h-9 rounded-xl bg-slate-200/70 dark:bg-neutral-800 items-center justify-center text-slate-700 dark:text-slate-200 hover:bg-slate-300/70 dark:hover:bg-neutral-700 transition"><i class="fa-solid fa-rotate dbSpin"></i></button>
+                <button onclick="toggleDarkMode()" title="Dark / Light" aria-label="Dark / Light" class="hidden md:flex w-9 h-9 rounded-xl bg-slate-200/70 dark:bg-neutral-800 items-center justify-center text-slate-700 dark:text-amber-400 hover:bg-slate-300/70 dark:hover:bg-neutral-700 transition">
+                    <i class="fa-solid fa-moon dark:hidden"></i><i class="fa-solid fa-sun hidden dark:inline"></i>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 pt-4">
+        <!-- the server is not set up / offline / the old browser data can be uploaded -->
+        <div id="dbBanner" class="hidden mb-4 rounded-2xl px-4 py-3 text-xs font-semibold border"></div>
+
+        <!-- TAB 1: PARENT & SLAVE SKUS -->
+        <section id="tab-skus" class="tab-content space-y-4">
+            <div class="bg-white dark:bg-ios-darkCard rounded-2xl p-3 shadow-sm border border-slate-200/60 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                <div class="ios-segmented flex p-0.5 text-xs font-semibold">
+                    <button id="viewCardsBtn" onclick="switchSKUView('cards')" class="ios-segmented-btn active px-3 py-1.5 flex items-center gap-1.5"><i class="fa-solid fa-grip-vertical"></i> Inset Cards View</button>
+                    <button id="viewTableBtn" onclick="switchSKUView('table')" class="ios-segmented-btn px-3 py-1.5 flex items-center gap-1.5"><i class="fa-solid fa-table-list"></i> Master Sheet View</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="toggleAllParents(true)" class="bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-neutral-700 text-xs px-3 py-1.5 rounded-lg font-medium transition"><i class="fa-solid fa-angles-down mr-1"></i> Expand All</button>
+                    <button onclick="toggleAllParents(false)" class="bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-neutral-700 text-xs px-3 py-1.5 rounded-lg font-medium transition"><i class="fa-solid fa-angles-up mr-1"></i> Collapse All</button>
+                    <button onclick="openParentForm(null)" class="bg-ios-blue text-white hover:opacity-90 text-xs px-3 py-1.5 rounded-lg font-semibold transition"><i class="fa-solid fa-plus mr-1"></i> Add Parent SKU</button>
+                </div>
+            </div>
+
+            <div id="parentCardsContainer" class="space-y-4"></div>
+
+            <div id="masterSheetContainer" class="hidden bg-white dark:bg-ios-darkCard rounded-2xl shadow-sm border border-slate-200/60 dark:border-neutral-800 overflow-hidden">
+                <div class="p-4 border-b border-slate-200/60 dark:border-neutral-800 flex items-center justify-between">
+                    <div>
+                        <h2 class="font-bold text-slate-900 dark:text-white">Master Sheet PDF Columns View</h2>
+                        <p class="text-xs text-slate-500">Every Slave SKU with the PDF's columns.</p>
+                    </div>
+                    <span id="masterSheetCountBadge" class="bg-ios-blue/10 text-ios-blue text-xs font-semibold px-2.5 py-1 rounded-full">0 Slaves Total</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left text-xs border-collapse">
+                        <thead>
+                            <tr class="bg-slate-100/80 dark:bg-neutral-800/80 text-slate-600 dark:text-slate-300 font-semibold border-b border-slate-200/60 dark:border-neutral-700 whitespace-nowrap">
+                                <th class="p-3">SWATCH</th><th class="p-3">PARENT SKU</th><th class="p-3">DESIGN</th><th class="p-3">BRAND</th>
+                                <th class="p-3">ASIN</th><th class="p-3">SKU</th><th class="p-3">HSN</th><th class="p-3 min-w-[240px]">PRODUCT TITLE</th>
+                                <th class="p-3">STANDARD PACKING QTY</th><th class="p-3">SLAVE PACKING TYPE</th><th class="p-3">SLAVE PACKING</th>
+                                <th class="p-3">OUTER BOX</th><th class="p-3">PACKING FINAL QUNATITY</th><th class="p-3">MRP</th><th class="p-3">SELLING PRICE</th><th class="p-3">ACTIONS</th>
+                            </tr>
+                        </thead>
+                        <tbody id="masterSheetTbody" class="divide-y divide-slate-200/60 dark:divide-neutral-800 font-medium"></tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 2: SAVED AMAZON ORDERS -->
+        <section id="tab-orders" class="tab-content hidden space-y-4">
+            <div class="flex items-center justify-between bg-white dark:bg-ios-darkCard p-4 rounded-2xl shadow-sm border border-slate-200/60 dark:border-neutral-800">
+                <div>
+                    <h2 class="font-bold text-lg text-slate-900 dark:text-white flex items-center gap-2"><span>Saved Amazon Orders</span><span id="savedOrdersBadge" class="bg-ios-blue text-white text-xs px-2.5 py-0.5 rounded-full font-bold">0</span></h2>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Saved purchase orders, quantities and their thermal labels.</p>
+                </div>
+                <button onclick="openAcceptPOModal()" class="bg-ios-blue text-white text-xs font-semibold px-3 py-2 rounded-xl shadow-sm hover:bg-ios-blue/90 transition"><i class="fa-solid fa-plus mr-1"></i> New Amazon PO</button>
+            </div>
+            <div id="savedOrdersList" class="space-y-4"></div>
+        </section>
+
+        <!-- TAB 3: 4x4 THERMAL BARCODE STUDIO -->
+        <section id="tab-studio" class="tab-content hidden space-y-4">
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+                <div class="lg:col-span-5 space-y-4">
+                    <div class="bg-white dark:bg-ios-darkCard rounded-2xl p-4 shadow-sm border border-slate-200/60 dark:border-neutral-800 space-y-4">
+                        <h2 class="font-bold text-base text-slate-900 dark:text-white flex items-center justify-between">
+                            <span>Label Configuration</span>
+                            <span class="text-xs bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full font-semibold">100mm x 100mm (4" x 4")</span>
+                        </h2>
+                        <div>
+                            <label for="studioSkuSelect" class="fl">Select Product / Slave SKU</label>
+                            <select id="studioSkuSelect" data-iosdd-search onchange="loadStudioSku(this.value)" class="fx font-semibold"></select>
+                        </div>
+                        <div>
+                            <span class="fl">Label Design Template</span>
+                            <div class="ios-segmented flex p-0.5 text-xs font-semibold">
+                                <button id="tplStandardBtn" onclick="switchStudioTemplate('standard')" class="ios-segmented-btn active flex-1 py-1.5">Amazon FBA Standard</button>
+                                <button id="tplWarehouseBtn" onclick="switchStudioTemplate('warehouse')" class="ios-segmented-btn flex-1 py-1.5">Warehouse Bold</button>
+                                <button id="tplRetailBtn" onclick="switchStudioTemplate('retail')" class="ios-segmented-btn flex-1 py-1.5">Compact Tag</button>
+                            </div>
+                            <span class="fh">The Batch Print Queue prints with the template chosen here.</span>
+                        </div>
+                        <!-- changes here are for this print only; the catalog is changed with the Slave's Edit form -->
+                        <div class="space-y-3 pt-2 border-t border-slate-200/60 dark:border-neutral-800" data-no-caps>
+                            <p class="text-[11px] text-slate-400">Changes below are for this print only. To change the catalog use Edit on the Slave SKU.</p>
+                            <div>
+                                <label for="studioTitle" class="fl">ASIN Title (exact casing kept)</label>
+                                <textarea id="studioTitle" oninput="updateStudioPreview()" rows="2" class="fx"></textarea>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label for="studioAsin" class="fl">ASIN</label><input type="text" id="studioAsin" oninput="this.value=this.value.toUpperCase(); updateStudioPreview()" class="fx font-mono uppercase"></div>
+                                <div><label for="studioSku" class="fl">SKU</label><input type="text" id="studioSku" oninput="this.value=this.value.toUpperCase(); updateStudioPreview()" class="fx font-mono uppercase"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label for="studioMrp" class="fl">MRP (₹)</label><input type="number" id="studioMrp" oninput="updateStudioPreview()" class="fx"></div>
+                                <div><label for="studioSp" class="fl">SELLING PRICE (₹)</label><input type="number" id="studioSp" oninput="updateStudioPreview()" class="fx"></div>
+                            </div>
+                            <div class="grid grid-cols-2 gap-2">
+                                <div><label for="studioHsn" class="fl">HSN Code</label><input type="text" id="studioHsn" oninput="updateStudioPreview()" class="fx"></div>
+                                <div><label for="studioStdPack" class="fl">STANDARD PACK QTY</label><input type="text" id="studioStdPack" oninput="updateStudioPreview()" class="fx"></div>
+                            </div>
+                        </div>
+                        <div class="pt-2 flex items-center gap-2">
+                            <button onclick="printSingleStudioLabel()" class="flex-1 bg-ios-blue text-white py-2.5 rounded-xl text-xs font-bold shadow-sm hover:bg-ios-blue/90 transition flex items-center justify-center gap-2"><i class="fa-solid fa-print"></i> Direct Thermal Print</button>
+                            <button onclick="downloadStudioLabelPNG()" class="flex-1 bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 py-2.5 rounded-xl text-xs font-bold hover:bg-slate-200 transition flex items-center justify-center gap-2"><i class="fa-solid fa-download"></i> Save PNG</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="lg:col-span-7 flex flex-col items-center justify-start">
+                    <div class="bg-white dark:bg-ios-darkCard rounded-2xl p-6 shadow-sm border border-slate-200/60 dark:border-neutral-800 w-full flex flex-col items-center overflow-x-auto">
+                        <div class="text-xs font-bold text-slate-400 mb-4 flex items-center gap-2"><i class="fa-solid fa-eye"></i> LIVE 100mm x 100mm THERMAL PREVIEW (378px x 378px)</div>
+                        <div id="thermalLabelContainer" class="w-[378px] h-[378px] shrink-0 bg-white text-black p-4 border-2 border-black flex flex-col justify-between select-none shadow-xl relative overflow-hidden font-sans"></div>
+                        <p class="text-[11px] text-slate-400 mt-4 text-center">Both <b>MRP</b> and <b>SELLING PRICE</b> print in bold, never struck through.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- TAB 4: BATCH PRINT QUEUE (this device only) -->
+        <section id="tab-queue" class="tab-content hidden space-y-4">
+            <div class="bg-white dark:bg-ios-darkCard rounded-2xl p-4 shadow-sm border border-slate-200/60 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                <div>
+                    <h2 class="font-bold text-slate-900 dark:text-white flex items-center gap-2"><span>Thermal Batch Print Queue</span><span id="queueBadgeCount" class="bg-ios-blue text-white text-xs px-2.5 py-0.5 rounded-full font-bold">0 Labels</span></h2>
+                    <p class="text-xs text-slate-500">Labels sent from Saved Orders, for continuous thermal printing. The queue is kept on this device only.</p>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="clearBatchQueue()" class="bg-ios-red/10 text-ios-red hover:bg-ios-red/20 text-xs px-3 py-1.5 rounded-lg font-semibold transition"><i class="fa-solid fa-trash mr-1"></i> Clear Queue</button>
+                    <button onclick="printBatchQueue()" class="bg-ios-blue text-white text-xs px-4 py-2 rounded-xl font-bold shadow-sm hover:opacity-95 transition"><i class="fa-solid fa-print mr-1"></i> Print All Queue Labels</button>
+                </div>
+            </div>
+            <div id="queueListContainer" class="space-y-3"></div>
+        </section>
+
+        <!-- TAB 5: CUSTOM FIELDS & SETTINGS -->
+        <section id="tab-settings" class="tab-content hidden space-y-6">
+            <div class="bg-white dark:bg-ios-darkCard rounded-2xl p-4 shadow-sm border border-slate-200/60 dark:border-neutral-800 space-y-4">
+                <div>
+                    <h2 class="font-bold text-slate-900 dark:text-white">Custom Fields</h2>
+                    <p class="text-xs text-slate-500">Extra fields on every Parent or Slave SKU form. A Slave field marked "Print on 4x4" prints on the label. <span id="cfAdminNote"></span></p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-slate-50 dark:bg-neutral-800/60 p-3 rounded-xl border border-slate-200/60 dark:border-neutral-700">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-slate-700 dark:text-slate-300">Parent Custom Fields</span>
+                            <button onclick="addCustomField('parent')" class="cf-admin text-xs text-ios-blue font-semibold hover:underline">+ Add Field</button>
+                        </div>
+                        <div id="parentCustomFieldsList" class="space-y-2"></div>
+                    </div>
+                    <div class="bg-slate-50 dark:bg-neutral-800/60 p-3 rounded-xl border border-slate-200/60 dark:border-neutral-700">
+                        <div class="flex items-center justify-between mb-2">
+                            <span class="text-xs font-bold text-slate-700 dark:text-slate-300">Slave Custom Fields</span>
+                            <button onclick="addCustomField('slave')" class="cf-admin text-xs text-ios-blue font-semibold hover:underline">+ Add Field</button>
+                        </div>
+                        <div id="slaveCustomFieldsList" class="space-y-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white dark:bg-ios-darkCard rounded-2xl p-4 shadow-sm border border-slate-200/60 dark:border-neutral-800 space-y-4">
+                <div>
+                    <h2 class="font-bold text-slate-900 dark:text-white">Database</h2>
+                    <p class="text-xs text-slate-500">The catalog and the POs are saved on the server, so every phone and PC sees the same data.</p>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button onclick="exportDatabaseJSON()" class="bg-ios-blue text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-sm hover:bg-ios-blue/90 transition flex items-center gap-2"><i class="fa-solid fa-download"></i> Export JSON Backup</button>
+                </div>
+                <!-- Admin: add the old browser-only data / the built-in list / a JSON backup to the server (adds only, never overwrites) -->
+                <div id="importBox" class="hidden pt-3 border-t border-slate-200/60 dark:border-neutral-800 space-y-3">
+                    <p class="text-xs font-bold text-slate-700 dark:text-slate-300">Upload to the server (Admin) <span class="font-normal text-slate-400">· adds only what the server does not have yet, never changes a saved SKU or PO</span></p>
+                    <div class="flex flex-wrap items-center gap-3">
+                        <button id="importLocalBtn" onclick="importLocalData()" class="bg-emerald-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl hover:opacity-90 transition flex items-center gap-2"><i class="fa-solid fa-cloud-arrow-up"></i> <span id="importLocalTxt">Upload this browser's old data</span></button>
+                        <button onclick="importDefaultCatalog()" class="bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl hover:bg-slate-200 transition flex items-center gap-2"><i class="fa-solid fa-list-check"></i> Load the built-in PDF v9 catalog</button>
+                        <label class="bg-slate-100 dark:bg-neutral-800 text-slate-800 dark:text-slate-200 text-xs font-bold px-4 py-2.5 rounded-xl cursor-pointer hover:bg-slate-200 transition flex items-center gap-2">
+                            <i class="fa-solid fa-upload"></i> Import JSON Backup
+                            <input type="file" id="jsonFileInput" data-up="amz-json-import" onchange="importDatabaseJSON(event)" class="hidden" accept=".json,application/json">
+                        </label>
+                    </div>
+                    <div id="importResult" class="hidden text-xs rounded-xl p-3 bg-slate-50 dark:bg-neutral-800/60 border border-slate-200/60 dark:border-neutral-700"></div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <nav class="fixed bottom-3 left-1/2 -translate-x-1/2 z-40 ios-nav-blur bg-white/90 dark:bg-neutral-900/90 border border-slate-200/80 dark:border-neutral-800 rounded-full px-4 py-2 shadow-lg flex items-center gap-1 sm:gap-4 max-w-[95vw]">
+        <button onclick="switchTab('skus')" id="nav-skus" class="tab-nav-btn active flex flex-col items-center px-3 py-1 rounded-2xl text-ios-blue transition"><i class="fa-solid fa-boxes-stacked text-base"></i><span class="text-[10px] font-semibold mt-0.5">SKUs</span></button>
+        <button onclick="switchTab('orders')" id="nav-orders" class="tab-nav-btn flex flex-col items-center px-3 py-1 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition relative"><i class="fa-solid fa-file-invoice text-base"></i><span class="text-[10px] font-semibold mt-0.5">Orders</span><span id="tabOrdersBadge" class="hidden absolute -top-1 -right-1 bg-ios-blue text-white text-[9px] font-extrabold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">0</span></button>
+        <button onclick="switchTab('studio')" id="nav-studio" class="tab-nav-btn flex flex-col items-center px-3 py-1 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"><i class="fa-solid fa-barcode text-base"></i><span class="text-[10px] font-semibold mt-0.5">4x4 Studio</span></button>
+        <button onclick="switchTab('queue')" id="nav-queue" class="tab-nav-btn flex flex-col items-center px-3 py-1 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition relative"><i class="fa-solid fa-print text-base"></i><span class="text-[10px] font-semibold mt-0.5">Queue</span><span id="tabQueueBadge" class="hidden absolute -top-1 -right-1 bg-ios-green text-white text-[9px] font-extrabold min-w-[16px] h-4 px-1 rounded-full flex items-center justify-center">0</span></button>
+        <button onclick="switchTab('settings')" id="nav-settings" class="tab-nav-btn flex flex-col items-center px-3 py-1 rounded-2xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"><i class="fa-solid fa-sliders text-base"></i><span class="text-[10px] font-semibold mt-0.5">Settings</span></button>
+    </nav>
+
+    <!-- MODAL 1: ACCEPT / EDIT AMAZON PO -->
+    <div id="poModal" class="fixed inset-0 z-50 hidden bg-black/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white dark:bg-ios-darkCard rounded-3xl max-w-3xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-slate-200/80 dark:border-neutral-800 overflow-hidden">
+            <div class="p-4 border-b border-slate-200/60 dark:border-neutral-800 flex items-center justify-between bg-slate-50/50 dark:bg-neutral-800/40">
+                <div class="flex items-center gap-2">
+                    <div class="w-8 h-8 rounded-xl bg-ios-blue/10 text-ios-blue flex items-center justify-center font-bold"><i class="fa-solid fa-cart-shopping"></i></div>
+                    <div>
+                        <h3 id="poModalTitle" class="font-bold text-base text-slate-900 dark:text-white">ACCEPT AMAZON PURCHASE ORDER</h3>
+                        <p class="text-[11px] text-slate-500">Master cartons and the final packing quantity are worked out as you type.</p>
+                    </div>
+                </div>
+                <button onclick="closePOModal()" aria-label="Close" class="w-8 h-8 rounded-full bg-slate-200/60 dark:bg-neutral-800 text-slate-500 dark:text-slate-400 flex items-center justify-center hover:bg-slate-300 transition"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <input type="hidden" id="poEditingId" value="">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div>
+                        <label for="poNumberInput" class="fl">PO NO <i class="req">*</i> <span class="font-normal text-slate-400">(no spaces)</span></label>
+                        <input type="text" id="poNumberInput" onkeydown="preventSpaceKey(event)" oninput="handlePOSpaceFilter(this)" placeholder="e.g. 4X98A1B2" class="fx font-mono font-bold uppercase">
+                        <span class="fe" id="poNumberInputErr"></span>
+                    </div>
+                    <div><label for="poShipToCodeInput" class="fl">SHIP TO LOCATION CODE</label><input type="text" id="poShipToCodeInput" oninput="this.value=this.value.toUpperCase()" placeholder="e.g. DEL4" class="fx font-mono uppercase"></div>
+                    <div><label for="poPackingDate" class="fl">PACKING DATE</label><input type="date" id="poPackingDate" class="fx"></div>
+                    <div><label for="poDispatchDate" class="fl">DISPATCH DATE</label><input type="date" id="poDispatchDate" class="fx"><span class="fe" id="poDispatchDateErr"></span></div>
+                    <div><label for="poCheckInDate" class="fl">CHECK-IN DATE &amp; TIME</label><input type="datetime-local" id="poCheckInDate" class="fx"></div>
+                    <div><label for="poParentSelect" class="fl">SELECT PARENT SKU</label><select id="poParentSelect" data-iosdd-search onchange="loadPOSlavesForParent(this.value)" class="fx font-bold"></select></div>
+                </div>
+                <div><label for="poShippingAddressInput" class="fl">SHIPPING ADDRESS</label><textarea id="poShippingAddressInput" oninput="this.value=this.value.toUpperCase()" rows="2" placeholder="FULL WAREHOUSE ADDRESS..." class="fx uppercase"></textarea></div>
+                <div class="space-y-2 pt-2 border-t border-slate-200/60 dark:border-neutral-800">
+                    <div class="flex items-center justify-between">
+                        <span class="text-xs font-bold text-slate-700 dark:text-slate-300">ENTER SLAVE QUANTITIES FOR THIS ORDER</span>
+                        <span class="text-[11px] text-slate-400">Kept when you switch to another Parent SKU</span>
+                    </div>
+                    <div id="poSlavesContainer" class="space-y-2 max-h-56 overflow-y-auto pr-1"></div>
+                    <p id="poAllParentsLine" class="text-[11px] font-semibold text-slate-500"></p>
+                    <span class="fe" id="poItemsErr"></span>
+                </div>
+                <div class="bg-slate-900 text-white rounded-2xl p-4 border border-slate-700 space-y-3">
+                    <div class="flex items-center justify-between border-b border-slate-700/80 pb-2">
+                        <span class="text-xs font-bold tracking-wider text-sky-300 uppercase">Master Packing Calculation</span>
+                        <span id="poCalcParentBadge" class="text-xs bg-sky-400/20 text-sky-300 px-2.5 py-0.5 rounded-full font-mono font-bold">-</span>
+                    </div>
+                    <div class="grid grid-cols-2 sm:grid-cols-5 gap-2 text-center">
+                        <div class="bg-white/5 p-2 rounded-xl"><span class="block text-[10px] text-slate-400">Total Slaves Qty</span><span id="poCalcTotalSlaves" class="text-base font-extrabold text-white">0</span></div>
+                        <div class="bg-white/5 p-2 rounded-xl"><span class="block text-[10px] text-slate-400">STANDARD PACKING QTY</span><span id="poCalcStdQty" class="text-base font-extrabold text-amber-400">0</span></div>
+                        <div class="bg-white/5 p-2 rounded-xl"><span class="block text-[10px] text-slate-400">Full Master Cartons</span><span id="poCalcFullBoxes" class="text-base font-extrabold text-emerald-400">0</span></div>
+                        <div class="bg-white/5 p-2 rounded-xl"><span class="block text-[10px] text-slate-400">Remaining Slaves</span><span id="poCalcRemSlaves" class="text-base font-extrabold text-sky-400">0</span></div>
+                        <div class="bg-sky-400/20 border border-sky-400/40 p-2 rounded-xl col-span-2 sm:col-span-1"><span class="block text-[9px] text-sky-300 font-bold tracking-tighter">PACKING FINAL QUNATITY</span><span id="poCalcFinalBoxes" class="text-base font-black text-white">0</span></div>
+                    </div>
+                </div>
+                <div><label for="poRemarksInput" class="fl">REMARKS / INTERNAL NOTES</label><input type="text" id="poRemarksInput" placeholder="Optional notes..." class="fx"></div>
+                <p id="poSaveErr" class="fe"></p>
+            </div>
+            <div class="p-4 border-t border-slate-200/60 dark:border-neutral-800 flex items-center justify-end gap-2 bg-slate-50/50 dark:bg-neutral-800/40">
+                <button onclick="closePOModal()" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-neutral-800 transition">Cancel</button>
+                <button id="poSaveBtn" onclick="saveAmazonPO()" class="bg-ios-blue text-white px-5 py-2 rounded-xl text-xs font-bold shadow-sm hover:bg-ios-blue/90 active:scale-95 transition">Save Order</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 2: PARENT SKU FORM (Add = with its first Slave rows; Edit = the parent's own fields) -->
+    <div id="parentModal" class="fixed inset-0 z-50 hidden bg-black/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white dark:bg-ios-darkCard rounded-3xl max-w-4xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200/80 dark:border-neutral-800 overflow-hidden">
+            <div class="p-4 border-b border-slate-200/60 dark:border-neutral-800 flex items-center justify-between">
+                <div>
+                    <h3 id="pfTitle" class="font-bold text-base text-slate-900 dark:text-white">Add Parent SKU</h3>
+                    <p id="pfSub" class="text-[11px] text-slate-500">Fields with <span class="text-ios-red">*</span> are required.</p>
+                </div>
+                <button onclick="closeModal('parentModal')" aria-label="Close" class="w-8 h-8 rounded-full bg-slate-200/60 dark:bg-neutral-800 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+                <p class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Parent details</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                    <div><label for="pfSku" class="fl">PARENT SKU <i class="req">*</i></label><input id="pfSku" class="fx font-mono font-bold uppercase" placeholder="e.g. ALPINE2200SBDP" oninput="this.value=this.value.toUpperCase().replace(/\s+/g,''); pfSkuChanged()"><span class="fh">Letters / digits, no spaces</span><span class="fe" id="pfSkuErr"></span></div>
+                    <div><label for="pfBrand" class="fl">BRAND <i class="req">*</i></label><input id="pfBrand" list="dlBrands" class="fx font-bold uppercase" placeholder="SARV / PARV"><span class="fe" id="pfBrandErr"></span></div>
+                    <div><label for="pfHsn" class="fl">HSN CODE <i class="req">*</i></label><input id="pfHsn" inputmode="numeric" class="fx font-mono" placeholder="63014000" oninput="this.value=this.value.replace(/\D/g,'').slice(0,8)"><span class="fh">4 to 8 digits</span><span class="fe" id="pfHsnErr"></span></div>
+                    <div><label for="pfStd" class="fl">STANDARD PACKING QTY <i class="req">*</i></label><input id="pfStd" type="number" min="1" step="1" class="fx font-bold" placeholder="pcs in one master box"><span class="fe" id="pfStdErr"></span></div>
+                    <div><label for="pfType" class="fl">SLAVE PACKING TYPE <i class="req">*</i></label><input id="pfType" list="dlPackTypes" class="fx font-bold uppercase" placeholder="BAG / LD-PANNI"><span class="fe" id="pfTypeErr"></span></div>
+                    <div><label for="pfSlavePack" class="fl">SLAVE PACKING (L*W*H)</label><input id="pfSlavePack" class="fx font-mono" placeholder="20*15*5"><span class="fe" id="pfSlavePackErr"></span></div>
+                    <div><label for="pfOuter" class="fl">OUTER BOX (L*W*H)</label><input id="pfOuter" class="fx font-mono" placeholder="20*24*35"><span class="fe" id="pfOuterErr"></span></div>
+                    <div><label for="pfSize" class="fl">SIZE</label><input id="pfSize" class="fx" placeholder="150x210cm"></div>
+                    <div><label for="pfWt" class="fl">WEIGHT</label><input id="pfWt" class="fx" placeholder="2.2kg"></div>
+                    <div><label for="pfAsin" class="fl">PARENT ASIN</label><input id="pfAsin" class="fx font-mono uppercase" placeholder="B0XXXXXXXX" oninput="this.value=this.value.toUpperCase().replace(/\s+/g,'')"></div>
+                </div>
+                <div id="pfCustom" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3"></div>
+
+                <!-- new parent only: its first Slave SKUs, saved together with it -->
+                <div id="pfSlavesBox" class="space-y-2 pt-3 border-t border-slate-200/60 dark:border-neutral-800">
+                    <div class="flex items-center justify-between gap-2">
+                        <p class="text-[11px] font-extrabold uppercase tracking-wide text-slate-400">Slave SKUs of this parent <span class="normal-case font-semibold">· optional, can be added later</span></p>
+                        <button type="button" onclick="pfAddRow()" class="text-xs font-bold text-ios-blue bg-ios-blue/10 px-3 py-1.5 rounded-xl hover:bg-ios-blue/20"><i class="fa-solid fa-plus"></i> Add Slave row</button>
+                    </div>
+                    <div id="pfRows" class="space-y-2"></div>
+                </div>
+                <p id="pfErr" class="fe"></p>
+            </div>
+            <div class="p-4 border-t border-slate-200/60 dark:border-neutral-800 flex items-center justify-between gap-2">
+                <button id="pfDelete" onclick="deleteParent()" class="hidden text-xs font-bold text-ios-red px-3 py-2 rounded-xl hover:bg-ios-red/10"><i class="fa-solid fa-trash"></i> Delete Parent</button>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button onclick="closeModal('parentModal')" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500">Cancel</button>
+                    <button id="pfSave" onclick="saveParentForm()" class="bg-ios-blue text-white px-5 py-2 rounded-xl text-xs font-bold shadow-sm">Save Parent SKU</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 3: SLAVE SKU FORM -->
+    <div id="slaveModal" class="fixed inset-0 z-50 hidden bg-black/60 flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-white dark:bg-ios-darkCard rounded-3xl max-w-2xl w-full max-h-[94vh] flex flex-col shadow-2xl border border-slate-200/80 dark:border-neutral-800 overflow-hidden">
+            <div class="p-4 border-b border-slate-200/60 dark:border-neutral-800 flex items-center justify-between">
+                <div>
+                    <h3 id="sfTitle" class="font-bold text-base text-slate-900 dark:text-white">Add Slave SKU</h3>
+                    <p class="text-[11px] text-slate-500">Fields with <span class="text-ios-red">*</span> are required.</p>
+                </div>
+                <button onclick="closeModal('slaveModal')" aria-label="Close" class="w-8 h-8 rounded-full bg-slate-200/60 dark:bg-neutral-800 text-slate-500 flex items-center justify-center"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-4 sm:p-6 space-y-3 overflow-y-auto flex-1">
+                <div class="flex gap-4">
+                    <div class="shrink-0 text-center">
+                        <img id="sfSwatch" alt="Swatch" class="w-24 h-24 rounded-xl object-cover border border-slate-200 dark:border-neutral-700">
+                        <label class="mt-2 block text-[11px] font-bold text-ios-blue cursor-pointer"><i class="fa-solid fa-camera"></i> Photo
+                            <input type="file" id="sfPhoto" data-up="amz-slave-photo" accept="image/*" class="hidden" onchange="sfPhotoPicked(this)">
+                        </label>
+                        <button type="button" id="sfPhotoDel" onclick="sfPhotoRemove()" class="hidden mt-1 text-[11px] font-bold text-ios-red">Remove photo</button>
+                    </div>
+                    <div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div class="sm:col-span-2"><label for="sfParent" class="fl">PARENT SKU <i class="req">*</i></label><select id="sfParent" data-iosdd-search class="fx font-bold" onchange="sfAutoSku()"></select><span class="fe" id="sfParentErr"></span></div>
+                        <div><label for="sfColor" class="fl">DESIGN / COLOUR <i class="req">*</i></label><input id="sfColor" class="fx font-bold uppercase" placeholder="e.g. ROSE GOLD" oninput="sfAutoSku(); sfSwatchPaint()"><span class="fe" id="sfColorErr"></span></div>
+                        <div><label for="sfSku" class="fl">SLAVE SKU <i class="req">*</i></label><input id="sfSku" class="fx font-mono font-bold uppercase" placeholder="PARENT-CODE-COLOUR" oninput="this.dataset.typed='1'"><span class="fh" id="sfSkuHint">Filled from the Parent SKU + colour; change it if needed</span><span class="fe" id="sfSkuErr"></span></div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div><label for="sfAsin" class="fl">ASIN <i class="req">*</i></label><input id="sfAsin" class="fx font-mono font-bold uppercase" placeholder="B0XXXXXXXX" oninput="this.value=this.value.toUpperCase().replace(/\s+/g,'')"><span class="fh">10 letters / digits</span><span class="fe" id="sfAsinErr"></span></div>
+                    <div><label for="sfMrp" class="fl">MRP (₹) <i class="req">*</i></label><input id="sfMrp" type="number" min="0" step="0.01" class="fx font-bold"><span class="fe" id="sfMrpErr"></span></div>
+                    <div><label for="sfSp" class="fl">SELLING PRICE (₹) <i class="req">*</i></label><input id="sfSp" type="number" min="0" step="0.01" class="fx font-bold"><span class="fe" id="sfSpErr"></span></div>
+                </div>
+                <div data-no-caps><label for="sfTitleIn" class="fl">PRODUCT TITLE <i class="req">*</i> <span class="font-normal text-slate-400">(exact casing kept, prints on the label)</span></label><textarea id="sfTitleIn" rows="3" class="fx"></textarea><span class="fe" id="sfTitleInErr"></span></div>
+                <div id="sfCustom" class="grid grid-cols-1 sm:grid-cols-2 gap-3"></div>
+                <p id="sfErr" class="fe"></p>
+            </div>
+            <div class="p-4 border-t border-slate-200/60 dark:border-neutral-800 flex items-center justify-between gap-2">
+                <button id="sfDelete" onclick="deleteSlave()" class="hidden text-xs font-bold text-ios-red px-3 py-2 rounded-xl hover:bg-ios-red/10"><i class="fa-solid fa-trash"></i> Delete Slave</button>
+                <div class="flex items-center gap-2 ml-auto">
+                    <button onclick="closeModal('slaveModal')" class="px-4 py-2 rounded-xl text-xs font-semibold text-slate-500">Cancel</button>
+                    <button id="sfSave" onclick="saveSlaveForm()" class="bg-ios-blue text-white px-5 py-2 rounded-xl text-xs font-bold shadow-sm">Save Slave SKU</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <datalist id="dlBrands"></datalist>
+    <datalist id="dlPackTypes"></datalist>
+    <div id="toast" class="ios-toast hidden fixed top-4 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-xs font-semibold px-4 py-2.5 rounded-2xl shadow-lg max-w-[92vw]"></div>
+
+    <!-- the thermal labels being printed (shown only by the print CSS) -->
+    <div id="printContainer"></div>
+
+    <script>
+        const SUPABASE_URL = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
+        const SUPABASE_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
+        const APP_KEY = 'HOME_AMAZON_BARCODE';
+        const OLD_KEY = 'sarv_amazon_barcode_v9_pdf_exact';   // the browser-only data of the page before 2026-11-27 (Admin uploads it once)
+        const QUEUE_KEY = 'sarv_amz_queue_v1';                 // the print queue: this device only
+        const CACHE_KEY = 'sarv_amz_cache_v1';                 // the last server answer, so the lists / labels open offline
+        const SESSION_ERR = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1, NO_APP_ACCESS: 1 };
+
+        /* The PDF v9 catalog the page shipped with: no longer the live data, only what "Load the built-in PDF v9
+           catalog" uploads (Admin, Settings). */
+        const DEFAULT_CATALOG = [
+            {
+                parentSku: "ALPINE2200SBDP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 9,
+                slavePackingType: "BAG",
+                slavePacking: "20*15*5",
+                outerBox: "20*24*35",
+                size: "150x210cm",
+                wt: "2.2kg",
+                parentAsin: "B0HHRLTYNM",
+                slaves: [
+                    { asin: "B0HHRX6VJK", sku: "ALPINE2200SBDP-1073-MOUSE", mrp: 3399, sp: 1549, color: "MOUSE", title: "Sarv India Semi Cloudy Premium Blanket Single Bed Double PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket || Mouse Color", customImage: null },
+                    { asin: "B0HHRV5LKK", sku: "ALPINE2200SBDP-1117-ROSE GOLD", mrp: 4799, sp: 1519, color: "ROSE GOLD", title: "Sarv India Semi Cloudy Premium Blanket Single Bed Double PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket ||", customImage: null },
+                    { asin: "B0HHRSXK3F", sku: "ALPINE2200SBDP-245-CAMEL", mrp: 3399, sp: 1092, color: "CAMEL", title: "Sarv India Semi Cloudy Premium Blanket Single Bed Double PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket ||", customImage: null },
+                    { asin: "B0HHRWJS7Z", sku: "ALPINE2200SBDP-287-GREY", mrp: 4799, sp: 1519, color: "GREY", title: "Sarv India Semi Cloudy Premium Blanket Single Bed Double PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Leaves Blanket ||", customImage: null }
+                ]
+            },
+            {
+                parentSku: "ALPINE3000DBDP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 7,
+                slavePackingType: "BAG",
+                slavePacking: "22*18*6",
+                outerBox: "20*24*35",
+                size: "210x235cm",
+                wt: "3.5kg",
+                parentAsin: "B0HHRS7YGW",
+                slaves: [
+                    { asin: "B0HHRPQTS1", sku: "ALPINE3000DBDP-1058-BEIGE", mrp: 3399, sp: 1092, color: "BEIGE", title: "Semi Cloudy Blanket Double Bed 2 PLY 210x235cm, Winter Blanket 3.5kg | Premium Piping Skin Friendly Leaves Blanket, All Season || BEIGE COLOR | Premium Piping Skin Friendly Leaves Blanket, All Season || BEIGE COLOR", customImage: null },
+                    { asin: "B0HHRTS98V", sku: "ALPINE3000DBDP-1060-ROSE GOLD", mrp: 4799, sp: 1519, color: "ROSE GOLD", title: "Semi Cloudy Blanket Double Bed 2 PLY 210x235cm, Winter Blanket 3.5kg | Premium Piping Skin Friendly Leaves Blanket, All Season || ROSE GOLD COLOR | Premium Piping Skin Friendly Leaves Blanket, All Season || ROSE GOLD COLOR", customImage: null },
+                    { asin: "B0HHRNJH8X", sku: "ALPINE3000DBDP-1077-BLUE", mrp: 3399, sp: 1092, color: "BLUE", title: "Semi Cloudy Blanket Double Bed 2 PLY 210x235cm, Winter Blanket 3.5kg | Premium Piping Skin Friendly Floral Blanket, All Season || BLUE COLOR | Premium Piping Skin Friendly Floral Blanket, All Season || BLUE COLOR", customImage: null },
+                    { asin: "B0HHRY8KBD", sku: "ALPINE3000DBDP-339-GREY", mrp: 4399, sp: 1409, color: "GREY", title: "Semi Cloudy Blanket Double Bed 2 PLY 210x235cm, Winter Blanket 3.5kg | Premium Piping Skin Friendly Leaves Blanket, All Season || GREY COLOR | Premium Piping Skin Friendly Leaves Blanket, All Season || GREY COLOR", customImage: null }
+                ]
+            },
+            {
+                parentSku: "RIVA3500DB3P",
+                brand: "PARV",
+                hsn: "63014000",
+                stdPackingQty: 4,
+                slavePackingType: "BAG",
+                slavePacking: "22*18*8",
+                outerBox: "24*24*35",
+                size: "220x240cm",
+                wt: "3.5kg",
+                parentAsin: "RIVA3500DB3P-PARENT",
+                slaves: [
+                    { asin: "B0HJGHVN98", sku: "RIVA3500DB3P-DARKGREEN", mrp: 4599, sp: 1461, color: "DARKGREEN", title: "Cloud Collection Rabbit Fur Premium Blanket, Quilt Double Bed Triple PLY All Season Polyester 220x240cm Premium Quilting Skin Friendly Blanket ||", customImage: null },
+                    { asin: "B0HJC8P6BB", sku: "RIVA3500DB3P-DARKGREY", mrp: 4399, sp: 1409, color: "DARKGREY", title: "Cloud Collection Rabbit Fur Premium Blanket, Quilt Double Bed Triple PLY All Season Polyester 220x240cm Premium Quilting Skin Friendly Blanket ||", customImage: null },
+                    { asin: "B0HJGQM54Z", sku: "RIVA3500DB3P-LIGHTGREY", mrp: 3499, sp: 1126, color: "LIGHTGREY", title: "Cloud Collection Rabbit Fur Premium Blanket, Quilt Double Bed Triple PLY All Season Polyester 220x240cm Premium Quilting Skin Friendly Blanket ||", customImage: null },
+                    { asin: "B0HJGG8M65", sku: "RIVA3500DB3P-RUST", mrp: 6199, sp: 1931, color: "RUST", title: "Cloud Collection Rabbit Fur Premium Blanket, Quilt Double Bed Triple PLY All Season Polyester 220x240cm Premium Quilting Skin Friendly Blanket ||", customImage: null }
+                ]
+            },
+            {
+                parentSku: "VELON1000DBDP",
+                brand: "PARV",
+                hsn: "63014000",
+                stdPackingQty: 6,
+                slavePackingType: "BAG",
+                slavePacking: "22*18*6",
+                outerBox: "24*24*35",
+                size: "210x240cm",
+                wt: "3.0kg",
+                parentAsin: "VELON1000DBDP-PARENT",
+                slaves: [
+                    { asin: "B0HJGHFDBK", sku: "VELON1000DBDP1", mrp: 4599, sp: 1461, color: "VARIANT 1", title: "Cloud Collection Cloudy Premium Blanket Double Bed Double PLY All Season Polyester 210x240cm Premium Piping Skin Friendly Blanket ||", customImage: null },
+                    { asin: "B0HJGQH1X1", sku: "VELON1000DBDP2", mrp: 3499, sp: 1126, color: "VARIANT 2", title: "Cloud Collection Cloudy Premium Blanket Double Bed Double PLY All Season Polyester 210x240cm Premium Piping Skin Friendly Blanket ||", customImage: null },
+                    { asin: "B0HJGPK9Z6", sku: "VELON1000DBDP3", mrp: 3499, sp: 1126, color: "VARIANT 3", title: "Cloud Collection Cloudy Premium Blanket Double Bed Double PLY | All Season, Polyester, 210x240cm, Premium Piping, Skin Friendly | All Season, Polyester, 210x240cm, Premium Piping, Skin Friendly", customImage: null },
+                    { asin: "B0HJGJMTHR", sku: "VELON1000DBDP4", mrp: 7999, sp: 2575, color: "VARIANT 4", title: "Cloud Collection Cloudy Premium Blanket Double Bed Double PLY All Season Polyester 210x240cm Premium Piping Skin Friendly Blanket ||", customImage: null }
+                ]
+            },
+            {
+                parentSku: "ARROW2000SBSP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 10,
+                slavePackingType: "LD-PANNI",
+                slavePacking: "18*28",
+                outerBox: "20*24*35",
+                size: "150x210cm",
+                wt: "2.0kg",
+                parentAsin: "B0HHRTK7NK",
+                slaves: [
+                    { asin: "B0HHRYDK2G", sku: "ARROW2000SBSP-1023-VELVET GREEN", mrp: 4399, sp: 1409, color: "VELVET GREEN", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket || Velvet Green", customImage: null },
+                    { asin: "B0HHRQSP2P", sku: "ARROW2000SBSP-1034-CAMEL", mrp: 3399, sp: 1092, color: "CAMEL", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket || Camel Color", customImage: null },
+                    { asin: "B0HHRS383L", sku: "ARROW2000SBSP-236-GREY", mrp: 3399, sp: 1092, color: "GREY", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket || Grey Color", customImage: null },
+                    { asin: "B0HHRSG7GF", sku: "ARROW2000SBSP-280-ENGLISH PURPLE", mrp: 3399, sp: 1092, color: "ENGLISH PURPLE", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY All Season Polyester 150x210cm Premium Piping Skin Friendly Floral Blanket || Purple Color", customImage: null }
+                ]
+            },
+            {
+                parentSku: "EVEREST3300SBDP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 7,
+                slavePackingType: "BAG",
+                slavePacking: "20*15*7",
+                outerBox: "20*24*35",
+                size: "150x210cm",
+                wt: "4.0kg",
+                parentAsin: "B0HHRFNLYF",
+                slaves: [
+                    { asin: "B0HHRX8YDF", sku: "EVEREST3300SBDP-1026-MAROON", mrp: 4799, sp: 1519, color: "MAROON", title: "Semi Cloudy Premium Blanket Single Bed 2 PLY 150x210cm, Winter Blanket 4kg | Premium Piping Skin Friendly Geometric Blanket, All Season || MAROON COLOR | Premium Piping Skin Friendly Geometric Blanket, All Season ||", customImage: null },
+                    { asin: "B0HHRS7YKG", sku: "EVEREST3300SBDP-1071-GREY", mrp: 3399, sp: 1092, color: "GREY", title: "Semi Cloudy Premium Blanket Single Bed 2 PLY 150x210cm, Winter Blanket 4kg | Premium Piping Skin Friendly Geometric Blanket, All Season || GREY COLOR | Premium Piping Skin Friendly Geometric Blanket, All Season ||", customImage: null },
+                    { asin: "B0HHS1VWLZ", sku: "EVEREST3300SBDP-1085-CREAM", mrp: 4399, sp: 1409, color: "CREAM", title: "Semi Cloudy Premium Blanket Single Bed 2 PLY 150x210cm, Winter Blanket 4kg | Premium Piping Skin Friendly Geometric Blanket, All Season || CREAM COLOR | Premium Piping Skin Friendly Geometric Blanket, All Season ||", customImage: null },
+                    { asin: "B0HHRRWGJH", sku: "EVEREST3300SBDP-1116-BLUE", mrp: 4799, sp: 1519, color: "BLUE", title: "Semi Cloudy Premium Blanket Single Bed 2 PLY 150x210cm, Winter Blanket 4kg | Premium Piping Skin Friendly Geometric Blanket, All Season || BLUE COLOR | Premium Piping Skin Friendly Geometric Blanket, All Season ||", customImage: null }
+                ]
+            },
+            {
+                parentSku: "ZEBRO4000DBDP",
+                brand: "PARV",
+                hsn: "63014000",
+                stdPackingQty: 6,
+                slavePackingType: "BAG",
+                slavePacking: "22*18*8",
+                outerBox: "24*24*35",
+                size: "210x240cm",
+                wt: "4.5kg",
+                parentAsin: "ZEBRO4000DBDP-PARENT",
+                slaves: [
+                    { asin: "B0HJGNN6TZ", sku: "ZEBRO4000DBDP4", mrp: 8899, sp: 2788, color: "LASER CUT 4", title: "Cloudy Laser Cut Blanket Double Bed 2 PLY 210x240cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Blanket, All Season || Premium Piping Skin Friendly Blanket, All Season", customImage: null },
+                    { asin: "ZEBRO-4000DBDP3-ASIN", sku: "ZEBRO-4000DBDP3", mrp: 8899, sp: 2788, color: "LASER CUT 3", title: "Cloud Collection Cloudy Premium Blanket Double Bed Double PLY All Season Polyester 210x240cm Premium Piping Skin Friendly Blanket ||", customImage: null }
+                ]
+            },
+            {
+                parentSku: "LEEDS4000DBDP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 6,
+                slavePackingType: "LD-PANNI",
+                slavePacking: "21*34",
+                outerBox: "24*24*35",
+                size: "210x230cm",
+                wt: "4.5kg",
+                parentAsin: "B0HHRWT72V",
+                slaves: [
+                    { asin: "B0HHRXD7ZL", sku: "LEEDS4000DBDP-1031-MOUSE", mrp: 4799, sp: 1519, color: "MOUSE", title: "Super Soft Mink Blanket Double Bed 2 PLY 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Floral Blanket, All Season || MOUSE COLOR | Premium Piping Skin Friendly Floral Blanket, All Season || MOUSE", customImage: null },
+                    { asin: "B0HHRWD36S", sku: "LEEDS4000DBDP-1065-PISTA", mrp: 4799, sp: 1519, color: "PISTA", title: "Super Soft Mink Blanket Double Bed 2 PLY 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Floral Blanket, All Season || PISTA COLOR | Premium Piping Skin Friendly Floral Blanket, All Season || PISTA COLOR", customImage: null },
+                    { asin: "B0HHRSRYGZ", sku: "LEEDS4000DBDP-335-GREY", mrp: 3399, sp: 1092, color: "GREY", title: "Super Soft Mink Blanket Double Bed 2 PLY 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Floral Blanket, All Season || GREY COLOR | Premium Piping Skin Friendly Floral Blanket, All Season || GREY COLOR", customImage: null },
+                    { asin: "B0HHRWHM2B", sku: "LEEDS4000DBDP-340-CAMEL", mrp: 4799, sp: 1519, color: "CAMEL", title: "Super Soft Mink Blanket Double Bed 2 PLY 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Floral Blanket, All Season || CAMEL COLOR | Premium Piping Skin Friendly Floral Blanket, All Season || CAMEL COLOR", customImage: null }
+                ]
+            },
+            {
+                parentSku: "OZONE2500DBSP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 6,
+                slavePackingType: "LD-PANNI",
+                slavePacking: "18*32",
+                outerBox: "20*24*35",
+                size: "210x230cm",
+                wt: "2.5kg",
+                parentAsin: "B0HHRX1P1D",
+                slaves: [
+                    { asin: "B0HHRWT6WX", sku: "OZONE2500DBSP-1018-CAMEL", mrp: 4799, sp: 1519, color: "CAMEL", title: "Sarv India Super Soft Mink Double Bed Single PLY All Season Polyester 210x230cm Premium Piping Skin Friendly Floral Blanket || Camel Color", customImage: null },
+                    { asin: "B0HHRWQ8TD", sku: "OZONE2500DBSP-1033-BLUE", mrp: 4799, sp: 1519, color: "BLUE", title: "Sarv India Super Soft Mink Double Bed Single PLY All Season Polyester 210x230cm Premium Piping Skin Friendly Floral Blanket || Blue Color", customImage: null },
+                    { asin: "B0HHRPLTDB", sku: "OZONE2500DBSP-334-BURGUNDY", mrp: 3399, sp: 1092, color: "BURGUNDY", title: "Sarv India Super Soft Mink Double Bed Single PLY All Season Polyester 210x230cm Premium Piping Skin Friendly Floral Blanket || Burgundy Color", customImage: null },
+                    { asin: "B0HHRTH52D", sku: "OZONE2500DBSP-353-GREY", mrp: 3399, sp: 1092, color: "GREY", title: "Sarv India Super Soft Mink Double Bed Single PLY All Season Polyester 210x230cm Premium Piping Skin Friendly Floral Blanket || Grey Color", customImage: null }
+                ]
+            },
+            {
+                parentSku: "SENTOSA4000DBSP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 6,
+                slavePackingType: "LD-PANNI",
+                slavePacking: "18*34",
+                outerBox: "24*24*35",
+                size: "210x230cm",
+                wt: "4.5kg",
+                parentAsin: "B0HHRTCK7Z",
+                slaves: [
+                    { asin: "B0HHS3MZ41", sku: "SENTOSA4000DBSP-1027-BURGUNDY", mrp: 4399, sp: 1409, color: "BURGUNDY", title: "Super Soft Mink Double Bed All Season 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Leaves Blanket || BURGUNDY COLOR | Premium Piping Skin Friendly Leaves Blanket || BURGUNDY COLOR", customImage: null },
+                    { asin: "B0HHS1B6KY", sku: "SENTOSA4000DBSP-341-PURPLE", mrp: 4399, sp: 1409, color: "PURPLE", title: "Super Soft Mink Double Bed All Season 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Leaves Blanket || PURPLE COLOR | Premium Piping Skin Friendly Leaves Blanket || PURPLE COLOR", customImage: null },
+                    { asin: "B0HHRYJMQM", sku: "SENTOSA4000DBSP-344-BLUE", mrp: 4399, sp: 1409, color: "BLUE", title: "Super Soft Mink Double Bed All Season 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Leaves Blanket || BLUE COLOR | Premium Piping Skin Friendly Leaves Blanket || BLUE COLOR", customImage: null },
+                    { asin: "B0HHRYKQLR", sku: "SENTOSA4000DBSP-355-MEHANDI", mrp: 4399, sp: 1409, color: "MEHANDI", title: "Super Soft Mink Double Bed All Season 210x230cm, Winter Blanket 4.5kg | Premium Piping Skin Friendly Leaves Blanket || MEHANDI COLOR | Premium Piping Skin Friendly Leaves Blanket || MEHANDI COLOR", customImage: null }
+                ]
+            },
+            {
+                parentSku: "EVEREST5200DBDP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 5,
+                slavePackingType: "BAG",
+                slavePacking: "22*18*8",
+                outerBox: "24*24*35",
+                size: "210x240cm",
+                wt: "5.2kg",
+                parentAsin: "B0HHRMV7X4",
+                slaves: [
+                    { asin: "B0HHRKGRRC", sku: "EVEREST5200DBDP-1013-GREY", mrp: 7199, sp: 3199, color: "GREY", title: "Sarv India Semi Cloudy Premium Blanket Double Bed Double PLY 5.2kg || GREY COLOR", customImage: null },
+                    { asin: "B0HHRXR8WK", sku: "EVEREST5200DBDP-330-BROWN", mrp: 7199, sp: 3199, color: "BROWN", title: "Sarv India Semi Cloudy Premium Blanket Double Bed Double PLY 5.2kg || BROWN COLOR", customImage: null },
+                    { asin: "B0HHRRXTZY", sku: "EVEREST5200DBDP-332-WINE", mrp: 7199, sp: 3199, color: "WINE", title: "Sarv India Semi Cloudy Premium Blanket Double Bed Double PLY 5.2kg || WINE COLOR", customImage: null },
+                    { asin: "B0HHRT44ZF", sku: "EVEREST5200DBDP-338-GREEN", mrp: 7199, sp: 3199, color: "GREEN", title: "Sarv India Semi Cloudy Premium Blanket Double Bed Double PLY 5.2kg || GREEN COLOR", customImage: null }
+                ]
+            },
+            {
+                parentSku: "OZONE1600SBSP",
+                brand: "SARV",
+                hsn: "63014000",
+                stdPackingQty: 12,
+                slavePackingType: "LD-PANNI",
+                slavePacking: "18*26",
+                outerBox: "20*24*35",
+                size: "150x210cm",
+                wt: "1.6kg",
+                parentAsin: "B0HHWMBVSD",
+                slaves: [
+                    { asin: "B0HHS3LRYP", sku: "OZONE1600SBSP-1035-GREY", mrp: 1899, sp: 899, color: "GREY", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY 1.6kg || GREY COLOR", customImage: null },
+                    { asin: "B0HHWV6NW2", sku: "OZONE1600SBSP-1037-MOUSE", mrp: 1899, sp: 899, color: "MOUSE", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY 1.6kg || MOUSE COLOR", customImage: null },
+                    { asin: "B0HHRS24ZH", sku: "OZONE1600SBSP-1057-ENGLISH PURPLE", mrp: 1899, sp: 899, color: "ENGLISH PURPLE", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY 1.6kg || ENGLISH PURPLE COLOR", customImage: null },
+                    { asin: "B0HHRTR6RD", sku: "OZONE1600SBSP-286-CAMEL", mrp: 1899, sp: 899, color: "CAMEL", title: "Sarv India Super Soft Mink Blanket Single Bed Single PLY 1.6kg || CAMEL COLOR", customImage: null }
+                ]
+            },
+            {
+                parentSku: "PLUSH500DBAS",
+                brand: "PARV",
+                hsn: "63014000",
+                stdPackingQty: 6,
+                slavePackingType: "BAG",
+                slavePacking: "22*18*6",
+                outerBox: "24*24*35",
+                size: "220x240cm",
+                wt: "2.5kg",
+                parentAsin: "PLUSH500DBAS-PARENT",
+                slaves: [
+                    { asin: "B0HJGJBSBG", sku: "PLUSH500DBAS-TEAL", mrp: 4599, sp: 1461, color: "TEAL", title: "Cloud Collection Premium Blanket Double Bed Triple PLY All Season Polyester 220x240cm Premium Quilting Skin Friendly Comforter || TEAL", customImage: null }
+                ]
+            }
+        ];
+
+        /* Application state: catalog / orders / customFields come from the server (amz_load); queue is this device's */
+        let state = {
+            catalog: [], orders: [], queue: [], customFields: { parent: [], slave: [] },
+            expandedParents: {}, skuView: 'cards', studioTemplate: 'standard', studioCurrentSku: null,
+            poTempQuantities: {}, me: { name: '', admin: false }
+        };
+        let DB = { loaded: false, offline: false, nomig: false, at: null, busy: false };
+
+        const FABRIC_COLOR_MAP = {
+            "MOUSE": "#8B8580", "ROSE GOLD": "#B76E79", "CAMEL": "#C19A6B", "GREY": "#808080", "BEIGE": "#F5F5DC", "BLUE": "#4682B4",
+            "DARKGREEN": "#1B4D3E", "DARKGREY": "#4A4A4A", "LIGHTGREY": "#D3D3D3", "RUST": "#B7410E", "VELVET GREEN": "#00563B",
+            "ENGLISH PURPLE": "#604E6C", "MAROON": "#800000", "CREAM": "#FFFDD0", "LASER CUT 4": "#708090", "LASER CUT 3": "#556B2F",
+            "PISTA": "#93C572", "BURGUNDY": "#800020", "PURPLE": "#800080", "MEHANDI": "#556B2F", "BROWN": "#654321", "WINE": "#722F37",
+            "GREEN": "#2E8B57", "TEAL": "#008080"
+        };
+
+        /* ── small helpers ─────────────────────────────────────────────── */
+        const $ = id => document.getElementById(id);
+        const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        // a value as a JavaScript string argument inside an inline onclick="..." (quoted, then HTML-escaped for the attribute)
+        const ja = s => esc(JSON.stringify(String(s == null ? '' : s)));
+        const num = v => { const n = Number(v); return isFinite(n) ? n : 0; };
+        const money = v => '₹' + num(v).toLocaleString('en-IN', { maximumFractionDigits: 2 });
+        const tokenOf = () => (window.SARV_GATE && SARV_GATE.token) || (function () { try { return localStorage.getItem('sarv_sso_token') || ''; } catch (e) { return ''; } })();
+        function lsGet(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }
+        function lsSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+        // local date (toISOString would give yesterday before 5:30 am in India)
+        function localToday() { const t = new Date(), p = n => String(n).padStart(2, '0'); return t.getFullYear() + '-' + p(t.getMonth() + 1) + '-' + p(t.getDate()); }
+        const dmy = d => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(d || '')); return m ? m[3] + '/' + m[2] + '/' + m[1] : (d || ''); };
+        const whenTxt = iso => { if (!iso) return ''; const d = new Date(iso); return isNaN(d) ? '' : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) + ', ' + d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }); };
+        // every typed word must be somewhere in the text (any order, case ignored)
+        const hit = (hay, q) => { const w = String(q || '').toLowerCase().split(/\s+/).filter(Boolean); if (!w.length) return true; const h = String(hay || '').toLowerCase(); return w.every(x => h.indexOf(x) >= 0); };
+        let toastT = null;
+        function toast(msg, bad) {
+            const t = $('toast'); if (!t) return;
+            t.textContent = msg; t.classList.remove('hidden'); t.classList.toggle('bg-red-600', !!bad); t.classList.toggle('bg-slate-900', !bad);
+            clearTimeout(toastT); toastT = setTimeout(() => t.classList.add('hidden'), 3200);
+        }
+        const askConfirm = msg => (window.IosDialog && IosDialog.confirm) ? IosDialog.confirm(msg) : Promise.resolve(window.confirm(msg));
+        const askText = (msg, def) => (window.IosDialog && IosDialog.prompt) ? IosDialog.prompt(msg, def || '') : Promise.resolve(window.prompt(msg, def || ''));
+
+        /* ── server ────────────────────────────────────────────────────── */
+        async function rpc(fn, args) {
+            let r;
+            try {
+                r = await fetch(SUPABASE_URL + '/rest/v1/rpc/' + fn, { method: 'POST',
+                    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+                    body: JSON.stringify(Object.assign({ p_token: tokenOf() }, args || {})) });
+            } catch (e) { const er = new Error('No internet connection.'); er.net = true; throw er; }
+            const d = await r.json().catch(() => null);
+            if (!r.ok) {
+                const e = new Error((d && (d.message || d.hint)) || ('HTTP ' + r.status)); e.code = d && d.code;
+                e.missing = e.code === 'PGRST202' || e.code === '42883' || e.code === '42P01'; e.net = r.status >= 500 && !e.missing; throw e;
+            }
+            if (d && d.success === false) {
+                const c = String(d.error || '');
+                if (SESSION_ERR[c]) { location.replace('launcher.html?why=' + c); return new Promise(() => {}); }
+                const e = new Error(c); e.code = c; e.data = d; throw e;
+            }
+            return d || {};
+        }
+        const ERR = {
+            BAD_PARENT_SKU: 'Parent SKU is required and cannot have spaces.', BRAND_REQUIRED: 'Brand is required.', BAD_STD_QTY: 'Standard Packing Qty must be a whole number from 1.',
+            PARENT_EXISTS: 'This Parent SKU already exists.', NOT_FOUND: 'It is no longer on the server (deleted meanwhile). The list is read again.',
+            CONFLICT: 'Someone else changed it meanwhile. The latest copy is loaded; check it and save again.', SKU_REQUIRED: 'Slave SKU is required.',
+            ASIN_REQUIRED: 'ASIN is required.', TITLE_REQUIRED: 'Product title is required.', BAD_PRICE: 'MRP and Selling Price must be more than 0.',
+            SP_ABOVE_MRP: 'Selling Price cannot be more than MRP.', BAD_IMAGE: 'The photo could not be saved (too big or not a picture).', NO_PARENT: 'That Parent SKU does not exist.',
+            ASIN_EXISTS: 'This ASIN is already used by another SKU.', SKU_EXISTS: 'This Slave SKU already exists.', PO_REQUIRED: 'PO No is required.',
+            BAD_DATE: 'A date is not valid.', DISPATCH_BEFORE_PACKING: 'Dispatch Date cannot be before the Packing Date.', BAD_QTY: 'A quantity is too large.',
+            NO_SKU: 'A SKU of this order is no longer in the catalog.', NO_ITEMS: 'Enter a quantity for at least one Slave SKU.', PO_EXISTS: 'This PO No is already saved.',
+            ADMIN_ONLY: 'Only the Admin can do this.', HAS_SLAVES: 'Delete its Slave SKUs first.', REASON_REQUIRED: 'Write the reason.'
+        };
+        function errText(e) {
+            if (e.net) return 'No internet: nothing was saved. Try again when online.';
+            if (e.missing) return 'The server is not set up yet: the Admin must run sql/AMAZON_BARCODE_MIGRATION.sql.';
+            const m = ERR[e.code] || e.message || String(e);
+            const d = e.data || {};
+            return m + (d.key ? ' (' + d.key + (d.other ? ' → ' + d.other : '') + ')' : '');
+        }
+
+        // read everything (catalog with slaves, live POs, custom fields); offline = the last copy
+        async function reloadAll(manual) {
+            if (DB.busy) return;
+            DB.busy = true; document.querySelectorAll('.dbSpin').forEach(i => i.classList.add('fa-spin'));
+            try {
+                const d = await rpc('amz_load');
+                applyServer(d);
+                lsSet(CACHE_KEY, { at: new Date().toISOString(), data: d });
+                DB.offline = false; DB.nomig = false; DB.loaded = true; DB.at = new Date().toISOString();
+                if (manual) toast('Data read again');
+            } catch (e) {
+                if (e.missing) DB.nomig = true; else DB.offline = true;
+                if (!DB.loaded) { const c = lsGet(CACHE_KEY, null); if (c && c.data) { applyServer(c.data); DB.at = c.at; } }
+                if (manual) toast(errText(e), true);
+            } finally {
+                DB.busy = false; document.querySelectorAll('.dbSpin').forEach(i => i.classList.remove('fa-spin'));
+                paintStatus(); renderAll();
+            }
+        }
+        function applyServer(d) {
+            state.catalog = (d.catalog || []).map(p => Object.assign({}, p, { slaves: (p.slaves || []).map(s => Object.assign({}, s, { mrp: num(s.mrp), sp: num(s.sp) })) }));
+            state.orders = d.orders || [];
+            state.customFields = d.customFields && typeof d.customFields === 'object' ? { parent: d.customFields.parent || [], slave: d.customFields.slave || [] } : { parent: [], slave: [] };
+            if (d.me) state.me = d.me;
+        }
+        function paintStatus() {
+            const s = $('dbStatus'), b = $('dbBanner');
+            const old = oldLocalData();
+            let msg = '', cls = '';
+            if (DB.nomig) { msg = 'The server is not set up yet: the Admin must run sql/AMAZON_BARCODE_MIGRATION.sql in the Supabase SQL Editor. Nothing can be saved until then.'; cls = 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900'; }
+            else if (DB.offline) { msg = 'No internet: showing the last copy' + (DB.at ? ' (' + whenTxt(DB.at) + ')' : '') + '. Labels can be printed; nothing is saved until the internet is back.'; cls = 'bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900'; }
+            else if (DB.loaded && old && state.me.admin) { msg = 'This browser still has the old data saved before the database (' + old.parents + ' parents, ' + old.slaves + ' slaves, ' + old.orders + ' POs). Settings › Database › Upload adds it to the server.'; cls = 'bg-sky-50 text-sky-800 border-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:border-sky-900'; }
+            b.className = msg ? 'mb-4 rounded-2xl px-4 py-3 text-xs font-semibold border ' + cls : 'hidden';
+            b.textContent = msg;
+            s.textContent = DB.nomig ? 'Server not set up' : DB.offline ? 'Offline · last copy' : DB.loaded ? 'Saved on the server · ' + (state.me.name || '') + (state.me.admin ? ' (Admin)' : '') : 'Connecting to the server...';
+            s.className = 'text-xs mt-0.5 ' + (DB.nomig ? 'text-red-600' : DB.offline ? 'text-amber-600' : 'text-emerald-600 dark:text-emerald-400');
+        }
+        function renderAll() {
+            renderSKUsTab(curQuery()); renderSavedOrdersTab(curQuery()); populateStudioSelect(); renderBatchQueueTab(); renderSettingsTab(); updateGlobalBadges(); fillDatalists();
+        }
+        const curQuery = () => ($('globalSearchInput') || {}).value || '';
+        function canSave() {
+            if (DB.nomig) { toast(errText({ missing: true }), true); return false; }
+            if (DB.offline) { toast('No internet: nothing can be saved right now.', true); return false; }
+            return true;
+        }
+
+        /* ── boot ──────────────────────────────────────────────────────── */
+        // only a network failure counts as offline; every real answer goes through SARV_GATE.boot
+        async function serverReachable() {
+            const ctl = window.AbortController ? new AbortController() : null;
+            const t = setTimeout(() => { if (ctl) ctl.abort(); }, 8000);
+            try {
+                await fetch(SUPABASE_URL + '/rest/v1/rpc/erp_app_session', { method: 'POST', signal: ctl ? ctl.signal : undefined,
+                    headers: { 'Content-Type': 'application/json', apikey: SUPABASE_ANON, Authorization: 'Bearer ' + SUPABASE_ANON },
+                    body: JSON.stringify({ p_token: tokenOf(), p_app: APP_KEY }) });
+                return true;
+            } catch (e) { return false; }
+            finally { clearTimeout(t); }
+        }
+        (async function boot() {
+            try {
+                state.queue = lsGet(QUEUE_KEY, []);
+                if (!Array.isArray(state.queue)) state.queue = [];
+                // no internet at the start: the last copy (lists + labels), when this login had one
+                const c = lsGet(CACHE_KEY, null);
+                if (tokenOf() && c && c.data && !(await serverReachable())) {
+                    applyServer(c.data); DB.offline = true; DB.at = c.at; paintStatus(); renderAll(); return;
+                }
+                // resolves only when the user may enter; otherwise the gate shows the reason / goes to the launcher
+                const u = await SARV_GATE.boot({ url: SUPABASE_URL, key: SUPABASE_ANON, app: APP_KEY, label: 'Amazon Barcode' });
+                const roles = (u.roles && u.roles.length ? u.roles : [u.primary_role]).filter(Boolean);
+                state.me = { name: u.name || '', admin: roles.indexOf('ADMIN_PIN') >= 0 };
+                await reloadAll(false);
+            } catch (e) {
+                console.error('Amazon Barcode start failed', e);
+                // no answer from the server at all: open the last copy so labels can still be printed
+                const c = lsGet(CACHE_KEY, null);
+                if (c && c.data) { applyServer(c.data); DB.offline = true; DB.at = c.at; paintStatus(); renderAll(); }
+                else toast('The app could not start: ' + (e.message || e), true);
+            } finally {
+                if (window.sarvSsoPrebootDone) window.sarvSsoPrebootDone();
+            }
+        })();
+        // back on the page after a while: read again (other people may have added SKUs / POs)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && DB.loaded && !anyModalOpen() && (!DB.at || Date.now() - new Date(DB.at).getTime() > 60000)) reloadAll(false);
+        });
+        window.addEventListener('online', () => { if (DB.offline) reloadAll(false); });
+        const anyModalOpen = () => ['poModal', 'parentModal', 'slaveModal'].some(id => !$(id).classList.contains('hidden'));
+
+        function toggleDarkMode() {
+            const isDark = document.documentElement.classList.toggle('dark');
+            try { localStorage.setItem('sarv_theme', isDark ? 'dark' : 'light'); } catch (e) {}
+        }
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-nav-btn').forEach(btn => { btn.classList.remove('active', 'text-ios-blue'); btn.classList.add('text-slate-400'); });
+            const target = $('tab-' + tabId), btn = $('nav-' + tabId);
+            if (target && btn) { target.classList.remove('hidden'); btn.classList.add('active', 'text-ios-blue'); btn.classList.remove('text-slate-400'); }
+            if (tabId === 'studio') updateStudioPreview();
+            handleGlobalSearch(curQuery());
+        }
+        function updateGlobalBadges() {
+            const n = state.orders.length, q = state.queue.reduce((t, x) => t + (parseInt(x.labelQty) || 0), 0);
+            $('savedOrdersBadge').textContent = n;
+            $('tabOrdersBadge').textContent = n; $('tabOrdersBadge').classList.toggle('hidden', n === 0);
+            $('queueBadgeCount').textContent = q + ' Labels';
+            $('tabQueueBadge').textContent = state.queue.length; $('tabQueueBadge').classList.toggle('hidden', state.queue.length === 0);
+        }
+        function fillDatalists() {
+            const uniq = a => [...new Set(a.filter(Boolean).map(x => String(x).toUpperCase()))].sort();
+            $('dlBrands').innerHTML = uniq(['SARV', 'PARV'].concat(state.catalog.map(p => p.brand))).map(v => `<option value="${esc(v)}"></option>`).join('');
+            $('dlPackTypes').innerHTML = uniq(['BAG', 'LD-PANNI', 'BOX'].concat(state.catalog.map(p => p.slavePackingType))).map(v => `<option value="${esc(v)}"></option>`).join('');
+        }
+
+        /* Fabric swatch drawn from the colour name (never saved: made again on screen, cached per colour) */
+        const SWATCH = new Map();
+        function generateProceduralSwatch(colorName) {
+            const key = String(colorName || '').toUpperCase();
+            if (SWATCH.has(key)) return SWATCH.get(key);
+            const canvas = document.createElement('canvas'); canvas.width = 120; canvas.height = 120;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = FABRIC_COLOR_MAP[key] || '#708090'; ctx.fillRect(0, 0, 120, 120);
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)'; ctx.lineWidth = 1.5;
+            for (let i = -120; i < 240; i += 4) { ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i + 120, 120); ctx.stroke(); }
+            ctx.strokeStyle = 'rgba(0, 0, 0, 0.15)';
+            for (let i = -120; i < 240; i += 4) { ctx.beginPath(); ctx.moveTo(i + 120, 0); ctx.lineTo(i, 120); ctx.stroke(); }
+            const grad = ctx.createRadialGradient(60, 60, 20, 60, 60, 85);
+            grad.addColorStop(0, 'rgba(255,255,255,0.1)'); grad.addColorStop(1, 'rgba(0,0,0,0.3)');
+            ctx.fillStyle = grad; ctx.fillRect(0, 0, 120, 120);
+            const url = canvas.toDataURL(); SWATCH.set(key, url); return url;
+        }
+        const swatchOf = s => (s && s.customImage) || generateProceduralSwatch(s && s.color);
+        const findParent = sku => state.catalog.find(p => p.parentSku === sku);
+        function findSlave(sku) { for (const p of state.catalog) { const s = p.slaves.find(x => x.sku === sku); if (s) return { parent: p, slave: s }; } return null; }
+        // the box packing of a qty: full master boxes + the loose rest (the last box is a part box)
+        function packCalc(total, std) { std = Math.max(1, parseInt(std) || 1); const full = Math.floor(total / std), rem = total % std; return { std, full, rem, final: full + (rem > 0 ? 1 : 0) }; }
+
+        /* ── SKU tab ───────────────────────────────────────────────────── */
+        function switchSKUView(mode) {
+            state.skuView = mode;
+            $('viewCardsBtn').classList.toggle('active', mode === 'cards');
+            $('viewTableBtn').classList.toggle('active', mode === 'table');
+            $('parentCardsContainer').classList.toggle('hidden', mode !== 'cards');
+            $('masterSheetContainer').classList.toggle('hidden', mode !== 'table');
+            if (mode === 'table') renderMasterSheetTable(curQuery());
+        }
+        function toggleAllParents(expand) { state.catalog.forEach(p => { state.expandedParents[p.parentSku] = expand; }); renderSKUsTab(curQuery()); }
+        function toggleParentCard(parentSku) { state.expandedParents[parentSku] = state.expandedParents[parentSku] === false; renderSKUsTab(curQuery()); }
+        const parentHay = p => [p.parentSku, p.brand, p.parentAsin, p.hsn, p.size].join(' ');
+        const slaveHay = s => [s.sku, s.asin, s.title, s.color].join(' ');
+
+        function renderSKUsTab(filterQuery = "") {
+            const container = $('parentCardsContainer');
+            if (!state.catalog.length) {
+                container.innerHTML = `<div class="bg-white dark:bg-ios-darkCard rounded-2xl p-8 text-center border border-slate-200/60 dark:border-neutral-800">
+                    <i class="fa-solid fa-boxes-stacked text-4xl text-slate-300 dark:text-neutral-700 mb-2"></i>
+                    <p class="text-sm font-semibold text-slate-500">${DB.nomig ? 'The server is not set up yet.' : DB.loaded || DB.offline ? 'No Parent SKU saved yet.' : 'Loading the catalog...'}</p>
+                    ${DB.loaded ? `<button onclick="openParentForm(null)" class="mt-3 text-xs bg-ios-blue text-white font-bold px-4 py-2 rounded-xl">+ Add the first Parent SKU</button>
+                        ${state.me.admin ? `<button onclick="switchTab('settings')" class="mt-3 ml-2 text-xs bg-slate-100 dark:bg-neutral-800 font-bold px-4 py-2 rounded-xl">Upload old data / PDF v9 list</button>` : ''}` : ''}
+                </div>`;
+                renderMasterSheetTable(filterQuery); return;
+            }
+            const cards = [];
+            state.catalog.forEach(parent => {
+                const pHit = hit(parentHay(parent), filterQuery);
+                const slaves = pHit ? parent.slaves : parent.slaves.filter(s => hit(slaveHay(s), filterQuery));
+                if (filterQuery && !pHit && !slaves.length) return;
+                const isExpanded = state.expandedParents[parent.parentSku] !== false || (!!filterQuery && !pHit);
+                const P = ja(parent.parentSku);
+                cards.push(`
+                    <div class="bg-white dark:bg-ios-darkCard rounded-2xl shadow-sm border border-slate-200/70 dark:border-neutral-800 overflow-hidden">
+                        <div class="p-4 bg-slate-50/70 dark:bg-neutral-800/40 border-b border-slate-200/60 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-3 min-w-0">
+                                <button onclick="toggleParentCard(${P})" aria-label="Show / hide slaves" class="w-8 h-8 shrink-0 rounded-xl bg-slate-200/70 dark:bg-neutral-700 text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-300 transition">
+                                    <i class="fa-solid fa-chevron-down transition-transform duration-200 ${isExpanded ? '' : '-rotate-90'}"></i>
+                                </button>
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-2 flex-wrap">
+                                        <h3 class="font-black text-base tracking-tight text-slate-900 dark:text-white font-mono uppercase">${esc(parent.parentSku)}</h3>
+                                        <span class="bg-slate-900 text-white dark:bg-slate-100 dark:text-black text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider">${esc(parent.brand)}</span>
+                                        <span class="bg-ios-blue/10 text-ios-blue text-xs font-semibold px-2 py-0.5 rounded-full">${parent.slaves.length} Slaves</span>
+                                    </div>
+                                    <p class="text-xs text-slate-500 font-mono mt-0.5">Parent ASIN: ${esc(parent.parentAsin || '-')} | Size: ${esc(parent.size || '-')} | Wt: ${esc(parent.wt || '-')} | HSN: ${esc(parent.hsn || '-')}</p>
+                                    ${customLine(state.customFields.parent, parent.custom)}
+                                </div>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 text-xs">
+                                <div class="bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-neutral-700"><span class="text-slate-400 block text-[9px] uppercase font-bold">STD PACK QTY</span><span class="font-extrabold text-slate-800 dark:text-slate-200">${esc(parent.stdPackingQty)} pcs</span></div>
+                                <div class="bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-neutral-700"><span class="text-slate-400 block text-[9px] uppercase font-bold">SLAVE PACK</span><span class="font-bold text-slate-800 dark:text-slate-200 uppercase">${esc(parent.slavePackingType || '-')} ${esc(parent.slavePacking || '')}</span></div>
+                                <div class="bg-white dark:bg-neutral-800 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-neutral-700"><span class="text-slate-400 block text-[9px] uppercase font-bold">OUTER BOX</span><span class="font-mono text-slate-800 dark:text-slate-200">${esc(parent.outerBox || '-')}</span></div>
+                                <button onclick="openParentForm(${P})" title="Edit Parent SKU" aria-label="Edit Parent SKU" class="w-8 h-8 rounded-xl bg-slate-200/80 dark:bg-neutral-700 text-slate-700 dark:text-slate-200 flex items-center justify-center hover:bg-slate-300"><i class="fa-solid fa-pen-to-square"></i></button>
+                            </div>
+                        </div>
+                        <div class="${isExpanded ? 'block' : 'hidden'} p-4 bg-slate-100/50 dark:bg-black/40">
+                            ${slaves.length ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-3">${slaves.map(s => renderSlaveCardHtml(parent, s)).join('')}</div>`
+                                : '<p class="text-xs text-slate-400 font-semibold">No Slave SKU yet.</p>'}
+                            <div class="mt-3 flex justify-end">
+                                <button onclick="openSlaveForm(${P}, null)" class="text-xs font-bold text-ios-blue bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 px-3 py-1.5 rounded-xl shadow-sm hover:bg-slate-50 transition">+ Add New Slave to ${esc(parent.parentSku)}</button>
+                            </div>
+                        </div>
+                    </div>`);
+            });
+            container.innerHTML = cards.length ? cards.join('') : '<p class="text-center text-xs font-semibold text-slate-400 py-10">Nothing matches the search.</p>';
+            renderMasterSheetTable(filterQuery);
+        }
+        // "EAN: 123 · Fabric: Mink" for the custom fields that have a value
+        function customLine(fields, vals) {
+            const v = vals || {}, parts = (fields || []).filter(f => v[f.name]).map(f => esc(f.name) + ': <b>' + esc(v[f.name]) + '</b>');
+            return parts.length ? `<p class="text-[11px] text-slate-500 mt-0.5">${parts.join(' · ')}</p>` : '';
+        }
+        function renderSlaveCardHtml(parent, slave) {
+            const S = ja(slave.sku), P = ja(parent.parentSku);
+            return `
+                <div class="bg-white dark:bg-ios-darkCard rounded-xl p-3 shadow-sm border border-slate-200/80 dark:border-neutral-800 flex gap-3 relative hover:border-ios-blue/50 transition">
+                    <img src="${esc(swatchOf(slave))}" alt="${esc(slave.color)}" class="w-20 h-20 shrink-0 rounded-xl object-cover border border-slate-200 dark:border-neutral-700">
+                    <div class="flex-1 min-w-0 flex flex-col justify-between">
+                        <div>
+                            <div class="flex items-center justify-between gap-1">
+                                <span class="font-mono font-extrabold text-xs text-ios-blue uppercase truncate">${esc(slave.sku)}</span>
+                                <span class="bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 font-mono text-[10px] px-1.5 py-0.5 rounded uppercase font-bold shrink-0">${esc(slave.color)}</span>
+                            </div>
+                            <p class="text-[10px] font-mono text-slate-400">ASIN ${esc(slave.asin)}</p>
+                            <p class="text-[11px] text-slate-600 dark:text-slate-300 line-clamp-2 mt-1 leading-snug font-normal" title="${esc(slave.title)}">${esc(slave.title)}</p>
+                            ${customLine(state.customFields.slave, slave.custom)}
+                        </div>
+                        <div class="mt-2 flex items-center justify-between pt-1 border-t border-slate-100 dark:border-neutral-800">
+                            <div class="flex items-center gap-2 no-cut">
+                                <span class="text-xs font-black text-slate-900 dark:text-white">SP: ${money(slave.sp)}</span>
+                                <span class="text-xs font-bold text-slate-500 dark:text-slate-400">MRP: ${money(slave.mrp)}</span>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <button onclick="quickPrintStudio(${S})" class="text-slate-500 hover:text-ios-blue p-1 text-xs" title="Open in 4x4 Studio" aria-label="Open in 4x4 Studio"><i class="fa-solid fa-barcode"></i></button>
+                                <button onclick="openSlaveForm(${P}, ${S})" class="text-slate-500 hover:text-slate-800 dark:hover:text-white p-1 text-xs" title="Edit Slave SKU" aria-label="Edit Slave SKU"><i class="fa-solid fa-pen"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>`;
+        }
+        function renderMasterSheetTable(filterQuery = "") {
+            const rows = [];
+            state.catalog.forEach(parent => {
+                const pHit = hit(parentHay(parent), filterQuery);
+                parent.slaves.forEach(slave => {
+                    if (filterQuery && !pHit && !hit(slaveHay(slave), filterQuery)) return;
+                    rows.push(`<tr class="hover:bg-slate-50 dark:hover:bg-neutral-800/50 transition">
+                        <td class="p-3"><img src="${esc(swatchOf(slave))}" alt="" class="w-9 h-9 rounded-lg object-cover border border-slate-200 dark:border-neutral-700"></td>
+                        <td class="p-3 font-mono font-bold uppercase text-slate-900 dark:text-white">${esc(parent.parentSku)}</td>
+                        <td class="p-3 font-semibold uppercase text-slate-700 dark:text-slate-300">${esc(slave.color)}</td>
+                        <td class="p-3 font-bold text-slate-800 dark:text-slate-200 uppercase">${esc(parent.brand)}</td>
+                        <td class="p-3 font-mono text-ios-blue font-bold uppercase">${esc(slave.asin)}</td>
+                        <td class="p-3 font-mono text-xs font-bold uppercase">${esc(slave.sku)}</td>
+                        <td class="p-3 font-mono">${esc(parent.hsn)}</td>
+                        <td class="p-3 text-slate-700 dark:text-slate-300 max-w-xs truncate">${esc(slave.title)}</td>
+                        <td class="p-3 font-bold text-center text-amber-600 dark:text-amber-400">${esc(parent.stdPackingQty)}</td>
+                        <td class="p-3 uppercase font-semibold">${esc(parent.slavePackingType)}</td>
+                        <td class="p-3 font-mono">${esc(parent.slavePacking)}</td>
+                        <td class="p-3 font-mono">${esc(parent.outerBox)}</td>
+                        <td class="p-3 font-mono font-extrabold text-center text-ios-blue whitespace-nowrap">1 Box = ${esc(parent.stdPackingQty)} pcs</td>
+                        <td class="p-3 font-bold no-cut">${money(slave.mrp)}</td>
+                        <td class="p-3 font-extrabold no-cut text-emerald-600 dark:text-emerald-400">${money(slave.sp)}</td>
+                        <td class="p-3"><button onclick="openSlaveForm(${ja(parent.parentSku)}, ${ja(slave.sku)})" class="text-xs text-ios-blue hover:underline font-semibold">Edit</button></td>
+                    </tr>`);
+                });
+            });
+            $('masterSheetTbody').innerHTML = rows.join('') || '<tr><td colspan="16" class="p-6 text-center text-slate-400 font-semibold">No Slave SKU.</td></tr>';
+            $('masterSheetCountBadge').textContent = rows.length + ' Slaves Total';
+        }
+
+        /* ── form helpers ──────────────────────────────────────────────── */
+        function closeModal(id) { $(id).classList.add('hidden'); }
+        function setErr(id, msg) { const e = $(id + 'Err'), f = $(id); if (e) e.textContent = msg || ''; if (f) f.classList.toggle('bad', !!msg); return !msg; }
+        function clearErrs(root) { root.querySelectorAll('.fe').forEach(e => e.textContent = ''); root.querySelectorAll('.fx.bad').forEach(e => e.classList.remove('bad')); }
+        // a field typed in again: its own message goes away at once
+        document.addEventListener('input', e => { const f = e.target; if (f && f.classList && f.classList.contains('bad')) { f.classList.remove('bad'); const m = f.id && $(f.id + 'Err'); if (m) m.textContent = ''; } });
+        const DIM_RE = /^\d+(\.\d+)?(\s*[*xX]\s*\d+(\.\d+)?){1,2}$/;
+        const ASIN_RE = /^[A-Z0-9]{10}$/;
+        const cleanSku = s => String(s || '').toUpperCase().replace(/\s+/g, ' ').trim();
+        function customInputsHtml(fields, vals, prefix) {
+            return (fields || []).map((f, i) => `<div><label for="${prefix}${i}" class="fl">${esc(f.name)}${f.printOn4x4 ? ' <span class="font-normal text-emerald-600">· prints on 4x4</span>' : ''}</label>
+                <input id="${prefix}${i}" data-cf="${esc(f.name)}" class="fx" value="${esc((vals || {})[f.name] || '')}"></div>`).join('');
+        }
+        function readCustom(box) { const o = {}; box.querySelectorAll('[data-cf]').forEach(i => { const v = i.value.trim(); if (v) o[i.dataset.cf] = v; }); return o; }
+
+        /* ── PARENT FORM ───────────────────────────────────────────────── */
+        let PF = null;   // { edit: parentSku | null, rev }
+        function openParentForm(parentSku) {
+            const p = parentSku ? findParent(parentSku) : null;
+            if (parentSku && !p) return;
+            PF = { edit: p ? p.parentSku : null, rev: p ? p.rev : null };
+            const m = $('parentModal'); clearErrs(m);
+            $('pfTitle').textContent = p ? 'Edit Parent SKU: ' + p.parentSku : 'Add Parent SKU';
+            $('pfSku').value = p ? p.parentSku : ''; $('pfSku').readOnly = !!p;
+            $('pfBrand').value = p ? p.brand : ''; $('pfHsn').value = p ? p.hsn : '63014000';
+            $('pfStd').value = p ? p.stdPackingQty : ''; $('pfType').value = p ? p.slavePackingType : '';
+            $('pfSlavePack').value = p ? p.slavePacking : ''; $('pfOuter').value = p ? p.outerBox : '';
+            $('pfSize').value = p ? p.size : ''; $('pfWt').value = p ? p.wt : ''; $('pfAsin').value = p ? p.parentAsin : '';
+            $('pfCustom').innerHTML = customInputsHtml(state.customFields.parent, p && p.custom, 'pfCf');
+            $('pfSlavesBox').classList.toggle('hidden', !!p);
+            $('pfRows').innerHTML = '';
+            if (!p) pfAddRow();
+            $('pfDelete').classList.toggle('hidden', !(p && state.me.admin));
+            $('pfSave').textContent = p ? 'Save Changes' : 'Save Parent SKU';
+            m.classList.remove('hidden');
+            setTimeout(() => (p ? $('pfBrand') : $('pfSku')).focus(), 50);
+        }
+        let PF_ROW = 0;
+        function pfAddRow() {
+            const n = ++PF_ROW, box = $('pfRows');
+            box.insertAdjacentHTML('beforeend', `<div class="pf-row rounded-xl border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50 p-3 space-y-2" data-row="${n}">
+                <div class="flex items-center justify-between"><span class="text-[11px] font-extrabold text-slate-500">Slave <span class="pf-no"></span></span>
+                    <button type="button" onclick="pfDelRow(${n})" aria-label="Remove this row" title="Remove this row" class="text-ios-red text-xs font-bold px-2">✕</button></div>
+                <div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                    <div><label for="pr${n}c" class="fl">DESIGN / COLOUR <i class="req">*</i></label><input id="pr${n}c" class="fx font-bold uppercase" placeholder="e.g. GREY" oninput="pfRowSku(${n})"><span class="fe" id="pr${n}cErr"></span></div>
+                    <div class="sm:col-span-2"><label for="pr${n}s" class="fl">SLAVE SKU <i class="req">*</i></label><input id="pr${n}s" class="fx font-mono font-bold uppercase" oninput="this.dataset.typed='1'"><span class="fe" id="pr${n}sErr"></span></div>
+                    <div class="sm:col-span-2"><label for="pr${n}a" class="fl">ASIN <i class="req">*</i></label><input id="pr${n}a" class="fx font-mono font-bold uppercase" placeholder="B0XXXXXXXX" oninput="this.value=this.value.toUpperCase().replace(/\\s+/g,'')"><span class="fe" id="pr${n}aErr"></span></div>
+                    <div><label for="pr${n}m" class="fl">MRP (₹) <i class="req">*</i></label><input id="pr${n}m" type="number" min="0" step="0.01" class="fx font-bold"><span class="fe" id="pr${n}mErr"></span></div>
+                    <div><label for="pr${n}p" class="fl">SELLING PRICE <i class="req">*</i></label><input id="pr${n}p" type="number" min="0" step="0.01" class="fx font-bold"><span class="fe" id="pr${n}pErr"></span></div>
+                    <div class="sm:col-span-3" data-no-caps><label for="pr${n}t" class="fl">PRODUCT TITLE <i class="req">*</i></label><input id="pr${n}t" class="fx"><span class="fe" id="pr${n}tErr"></span></div>
+                </div></div>`);
+            pfNumberRows(); pfRowSku(n);
+        }
+        function pfDelRow(n) { const r = document.querySelector(`.pf-row[data-row="${n}"]`); if (r) r.remove(); pfNumberRows(); }
+        function pfNumberRows() { document.querySelectorAll('#pfRows .pf-row').forEach((r, i) => { r.querySelector('.pf-no').textContent = i + 1; }); }
+        // the SKU follows "PARENT-COLOUR" until it is typed by hand
+        function pfRowSku(n) { const s = $('pr' + n + 's'), c = $('pr' + n + 'c'); if (!s || s.dataset.typed) return; const p = $('pfSku').value.trim(), cc = cleanSku(c.value); s.value = p && cc ? p + '-' + cc : ''; }
+        function pfSkuChanged() { document.querySelectorAll('#pfRows .pf-row').forEach(r => pfRowSku(r.dataset.row)); }
+        function vSlaveRow(o, ids, others) {
+            let ok = true;
+            if (!o.color) ok = setErr(ids.c, 'Required') && ok;
+            if (!o.sku) ok = setErr(ids.s, 'Required') && ok;
+            else if (findSlave(o.sku) && !(ids.self && ids.self === o.sku)) ok = setErr(ids.s, 'Already exists') && ok;
+            else if (others.sku.has(o.sku)) ok = setErr(ids.s, 'Same SKU twice in this form') && ok;
+            if (!o.asin) ok = setErr(ids.a, 'Required') && ok;
+            else {
+                const used = state.catalog.some(p => p.slaves.some(s => String(s.asin).toUpperCase() === o.asin && s.sku !== ids.self));
+                if (used) ok = setErr(ids.a, 'Used by another SKU') && ok;
+                else if (others.asin.has(o.asin)) ok = setErr(ids.a, 'Same ASIN twice in this form') && ok;
+            }
+            if (!(o.mrp > 0)) ok = setErr(ids.m, 'More than 0') && ok;
+            if (!(o.sp > 0)) ok = setErr(ids.p, 'More than 0') && ok;
+            else if (o.mrp > 0 && o.sp > o.mrp) ok = setErr(ids.p, 'Cannot be more than MRP') && ok;
+            if (!o.title) ok = setErr(ids.t, 'Required') && ok;
+            others.sku.add(o.sku); others.asin.add(o.asin);
+            return ok;
+        }
+        async function saveParentForm() {
+            if (!PF || !canSave()) return;
+            const m = $('parentModal'); clearErrs(m);
+            const row = {
+                parentSku: $('pfSku').value.trim().toUpperCase(), brand: $('pfBrand').value.trim().toUpperCase(), hsn: $('pfHsn').value.trim(),
+                stdPackingQty: parseInt($('pfStd').value, 10), slavePackingType: $('pfType').value.trim().toUpperCase(),
+                slavePacking: $('pfSlavePack').value.trim(), outerBox: $('pfOuter').value.trim(), size: $('pfSize').value.trim(),
+                wt: $('pfWt').value.trim(), parentAsin: $('pfAsin').value.trim().toUpperCase(), custom: readCustom($('pfCustom'))
+            };
+            let ok = true;
+            if (!row.parentSku) ok = setErr('pfSku', 'Required') && ok;
+            else if (/\s/.test(row.parentSku)) ok = setErr('pfSku', 'No spaces') && ok;
+            else if (!PF.edit && findParent(row.parentSku)) ok = setErr('pfSku', 'This Parent SKU already exists') && ok;
+            if (!row.brand) ok = setErr('pfBrand', 'Required') && ok;
+            if (!/^\d{4,8}$/.test(row.hsn)) ok = setErr('pfHsn', '4 to 8 digits') && ok;
+            if (!(row.stdPackingQty >= 1) || String(row.stdPackingQty) !== $('pfStd').value.trim()) ok = setErr('pfStd', 'Whole number, 1 or more') && ok;
+            if (!row.slavePackingType) ok = setErr('pfType', 'Required') && ok;
+            if (row.slavePacking && !DIM_RE.test(row.slavePacking)) ok = setErr('pfSlavePack', 'Like 20*15*5 or 18*28') && ok;
+            if (row.outerBox && !DIM_RE.test(row.outerBox)) ok = setErr('pfOuter', 'Like 20*24*35') && ok;
+            const slaves = [], seen = { sku: new Set(), asin: new Set() };
+            if (!PF.edit) {
+                document.querySelectorAll('#pfRows .pf-row').forEach(r => {
+                    const n = r.dataset.row, v = k => $('pr' + n + k).value.trim();
+                    const o = { color: cleanSku(v('c')), sku: cleanSku(v('s')), asin: v('a').toUpperCase(), mrp: num(v('m')), sp: num(v('p')), title: v('t') };
+                    if (!o.color && !o.asin && !o.title && !v('m') && !v('p')) return;   // an empty row is left out
+                    ok = vSlaveRow(o, { c: 'pr' + n + 'c', s: 'pr' + n + 's', a: 'pr' + n + 'a', m: 'pr' + n + 'm', p: 'pr' + n + 'p', t: 'pr' + n + 't' }, seen) && ok;
+                    slaves.push(o);
+                });
+            }
+            if (!ok) { $('pfErr').textContent = 'Correct the fields marked in red.'; const b = m.querySelector('.fx.bad'); if (b) b.focus(); return; }
+            const odd = slaves.filter(s => !ASIN_RE.test(s.asin)).map(s => s.asin);
+            if (odd.length && !(await askConfirm('These ASINs are not 10 letters / digits: ' + odd.join(', ') + '. Save anyway?'))) return;
+            const btn = $('pfSave'); btn.disabled = true; btn.textContent = 'Saving...';
+            try {
+                const d = await rpc('amz_parent_save', { p_row: row, p_new: !PF.edit, p_rev: PF.rev, p_slaves: slaves });
+                closeModal('parentModal');
+                toast(PF.edit ? row.parentSku + ' saved' : row.parentSku + ' added' + (d.slaves && d.slaves.length ? ' with ' + d.slaves.length + ' slave(s)' : ''));
+                await reloadAll(false);
+            } catch (e) {
+                $('pfErr').textContent = errText(e);
+                if (e.code === 'CONFLICT' || e.code === 'NOT_FOUND') { await reloadAll(false); if (e.code === 'CONFLICT') openParentForm(PF.edit); }
+            } finally { btn.disabled = false; btn.textContent = PF && PF.edit ? 'Save Changes' : 'Save Parent SKU'; }
+        }
+        async function deleteParent() {
+            if (!PF || !PF.edit || !canSave()) return;
+            const p = findParent(PF.edit);
+            if (p && p.slaves.length) { $('pfErr').textContent = 'Delete its ' + p.slaves.length + ' Slave SKU(s) first.'; return; }
+            if (!(await askConfirm('Delete Parent SKU ' + PF.edit + '?'))) return;
+            try { await rpc('amz_item_delete', { p_kind: 'parent', p_key: PF.edit }); closeModal('parentModal'); toast(PF.edit + ' deleted'); await reloadAll(false); }
+            catch (e) { $('pfErr').textContent = errText(e); }
+        }
+
+        /* ── SLAVE FORM ────────────────────────────────────────────────── */
+        let SF = null;   // { edit: sku | null, rev, img: undefined (unchanged) | null (removed) | data URL }
+        function openSlaveForm(parentSku, sku) {
+            const f = sku ? findSlave(sku) : null;
+            if (sku && !f) return;
+            const s = f && f.slave;
+            SF = { edit: s ? s.sku : null, rev: s ? s.rev : null, img: undefined, cur: s ? s.customImage || null : null };
+            const m = $('slaveModal'); clearErrs(m);
+            $('sfTitle').textContent = s ? 'Edit Slave SKU: ' + s.sku : 'Add Slave SKU';
+            $('sfParent').innerHTML = state.catalog.map(p => `<option value="${esc(p.parentSku)}">${esc(p.parentSku)} (${esc(p.brand)})</option>`).join('');
+            $('sfParent').value = f ? f.parent.parentSku : (parentSku || (state.catalog[0] || {}).parentSku || '');
+            $('sfColor').value = s ? s.color : ''; $('sfSku').value = s ? s.sku : ''; $('sfSku').readOnly = !!s;
+            $('sfSku').dataset.typed = s ? '1' : ''; $('sfSkuHint').classList.toggle('hidden', !!s);
+            $('sfAsin').value = s ? s.asin : ''; $('sfMrp').value = s ? s.mrp : ''; $('sfSp').value = s ? s.sp : '';
+            $('sfTitleIn').value = s ? s.title : '';
+            $('sfCustom').innerHTML = customInputsHtml(state.customFields.slave, s && s.custom, 'sfCf');
+            $('sfPhoto').value = '';
+            $('sfDelete').classList.toggle('hidden', !(s && state.me.admin));
+            $('sfSave').textContent = s ? 'Save Changes' : 'Save Slave SKU';
+            sfSwatchPaint(); sfAutoSku();
+            m.classList.remove('hidden');
+            setTimeout(() => $('sfColor').focus(), 50);
+        }
+        function sfAutoSku() { const s = $('sfSku'); if (!SF || SF.edit || s.dataset.typed) return; const p = $('sfParent').value, c = cleanSku($('sfColor').value); s.value = p && c ? p + '-' + c : ''; }
+        function sfImg() { return SF.img === undefined ? SF.cur : SF.img; }
+        function sfSwatchPaint() { if (!SF) return; const i = sfImg(); $('sfSwatch').src = i || generateProceduralSwatch($('sfColor').value); $('sfPhotoDel').classList.toggle('hidden', !i); }
+        function sfPhotoRemove() { if (!SF) return; SF.img = null; sfSwatchPaint(); }
+        // a small square photo (300 px JPEG) is enough for the card / master sheet
+        function sfPhotoPicked(input) {
+            const file = input.files && input.files[0]; if (!file || !SF) return;
+            const rd = new FileReader();
+            rd.onload = ev => {
+                const img = new Image();
+                img.onload = () => {
+                    const S = 300, c = document.createElement('canvas'); c.width = S; c.height = S;
+                    const k = Math.max(S / img.width, S / img.height), w = img.width * k, h = img.height * k;
+                    c.getContext('2d').drawImage(img, (S - w) / 2, (S - h) / 2, w, h);   // cover, centred (no stretching)
+                    SF.img = c.toDataURL('image/jpeg', 0.82); sfSwatchPaint();
+                };
+                img.onerror = () => toast('That file is not a picture', true);
+                img.src = ev.target.result;
+            };
+            rd.readAsDataURL(file);
+        }
+        async function saveSlaveForm() {
+            if (!SF || !canSave()) return;
+            const m = $('slaveModal'); clearErrs(m);
+            const o = { parentSku: $('sfParent').value, color: cleanSku($('sfColor').value), sku: cleanSku($('sfSku').value), asin: $('sfAsin').value.trim().toUpperCase(),
+                        mrp: num($('sfMrp').value), sp: num($('sfSp').value), title: $('sfTitleIn').value.trim(), custom: readCustom($('sfCustom')) };
+            let ok = !!o.parentSku || setErr('sfParent', 'Choose the Parent SKU');
+            ok = vSlaveRow(o, { c: 'sfColor', s: 'sfSku', a: 'sfAsin', m: 'sfMrp', p: 'sfSp', t: 'sfTitleIn', self: SF.edit }, { sku: new Set(), asin: new Set() }) && ok;
+            if (!ok) { $('sfErr').textContent = 'Correct the fields marked in red.'; const b = m.querySelector('.fx.bad'); if (b) b.focus(); return; }
+            const was = SF.edit && findSlave(SF.edit);
+            if (!ASIN_RE.test(o.asin) && !(was && was.slave.asin === o.asin) && !(await askConfirm('ASIN ' + o.asin + ' is not 10 letters / digits. Save anyway?'))) return;
+            if (SF.img !== undefined) o.customImage = SF.img;   // only a changed photo is sent (null = removed)
+            const btn = $('sfSave'); btn.disabled = true; btn.textContent = 'Saving...';
+            try {
+                await rpc('amz_slave_save', { p_row: o, p_new: !SF.edit, p_rev: SF.rev });
+                closeModal('slaveModal'); toast(o.sku + (SF.edit ? ' saved' : ' added'));
+                await reloadAll(false);
+            } catch (e) {
+                $('sfErr').textContent = errText(e);
+                if (e.code === 'CONFLICT' || e.code === 'NOT_FOUND') { const k = SF.edit; await reloadAll(false); if (e.code === 'CONFLICT') openSlaveForm(null, k); }
+            } finally { btn.disabled = false; btn.textContent = SF && SF.edit ? 'Save Changes' : 'Save Slave SKU'; }
+        }
+        async function deleteSlave() {
+            if (!SF || !SF.edit || !canSave()) return;
+            if (!(await askConfirm('Delete Slave SKU ' + SF.edit + '? Saved POs keep their copy of it.'))) return;
+            try { await rpc('amz_item_delete', { p_kind: 'slave', p_key: SF.edit }); closeModal('slaveModal'); toast(SF.edit + ' deleted'); await reloadAll(false); }
+            catch (e) { $('sfErr').textContent = errText(e); }
+        }
+
+        /* ── ACCEPT AMAZON PO ──────────────────────────────────────────── */
+        let PO_REV = null;
+        function openAcceptPOModal(editingOrderId = null) {
+            if (!state.catalog.length) { toast('Add a Parent SKU with its Slave SKUs first', true); switchTab('skus'); return; }
+            const modal = $('poModal'); clearErrs(modal);
+            state.poTempQuantities = {}; PO_REV = null;
+            const parentSelect = $('poParentSelect');
+            parentSelect.innerHTML = state.catalog.map(p => `<option value="${esc(p.parentSku)}">${esc(p.parentSku)} (${esc(p.brand)})</option>`).join('');
+            const order = editingOrderId ? state.orders.find(o => o.id === editingOrderId) : null;
+            $('poModalTitle').textContent = order ? 'EDIT SAVED AMAZON PO' : 'ACCEPT AMAZON PURCHASE ORDER';
+            $('poEditingId').value = order ? order.id : '';
+            $('poNumberInput').value = order ? order.poNumber : '';
+            $('poShipToCodeInput').value = order ? order.shipToCode || '' : '';
+            $('poShippingAddressInput').value = order ? order.shippingAddress || '' : '';
+            $('poPackingDate').value = order ? order.packingDate || '' : localToday();
+            $('poDispatchDate').value = order ? order.dispatchDate || '' : '';
+            $('poCheckInDate').value = order ? order.checkInDate || '' : '';
+            $('poRemarksInput').value = order ? order.remarks || '' : '';
+            if (order) {
+                PO_REV = order.rev;
+                order.items.forEach(it => { state.poTempQuantities[it.sku] = it.qty; });
+                const first = order.items.find(it => findParent(it.parentSku));
+                if (first) parentSelect.value = first.parentSku;
+            }
+            loadPOSlavesForParent(parentSelect.value);
+            modal.classList.remove('hidden');
+        }
+        function closePOModal() { $('poModal').classList.add('hidden'); }
+        function preventSpaceKey(e) { if (e.key === ' ' || e.keyCode === 32) { e.preventDefault(); return false; } }
+        function handlePOSpaceFilter(input) { input.value = input.value.replace(/\s+/g, '').toUpperCase(); }
+        function loadPOSlavesForParent(parentSku) {
+            const parent = findParent(parentSku); if (!parent) return;
+            $('poCalcParentBadge').textContent = parent.parentSku;
+            $('poSlavesContainer').innerHTML = parent.slaves.length ? parent.slaves.map(slave => `
+                <div class="flex items-center justify-between gap-2 bg-slate-100 dark:bg-neutral-800 p-2.5 rounded-xl border border-slate-200 dark:border-neutral-700">
+                    <div class="flex items-center gap-3 min-w-0">
+                        <img src="${esc(swatchOf(slave))}" alt="" class="w-8 h-8 rounded-lg object-cover shrink-0">
+                        <div class="min-w-0">
+                            <span class="block font-mono font-bold text-xs uppercase truncate text-slate-900 dark:text-white">${esc(slave.sku)}</span>
+                            <span class="text-[10px] text-slate-500 font-mono">ASIN: ${esc(slave.asin)} | ${esc(slave.color)}</span>
+                        </div>
+                    </div>
+                    <label class="flex items-center gap-2 shrink-0"><span class="text-xs font-semibold text-slate-500">Qty</span>
+                        <input type="number" min="0" step="1" value="${esc(state.poTempQuantities[slave.sku] || 0)}" oninput="updatePOSlaveQty(${ja(parent.parentSku)}, ${ja(slave.sku)}, this.value)" class="w-20 text-center font-bold text-xs bg-white dark:bg-neutral-900 p-1.5 rounded-lg border border-slate-300 dark:border-neutral-600 outline-none focus:ring-2 focus:ring-ios-blue">
+                    </label>
+                </div>`).join('') : '<p class="text-xs text-slate-400 font-semibold">This Parent SKU has no Slave SKU yet.</p>';
+            calculatePOMasterPacking(parentSku);
+        }
+        function updatePOSlaveQty(parentSku, slaveSku, qtyStr) {
+            const v = Math.max(0, parseInt(qtyStr, 10) || 0);
+            if (v) state.poTempQuantities[slaveSku] = v; else delete state.poTempQuantities[slaveSku];
+            calculatePOMasterPacking(parentSku);
+        }
+        function calculatePOMasterPacking(parentSku) {
+            const parent = findParent(parentSku); if (!parent) return;
+            const total = parent.slaves.reduce((t, s) => t + (state.poTempQuantities[s.sku] || 0), 0);
+            const c = packCalc(total, parent.stdPackingQty);
+            $('poCalcTotalSlaves').textContent = total; $('poCalcStdQty').textContent = c.std;
+            $('poCalcFullBoxes').textContent = c.full; $('poCalcRemSlaves').textContent = c.rem; $('poCalcFinalBoxes').textContent = c.final;
+            // the whole order (every parent with a qty), so nothing typed under another parent is forgotten
+            const per = state.catalog.map(p => ({ p, t: p.slaves.reduce((t, s) => t + (state.poTempQuantities[s.sku] || 0), 0) })).filter(x => x.t > 0);
+            $('poAllParentsLine').textContent = per.length ? 'In this order: ' + per.map(x => x.p.parentSku + ' ' + x.t + ' pcs = ' + packCalc(x.t, x.p.stdPackingQty).final + ' box').join(' · ') : '';
+        }
+        async function saveAmazonPO() {
+            if (!canSave()) return;
+            const m = $('poModal'); clearErrs(m);
+            const row = {
+                id: $('poEditingId').value || null, poNumber: $('poNumberInput').value.trim().toUpperCase(),
+                shipToCode: $('poShipToCodeInput').value.trim().toUpperCase(), shippingAddress: $('poShippingAddressInput').value.trim().toUpperCase(),
+                packingDate: $('poPackingDate').value, dispatchDate: $('poDispatchDate').value, checkInDate: $('poCheckInDate').value,
+                remarks: $('poRemarksInput').value.trim(),
+                items: Object.keys(state.poTempQuantities).filter(k => state.poTempQuantities[k] > 0 && findSlave(k)).map(k => ({ sku: k, qty: state.poTempQuantities[k] }))
+            };
+            let ok = true;
+            if (!row.poNumber) ok = setErr('poNumberInput', 'Required') && ok;
+            else if (state.orders.some(o => o.poNumber.toUpperCase() === row.poNumber && o.id !== row.id)) ok = setErr('poNumberInput', 'This PO No is already saved') && ok;
+            if (row.packingDate && row.dispatchDate && row.dispatchDate < row.packingDate) ok = setErr('poDispatchDate', 'Cannot be before the Packing Date') && ok;
+            if (!row.items.length) { $('poItemsErr').textContent = 'Enter a quantity for at least one Slave SKU.'; ok = false; }
+            if (!ok) { $('poSaveErr').textContent = 'Correct the fields marked in red.'; return; }
+            const btn = $('poSaveBtn'); btn.disabled = true; btn.textContent = 'Saving...';
+            try {
+                await rpc('amz_order_save', { p_row: row, p_rev: PO_REV });
+                closePOModal(); toast('PO ' + row.poNumber + ' saved');
+                await reloadAll(false); switchTab('orders');
+            } catch (e) {
+                $('poSaveErr').textContent = errText(e);
+                if (e.code === 'CONFLICT') await reloadAll(false);
+            } finally { btn.disabled = false; btn.textContent = 'Save Order'; }
+        }
+
+        /* ── SAVED ORDERS ──────────────────────────────────────────────── */
+        function renderSavedOrdersTab(filterQuery = "") {
+            const container = $('savedOrdersList');
+            const list = state.orders.filter(o => hit([o.poNumber, o.shipToCode, o.remarks, o.shippingAddress].concat(o.items.map(i => i.sku + ' ' + i.asin)).join(' '), filterQuery));
+            if (!list.length) {
+                container.innerHTML = `<div class="bg-white dark:bg-ios-darkCard rounded-2xl p-8 text-center border border-slate-200/60 dark:border-neutral-800">
+                    <i class="fa-solid fa-file-circle-xmark text-4xl text-slate-300 dark:text-neutral-700 mb-2"></i>
+                    <p class="text-sm font-semibold text-slate-500">${filterQuery ? 'No PO matches the search.' : 'No saved Amazon Purchase Order.'}</p>
+                    ${filterQuery ? '' : '<button onclick="openAcceptPOModal()" class="mt-3 text-xs bg-ios-blue text-white font-bold px-4 py-2 rounded-xl">+ Create First Amazon PO</button>'}
+                </div>`;
+                return;
+            }
+            container.innerHTML = list.map(order => {
+                const groups = {};
+                order.items.forEach(it => { (groups[it.parentSku] = groups[it.parentSku] || { parentSku: it.parentSku, stdPackingQty: it.stdPackingQty, items: [] }).items.push(it); });
+                const O = ja(order.id);
+                return `<div class="bg-white dark:bg-ios-darkCard rounded-2xl shadow-sm border border-slate-200/70 dark:border-neutral-800 overflow-hidden">
+                    <div class="p-4 bg-slate-50/80 dark:bg-neutral-800/60 border-b border-slate-200/60 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center gap-3 min-w-0">
+                            <div class="w-10 h-10 shrink-0 rounded-xl bg-ios-blue/10 text-ios-blue flex items-center justify-center font-bold"><i class="fa-solid fa-receipt text-lg"></i></div>
+                            <div class="min-w-0">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <h3 class="font-extrabold text-base tracking-tight text-slate-900 dark:text-white font-mono uppercase">PO: ${esc(order.poNumber)}</h3>
+                                    ${order.shipToCode ? `<span class="bg-ios-blue text-white text-[10px] font-bold px-2 py-0.5 rounded-md uppercase">${esc(order.shipToCode)}</span>` : ''}
+                                </div>
+                                <p class="text-xs text-slate-500 font-mono mt-0.5">Packing: ${esc(dmy(order.packingDate) || 'N/A')} | Dispatch: ${esc(dmy(order.dispatchDate) || 'N/A')}${order.checkInDate ? ' | Check-in: ' + esc(String(order.checkInDate).replace('T', ' ')) : ''}</p>
+                                <p class="text-[11px] text-slate-400">${esc(order.createdBy || '')}${order.createdAt ? ' · ' + esc(whenTxt(order.createdAt)) : ''}${order.updatedBy && order.updatedAt !== order.createdAt ? ' · edited by ' + esc(order.updatedBy) + ' ' + esc(whenTxt(order.updatedAt)) : ''}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <button onclick="sendPOToQueue(${O})" class="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold px-3 py-1.5 rounded-xl transition flex items-center gap-1.5"><i class="fa-solid fa-print"></i> Send to 4x4 Queue</button>
+                            <button onclick="openAcceptPOModal(${O})" class="bg-slate-200/70 dark:bg-neutral-700 text-slate-700 dark:text-slate-200 text-xs font-bold px-3 py-1.5 rounded-xl hover:bg-slate-300">Edit PO</button>
+                            ${state.me.admin ? `<button onclick="deleteAmazonPO(${O})" title="Delete PO (Admin)" aria-label="Delete PO" class="bg-ios-red/10 text-ios-red hover:bg-ios-red/20 text-xs font-bold px-2.5 py-1.5 rounded-xl"><i class="fa-solid fa-trash"></i></button>` : ''}
+                        </div>
+                    </div>
+                    <div class="p-4 space-y-4">${Object.values(groups).map(g => renderOrderParentGroupHtml(order.id, g)).join('')}</div>
+                    ${order.shippingAddress ? `<div class="px-4 py-2 border-t border-slate-200/60 dark:border-neutral-800 text-xs text-slate-500">Ship to: ${esc(order.shippingAddress)}</div>` : ''}
+                    ${order.remarks ? `<div class="px-4 py-2 bg-slate-50 dark:bg-neutral-900/40 border-t border-slate-200/60 dark:border-neutral-800 text-xs text-slate-500">Remarks: ${esc(order.remarks)}</div>` : ''}
+                </div>`;
+            }).join('');
+        }
+        function renderOrderParentGroupHtml(orderId, group) {
+            const total = group.items.reduce((t, i) => t + (parseInt(i.qty) || 0), 0), c = packCalc(total, group.stdPackingQty);
+            return `<div class="bg-slate-100/70 dark:bg-black/30 rounded-xl p-3 border border-slate-200/60 dark:border-neutral-800 space-y-3">
+                <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/60 dark:border-neutral-800 pb-2">
+                    <div class="flex items-center gap-2">
+                        <span class="font-mono font-bold text-sm uppercase text-slate-900 dark:text-white">${esc(group.parentSku)}</span>
+                        <span class="text-xs bg-slate-200 dark:bg-neutral-700 text-slate-700 dark:text-slate-300 px-2 py-0.5 rounded font-mono">STD: ${c.std} pcs</span>
+                    </div>
+                    <div class="flex items-center gap-2 text-xs font-bold flex-wrap">
+                        <span class="text-slate-500">Total Slaves: <b class="text-slate-900 dark:text-white">${total}</b></span>
+                        <span class="bg-ios-blue text-white px-2.5 py-1 rounded-lg">PACKING FINAL QUNATITY: ${c.final} Master Box${c.final === 1 ? '' : 'es'} (${c.full} Full + ${c.rem} Loose)</span>
+                    </div>
+                </div>
+                <div class="overflow-x-auto"><table class="w-full text-xs text-left">
+                    <thead><tr class="text-slate-400 font-semibold uppercase text-[10px] border-b border-slate-200/40 dark:border-neutral-800">
+                        <th class="pb-1">SLAVE SKU</th><th class="pb-1">ASIN</th><th class="pb-1">DESIGN / COLOR</th><th class="pb-1 no-cut">MRP</th><th class="pb-1 no-cut">SELLING PRICE</th><th class="pb-1 text-center">ORDERED QTY</th>
+                    </tr></thead>
+                    <tbody class="divide-y divide-slate-200/40 dark:divide-neutral-800 font-medium">${group.items.map(it => `<tr>
+                        <td class="py-2 font-mono font-bold uppercase text-slate-800 dark:text-slate-200">${esc(it.sku)}</td>
+                        <td class="py-2 font-mono text-ios-blue uppercase">${esc(it.asin)}</td>
+                        <td class="py-2 uppercase font-semibold text-slate-600 dark:text-slate-400">${esc(it.color)}</td>
+                        <td class="py-2 no-cut font-bold">${money(it.mrp)}</td>
+                        <td class="py-2 no-cut font-extrabold text-emerald-600 dark:text-emerald-400">${money(it.sp)}</td>
+                        <td class="py-2 text-center"><input type="number" min="0" step="1" value="${esc(it.qty)}" aria-label="Ordered qty of ${esc(it.sku)}" onchange="inlineUpdateOrderQty(${ja(orderId)}, ${ja(it.sku)}, this.value)" class="w-16 text-center font-bold bg-white dark:bg-neutral-800 p-1 rounded-lg border border-slate-300 dark:border-neutral-700 outline-none focus:ring-2 focus:ring-ios-blue"></td>
+                    </tr>`).join('')}</tbody>
+                </table></div>
+            </div>`;
+        }
+        // a qty changed in the list = the whole PO saved again (0 = the line leaves the PO; the last line cannot)
+        async function inlineUpdateOrderQty(orderId, sku, newQtyStr) {
+            const order = state.orders.find(o => o.id === orderId); if (!order) return;
+            const v = Math.max(0, parseInt(newQtyStr, 10) || 0);
+            const items = order.items.map(i => ({ sku: i.sku, qty: i.sku === sku ? v : i.qty })).filter(i => i.qty > 0);
+            if (!items.length) { toast('A PO needs at least one line: delete the PO instead', true); renderSavedOrdersTab(curQuery()); return; }
+            if (!canSave()) { renderSavedOrdersTab(curQuery()); return; }
+            try {
+                await rpc('amz_order_save', { p_row: Object.assign({}, order, { items }), p_rev: order.rev });
+                toast('PO ' + order.poNumber + ' updated');
+            } catch (e) { toast(errText(e), true); }
+            await reloadAll(false);
+        }
+        async function deleteAmazonPO(orderId) {
+            const order = state.orders.find(o => o.id === orderId); if (!order || !canSave()) return;
+            const why = await askText('Delete PO ' + order.poNumber + '? Write the reason.', '');
+            if (why == null) return;
+            if (!String(why).trim()) { toast('Write the reason to delete the PO', true); return; }
+            try { await rpc('amz_order_delete', { p_id: orderId, p_reason: String(why).trim() }); toast('PO ' + order.poNumber + ' deleted'); }
+            catch (e) { toast(errText(e), true); }
+            await reloadAll(false);
+        }
+        function saveQueue() { lsSet(QUEUE_KEY, state.queue); updateGlobalBadges(); }
+        function sendPOToQueue(orderId) {
+            const order = state.orders.find(o => o.id === orderId); if (!order) return;
+            let n = 0;
+            order.items.forEach(it => {
+                const cur = findSlave(it.sku), parent = cur ? cur.parent : null;
+                state.queue.push({
+                    queueId: 'Q-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6), poNumber: order.poNumber,
+                    sku: it.sku, asin: it.asin, title: it.title, color: it.color, mrp: it.mrp, sp: it.sp, brand: it.brand || (parent && parent.brand) || 'SARV',
+                    size: it.size || (parent && parent.size) || '', stdPackingQty: it.stdPackingQty, hsn: it.hsn, custom: it.custom || (cur && cur.slave.custom) || {},
+                    labelQty: parseInt(it.qty) || 1
+                });
+                n += parseInt(it.qty) || 0;
+            });
+            saveQueue(); renderBatchQueueTab();
+            toast(n + ' labels of PO ' + order.poNumber + ' added to the Batch Print Queue');
+        }
+
+        /* ── 4x4 STUDIO ────────────────────────────────────────────────── */
+        function populateStudioSelect() {
+            const select = $('studioSkuSelect'), keep = state.studioCurrentSku && state.studioCurrentSku.slave.sku;
+            select.innerHTML = state.catalog.filter(p => p.slaves.length).map(p => `<optgroup label="${esc(p.parentSku + ' (' + p.brand + ')')}">${p.slaves.map(s => `<option value="${esc(s.sku)}">${esc(s.sku + ' - ' + s.color)}</option>`).join('')}</optgroup>`).join('');
+            const first = keep && findSlave(keep) ? keep : (state.catalog.find(p => p.slaves.length) || { slaves: [{}] }).slaves[0].sku;
+            if (first) { select.value = first; loadStudioSku(first); } else { state.studioCurrentSku = null; updateStudioPreview(); }
+        }
+        function quickPrintStudio(sku) { switchTab('studio'); $('studioSkuSelect').value = sku; loadStudioSku(sku); }
+        function loadStudioSku(sku) {
+            const f = findSlave(sku); if (!f) return;
+            state.studioCurrentSku = f;
+            $('studioTitle').value = f.slave.title; $('studioAsin').value = f.slave.asin; $('studioSku').value = f.slave.sku;
+            $('studioMrp').value = f.slave.mrp; $('studioSp').value = f.slave.sp; $('studioHsn').value = f.parent.hsn; $('studioStdPack').value = f.parent.stdPackingQty;
+            updateStudioPreview();
+        }
+        function switchStudioTemplate(tpl) {
+            state.studioTemplate = tpl;
+            $('tplStandardBtn').classList.toggle('active', tpl === 'standard'); $('tplWarehouseBtn').classList.toggle('active', tpl === 'warehouse'); $('tplRetailBtn').classList.toggle('active', tpl === 'retail');
+            updateStudioPreview();
+        }
+        // the Slave custom fields marked "Print on 4x4" that have a value
+        const labelExtras = custom => (state.customFields.slave || []).filter(f => f.printOn4x4 && custom && custom[f.name]).map(f => ({ name: f.name, value: custom[f.name] }));
+        // ONE label layout for the preview, the single print and the batch print
+        function labelInnerHtml(d, tpl, svgId) {
+            const ex = d.extras && d.extras.length ? `<div class="flex flex-wrap gap-x-3 font-mono text-[10px]">${d.extras.map(x => `<span>${esc(x.name)}: ${esc(x.value)}</span>`).join('')}</div>` : '';
+            if (tpl === 'warehouse') return `<div class="flex flex-col h-full justify-between leading-tight text-black p-1">
+                    <div class="bg-black text-white p-1 text-center font-black text-sm uppercase tracking-widest">${esc(d.brand)} WAREHOUSE FBA</div>
+                    <p class="text-[10px] font-bold line-clamp-2 text-center">${esc(d.title)}</p>
+                    <div class="flex flex-col items-center justify-center my-1"><svg id="${svgId}" class="w-full h-16"></svg><span class="font-mono font-black text-base uppercase">${esc(d.sku)}</span></div>
+                    <div class="border-2 border-black p-1 text-[11px] font-black space-y-0.5">
+                        <div class="flex justify-between"><span>ASIN: ${esc(d.asin)}</span><span>COLOR: ${esc(d.color)}</span></div>${ex}
+                        <div class="flex justify-between no-cut"><span>MRP: ${money(d.mrp)}</span><span>SP: ${money(d.sp)}</span></div>
+                    </div></div>`;
+            if (tpl === 'retail') return `<div class="flex flex-col h-full justify-between leading-tight text-black p-2 border border-black">
+                    <div class="text-center font-black text-lg uppercase border-b-2 border-black pb-1">${esc(d.brand)} PREMIUM</div>
+                    <div class="text-xs font-bold uppercase truncate font-mono">SKU: ${esc(d.sku)}</div>
+                    <div class="flex flex-col items-center"><svg id="${svgId}" class="w-full h-12"></svg></div>
+                    <p class="text-[10px] font-medium line-clamp-2">${esc(d.title)}</p>${ex}
+                    <div class="bg-slate-100 p-1.5 rounded border border-black font-black text-xs flex justify-between no-cut"><span>MRP: ${money(d.mrp)}</span><span>OFFER: ${money(d.sp)}</span></div></div>`;
+            return `<div class="flex flex-col h-full justify-between leading-tight text-black">
+                    <div>
+                        <div class="flex justify-between items-center border-b border-black pb-1 mb-1"><span class="font-black text-sm tracking-wider uppercase">${esc(d.brand)} INDIA</span><span class="font-mono font-bold text-xs">HSN: ${esc(d.hsn)}</span></div>
+                        <p class="text-[11px] font-semibold line-clamp-3 leading-snug break-words">${esc(d.title)}</p>
+                    </div>
+                    <div class="flex flex-col items-center justify-center py-1"><svg id="${svgId}" class="w-full h-14"></svg><span class="font-mono font-black text-sm tracking-widest uppercase mt-0.5">${esc(d.sku)}</span></div>
+                    <div class="border-t border-black pt-1 text-[11px] font-bold space-y-0.5">
+                        <div class="flex justify-between font-mono"><span>ASIN: ${esc(d.asin)}</span><span>COLOR: ${esc(d.color)}</span></div>
+                        <div class="flex justify-between font-mono"><span>SIZE: ${esc(d.size)}</span><span>STD PACK QTY: ${esc(d.stdPack)} Pcs</span></div>${ex}
+                        <div class="flex justify-between items-center pt-1 border-t border-black/40 text-xs no-cut"><span>MRP: <b class="font-black">${money(d.mrp)}</b></span><span>SELLING PRICE: <b class="font-black text-sm">${money(d.sp)}</b></span></div>
+                    </div></div>`;
+        }
+        function drawBarcode(sel, value) {
+            try { JsBarcode(sel, value || 'UNKNOWN', { format: 'CODE128', width: 2, height: 50, displayValue: false, margin: 0 }); }
+            catch (e) { console.error('Barcode render error', e); }
+        }
+        function studioData() {
+            const f = state.studioCurrentSku;
+            return { brand: f ? f.parent.brand : 'SARV', color: f ? f.slave.color : '', size: f ? f.parent.size : '', title: $('studioTitle').value,
+                     asin: $('studioAsin').value, sku: $('studioSku').value, mrp: num($('studioMrp').value), sp: num($('studioSp').value),
+                     hsn: $('studioHsn').value, stdPack: $('studioStdPack').value, extras: f ? labelExtras(f.slave.custom) : [] };
+        }
+        function updateStudioPreview() {
+            const c = $('thermalLabelContainer'); if (!c) return;
+            if (!state.studioCurrentSku && !$('studioSku').value) { c.innerHTML = '<div class="m-auto text-center text-xs text-slate-400 font-semibold">Add a Slave SKU to make a label.</div>'; return; }
+            c.innerHTML = labelInnerHtml(studioData(), state.studioTemplate, 'labelBarcodeSvg');
+            drawBarcode('#labelBarcodeSvg', $('studioSku').value);
+        }
+        const LABEL_BOX = 'label-page w-[378px] h-[378px] bg-white text-black p-4 flex flex-col justify-between overflow-hidden font-sans';
+        function printLabels(list) {
+            const pc = $('printContainer');
+            pc.innerHTML = list.map((d, i) => `<div class="${LABEL_BOX}">${labelInnerHtml(d, state.studioTemplate, 'pl-bc-' + i)}</div>`).join('');
+            list.forEach((d, i) => drawBarcode('#pl-bc-' + i, d.sku));
+            setTimeout(() => { window.print(); }, 250);
+        }
+        window.addEventListener('afterprint', () => { $('printContainer').innerHTML = ''; });
+        function printSingleStudioLabel() { if (!$('studioSku').value) { toast('Choose a SKU first', true); return; } printLabels([studioData()]); }
+        function downloadStudioLabelPNG() {
+            html2canvas($('thermalLabelContainer'), { scale: 3, backgroundColor: '#ffffff' }).then(canvas => {
+                const link = document.createElement('a');
+                link.download = 'Barcode_' + ($('studioSku').value || 'Label').replace(/[^\w.-]+/g, '_') + '.png';
+                link.href = canvas.toDataURL('image/png'); link.click();
+            });
+        }
+
+        /* ── BATCH PRINT QUEUE (this device) ───────────────────────────── */
+        function renderBatchQueueTab() {
+            const box = $('queueListContainer');
+            if (!state.queue.length) {
+                box.innerHTML = `<div class="bg-white dark:bg-ios-darkCard rounded-2xl p-8 text-center border border-slate-200/60 dark:border-neutral-800">
+                    <i class="fa-solid fa-print text-4xl text-slate-300 dark:text-neutral-700 mb-2"></i>
+                    <p class="text-sm font-semibold text-slate-500">Thermal Print Queue is empty.</p>
+                    <p class="text-xs text-slate-400 mt-1">Send orders from the Saved Orders tab to queue their labels.</p></div>`;
+                updateGlobalBadges(); return;
+            }
+            box.innerHTML = state.queue.map((it, i) => `<div class="bg-white dark:bg-ios-darkCard rounded-xl p-3 shadow-sm border border-slate-200/70 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0">
+                    <span class="w-7 h-7 shrink-0 rounded-lg bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 font-mono font-bold text-xs flex items-center justify-center">${i + 1}</span>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap"><span class="font-mono font-bold text-xs uppercase text-slate-900 dark:text-white">${esc(it.sku)}</span><span class="text-[10px] bg-ios-blue/10 text-ios-blue px-2 py-0.5 rounded font-mono font-bold uppercase">PO: ${esc(it.poNumber)}</span></div>
+                        <p class="text-xs text-slate-500 font-mono">ASIN: ${esc(it.asin)} | Colour: ${esc(it.color)} | HSN: ${esc(it.hsn)}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <label class="flex items-center gap-1.5 text-xs font-bold"><span class="text-slate-400">Labels to Print:</span>
+                        <input type="number" min="1" step="1" value="${esc(it.labelQty)}" onchange="updateQueueQty(${ja(it.queueId)}, this.value)" class="w-16 text-center font-bold bg-slate-100 dark:bg-neutral-800 p-1 rounded-lg border border-slate-200 dark:border-neutral-700 outline-none"></label>
+                    <button onclick="removeFromQueue(${ja(it.queueId)})" title="Remove" aria-label="Remove from queue" class="text-ios-red p-1.5 hover:bg-ios-red/10 rounded-lg transition"><i class="fa-solid fa-trash"></i></button>
+                </div></div>`).join('');
+            updateGlobalBadges();
+        }
+        function updateQueueQty(queueId, qtyStr) { const it = state.queue.find(q => q.queueId === queueId); if (!it) return; it.labelQty = Math.max(1, parseInt(qtyStr, 10) || 1); saveQueue(); renderBatchQueueTab(); }
+        function removeFromQueue(queueId) { state.queue = state.queue.filter(q => q.queueId !== queueId); saveQueue(); renderBatchQueueTab(); }
+        async function clearBatchQueue() { if (!state.queue.length) return; if (!(await askConfirm('Clear all items from the Thermal Print Queue?'))) return; state.queue = []; saveQueue(); renderBatchQueueTab(); }
+        async function printBatchQueue() {
+            if (!state.queue.length) { toast('The queue is empty', true); return; }
+            const list = [];
+            state.queue.forEach(it => {
+                const d = { brand: it.brand || 'SARV', title: it.title, asin: it.asin, sku: it.sku, mrp: it.mrp, sp: it.sp, hsn: it.hsn, stdPack: it.stdPackingQty, color: it.color, size: it.size || '', extras: labelExtras(it.custom) };
+                for (let i = 0; i < (parseInt(it.labelQty) || 0); i++) list.push(d);
+            });
+            if (list.length > 300 && !(await askConfirm(list.length + ' labels will print. Continue?'))) return;
+            printLabels(list);
+        }
+
+        /* ── SETTINGS: custom fields (Admin), export, upload ───────────── */
+        function renderSettingsTab() {
+            const adm = state.me.admin;
+            document.querySelectorAll('.cf-admin').forEach(b => b.classList.toggle('hidden', !adm));
+            $('cfAdminNote').textContent = adm ? '' : 'Only the Admin changes this list.';
+            const rowsOf = (type) => (state.customFields[type] || []).map((f, i) => `<div class="flex items-center justify-between bg-white dark:bg-neutral-900 p-2 rounded-lg border border-slate-200 dark:border-neutral-700 text-xs">
+                    <div><span class="font-bold text-slate-800 dark:text-slate-200">${esc(f.name)}</span>${f.printOn4x4 ? '<span class="ml-2 text-[10px] bg-ios-green/10 text-emerald-600 px-1.5 py-0.5 rounded font-bold">Print on 4x4</span>' : ''}</div>
+                    ${adm ? `<button onclick="removeCustomField('${type}', ${i})" class="text-ios-red hover:underline">Remove</button>` : ''}</div>`).join('')
+                || `<p class="text-xs text-slate-400">No ${type} custom field.</p>`;
+            $('parentCustomFieldsList').innerHTML = rowsOf('parent'); $('slaveCustomFieldsList').innerHTML = rowsOf('slave');
+            $('importBox').classList.toggle('hidden', !adm);
+            const old = oldLocalData();
+            $('importLocalBtn').classList.toggle('hidden', !old);
+            if (old) $('importLocalTxt').textContent = "Upload this browser's old data (" + old.parents + ' parents, ' + old.slaves + ' slaves, ' + old.orders + ' POs)';
+        }
+        async function saveCustomFields(next) {
+            if (!canSave()) return;
+            try { const d = await rpc('amz_config_save', { p_custom: next }); state.customFields = d.customFields; renderSettingsTab(); renderSKUsTab(curQuery()); toast('Custom fields saved'); }
+            catch (e) { toast(errText(e), true); }
+        }
+        async function addCustomField(type) {
+            const name = await askText('Name of the new ' + type + ' custom field:', '');
+            if (!name || !String(name).trim()) return;
+            const n = String(name).trim();
+            if ((state.customFields[type] || []).some(f => f.name.toUpperCase() === n.toUpperCase())) { toast('That field already exists', true); return; }
+            let printOn4x4 = false;
+            if (type === 'slave' && window.IosDialog && IosDialog.choose) printOn4x4 = await IosDialog.choose('Print "' + n + '" on the 4x4 thermal label?', [{ label: 'Yes, print it', value: true, bold: true }, { label: 'No', value: false, cancel: true }]) === true;
+            else if (type === 'slave') printOn4x4 = window.confirm('Print "' + n + '" on the 4x4 thermal label?');
+            const next = JSON.parse(JSON.stringify(state.customFields)); next[type] = (next[type] || []).concat([{ name: n, printOn4x4 }]);
+            saveCustomFields(next);
+        }
+        async function removeCustomField(type, index) {
+            const f = (state.customFields[type] || [])[index]; if (!f) return;
+            if (!(await askConfirm('Remove the custom field "' + f.name + '"? Values already typed stay on the SKUs but are not shown.'))) return;
+            const next = JSON.parse(JSON.stringify(state.customFields)); next[type].splice(index, 1);
+            saveCustomFields(next);
+        }
+        function exportDatabaseJSON() {
+            const data = { exportedAt: new Date().toISOString(), catalog: state.catalog, orders: state.orders, customFields: state.customFields };
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+            a.download = 'SARV_AMAZON_DATABASE_' + localToday() + '.json';
+            document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+        }
+        // the page's old browser-only data, if any is left on this device
+        function oldLocalData() {
+            const o = lsGet(OLD_KEY, null); if (!o || !Array.isArray(o.catalog)) return null;
+            const slaves = o.catalog.reduce((t, p) => t + ((p.slaves || []).length), 0), orders = (o.orders || []).length;
+            return slaves || orders ? { data: o, parents: o.catalog.length, slaves, orders } : null;
+        }
+        // drop what the old page added on its own (swatch pictures) before sending
+        const cleanCatalog = cat => (cat || []).map(p => Object.assign({}, p, { slaves: (p.slaves || []).map(s => { const x = Object.assign({}, s); delete x.swatchUrl; if (!x.customImage) delete x.customImage; return x; }) }));
+        async function runImport(label, catalog, orders) {
+            if (!canSave()) return false;
+            const box = $('importResult');
+            box.classList.remove('hidden'); box.textContent = 'Uploading ' + label + '...';
+            try {
+                const d = await rpc('amz_import', { p_catalog: cleanCatalog(catalog), p_orders: orders || [] });
+                const sk = d.skipped || [];
+                box.innerHTML = `<b>${esc(label)}:</b> added ${d.parents} parent(s), ${d.slaves} slave(s), ${d.orders} PO(s).`
+                    + (sk.length ? `<br><span class="text-amber-700 dark:text-amber-400">${sk.length} not added: ${sk.map(x => esc(x.key) + ' (' + esc(ERR[x.error] || x.error) + (x.other ? ' → ' + esc(x.other) : '') + ')').join(', ')}</span>` : '');
+                await reloadAll(false);
+                return true;
+            } catch (e) { box.textContent = errText(e); return false; }
+        }
+        async function importLocalData() {
+            const old = oldLocalData(); if (!old) return;
+            if (!(await askConfirm('Upload this browser\'s old data to the server? Only SKUs / POs the server does not have yet are added.'))) return;
+            if (await runImport("This browser's old data", old.data.catalog, old.data.orders)) {
+                // the old copy is kept under another key (nothing is lost), the banner goes away
+                try { localStorage.setItem(OLD_KEY + '_uploaded', localStorage.getItem(OLD_KEY)); localStorage.removeItem(OLD_KEY); } catch (e) {}
+                paintStatus(); renderSettingsTab();
+            }
+        }
+        async function importDefaultCatalog() {
+            if (!(await askConfirm('Add the built-in PDF v9 catalog (13 parents) to the server? SKUs already saved are not changed.'))) return;
+            runImport('PDF v9 catalog', DEFAULT_CATALOG, []);
+        }
+        function importDatabaseJSON(event) {
+            const file = event.target.files && event.target.files[0]; if (!file) return;
+            const rd = new FileReader();
+            rd.onload = async e => {
+                event.target.value = '';
+                let parsed; try { parsed = JSON.parse(e.target.result); } catch (err) { toast('That is not a valid JSON backup', true); return; }
+                if (!parsed || !Array.isArray(parsed.catalog)) { toast('The file has no catalog', true); return; }
+                if (!(await askConfirm('Add the SKUs / POs of ' + file.name + ' to the server? Only missing ones are added.'))) return;
+                runImport(file.name, parsed.catalog, parsed.orders || []);
+            };
+            rd.readAsText(file);
+        }
+
+        function handleGlobalSearch(query) {
+            const tab = (document.querySelector('.tab-content:not(.hidden)') || {}).id;
+            if (tab === 'tab-skus') renderSKUsTab(query);
+            else if (tab === 'tab-orders') renderSavedOrdersTab(query);
+        }
+    </script>
+</body>
+</html>
