@@ -110,7 +110,7 @@
         .ref-row .t { display: block; font-size: 13px; font-weight: 800; color: #111827; font-family: ui-monospace, monospace; }
         .ref-row .l { display: block; font-size: 10.5px; font-weight: 600; color: #6b7280; margin-top: 2px; }
         .ref-row .bdg { font-size: 9.5px; font-weight: 800; padding: 3px 8px; border-radius: 999px; text-transform: uppercase; letter-spacing: .3px; white-space: nowrap; flex-shrink: 0; }
-        .b-pend { background: #fef3c7; color: #92400e; } .b-part { background: #dbeafe; color: #1e40af; } .b-pr { background: #ede9fe; color: #5b21b6; }
+        .b-pend { background: #fef3c7; color: #92400e; } .b-part { background: #dbeafe; color: #1e40af; } .b-pr { background: #ede9fe; color: #5b21b6; } .b-ok { background: #dcfce7; color: #166534; }
 
         /* Print Styles. The pass is printed from a COPY (#gatePrintRoot, a direct child of body, filled by printGatePass()),
            never from inside the modal: the sheet keeps its slide-up animation transform (fill-mode both) and has overflow hidden +
@@ -3182,6 +3182,17 @@
             const all = (GATE_MASTERS.fbPrs || []).filter(gatePrOpen), k = normKey(party);
             return isDefaultFbParty(party) ? all.filter(p => normKey(p.purchaser) === 'FIELD BOY' || normKey(p.purchaser) === k) : all.filter(p => normKey(p.purchaser) === k);
         }
+        /* Where a Field Boy PR's approval stands (gate_masters fbPrs: fbDone / fbV2 / fbTotal / fbApproved, sql/GATE1_UNIT1_MIGRATION.sql
+           2026-11-27). The list keeps a PR until its material is in the Store, whatever its approval says: the gate registers what
+           arrives. Ready = every item approved by the requester and the pickup confirmed. Waiting = items still to be approved: the
+           ERP Store can receive only approved items, so the guard is told. A row from an older server (no fb* keys) shows its status. */
+        const fbPrReady = p => !!(p && p.fbDone);
+        const fbPrWaiting = p => !!(p && p.fbV2 && !p.fbDone && Number(p.fbTotal) > 0);
+        function fbPrBadge(p) {
+            if (fbPrReady(p)) return { badge: 'Ready · Approved', cls: 'b-ok' };
+            if (fbPrWaiting(p)) return { badge: 'Approved ' + (Number(p.fbApproved) || 0) + '/' + Number(p.fbTotal), cls: 'b-pend' };
+            return { badge: (p && p.status) || 'Open', cls: 'b-pr' };
+        }
         // Party options of the Inward form: every ERP supplier / local party, plus the Field Boys (their PRs are what they bring)
         function inwardPartyOptions() {
             if (INW_RET) return repairPartyOptions();   // 5B: only parties with a Repair Outward still out
@@ -3238,9 +3249,10 @@
                     badge: Number(r.received) > 0 ? 'Partly back' : 'Repair', cls: Number(r.received) > 0 ? 'b-part' : 'b-pend' })) };
             }
             if (type === 'PR') {
-                // a Field Boy's own open PRs; another party = the recent PRs of the ERP (what the PR list offered before)
-                const fbp = party ? fbPrsFor(party) : [], rows = fbp.length ? fbp : (GATE_MASTERS.prs || []).filter(gatePrOpen).slice(0, 200);
-                return { type, party, rows: rows.map(p => ({ no: p.reqNo, title: p.reqNo, line: [p.requestedBy ? 'By ' + p.requestedBy : '', p.purchaser ? 'Purchaser ' + p.purchaser : '', p.date].filter(Boolean).join(' · '), badge: p.status || 'Open', cls: 'b-pr' })) };
+                // a Field Boy's own open PRs (the ones approved and picked up first); another party = the recent PRs of the ERP (what the PR list offered before)
+                const fbp = party ? fbPrsFor(party) : [], rows = fbp.length ? fbp.slice().sort((a, b) => (fbPrReady(b) ? 1 : 0) - (fbPrReady(a) ? 1 : 0)) : (GATE_MASTERS.prs || []).filter(gatePrOpen).slice(0, 200);
+                return { type, party, rows: rows.map(p => Object.assign({ no: p.reqNo, title: p.reqNo, ready: fbPrReady(p), waiting: fbPrWaiting(p),
+                    line: [p.requestedBy ? 'By ' + p.requestedBy : '', p.purchaser ? 'Purchaser ' + p.purchaser : '', p.date, Number(p.owed) > 0 ? 'To come ' + refNum(p.owed) : ''].filter(Boolean).join(' · ') }, fbPrBadge(p))) };
             }
             const rows = [];
             (GATE_MASTERS.pos || []).forEach(p => {
@@ -3338,9 +3350,12 @@
                 }
             }
             document.getElementById('inRefNo').value = [...REF_PICK].join(', ');
+            // a Field Boy PR whose items are not all approved yet: allowed (the gate registers what arrives), but the guard is told
+            const waiting = REF_TYPE === 'PR' ? REF_ROWS.filter(r => REF_PICK.has(r.no) && r.waiting).map(r => r.no) : [];
             closeRefPicker();
             loadRefDetail();
-            showIosBanner(REF_PICK.size + ' selected', 'success');
+            if (waiting.length) showIosBanner(waiting.join(', ') + ': requester approval not complete. The Store can receive only the approved items.', 'info');
+            else showIosBanner(REF_PICK.size + ' selected', 'success');
         }
         function closeRefPicker() {
             document.getElementById('refPickModal').classList.add('hidden');

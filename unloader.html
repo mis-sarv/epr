@@ -14,8 +14,9 @@
 
   ERP › Inward › Submit sends the entry here (inward_unload_approvals,
   status Pending). The supervisor checks the material against the list,
-  takes item photos and approves with their OWN login PIN, or rejects with a
-  reason. Only an approved entry can be saved in the ERP (Final Submit); the
+  takes Bill Photos AND Item Photos (two large buttons, at least one of each,
+  checked on the page only: the server keeps one unlabelled list, bill photos
+  first) and approves with their OWN login PIN, or rejects with a reason. Only an approved entry can be saved in the ERP (Final Submit); the
   ERP then prints the supervisor's Name / Emp Code / Mobile on the Inward PDF
   and adds these photos to its Original Invoice PDF.
 
@@ -62,6 +63,15 @@
   .ul-pick label { flex: 1; text-align: center; padding: 10px; border: 1px dashed #fb923c; border-radius: 8px; background: #fff7ed; color: #c2410c; font-weight: 700; font-size: 0.82rem; cursor: pointer; }
   .ul-pick input { display: none; }
   .ul-hint { font-size: 0.7rem; color: #6b7280; margin-top: 4px; }
+  /* Bill Photos / Item Photos: two large buttons, both required to approve (green once one is added) */
+  .ul-big { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 8px; }
+  .ul-bigbtn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 104px; padding: 12px 8px; border: 2px dashed #fb923c; border-radius: 12px; background: #fff7ed; color: #c2410c; text-align: center; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform .12s ease; }
+  .ul-bigbtn:active { transform: scale(0.97); }
+  .ul-bigbtn input { display: none; }
+  .ul-bigbtn b { font-size: 0.95rem; }
+  .ul-bigbtn small { font-size: 0.7rem; font-weight: 700; color: #b91c1c; }
+  .ul-bigbtn.ok { border-style: solid; border-color: #22c55e; background: #f0fdf4; color: #15803d; }
+  .ul-bigbtn.ok small { color: #15803d; }
   .ul-pin { font-size: 1.5rem; letter-spacing: .5em; text-align: center; font-weight: 800; }
   .ul-decided { border-radius: 8px; padding: 9px 11px; font-size: 0.8rem; font-weight: 600; margin-bottom: 10px; }
   .ul-decided.ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
@@ -124,13 +134,24 @@
 
       <!-- Decision: only on a Pending request. -->
       <div id="mAct">
-        <div class="ul-sec"><span>Item Photos <span style="color:#dc3545;">*</span></span><span id="phCount" style="font-size:0.75rem;color:#c2410c;"></span></div>
-        <div class="ul-pick">
-          <label>Take Photo<input type="file" accept="image/*" capture="environment" onchange="addPhotos(this)"></label>
-          <label>Choose Photos<input type="file" accept="image/*" multiple onchange="addPhotos(this)"></label>
+        <div class="ul-sec"><span>Photos <span style="color:#dc3545;">*</span></span><span id="phCount" style="font-size:0.75rem;color:#c2410c;"></span></div>
+        <!-- One box each, no capture attribute: the phone offers Camera or Gallery (the Admin can narrow it in Admin Panel › Uploads) -->
+        <div class="ul-big">
+          <label class="ul-bigbtn" id="billBtn">
+            <input type="file" data-up="ul-bill-photo" accept="image/*" multiple onchange="addPhotos(this,'BILL')">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+            <b>Bill Photos</b>
+            <small id="billState">Required · tap to add</small>
+          </label>
+          <label class="ul-bigbtn" id="itemBtn">
+            <input type="file" data-up="ul-item-photo" accept="image/*" multiple onchange="addPhotos(this,'ITEM')">
+            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+            <b>Item Photos</b>
+            <small id="itemState">Required · tap to add</small>
+          </label>
         </div>
         <div class="ul-photos" id="phGrid"></div>
-        <div class="ul-hint">At least 1 photo of the unloaded material is required to approve (up to 10). They are added to the Inward's Original Invoice PDF.</div>
+        <div class="ul-hint">Both are required to approve: at least 1 photo of the bill and 1 of the unloaded items (up to 10 in all). They are added to the Inward's Original Invoice PDF, bill photos first.</div>
         <div class="form-group" style="margin-top:12px;">
           <label>Remarks <small style="font-weight:500;color:#6b7280;">required for Reject</small></label>
           <textarea id="mRemarks" rows="2" placeholder="Shortage, damage, wet bags, anything to note..."></textarea>
@@ -226,6 +247,8 @@ const ERR_TEXT = {
   TOO_MANY_ATTEMPTS: 'Too many wrong PINs. Please wait 15 minutes and try again.',
   PIN_CHECK_UNAVAILABLE: 'The PIN could not be checked right now. Please try again later.',
   PHOTO_REQUIRED: 'Add at least one photo of the material.',
+  BILL_REQUIRED: 'Add at least one Bill Photo (the supplier\'s bill / challan) before approving.',
+  ITEM_REQUIRED: 'Add at least one Item Photo (the unloaded material) before approving.',
   PHOTO_INVALID: 'One of the photos could not be read. Remove it and take it again.',
   TOO_MANY_PHOTOS: 'At most ' + PHOTO_MAX + ' photos.',
   REMARKS_REQUIRED: 'Write the reason for rejecting in Remarks.',
@@ -407,23 +430,43 @@ function compress(f){
     img.src = url;
   });
 }
-async function addPhotos(inp){
+/* PHOTOS = [{kind: 'BILL' | 'ITEM', src}]: Bill Photos and Item Photos, at least one of each to approve.
+   ul_decide takes ONE list (max PHOTO_MAX) with no label per photo, so the kinds are kept apart only here
+   and sent bill photos first (phOrdered): that is also their order in the Original Invoice PDF. */
+const PH_KIND = { BILL: 'Bill', ITEM: 'Item' };
+const phOf = k => PHOTOS.filter(p => p.kind === k);
+const phOrdered = () => phOf('BILL').concat(phOf('ITEM'));
+async function addPhotos(inp, kind){
+  kind = kind === 'BILL' ? 'BILL' : 'ITEM';
   const files = [...(inp.files || [])].filter(f => /^image\//.test(f.type));
   inp.value = '';
   if (!files.length) return;
-  const room = PHOTO_MAX - PHOTOS.length;
-  if (room <= 0) return flash('At most ' + PHOTO_MAX + ' photos.');
+  // one place stays free for the other kind while it has none, so both can always be added
+  const other = kind === 'BILL' ? 'ITEM' : 'BILL';
+  const room = PHOTO_MAX - PHOTOS.length - (phOf(other).length ? 0 : 1);
+  if (room <= 0) return flash(PHOTOS.length >= PHOTO_MAX ? 'At most ' + PHOTO_MAX + ' photos.' : 'Keep one place for the ' + PH_KIND[other] + ' Photo: at most ' + PHOTO_MAX + ' photos in all.');
   busy(true, 'Processing photo(s)…');
   try {
-    for (const f of files.slice(0, room)) { const d = await compress(f); if (d) PHOTOS.push(d); }
+    for (const f of files.slice(0, room)) { const d = await compress(f); if (d) PHOTOS.push({ kind, src: d }); }
   } finally { busy(false); }
-  if (files.length > room) flash('Only ' + PHOTO_MAX + ' photos can be attached; the rest were left out.');
+  if (files.length > room) flash('Only ' + room + ' more ' + PH_KIND[kind] + ' photo(s) fit (' + PHOTO_MAX + ' in all); the rest were left out.');
   renderPhotos();
 }
 function removePhoto(i){ PHOTOS.splice(i, 1); renderPhotos(); }
 function renderPhotos(){
-  $('phGrid').innerHTML = PHOTOS.map((d, i) => '<div class="ul-photo"><img src="' + d + '" alt="Photo ' + (i + 1) + '"><button onclick="removePhoto(' + i + ')" title="Remove">✕</button></div>').join('');
+  // shown in the order they are sent; the ✕ removes by the photo's place in PHOTOS
+  const cnt = { BILL: 0, ITEM: 0 };
+  $('phGrid').innerHTML = phOrdered().map(p => {
+    const i = PHOTOS.indexOf(p), n = ++cnt[p.kind];
+    return '<div class="ul-photo"><img src="' + p.src + '" alt="' + PH_KIND[p.kind] + ' photo ' + n + '"><span class="cap">' + PH_KIND[p.kind] + ' ' + n + '</span>'
+      + '<button onclick="removePhoto(' + i + ')" title="Remove">✕</button></div>';
+  }).join('');
   $('phCount').textContent = PHOTOS.length ? PHOTOS.length + ' / ' + PHOTO_MAX : '';
+  [['BILL', 'billBtn', 'billState'], ['ITEM', 'itemBtn', 'itemState']].forEach(([k, b, s]) => {
+    const n = phOf(k).length;
+    $(b).classList.toggle('ok', n > 0);
+    $(s).textContent = n ? '✓ ' + n + ' added · tap to add more' : 'Required · tap to add';
+  });
 }
 async function viewPhotos(id){
   $('viewerBody').innerHTML = '<p class="empty-msg">Loading…</p>'; $('ulViewer').style.display = 'flex';
@@ -438,7 +481,8 @@ function askPin(action){
   if (!OPEN) return;
   if (action === 'APPROVE') {
     if (!ME.emp_code || !ME.contact_no) return alert(ERR_TEXT.PROFILE_INCOMPLETE);
-    if (!PHOTOS.length) return alert(ERR_TEXT.PHOTO_REQUIRED);
+    if (!phOf('BILL').length) return alert(ERR_TEXT.BILL_REQUIRED);
+    if (!phOf('ITEM').length) return alert(ERR_TEXT.ITEM_REQUIRED);
   } else if (!$('mRemarks').value.trim()) { $('mRemarks').focus(); return alert(ERR_TEXT.REMARKS_REQUIRED); }
   ACTION = action;
   $('pinTitle').textContent = action === 'APPROVE' ? 'Approve ' + (OPEN.request_no || '') : 'Reject ' + (OPEN.request_no || '');
@@ -457,7 +501,7 @@ async function submitDecision(){
   busy(true, ACTION === 'APPROVE' ? 'Uploading ' + PHOTOS.length + ' photo(s)…' : 'Saving…');
   try {
     const d = await rpc('ul_decide', { p_pin: pin, p_id: OPEN.id, p_action: ACTION,
-      p_photos: ACTION === 'APPROVE' ? PHOTOS : [], p_remarks: $('mRemarks').value.trim() });
+      p_photos: ACTION === 'APPROVE' ? phOrdered().map(p => p.src) : [], p_remarks: $('mRemarks').value.trim() });
     closePin(); PHOTOS = []; closeModal();
     flash((d.status === 'Approved' ? 'Approved ' : 'Rejected ') + (d.request_no || ''));
     await load();

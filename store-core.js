@@ -10624,7 +10624,10 @@ const LC_RELATED={inward_entries:['inward_lines'],inward_lines:['inward_entries'
   purchase_orders:['purchase_order_lines'],purchase_order_lines:['purchase_orders'],purchase_requirements:['purchase_requirement_lines'],purchase_requirement_lines:['purchase_requirements']};
 // The tables the mobile app already gets Realtime events for (so they are in the publication).
 const LC_RT_TABLES=['purchase_requirements','purchase_orders','inward_entries','outward_entries'];
-const LC_FRESH_MASTER=5e3,LC_WARM_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN_RT=10*60e3,LC_FRESH_TXN=5e3;
+/* LC_FRESH_TXN_RT = LC_FRESH_TXN (2026-11-26): the four LC_RT_TABLES are not in the supabase_realtime publication, and since
+   SECURITY PHASE 2 their rows answer only a request carrying x-sarv-token, which a Realtime socket never has. A channel that is
+   "up" therefore never brings their changes, so trusting it for 10 min showed another user's save up to 10 min late. */
+const LC_FRESH_MASTER=5e3,LC_WARM_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN=5e3,LC_FRESH_TXN_RT=LC_FRESH_TXN;
 const LC_WRITE_RPC=/(save|delete|decide|post|insert|update|upsert|patch|import|approve|reject|cancel|undo|create|_set|set_|receive|transfer|edit|done|confirm)/i;
 const LC_QUIET_RPC=/^(erp_app_|verify_|get_|pdf_|tm_notify|sop_my)/i;
 const LC_MASTER_RPC=/item|supplier|employee|machine|dropdown|design|trims|fabric|brand/i;
@@ -34320,9 +34323,11 @@ async function inwGateLoad_(force){
       // STORE INWARD NO.: the open entries of this store (no function yet = none)
       try{
         const p=await SB.rpc('inp_list',{p_token:tok,p_store:store});
-        if(p.error){S.inpNoMig=inpNoMig_(p.error);S.inp=[];}
-        else{S.inpNoMig=false;S.inp=(p.data&&p.data.success!==false&&p.data.rows)||[];}
-      }catch(e){S.inp=S.inp||[];}
+        // a failure other than "no migration" is said in the box (inpErr): an empty list must never hide it
+        if(p.error){S.inpNoMig=inpNoMig_(p.error);S.inpErr=S.inpNoMig?'':(p.error.message||'read failed');S.inp=[];}
+        else if(p.data&&p.data.success===false){S.inpNoMig=false;S.inpErr=String(p.data.error||'NOT_ALLOWED');S.inp=[];}
+        else{S.inpNoMig=false;S.inpErr='';S.inp=(p.data&&p.data.rows)||[];}
+      }catch(e){S.inpErr=e.message||String(e);S.inp=S.inp||[];}
       // CHALLAN ENTRY: this store's Inwards booked against a challan whose bill is not in yet
       try{
         let q=SB.from('inward_entries').select('id,document_no,entry_type,supplier_name,invoice_no,invoice_date,receiving_date,notes,gate_entry_no,po_number,challan_info,created_at')
@@ -34434,6 +34439,7 @@ function inwGateInfo_(){
     box.innerHTML=(nc?'<div style="margin-bottom:4px;color:'+(nco?'#b91c1c':'#92400e')+';font-weight:700;">'+nc+' Inward'+(nc===1?'':'s')+' booked against a challan wait for the bill'+(nco?' ('+nco+' overdue)':'')+'. Choose one under "Challan · Bill pending" to add its Original Invoice.</div>':'')
       +(ni?'<div style="margin-bottom:4px;color:#1e3a8a;font-weight:700;">'+ni+' entr'+(ni===1?'y':'ies')+' submitted and waiting / approved under a Store Inward No. (at the top of the list). Choose one to see its step, or to Submit it once approved.</div>':'')
       +(S.inpNoMig&&isAdmin()?'<div style="margin-bottom:4px;color:#92400e;font-weight:700;">The Store Inward No. on Submit needs sql/INWARD_PENDING_MIGRATION.sql (Admin).</div>':'')
+      +(S.inpErr?'<div style="margin-bottom:4px;color:#b91c1c;font-weight:700;">The submitted entries (Store Inward No.) could not be read: '+escText(S.inpErr)+'. Press Refresh.</div>':'')
       +'<span style="color:#475569;">'+(S.list?(n?n+' Inward entr'+(n===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet'+((S.list||[]).filter(r=>!r.usedBy&&inwGateApPending_(r)).length?' ('+(S.list||[]).filter(r=>!r.usedBy&&inwGateApPending_(r)).length+' still waiting for the approver)':'')+'. Choose the one of this delivery.'
       :'No unbooked Inward entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate saves it when the vehicle comes in and its approver approves it (launcher › Gate Approvals); then press Refresh.'):'Loading the gate entries…')+'</span>';
     return;
