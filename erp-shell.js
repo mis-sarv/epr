@@ -288,6 +288,9 @@
       { label: 'Item Master',     go: 'MASTER', sub: 'itemMasterSub',     tab: 'MD_ITEM' },
       { label: 'Supplier Master', go: 'MASTER', sub: 'supplierMasterSub', tab: 'MD_SUPPLIER' },
       { label: 'Employee Master', go: 'MASTER', sub: 'employeeMasterSub', tab: 'MD_EMPLOYEE' },
+      // contractor persons; a Contractor ID can be a login's Emp Code (store-core.js › CONTRACTOR MASTER)
+      { label: 'Contractor Master', go: 'MASTER', sub: 'contractorMasterSub', tab: 'MD_CONTRACTOR',
+        words: 'contractor master thekedar firm labour contractor person id login user' },
       { label: 'Machine List',    go: 'MASTER', sub: 'machineMasterSub',  tab: 'MD_MACHINE' },
       { label: 'Fabric Master',   go: 'MASTER', sub: 'fabricMasterSub',   tab: 'MD_FABRIC' },
       { label: 'Brand Master',    go: 'MASTER', sub: 'brandMasterSub',    tab: 'MD_BRAND' },
@@ -1620,6 +1623,7 @@
     itemMasterSub: 'items item code slicer stock msv',
     supplierMasterSub: 'supplier vendor party',
     employeeMasterSub: 'employee staff',
+    contractorMasterSub: 'contractor thekedar firm labour',
     machineMasterSub: 'machine',
     fabricMasterSub: 'fabric quality',
     brandMasterSub: 'brand item code rates',

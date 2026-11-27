@@ -45,7 +45,7 @@
   if (window.GateLink) return;
   var $ = function (id) { return document.getElementById(id); };
   var INC = { rows: [], sent: [], at: 0, busy: false, nomig: false, err: '' };
-  var POLL_MS = 60000;
+  var POLL_MS = (window.sarvSyncMs ? sarvSyncMs('gate_link', 5000) : 5000);   // what the other gate sent: SYNC SPEED, default 5 s
   var online = function () { return !!GATE_USER && !GATE_OFFLINE && navigator.onLine !== false; };
   var guard = function () { return (appSettings.guardName || '') + ' (' + (appSettings.shiftName || '') + ')'; };
   var fmt = function (iso) { try { return iso ? formatDateTimeShort(iso) : '-'; } catch (e) { return String(iso || '-'); } };

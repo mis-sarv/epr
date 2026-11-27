@@ -27,6 +27,37 @@
    offline.
    ════════════════════════════════════════════════════════════════════ */
 
+/* ═══ SYNC SPEED (2026-11-27, after the 27-11 database freeze) ═══
+   How often each app re-reads its data, set by the Admin per app in ERP › Admin Panel › System Health › App sync
+   speed (app_settings 'sync_intervals' = {key: seconds}; store-core.js SARV_SYNC_APPS lists the keys). Every timer that
+   used a fixed 5 s asks  sarvSyncMs('<key>', <its old default in ms>)  when the page starts: the Admin's seconds
+   (2 … 3600) when set, else that default, so nothing changes until the Admin sets a value. The list is kept on the
+   device (localStorage sarv_sync_cfg_v1) and read again in the background when older than 10 minutes, so a change
+   reaches every page the next time it is opened. app_settings is readable before login. */
+(function () {
+  'use strict';
+  if (window.sarvSyncMs) return;
+  var K = 'sarv_sync_cfg_v1', HOST = 'jdlzgjgxxjkjejkhvdij.supabase.co', cfg = {}, at = 0;
+  var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk';
+  try { var c = JSON.parse(localStorage.getItem(K) || 'null'); if (c && typeof c.cfg === 'object') { cfg = c.cfg || {}; at = Number(c.at) || 0; } } catch (e) {}
+  window.sarvSyncMs = function (key, defMs) {
+    var s = Number(cfg && cfg[key]);
+    return (isFinite(s) && s >= 2 && s <= 3600) ? Math.round(s * 1000) : defMs;
+  };
+  if (Date.now() - at > 600000 && window.fetch) {
+    setTimeout(function () {
+      window.fetch('https://' + HOST + '/rest/v1/app_settings?key=eq.sync_intervals&select=value', { headers: { apikey: ANON, Authorization: 'Bearer ' + ANON } })
+        .then(function (r) { return r.ok ? r.json() : null; })
+        .then(function (rows) {
+          if (!Array.isArray(rows)) return;
+          var v = rows[0] && rows[0].value;
+          cfg = (v && typeof v === 'object') ? v : {};
+          try { localStorage.setItem(K, JSON.stringify({ at: Date.now(), cfg: cfg })); } catch (e) {}
+        }).catch(function () {});
+    }, 3000);
+  }
+})();
+
 /* ═══ ERP LOGIN ON EVERY TABLE REQUEST (SECURITY PHASE 2, 2026-11-26) ═══
    Every page (browser AND APK) sends the user's ERP session token as the header x-sarv-token on its
    Supabase table requests (/rest/v1/…), so the database can let only a logged-in ERP user read / write

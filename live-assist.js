@@ -31,7 +31,8 @@
     var LA_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk';
     var LIB_RRWEB = 'https://cdn.jsdelivr.net/npm/rrweb@1.1.3/dist/rrweb.min.js';
     var LIB_SB    = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4';
-    var LA_POLL_MS = 5000, LA_POLL_HIDDEN_MS = 15000, LA_FLUSH_MS = 250, LA_CHUNK = 90000, LA_HL_MS = 12000;
+    // SYNC SPEED (Admin Panel › System Health): presence of every open tab, the biggest steady load; default 5 s (hidden tab x3)
+    var LA_POLL_MS = (window.sarvSyncMs ? sarvSyncMs('live_assist', 5000) : 5000), LA_POLL_HIDDEN_MS = Math.max(15000, LA_POLL_MS * 3), LA_FLUSH_MS = 250, LA_CHUNK = 90000, LA_HL_MS = 12000;
 
     // ── PIN / password boxes never reach the Admin (every page, iframes too) ──
     var PIN_RE = /(^|[^a-z])(pin|pins|pwd|otp|passcode)([^a-z]|$)|passw|secret/i;

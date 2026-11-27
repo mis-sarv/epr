@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js?v=20261126f"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin>
+<head><script src="offline-sync.js?v=20261127a"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin>
 
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
@@ -9,7 +9,7 @@
 <title>SOPs</title>
 <!-- First, so a logged-in user never sees a flash of anything else. -->
 <script src="sso-preboot.js"></script>
-<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script>
 <!--
   SOPs: Standard Operating Procedures, one page in two modes.
 
@@ -1643,7 +1643,7 @@ function askLogout(){
   setInterval(() => {
     const a = document.activeElement, typing = a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);
     if (MODE !== 'master' && document.visibilityState === 'visible' && navigator.onLine !== false && !P && !ED && !typing) loadMy(false, true);
-  }, 5000);
+  }, (window.sarvSyncMs ? sarvSyncMs('my_sops', 5000) : 5000));   // SYNC SPEED (Admin Panel › System Health), default 5 s
 })();
 </script>
 <!-- Floating "← Apps" button (hidden inside the ERP iframe and without a session). -->

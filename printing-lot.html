@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js?v=20261126f"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin><link rel="preconnect" href="https://unpkg.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<head><script src="offline-sync.js?v=20261127a"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin><link rel="preconnect" href="https://unpkg.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
 <meta charset="UTF-8">
 <!-- LOGIN (SECURITY PHASE 2C, 2026-11-26): the prl_* tables answer only a logged-in ERP user (x-sarv-token, sql/SECURITY_PHASE2C_MIGRATION.sql),
@@ -234,8 +234,14 @@
       <div class="bg-amber-50/70 border border-amber-200 p-2.5 rounded-xl">
         <h2 class="font-bold text-red-600 mb-1.5 border-b border-amber-200 pb-1 flex items-center gap-1.5 text-xs"><i class="ph ph-note-pencil text-sm"></i> Worker Instructions</h2>
         <div class="flex flex-col gap-1.5 mb-2 edit-only-block">
-          <input id="note-name" class="fld uppercase" placeholder="Process / Station Name">
-          <textarea id="note-text" rows="2" class="fld resize-none" placeholder="Enter instruction note..."></textarea>
+          <!-- list = the ERP's active app users (loadMasters › prl-user-list); ios-dropdown.js shows it as a search popup. List only: noteNameCheck / addNote refuse other text -->
+          <input id="note-name" class="fld uppercase" placeholder="Process / Station Name · choose an app user" list="prl-user-list" autocomplete="off">
+          <!-- Instruction = a template of ERP › Dropdown Master › Worker Instruction Templates (DD note_tpl, #prl-note-tpl-list) ONLY;
+               ＋ New adds one to that Dropdown Master list from here (addNoteTemplate) -->
+          <div class="flex gap-1.5">
+            <input id="note-text" class="fld flex-1 min-w-0" placeholder="Choose an instruction template" list="prl-note-tpl-list" autocomplete="off">
+            <button type="button" id="btn-add-note-tpl" class="shrink-0 px-2 rounded border border-red-300 bg-white text-red-600 hover:bg-red-50 text-[10px] font-bold whitespace-nowrap" title="Add a new instruction template to ERP › Dropdown Master › Worker Instruction Templates">＋ New</button>
+          </div>
           <div class="flex items-center justify-between px-1">
             <label class="text-[10px] font-bold text-gray-700 uppercase tracking-wider">Font Color:</label>
             <input type="color" id="note-color" value="#dc2626" class="w-6 h-6 p-0 border border-gray-300 rounded cursor-pointer">
@@ -333,6 +339,8 @@
 <datalist id="prl-color-list"></datalist>
 <datalist id="prl-party-list"></datalist>
 <datalist id="prl-brand-list"></datalist>
+<datalist id="prl-user-list"></datalist>
+<datalist id="prl-note-tpl-list"></datalist>
 <input type="file" id="file-multi" multiple accept="image/*" class="hidden">
 <input type="file" id="file-single" accept="image/*" class="hidden">
 
@@ -363,6 +371,8 @@ const DD = {
   // The chemical checklists of the side panel (Printing / Washing Chemical); defaults = CALC_RULES' lists (chemDefsOf_)
   print_chem:      { key:'erp_prlPrintChem',      def:['GUM','HYBRID THICKNER','SYNTHETIC THICKNER'] },
   wash_chem:       { key:'erp_prlWashChem',       def:['WASHING SILICON'] },
+  // Worker Instructions › the instruction itself: ONLY these templates (＋ New adds one here, addNoteTemplate); no code default
+  note_tpl:        { key:'erp_prlNoteTpl',        def:[] },
   stenter:         { fixed:['NO','YES'], noBlank:true },
   emboss:          { fixed:['YES','NO'] },
   corner_label:    { fixed:['YES','NO'] },
@@ -584,6 +594,7 @@ async function loadMasters(){
     if(rows.length) M.sections = rows.filter(r => r.is_active).map(r => ({ section_key:r.section_key, title:r.title, icon:r.icon||'ph-factory', color:r.color||'slate', fields:Array.isArray(r.fields)?r.fields:[] }));
   } catch(e){ M.setupMissing = M.setupMissing || isSetupError(e); }
   $('prl-color-list').innerHTML = M.colors.filter(c => c.is_active).map(c => `<option value="${esc(c.color_name)}">`).join('');
+  fillNoteTemplates();
 }
 async function loadSuggestions(){
   const parties = new Set(), brands = new Set();
@@ -592,6 +603,15 @@ async function loadSuggestions(){
   M.parties = [...parties].sort(); M.brands = [...brands].sort();
   $('prl-party-list').innerHTML = M.parties.map(p => `<option value="${esc(p)}">`).join('');
   $('prl-brand-list').innerHTML = M.brands.map(p => `<option value="${esc(p)}">`).join('');
+  /* Worker Instructions › Process / Station Name: the ERP's active app users (app_users, readable before login;
+     the signature column is never asked for). One option per name, A-Z, the Emp Code beside it. */
+  try {
+    const users = await fetchAll(() => SB.from('app_users').select('user_name,emp_code,is_active').order('user_name'));
+    const seen = new Set();
+    M.users = users.filter(u => u.is_active !== false && String(u.user_name || '').trim())
+      .filter(u => { const k = up(u.user_name); if(seen.has(k)) return false; seen.add(k); return true; });
+    $('prl-user-list').innerHTML = M.users.map(u => `<option value="${esc(up(u.user_name))}">${esc(u.emp_code ? 'Emp Code ' + u.emp_code : 'App user')}</option>`).join('');
+  } catch(e){ console.warn('[PRL] app users not loaded:', e.message || e); }
 }
 /* Sattan items of the Item Master: every item whose description (or category)
    says SATTAN / SATIN, any category (it used to be category TRIMS with one of
@@ -815,10 +835,68 @@ function renderNotesList(){
         <button type="button" data-note-del="${i}" class="text-gray-400 hover:text-red-500 px-0.5"><i class="ph ph-trash text-xs"></i></button></div>`}
     </div>`).join('') || '<div class="text-[10px] text-gray-400 text-center py-1">No instructions</div>';
 }
+/* Process / Station Name = an ERP app user ONLY (2026-11-27): the name must be one of #prl-user-list (M.users, loadMasters);
+   anything else typed is taken off the box when it is left (noteNameCheck, on change) and refused by Add. Notes saved
+   before keep their old names. */
+const noteUser = v => (M.users || []).find(u => up(u.user_name) === up(v));
+function noteNameCheck(){
+  const box = $('note-name'), v = box.value.trim();
+  if(!v || noteUser(v)) return;
+  box.value = '';
+  showToast(M.users && M.users.length ? 'Choose the Process / Station Name from the App users list' : 'The App users list could not be loaded. Reload the page.', 'error');
+}
+/* The instruction = a template of ERP › Dropdown Master › Worker Instruction Templates ONLY (2026-11-27; DD note_tpl,
+   sales_dropdowns key erp_prlNoteTpl, #prl-note-tpl-list). Other text is taken off the box when it is left
+   (noteTextCheck) and refused by Add. ＋ New (addNoteTemplate) adds a template to that Dropdown Master list right here,
+   the way the ERP's Dropdown Master does (one sales_dropdowns row {key, value}; no code default to seed), so the ERP
+   screen and every other lot card get it too. Notes saved before keep their text. */
+const noteTpls = () => ddList('note_tpl');
+const noteTpl = v => noteTpls().find(x => up(x) === up(v));
+function fillNoteTemplates(){
+  const list = noteTpls();
+  $('prl-note-tpl-list').innerHTML = list.map(x => `<option value="${esc(x)}">`).join('');
+  const box = $('note-text');
+  if(box) box.placeholder = list.length ? 'Choose an instruction template (' + list.length + ')' : 'No template yet · press ＋ New to add one';
+}
+function noteTextCheck(){
+  const box = $('note-text'), v = box.value.trim();
+  if(!v || noteTpl(v)) return;
+  box.value = '';
+  showToast(noteTpls().length ? 'Choose the instruction from the template list, or add it with ＋ New' : 'No instruction template yet: add one with ＋ New', 'error');
+}
+async function addNoteTemplate(){
+  if(!canEdit()) return;
+  if(!SB) return showToast('Not connected to the server', 'error');
+  const typed = $('note-text').value.trim();
+  const ask = window.IosDialog && IosDialog.prompt
+    ? await IosDialog.prompt('New instruction template\nIt is added to ERP › Dropdown Master › Worker Instruction Templates.', noteTpl(typed) ? '' : typed)
+    : window.prompt('New instruction template (added to ERP › Dropdown Master › Worker Instruction Templates)', noteTpl(typed) ? '' : typed);
+  if(ask == null) return;
+  const val = String(ask).replace(/\s+/g, ' ').trim();
+  if(!val) return showToast('The template cannot be empty', 'error');
+  if(val.length > 300) return showToast('Keep the template under 300 characters', 'error');
+  const have = noteTpl(val);
+  if(have){ $('note-text').value = have; return showToast('Already in the list: chosen', 'success'); }
+  const btn = $('btn-add-note-tpl'); btn.disabled = true;
+  try {
+    const { error } = await SB.from('sales_dropdowns').insert([{ key:DD.note_tpl.key, value:val }]);
+    if(error) throw error;
+    (M.dd[DD.note_tpl.key] = M.dd[DD.note_tpl.key] || []).push(val);
+    fillNoteTemplates();
+    $('note-text').value = val;
+    showToast('Template added to the Dropdown Master', 'success');
+  } catch(e){
+    showToast(/duplicate key|unique/i.test(e.message || '') ? 'This template is already in the Dropdown Master' : 'Template not added: ' + (e.message || e), 'error');
+  } finally { btn.disabled = false; }
+}
 function addNote(){
   const n = $('note-name').value.trim(), t = $('note-text').value.trim();
   if(!n || !t) return showToast('Please fill in both the process name and the instruction', 'error');
-  L.notes.push({ id:uuid(), process_name:n.toUpperCase(), note_text:t, font_color:$('note-color').value || '#dc2626' });
+  const u = noteUser(n);
+  if(!u){ $('note-name').value = ''; $('note-name').focus(); return showToast(M.users && M.users.length ? 'Choose the Process / Station Name from the App users list' : 'The App users list could not be loaded. Reload the page.', 'error'); }
+  const tpl = noteTpl(t);
+  if(!tpl){ $('note-text').value = ''; $('note-text').focus(); return showToast(noteTpls().length ? 'Choose the instruction from the template list, or add it with ＋ New' : 'No instruction template yet: add one with ＋ New', 'error'); }
+  L.notes.push({ id:uuid(), process_name:up(u.user_name), note_text:tpl, font_color:$('note-color').value || '#dc2626' });
   $('note-name').value = ''; $('note-text').value = '';
   renderNotesList(); renderSheet(); markDirty();
 }
@@ -2816,6 +2894,10 @@ function wire(){
   wireProcBox();
   $('in-calc_page').onchange = e => { L.extra = Object.assign({}, L.extra, { no_calc_page:!e.target.checked }); markDirty(); };
   $('btn-add-note').onclick = addNote;
+  $('note-name').addEventListener('change', noteNameCheck);   // a pick from the list passes; typed other text is cleared
+  $('note-text').addEventListener('change', noteTextCheck);   // the same for the instruction template
+  $('note-text').addEventListener('keydown', e => { if(e.key === 'Enter'){ e.preventDefault(); noteTextCheck(); } });
+  $('btn-add-note-tpl').onclick = addNoteTemplate;
   $('notes-list').onclick = e => {
     const del = e.target.closest('[data-note-del]'), upb = e.target.closest('[data-note-up]');
     if(del){ L.notes.splice(+del.dataset.noteDel, 1); }

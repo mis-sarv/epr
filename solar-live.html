@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js?v=20261126f"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<head><script src="offline-sync.js?v=20261127a"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=5, user-scalable=yes, viewport-fit=cover">
@@ -10,7 +10,7 @@
 <script src="date-dmy.js"></script>
 <script src="caps-input.js"></script><script src="hover-tip.js"></script>
 <script src="sso-preboot.js"></script>
-<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script>
+<script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -207,7 +207,7 @@
 const ERP_URL  = "https://jdlzgjgxxjkjejkhvdij.supabase.co";
 const ERP_ANON = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk";
 const APP_KEY  = 'HOME_SOLAR_LIVE';
-const STATUS_EVERY_MS = 5000;            // the server syncs every 10 min; the page looks every 5 s (data sync every 5 s)
+const STATUS_EVERY_MS = (window.sarvSyncMs ? sarvSyncMs('solar_live', 5000) : 5000);   // the server syncs every 10 min; the page looks every 5 s by default (SYNC SPEED)
 const OFF_MIN_SLOTS   = 2;               // 2 × 10 min = 20 min without power = "Off"
 const LOW_SHARE       = 0.6;             // an inverter below 60 % of the median peak = under-performing
 const SERIES_COLORS   = ['#2563eb', '#0d9488', '#7c3aed', '#db2777', '#0891b2', '#65a30d'];

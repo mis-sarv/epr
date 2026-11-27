@@ -1,4 +1,4 @@
-<!doctype html><html lang="en"><head><script src="offline-sync.js?v=20261126f"></script><script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script><script src="sso-preboot.js"></script><script src="sso-gate.js"></script><script>/* The login window now lives only on launcher.html. Without a token the ERP redirects there before it opens (sso-gate.js requireSession()). The typeof check matters: if sso-gate.js is missing from the folder this line would throw and the reason would be buried in the console; now it is stated clearly. */if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps, or the login gate will not work.");</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SARV INDIA · Combined Store & Purchase</title><link rel="stylesheet" href="store.css"><link rel="stylesheet" href="erp-shell.css"><link rel="stylesheet" href="store-mytasks.css"><link rel="stylesheet" href="ios-dropdown.css?v=20261126a">
+<!doctype html><html lang="en"><head><script src="offline-sync.js?v=20261127a"></script><script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script><script src="sso-preboot.js"></script><script src="sso-gate.js"></script><script>/* The login window now lives only on launcher.html. Without a token the ERP redirects there before it opens (sso-gate.js requireSession()). The typeof check matters: if sso-gate.js is missing from the folder this line would throw and the reason would be buried in the console; now it is stated clearly. */if(typeof SARV_GATE!=="undefined")SARV_GATE.requireSession();else console.error("[SARV] sso-gate.js did not load. Keep that file in the same folder as the apps, or the login gate will not work.");</script><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><title>SARV INDIA · Combined Store & Purchase</title><link rel="stylesheet" href="store.css"><link rel="stylesheet" href="erp-shell.css"><link rel="stylesheet" href="store-mytasks.css"><link rel="stylesheet" href="ios-dropdown.css?v=20261126a">
 <link rel="stylesheet" href="ios-dialog.css?v=20261120a"><link rel="stylesheet" href="ios-skin-erp.css?v=20261120a"><script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script></head><body>
 
 <div id="sarvLoginGate" style="position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,0.55);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);display:flex;align-items:center;justify-content:center;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;">
@@ -1086,6 +1086,7 @@
                     <button class="btn master-sub-tab active" data-subtab="itemMasterSub" onclick="switchMasterSubTab('itemMasterSub')" style="border-radius:6px 6px 0 0; border-bottom:2px solid #0284c7; font-weight:700; padding:6px 16px; font-size:12px; background:#eff6ff; color:#0369a1;">Item Master</button>
                     <button class="btn master-sub-tab" data-subtab="supplierMasterSub" onclick="switchMasterSubTab('supplierMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Supplier Master</button>
                     <button class="btn master-sub-tab" data-subtab="employeeMasterSub" onclick="switchMasterSubTab('employeeMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Employee Master</button>
+                    <button class="btn master-sub-tab" data-subtab="contractorMasterSub" onclick="switchMasterSubTab('contractorMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Contractor Master</button>
                     <button class="btn master-sub-tab" data-subtab="machineMasterSub" onclick="switchMasterSubTab('machineMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Machine List</button>
                     <button class="btn master-sub-tab" data-subtab="fabricMasterSub" onclick="switchMasterSubTab('fabricMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Fabric Master</button>
                     <button class="btn master-sub-tab" data-subtab="brandMasterSub" onclick="switchMasterSubTab('brandMasterSub')" style="border-radius:6px 6px 0 0; font-weight:600; padding:6px 16px; font-size:12px; background:#f8fafc; color:#64748b;">Brand Master</button>
@@ -1470,6 +1471,69 @@
                     </div>
                 </div>
 
+                <!-- ═══ CONTRACTOR MASTER SUB-TAB (store-core.js › CONTRACTOR MASTER, sql/CONTRACTOR_MASTER_MIGRATION.sql) ═══ -->
+                <div id="contractorMasterSub" style="display:none;">
+                    <div data-md-top style="background:#fff7ed; border:1px solid #fdba74; border-radius:8px; padding:12px; margin-bottom:12px;">
+                        <div style="font-size:11px; font-weight:700; color:#c2410c; text-transform:uppercase; margin-bottom:8px;">Add New Contractor</div>
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:8px;">
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:9px;">Contractor ID <span style="color:#dc2626;">★</span></label>
+                                <input type="text" class="form-control" id="cm_cid" placeholder="e.g. CON-001" style="text-transform:uppercase;" autocomplete="off">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:9px;">Firm Name <span style="color:#dc2626;">★</span></label>
+                                <input type="text" class="form-control" id="cm_firm" placeholder="Contractor's firm" style="text-transform:uppercase;" list="dl-cm-firms" autocomplete="off">
+                                <datalist id="dl-cm-firms"></datalist>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:9px;">Person Name <span style="color:#dc2626;">★</span></label>
+                                <input type="text" class="form-control" id="cm_person" placeholder="Full Name" style="text-transform:uppercase;">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:9px;">Department</label>
+                                <!-- options = Dropdown Master › Department (erp_department), like the Employee Master -->
+                                <select class="form-control" id="cm_department" style="height:28px;font-size:11px;"><option value="">-- Select --</option></select>
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:9px;">Designation</label>
+                                <input type="text" class="form-control" id="cm_designation" placeholder="e.g. Loading Contractor">
+                            </div>
+                            <div class="form-group" style="margin:0;">
+                                <label style="font-size:9px;">Contact No.</label>
+                                <input type="tel" class="form-control" id="cm_contact" placeholder="10-digit mobile" maxlength="15" inputmode="numeric">
+                            </div>
+                        </div>
+                        <div style="margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                            <button class="btn btn-primary" id="cm_addBtn" onclick="addMasterContractor()" style="height:30px; font-size:11px; padding:0 16px; background:linear-gradient(135deg,#c2410c,#ea580c);">Add Contractor</button>
+                            <span style="font-size:10px; color:#94a3b8;">The Contractor ID is the person's login code: Admin Panel › Users › Add User takes it in the Employee Code box (or use ＋ User in the list)</span>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:10px; margin-bottom:8px; flex-wrap:wrap;">
+                        <input type="text" class="form-control" id="contractorMasterSearch" placeholder="Search contractors..." oninput="renderContractorMasterTable()" style="flex:1; min-width:180px; height:30px; font-size:11px;">
+                        <span id="contractorMasterCount" style="font-size:11px; font-weight:700; color:#64748b;">0 contractors</span>
+                        <button class="btn" onclick="loadContractorMaster()" style="background:#fff7ed; color:#c2410c; font-size:10px; height:28px; padding:0 10px;">Refresh</button>
+                        <button class="btn" onclick="exportTableCSV('contractorMasterBody','SARV_Contractor_Master_'+today()+'.csv',1)" style="background:#16a34a; color:#fff; font-size:10px; height:28px; padding:0 10px; border:none;">Download CSV</button>
+                    </div>
+                    <div class="table-container" style="max-height:350px; overflow-y:auto;">
+                        <table style="width:100%; border-collapse:collapse; font-size:11px;">
+                            <thead><tr style="background:#9a3412; color:#fff; position:sticky; top:0;">
+                                <th style="padding:6px; width:4%;">#</th>
+                                <th style="padding:6px; width:11%;">Contractor ID</th>
+                                <th style="padding:6px; width:17%;">Firm Name</th>
+                                <th style="padding:6px; width:17%;">Person Name</th>
+                                <th style="padding:6px; width:12%;">Department</th>
+                                <th style="padding:6px; width:12%;">Designation</th>
+                                <th style="padding:6px; width:10%;">Contact No.</th>
+                                <th style="padding:6px; width:7%;">Status</th>
+                                <th style="padding:6px; width:10%;">Actions</th>
+                            </tr></thead>
+                            <tbody id="contractorMasterBody">
+                                <tr><td colspan="9" style="text-align:center; padding:20px; color:#94a3b8;">Loading contractors...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
                 <!-- ═══ MACHINE MASTER SUB-TAB ═══ -->
                 <div id="machineMasterSub" style="display:none;">
                     <!-- Add Machine Form -->
@@ -1751,6 +1815,7 @@
                                 <button type="button" class="ap-tab" data-ap="tabs">Tab Visibility</button>
                                 <button type="button" class="ap-tab" data-ap="pdf">PDF Settings</button>
                                 <button type="button" class="ap-tab" data-ap="uploads">Uploads</button>
+                                <button type="button" class="ap-tab" data-ap="health">System Health</button>
                                 <button type="button" class="ap-fs-btn" id="ap_fullScreenBtn" title="Open the Admin Panel full screen (Esc to exit)">Full Screen</button>
                             </div>
                         </div>
@@ -1815,6 +1880,12 @@
                              camera type (UPLOAD CONTROL section of store-core.js, upload-guard.js, UPLOAD_POLICY_MIGRATION.sql). -->
                         <div class="ap-pane" data-ap-pane="uploads" style="display:none;">
                             <div id="ap_upPane"><div class="ap-empty">Loading…</div></div>
+                        </div>
+
+                        <!-- System Health: server figures with their limits, the scheduled jobs (how often, time limit, on / off)
+                             and every app's sync speed (SYSTEM HEALTH section of store-core.js, sql/SYSTEM_HEALTH_MIGRATION.sql) -->
+                        <div class="ap-pane" data-ap-pane="health" style="display:none;">
+                            <div id="ap_hlPane"><div class="ap-empty">Loading…</div></div>
                         </div>
                     </div>
 
@@ -4189,7 +4260,7 @@
      </section>
 
 
-<script src="store-core.js?v=20261127a"></script>
+<script src="store-core.js?v=20261127b"></script>
 <!-- ═══════════════════════════════════════════════════════════════════════════
      PRODUCTION › DESIGN MASTER — styles, edit modal, datalists, logic
      The DESIGN MASTER V18.html interface, inside Store.html and on Supabase
@@ -4321,7 +4392,9 @@
 <!-- Floating "← Apps" button. The file decides by itself whether to show it (not inside an iframe, and not without a single-login session). See app-back.js. -->
 <script src="app-back.js"></script>
 <!-- Admin rules for every upload box (Admin Panel › Uploads). Independent of the scripts above, so it can come last. -->
-<script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script>
+<script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script>
+<!-- Admin only: the database server's state, always in view (sys-health-pill.js, sql/SYSTEM_HEALTH_MIGRATION.sql) -->
+<script src="sys-health-pill.js?v=20261127a" defer></script>
 <!-- Every <select> / datalist list opens as an iOS-style popover (sheet on a phone). Independent of the scripts above. See ios-dropdown.js. -->
 <script src="ios-dropdown.js?v=20261126a"></script>
 <script src="ios-dialog.js?v=20261120a"></script>

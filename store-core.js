@@ -4884,7 +4884,7 @@ setTimeout(()=>{
   issPdfWorker_();
   setInterval(()=>{issPdfWorker_();},25000);
   setInterval(()=>{if(document.visibilityState==='visible')issBarSync_();},4000);
-  setInterval(()=>{if(document.visibilityState==='visible'&&byId('issSupBar')?.offsetParent)issRefresh_().catch(()=>{});},5000);   // data sync every 5 s
+  setInterval(()=>{if(document.visibilityState==='visible'&&byId('issSupBar')?.offsetParent)issRefresh_().catch(()=>{});},(window.sarvSyncMs?sarvSyncMs('erp_issue_bar',5000):5000));   // SYNC SPEED, default 5 s
 },8000);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')issPdfWorker_();});
 // Flags any row that exceeds its PO pending qty or changes the PO's rate.
@@ -6389,6 +6389,7 @@ window.openWebcamModal=()=>showToast('Camera preview is available in the origina
   if(id==='itemMasterSub')    loadItemMaster().catch(()=>{});
   if(id==='supplierMasterSub')loadSupplierMaster().catch(()=>{});
   if(id==='employeeMasterSub')loadEmployeeMaster().catch(()=>{});
+  if(id==='contractorMasterSub')loadContractorMaster().catch(()=>{});
   if(id==='machineMasterSub') loadMachineMaster().catch(()=>{});
   /* Fabric and Brand read each other's data (link chips, fabric dropdown,
      the "unlinked" count), so whichever opens also quietly loads the other
@@ -7981,6 +7982,7 @@ const SARV_TABS=[
   {key:'MD_ITEM',label:'Item Master',def:'ALL'},
   {key:'MD_SUPPLIER',label:'Supplier Master',def:'ALL'},
   {key:'MD_EMPLOYEE',label:'Employee Master',def:'ALL'},
+  {key:'MD_CONTRACTOR',label:'Contractor Master',hint:'Contractor persons (Contractor ID, Firm, Person, Department, Designation, Contact); a Contractor ID can be a login\'s Emp Code',def:'ALL'},
   {key:'MD_MACHINE',label:'Machine List',def:'ALL'},
   {key:'MD_FABRIC',label:'Fabric Master',hint:'Excel ki FABRIC MASTER sheet — fabric name + unit, roll weight, yarn planning, bora',def:'ALL'},
   {key:'MD_BRAND',label:'Brand Master',hint:'Excel ki BRAND MASTER sheet — item code, size, ply, sattan, packing, trims',def:'ALL'},
@@ -8043,7 +8045,7 @@ const SARV_TABS=[
   {key:'M_FOLLOWUP_pending',label:'PO Follow-up › Follow-up Due',hint:'POs with no follow-up yet, or whose revised date has passed',def:'ALL'},
   {key:'M_FOLLOWUP_done',label:'PO Follow-up › Date Awaited',hint:'Followed up, and the date the vendor gave is still ahead',def:'ALL'},
 ];
-const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',trimRateMasterSub:'MD_TRIM_RATE',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
+const SARV_MASTER_SUB_KEY={itemMasterSub:'MD_ITEM',supplierMasterSub:'MD_SUPPLIER',employeeMasterSub:'MD_EMPLOYEE',contractorMasterSub:'MD_CONTRACTOR',machineMasterSub:'MD_MACHINE',fabricMasterSub:'MD_FABRIC',brandMasterSub:'MD_BRAND',buyerMasterSub:'MD_BUYER',trimRateMasterSub:'MD_TRIM_RATE',dropdownMasterSub:'MD_DROPDOWN',settingsSub:'MD_SETTINGS'};
 const SARV_PO_SUB_KEY={p_poSubPendingBtn:'PO_SUB_PENDING',p_poSubListBtn:'PO_SUB_LIST',p_poSubReportBtn:'PO_SUB_REPORT'};
 const SARV_PROD_SUB_KEY={designMasterProdSub:'PROD_SUB_DESIGN'};
 const SARV_NAV_TARGET_KEYS={inwardPanel:['HOME_IN','HOME_IN_NB'],outwardPanel:['HOME_OUT','HOME_ISSUE'],reportsPanel:['HOME_REPORTS'],
@@ -8436,6 +8438,7 @@ function sarvShowApPane_(p){
   document.querySelectorAll('#sarvAdminPanel .ap-pane').forEach(x=>x.style.display=x.dataset.apPane===p?'':'none');
   if(p==='pdf')sarvRenderPdfSettings_();   // PDF Settings: built on opening, with a fresh preview
   if(p==='uploads')sarvUpLoad_();          // Uploads: the list is read fresh on every opening
+  if(p==='health')sarvHlLoad_();           // System Health: fresh on every opening, then every minute while open
 }
 function sarvRoleLabelOf_(code){const r=SARV_PERM_ROLES.find(x=>x.code===code);return r?r.label:(SARV_ROLE_LABEL[code]||code);}
 function sarvRenderUsers_(){
@@ -9550,18 +9553,25 @@ function sarvUserEmpLookup_(ov,u){
      Master has a value for is read-only (it shows that employee's details);
      a box the master leaves empty stays typeable. No code / no match = all
      typeable again (a login without an Emp Code still needs a name). */
+  /* CONTRACTOR MASTER (2026-11-27): a Contractor ID is a login code too; its person fills the same boxes. The code
+     box suggests both lists (#dl-user-codes, made here; the PR / Outward boxes keep the employees-only list). */
+  const mName=e=>e&&e._con?'Contractor Master':'Employee Master';
+  const dl=document.createElement('datalist');dl.id='dl-user-codes';emp.insertAdjacentElement('afterend',dl);emp.setAttribute('list','dl-user-codes');
+  const fillDl=()=>{dl.innerHTML=(sarvEmployeeCatalog||[]).map(e=>'<option value="'+escText(e.emp_code)+'">'+escText(e.person_name)+' — '+escText(e.designation||'')+'</option>').join('')
+    +(sarvContractorCatalog||[]).map(c=>'<option value="'+escText(c.contractor_id)+'">'+escText(c.person_name)+' — Contractor · '+escText(c.firm_name||'')+'</option>').join('');};
   const lock=e=>FIELDS.forEach(([k,c,n])=>{
     const el=f(k);if(!el)return;
     const on=!!(e&&n(e[c]));
     el.readOnly=on;el.classList.toggle('uf-ro',on);
-    el.title=on?'From Employee Master (Employee Code). Change the code, or the Employee Master, to change it.':'';
+    el.title=on?'From '+mName(e)+' (code '+(e.emp_code||'')+'). Change the code, or the '+mName(e)+', to change it.':'';
     el.closest('.fg')?.classList.toggle('uf-ro-fg',on);
   });
   const run=mode=>{
     const code=up(emp.value);
     if(!code){if(mode!=='open')clearAuto();lock(null);card.className='uf-emp';card.innerHTML='';return;}
-    if(!sarvEmployeeCatalog.length){card.className='uf-emp wait';card.textContent='Loading Employee Master…';return;}
-    const hits=sarvEmployeeCatalog.filter(e=>up(e.emp_code)===code);
+    if(!sarvEmployeeCatalog.length&&!sarvContractorCatalog.length){card.className='uf-emp wait';card.textContent='Loading Employee Master…';return;}
+    const hits=sarvEmployeeCatalog.filter(e=>up(e.emp_code)===code)
+      .concat((sarvContractorCatalog||[]).filter(c=>up(c.contractor_id)===code).map(cmAsEmp_));
     // The same code on another login is the other common cause of mixed-up details.
     const other=(sarvAppUsers||[]).find(x=>(!u||x.id!==u.id)&&up(x.emp_code)===code);
     const otherHtml=other?'<div class="u">Already used by another user: '+escText(other.user_name)+' ('+escText(sarvRoleLabelOf_(other.role))+')</div>':'';
@@ -9570,8 +9580,8 @@ function sarvUserEmpLookup_(ov,u){
       lock(null);
       card.className='uf-emp '+(hits.length?'bad':'none');
       card.innerHTML=(hits.length
-        ?'<b>'+hits.length+' employees have code '+escText(code)+'</b> in Employee Master ('+escText(hits.map(h=>h.person_name).join(', '))+'). Nothing was filled: correct the Employee Master first.'
-        :'No employee with code <b>'+escText(code)+'</b> in Employee Master.')+otherHtml;
+        ?'<b>'+hits.length+' people have code '+escText(code)+'</b> in Employee / Contractor Master ('+escText(hits.map(h=>h.person_name).join(', '))+'). Nothing was filled: correct the master first.'
+        :'No employee or contractor with code <b>'+escText(code)+'</b> in Employee Master / Contractor Master.')+otherHtml;
       return;
     }
     const e=hits[0];
@@ -9585,19 +9595,25 @@ function sarvUserEmpLookup_(ov,u){
     const diff=FIELDS.filter(([k,c,n])=>f(k)&&n(e[c])&&up(f(k).value)!==up(n(e[c])));
     const renamed=u&&f('name')&&up(u.user_name)!==up(f('name').value);
     card.className='uf-emp ok'+(diff.length?' warn':'');
-    card.innerHTML='<div>Employee Master: <b>'+escText(e.person_name||'-')+'</b>'
-      +[e.designation,e.department,e.contact_no].filter(Boolean).map(v=>' · '+escText(v)).join('')+'</div>'
-      +(diff.length?'<div class="d">The saved '+diff.map(d=>d[3]).join(', ')+' differ'+(diff.length===1?'s':'')+' from Employee Master'
-        +'<button type="button" data-f="empuse">Use Employee Master details</button></div>'
-        :'<div class="s">Details filled from Employee Master</div>')
+    card.innerHTML='<div>'+mName(e)+': <b>'+escText(e.person_name||'-')+'</b>'
+      +[e.firm,e.designation,e.department,e.contact_no].filter(Boolean).map(v=>' · '+escText(v)).join('')+'</div>'
+      +(diff.length?'<div class="d">The saved '+diff.map(d=>d[3]).join(', ')+' differ'+(diff.length===1?'s':'')+' from '+mName(e)
+        +'<button type="button" data-f="empuse">Use '+mName(e)+' details</button></div>'
+        :'<div class="s">Details filled from '+mName(e)+'</div>')
       +(renamed?'<div class="u">User Name will change from '+escText(u.user_name)+' to '+escText(f('name').value)+' on Save.</div>':'')+otherHtml;
     card.querySelector('[data-f="empuse"]')?.addEventListener('click',()=>run('force'));
   };
   emp.addEventListener('input',()=>run('type'));
   emp.addEventListener('change',()=>run('type'));
+  fillDl();
+  // the Contractor Master is read here too when no screen has read it yet (no migration = employees only, as before)
+  if(!sarvContractorCatalog.length&&!sarvContractorMissing&&SB_READY)
+    // an existing user is only checked (its saved values stay); a new one takes the details
+    fetchAllRows('contractors','*','contractor_id').then(d=>{sarvContractorCatalog=d||[];fillDl();run(u?'open':'type');})
+      .catch(e=>{if(cmNotSetUp_(e))sarvContractorMissing=true;});
   if(!sarvEmployeeCatalog.length&&SB_READY){
     run('open');
-    fetchAllRows('employees','*','emp_code').then(d=>{if(d&&d.length)refreshEmployeeDatalist(d);run('open');})
+    fetchAllRows('employees','*','emp_code').then(d=>{if(d&&d.length)refreshEmployeeDatalist(d);fillDl();run('open');})
       .catch(()=>{card.className='uf-emp none';card.textContent='Employee Master could not be loaded; the details are not filled automatically.';});
   }else run('open');
 }
@@ -10627,7 +10643,9 @@ const LC_RT_TABLES=['purchase_requirements','purchase_orders','inward_entries','
 /* LC_FRESH_TXN_RT = LC_FRESH_TXN (2026-11-26): the four LC_RT_TABLES are not in the supabase_realtime publication, and since
    SECURITY PHASE 2 their rows answer only a request carrying x-sarv-token, which a Realtime socket never has. A channel that is
    "up" therefore never brings their changes, so trusting it for 10 min showed another user's save up to 10 min late. */
-const LC_FRESH_MASTER=5e3,LC_WARM_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN=5e3,LC_FRESH_TXN_RT=LC_FRESH_TXN;
+// SYNC SPEED (offline-sync.js): the Admin's seconds for 'erp_lists' (Admin Panel › System Health), else 5 s
+const LC_SYNC_MS=(window.sarvSyncMs?sarvSyncMs('erp_lists',5e3):5e3);
+const LC_FRESH_MASTER=LC_SYNC_MS,LC_WARM_MASTER=5*60e3,LC_SWR_MASTER=12*3600e3,LC_FRESH_TXN=LC_SYNC_MS,LC_FRESH_TXN_RT=LC_FRESH_TXN;
 const LC_WRITE_RPC=/(save|delete|decide|post|insert|update|upsert|patch|import|approve|reject|cancel|undo|create|_set|set_|receive|transfer|edit|done|confirm)/i;
 const LC_QUIET_RPC=/^(erp_app_|verify_|get_|pdf_|tm_notify|sop_my)/i;
 const LC_MASTER_RPC=/item|supplier|employee|machine|dropdown|design|trims|fabric|brand/i;
@@ -14542,6 +14560,196 @@ window.addMasterEmployee=async function(){
   finally{if(btn){btn.disabled=false;btn.innerHTML='Add Employee';}}
 };
 
+/* ================================================================
+   MASTER DATA — Contractor Master   (sql/CONTRACTOR_MASTER_MIGRATION.sql, 2026-11-27)
+   Contractor persons, kept like the Employee Master but in their own table `contractors`, so they are not
+   offered where employees are (PR Requested By, HR, Task Manager, the gates). The Contractor ID is the
+   person's login code: Admin Panel › Users › Add User takes it in the Employee Code box and fills Name,
+   Contact, Designation and Department from here (sarvUserEmpLookup_ reads sarvContractorCatalog too);
+   ＋ User in the list opens that form with the ID filled. Add = whoever sees the tab (as the Employee
+   Master); ✎ Admin only (the Contractor ID stays: logins find the person by it); ✕ needs DELETE. The server
+   refuses a Contractor ID that is already an Employee Code or another contractor's (contractors_code_guard_,
+   unique index) and keeps the names in capitals.
+================================================================ */
+let sarvContractorRows=[], sarvContractorCatalog=[], sarvContractorMissing=false;
+const cmUp_=v=>String(v==null?'':v).trim().toUpperCase();
+const cmNotSetUp_=e=>!!e&&(e.code==='42P01'||e.code==='PGRST205'||/contractors/i.test(e.message||'')&&/does not exist|schema cache|could not find/i.test(e.message||''));
+function cmErr_(e){
+  const m=String((e&&(e.message||e.details))||e||'');
+  if(cmNotSetUp_(e))return 'The Contractor Master is not set up yet. Admin: run sql/CONTRACTOR_MASTER_MIGRATION.sql in the Supabase SQL Editor.';
+  if(/CONTRACTOR_ID_IS_EMP_CODE/.test(m))return 'This Contractor ID is already an Employee Code in the Employee Master. Use another ID.';
+  if(/contractors_cid_uq|duplicate key/i.test(m))return 'This Contractor ID already exists.';
+  if(/CONTRACTOR_REQUIRED/.test(m))return 'Contractor ID, Firm Name and Person Name are required.';
+  return m||'Not saved';
+}
+// the next free CON-### (shown as the box's hint only; any ID may be typed)
+function cmNextId_(){
+  let mx=0;
+  sarvContractorRows.forEach(c=>{const m=/^CON-(\d+)$/i.exec(String(c.contractor_id||'').trim());if(m)mx=Math.max(mx,+m[1]);});
+  return 'CON-'+String(mx+1).padStart(3,'0');
+}
+/* Firm Name list (#dl-cm-firms, the Add form and the ✎ popup) = the Supplier Master's Supplier Names (2026-11-27),
+   from the shared supplier cache (sarvSupplierCatalog); read once when no screen has read it yet. A suggestion
+   list: a firm not in the Supplier Master can still be typed. */
+function cmFillFirms_(){
+  const paint=()=>{
+    const dl=byId('dl-cm-firms');if(!dl)return;
+    const names=[...new Set((sarvSupplierCatalog||[]).map(s=>String(s.supplier_name||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    dl.innerHTML=names.map(n=>'<option value="'+escText(n)+'">').join('');
+    const box=byId('cm_firm');if(box)box.placeholder=names.length?'Choose from Supplier Master ('+names.length+')':'Contractor\'s firm';
+  };
+  paint();
+  if(!(sarvSupplierCatalog||[]).length&&SB_READY)
+    fetchAllRows('suppliers',SARV_SUPPLIER_COLS,'supplier_name')
+      .then(d=>{if(d&&d.length)refreshSupplierDatalist(d);paint();})
+      .catch(e=>console.warn('[SARV] Supplier list for the Contractor Master not loaded:',e.message||e));
+}
+// a login (app_users) that uses this Contractor ID as its Emp Code
+const cmUserOf_=code=>(sarvAppUsers||[]).find(u=>cmUp_(u.emp_code)===cmUp_(code));
+// a contractor in the shape of an Employee Master row (Admin Panel › Users fill)
+const cmAsEmp_=c=>({emp_code:c.contractor_id,person_name:c.person_name,designation:c.designation,department:c.department,contact_no:c.contact_no,firm:c.firm_name,_con:true});
+// live = right after a save here: read from the server, never the device's list cache
+window.loadContractorMaster=async function(live){
+  const tb=byId('contractorMasterBody');
+  const msg=(t,c)=>{if(tb)tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:'+(c||'#94a3b8')+';">'+t+'</td></tr>';};
+  if(!SB_READY){msg('Supabase not configured','#f59e0b');return;}
+  if(!sarvContractorRows.length)msg('Loading...');
+  try{
+    sarvContractorRows=(await fetchAllRows('contractors','*','contractor_id',null,{live:live===true}))||[];
+    sarvContractorCatalog=sarvContractorRows;sarvContractorMissing=false;
+  }catch(e){
+    if(cmNotSetUp_(e)){sarvContractorMissing=true;msg(escText(cmErr_(e)),'#b45309');return;}
+    dbError(e);msg('Error loading contractors','#ef4444');return;
+  }
+  const idb=byId('cm_cid');if(idb)idb.placeholder='e.g. '+cmNextId_();
+  cmFillFirms_();
+  renderContractorMasterTable();
+  // the Admin sees which contractor already has a login (User ✓ instead of ＋ User)
+  if(isAdmin())sarvLoadAppUsers_().then(()=>renderContractorMasterTable()).catch(()=>{});
+};
+window.renderContractorMasterTable=function(){
+  const tb=byId('contractorMasterBody'),cnt=byId('contractorMasterCount');
+  if(!tb||sarvContractorMissing)return;
+  const q=byId('contractorMasterSearch')?.value||'';
+  const all=sarvContractorRows, rows=!q.trim()?all:all.filter(c=>sarvSearchMatch([c.contractor_id,c.firm_name,c.person_name,c.department,c.designation,c.contact_no],q));
+  if(cnt)cnt.textContent=q.trim()?rows.length+' of '+all.length+' contractors':rows.length+' contractors';
+  if(!all.length){tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#94a3b8;">No contractors yet — Add above</td></tr>';return;}
+  if(!rows.length){tb.innerHTML='<tr><td colspan="9" style="text-align:center;padding:20px;color:#94a3b8;">No contractor matches this search.</td></tr>';return;}
+  const B='border-radius:4px;padding:2px 7px;font-size:10px;cursor:pointer;margin-right:3px;';
+  tb.innerHTML=rows.map((c,i)=>{
+    const u=cmUserOf_(c.contractor_id);
+    const userCell=u?`<span title="Login: ${escText(u.user_name)} (${escText(sarvRoleLabelOf_(u.role))})" style="display:inline-block;background:#dcfce7;color:#166534;border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-right:3px;">User ✓</span>`
+      :isAdmin()?`<button onclick="cmAddUser_('${c.id}')" style="background:#ecfdf5;border:1px solid #6ee7b7;color:#047857;${B}" title="Create a login (Admin Panel › Users) with this Contractor ID as its Emp Code">＋ User</button>`:'';
+    return `<tr style="border-bottom:1px solid #f1f5f9;font-size:11px;">
+      <td style="padding:5px 6px;text-align:center;color:#94a3b8;">${i+1}</td>
+      <td style="padding:5px 6px;font-weight:800;color:#c2410c;">${escText(c.contractor_id)}</td>
+      <td style="padding:5px 6px;font-weight:700;">${escText(c.firm_name||'—')}</td>
+      <td style="padding:5px 6px;font-weight:700;">${escText(c.person_name||'—')}</td>
+      <td style="padding:5px 6px;">${escText(c.department||'—')}</td>
+      <td style="padding:5px 6px;color:#475569;">${escText(c.designation||'—')}</td>
+      <td style="padding:5px 6px;">${escText(c.contact_no||'—')}</td>
+      <td style="padding:5px 6px;text-align:center;"><span style="background:${c.is_active?'#dcfce7':'#fee2e2'};color:${c.is_active?'#166534':'#dc2626'};border-radius:99px;padding:2px 8px;font-size:10px;font-weight:700;">${c.is_active?'Active':'Inactive'}</span></td>
+      <td style="padding:5px 6px;text-align:center;white-space:nowrap;">${userCell}
+        ${isAdmin()?`<button onclick="editContractor('${c.id}')" style="background:#fff7ed;border:1px solid #fdba74;color:#c2410c;${B}" title="Edit (Admin)">✎</button>`:''}
+        ${sarvCan('DELETE')?`<button onclick="deleteContractor('${c.id}')" style="background:#fef2f2;border:1px solid #fca5a5;color:#dc2626;${B}" title="Delete">✕</button>`:''}
+        ${!userCell&&!isAdmin()&&!sarvCan('DELETE')?'<span style="color:#cbd5e1;">—</span>':''}
+      </td></tr>`;
+  }).join('');
+};
+window.addMasterContractor=async function(){
+  const v=id=>(byId(id)?.value||'').trim();
+  const cid=cmUp_(v('cm_cid')), firm=cmUp_(v('cm_firm')), person=cmUp_(v('cm_person')), contact=v('cm_contact');
+  if(!cid){showToast('Contractor ID required!','error');byId('cm_cid')?.focus();return;}
+  if(!firm){showToast('Firm Name required!','error');byId('cm_firm')?.focus();return;}
+  if(!person){showToast('Person Name required!','error');byId('cm_person')?.focus();return;}
+  if(contact&&contact.replace(/\D/g,'').length!==10){showToast('Contact No. must be a 10-digit mobile number','error');byId('cm_contact')?.focus();return;}
+  if(!SB_READY){showToast('Please configure Supabase','warn');return;}
+  // said here at once; the server refuses both as well
+  if(sarvContractorRows.some(c=>cmUp_(c.contractor_id)===cid)){showToast(`Contractor ID "${escText(cid)}" already exists!`,'warn');return;}
+  if((sarvEmployeeCatalog||[]).some(e=>cmUp_(e.emp_code)===cid)){showToast(`"${escText(cid)}" is an Employee Code in the Employee Master. Use another Contractor ID.`,'warn');return;}
+  const btn=byId('cm_addBtn');
+  if(btn){btn.disabled=true;btn.textContent='Saving...';}
+  try{
+    const{error}=await SB.from('contractors').insert({
+      contractor_id:cid, firm_name:firm, person_name:person,
+      department:v('cm_department')||null, designation:v('cm_designation')||null,
+      contact_no:contact.replace(/\D/g,'')||null, is_active:true,
+      created_by:(sarvCurrentUser&&sarvCurrentUser.name)||null
+    });
+    if(error)throw error;
+    showToast(`"${escText(person)}" (${escText(cid)}) added to Contractor Master!`);
+    ['cm_cid','cm_person','cm_designation','cm_contact'].forEach(id=>{const e=byId(id);if(e)e.value='';});
+    if(byId('cm_department'))byId('cm_department').value='';
+    await loadContractorMaster(true);   // firm stays in the box: the next person is often of the same firm
+  }catch(e){showToast(escText(cmErr_(e)),'error');}
+  finally{if(btn){btn.disabled=false;btn.textContent='Add Contractor';}}
+};
+/* ✎ (Admin): Firm, Person, Department, Designation, Contact and Active can change; the Contractor ID stays. The
+   Department list is the Add form's (#cm_department, Dropdown Master erp_department); a saved value no longer in
+   it is kept as an extra option, so opening and saving never changes it by itself. */
+window.editContractor=function(id){
+  if(!isAdmin()){showToast('Only the Admin can edit a contractor','warn');return;}
+  const c=sarvContractorRows.find(x=>String(x.id)===String(id));
+  if(!c){showToast('This contractor is not in the list any more. Refresh.','warn');return;}
+  const src=byId('cm_department'), opts=src?[...src.options].map(o=>o.value).filter(Boolean):[];
+  if(c.department&&opts.indexOf(c.department)<0)opts.push(c.department);
+  const fg=(lbl,f,val,extra)=>'<div class="fg"><label>'+lbl+'</label><input data-f="'+f+'" value="'+escText(val||'')+'"'+(extra||'')+'></div>';
+  const ov=document.createElement('div');ov.className='sarv-ov';ov.id='cmEditOv';
+  ov.innerHTML='<div class="card"><div class="hd">Edit Contractor — '+escText(c.contractor_id)+'</div><div class="bd">'
+    +'<div class="err" data-f="err"></div><div class="g2">'
+    +fg('Contractor ID','cid',c.contractor_id,' readonly style="background:#f1f5f9;" title="The Contractor ID is the login code: it does not change"')
+    +fg('Firm Name <span class="req">*</span>','firm',c.firm_name,' style="text-transform:uppercase;" list="dl-cm-firms"')
+    +fg('Person Name <span class="req">*</span>','person',c.person_name,' style="text-transform:uppercase;"')
+    +'<div class="fg"><label>Department</label><select data-f="dept"><option value="">-- Select --</option>'
+      +opts.map(o=>'<option value="'+escText(o)+'"'+(o===c.department?' selected':'')+'>'+escText(o)+'</option>').join('')+'</select></div>'
+    +fg('Designation','desig',c.designation)
+    +fg('Contact No.','contact',c.contact_no,' inputmode="numeric" maxlength="15"')
+    +'</div><label style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#0f172a;cursor:pointer;">'
+    +'<input type="checkbox" data-f="active"'+(c.is_active?' checked':'')+' style="width:auto;"> Active</label>'
+    +'</div><div class="ft"><button type="button" class="b no" data-f="cancel">Cancel</button><button type="button" class="b ok" data-f="save">Save</button></div></div>';
+  document.body.appendChild(ov);
+  const f=k=>ov.querySelector('[data-f="'+k+'"]'), err=t=>{const e=f('err');e.textContent=t;e.style.display=t?'block':'none';};
+  const close=()=>{document.removeEventListener('keydown',key,true);ov.remove();};
+  const key=e=>{if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}};
+  document.addEventListener('keydown',key,true);
+  f('cancel').onclick=close;
+  ov.addEventListener('click',e=>{if(e.target===ov)close();});
+  f('save').onclick=async()=>{
+    const firm=cmUp_(f('firm').value), person=cmUp_(f('person').value), contact=f('contact').value.trim();
+    if(!firm)return err('Firm Name required');
+    if(!person)return err('Person Name required');
+    if(contact&&contact.replace(/\D/g,'').length!==10)return err('Contact No. must be a 10-digit mobile number');
+    const b=f('save');b.disabled=true;b.textContent='Saving...';
+    try{
+      const{error}=await SB.from('contractors').update({firm_name:firm,person_name:person,department:f('dept').value||null,
+        designation:f('desig').value.trim()||null,contact_no:contact.replace(/\D/g,'')||null,is_active:f('active').checked}).eq('id',c.id);
+      if(error)throw error;
+      close();showToast('Contractor '+escText(c.contractor_id)+' updated');
+      await loadContractorMaster(true);
+    }catch(e){err(cmErr_(e));b.disabled=false;b.textContent='Save';}
+  };
+  setTimeout(()=>f('firm')?.focus(),30);
+};
+window.deleteContractor=async function(id){
+  if(!sarvCan('DELETE'))return sarvDeny('DELETE');
+  const c=sarvContractorRows.find(x=>String(x.id)===String(id));if(!c)return;
+  const u=cmUserOf_(c.contractor_id);
+  if(!confirm('Delete contractor '+c.contractor_id+' · '+c.person_name+' ('+c.firm_name+')?'
+    +(u?'\n\nThe login '+u.user_name+' that uses this Contractor ID is NOT deleted (Admin Panel › Users).':'')))return;
+  const{error}=await SB.from('contractors').delete().eq('id',c.id);
+  if(error){showToast(escText(cmErr_(error)),'error');return;}
+  showToast('Contractor deleted');
+  await loadContractorMaster(true);
+};
+// ＋ User: the Admin Panel's own Add User form, with this Contractor ID in its Employee Code box (the fill does the rest)
+window.cmAddUser_=function(id){
+  const c=sarvContractorRows.find(x=>String(x.id)===String(id));if(!c)return;
+  if(!c.is_active&&!confirm(c.contractor_id+' is Inactive. Create a login for this contractor anyway?'))return;
+  sarvOpenUserModal(null);
+  const emp=byId('sarvUserModal')?.querySelector('[data-f="emp"]');
+  if(emp){emp.value=c.contractor_id;emp.dispatchEvent(new Event('input',{bubbles:true}));}
+};
+
 /* PR form → Requested By → "Add New Employee". Same employees table and same
    rules as addMasterEmployee above; on save the new code is put straight into
    the PR's Employee Code box so the person does not have to type it again. */
@@ -14982,8 +15190,9 @@ const SARV_DROPDOWNS=[
      copy of this `def`), so there is one Department list for the whole ERP. */
   {key:'erp_department',label:'Department',
    hint:'Employee Master, the New PR Department, the Add Employee popup, the PO list Department filter and HR & Payroll\'s Employee form / import all use this one list',
-   where:'#me_department · #p_reqDepartment · #p_aeDepartment · #p_poFilterDept · hr-payroll.html Employee form',
+   where:'#me_department · #cm_department (Contractor Master) · #p_reqDepartment · #p_aeDepartment · #p_poFilterDept · hr-payroll.html Employee form',
    selects:[{id:'me_department',placeholder:'-- Select --'},
+            {id:'cm_department',placeholder:'-- Select --'},
             {id:'p_reqDepartment',placeholder:'-- Select --'},
             {id:'p_aeDepartment',placeholder:'-- Select --'},
             {id:'p_poFilterDept',placeholder:'All'}],
@@ -15110,6 +15319,9 @@ const SARV_DROPDOWNS=[
      WASHING SILICON keeps its "Name + Qty compulsory" rule from the page's CALC_RULES by its name. */
   {key:'erp_prlPrintChem',label:'Printing Chemical',hint:'Printing Lot Card › side panel › Printing Chemical: the chemical types ticked on the card (the name of each is then picked from the Item Master). One taken off the list leaves older lot cards too while it is unticked and empty.',def:['GUM','HYBRID THICKNER','SYNTHETIC THICKNER']},
   {key:'erp_prlWashChem',label:'Washing Chemical',hint:'Printing Lot Card › side panel › Washing Chemical: the washing chemical types ticked on the card (several names each, picked from the Item Master). WASHING SILICON needs Name + Qty when ticked.',def:['WASHING SILICON']},
+  /* printing-lot.html (DD note_tpl): the Worker Instructions note can be ONLY one of these; its ＋ New button adds a
+     value to this list straight from the lot card (addNoteTemplate). No code default. */
+  {key:'erp_prlNoteTpl',label:'Worker Instruction Templates',hint:'Printing Lot Card › Worker Instructions: the instruction text is chosen ONLY from this list. New templates can also be added from the lot card (＋ New next to the box).',def:[]},
 
   /* complaint.html reads this key straight from sales_dropdowns (rows if
      any, else these defaults; PM_TASK_DEFAULTS there keeps the same list). */
@@ -35667,7 +35879,7 @@ function inwChallanAskInvoice_(r){
    form is cleared first, asked when anything is filled). The browser step recorded is the Inward leaf
    (erp-shell.js › erpShellMarkLeaf). Re-read every GB_POLL_MS while open and on screen; Esc / ✕ closes.
    ═══════════════════════════════════════════════════════════════════════ */
-const GB_POLL_MS=15000;
+const GB_POLL_MS=(window.sarvSyncMs?sarvSyncMs('gate_board',15000):15000);   // SYNC SPEED, default 15 s
 let GB={store:'',items:[],timer:null,busy:false,sig:'',q:''};
 const GB_COLS=[
   {k:'IN',  t:'Ready · Inward',        c:'#16a34a', hint:'Gate entries ready for the Store entry'},
@@ -35883,3 +36095,250 @@ async function gbAfterOpen_(it){
   sel.value=it.val;sarvInwGate.want=it.val;inwGateInfo_();
   await inwGateFetch_();
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SYSTEM HEALTH   (2026-11-27, after the 27-11 freeze of the 1 GB database server; sql/SYSTEM_HEALTH_MIGRATION.sql)
+   Admin Panel › System Health, Admin only (the server's sys_health refuses others):
+     1. the server's figures with their limits: Memory, CPU, Disk, Disk busy, Swap, Connections, the longest
+        running query, queries waiting on locks, database size (a background job 'sys-health' reads the Supabase
+        metrics every 2 minutes through pg_net; connections / queries / locks are live). A card turns amber at
+        80 % of its limit and red at the limit. The limits are the Admin's (app_settings 'health_limits').
+     2. the scheduled jobs: how often (minutes), on / off and the TIME LIMIT of each (sys_cron_set, Admin PIN),
+        with their runs / failures / time of the last 24 h.
+     3. App sync speed: the seconds each app waits between its automatic re-reads (app_settings 'sync_intervals',
+        read by offline-sync.js › sarvSyncMs; SARV_SYNC_APPS = every key a page asks for). Empty = the app's own
+        default. A change reaches a page the next time it is opened.
+     4. the photo tables' size inside the database.
+   The status pill (sys-health-pill.js) shows the same flags on every ERP / launcher screen of an Admin.
+   ═══════════════════════════════════════════════════════════════════════ */
+const SARV_SYNC_APPS=[
+  {k:'erp_lists',l:'ERP lists (Store, PR, PO, Reports screens)',d:5},
+  {k:'erp_issue_bar',l:'ERP Issue form · supervisor bar',d:5},
+  {k:'gate_board',l:'ERP Gate Entry Board',d:15},
+  {k:'live_assist',l:'Live Assist presence (every open tab of every user)',d:5},
+  {k:'launcher_approvals',l:'Launcher · Gate Approvals tile',d:5},
+  {k:'gate_register',l:'Gate-1 / Gate-2 register',d:5},
+  {k:'gate_link',l:'Gate-1 ⇄ Gate-2 (arriving / sent)',d:5},
+  {k:'mobile',l:'Mobile approvals app',d:5},
+  {k:'bill_check',l:'Bill Check',d:5},
+  {k:'unloader',l:'Unloader Supervisor',d:5},
+  {k:'issuer',l:'Issue Supervisor',d:5},
+  {k:'complaint',l:'Complaints list',d:5},
+  {k:'my_requests',l:'Track My Store Request',d:5},
+  {k:'my_sops',l:'My SOPs',d:5},
+  {k:'task_manager',l:'Task Manager',d:5},
+  {k:'notepad',l:'My Notepad',d:5},
+  {k:'packing',l:'Packing (slip number, Approve PS)',d:5},
+  {k:'trims',l:'Trims & Packing Material Manager',d:5},
+  {k:'waste_sale',l:'Waste Sale Entry',d:5},
+  {k:'emission_live',l:'Stack Emission (Live) status',d:5},
+  {k:'solar_live',l:'Solar Plant (Live) status',d:5}
+];
+const HL_LIMITS=[
+  {k:'mem',l:'Memory used %',u:'%'},{k:'cpu',l:'CPU %',u:'%'},{k:'disk',l:'Disk full %',u:'%'},{k:'io',l:'Disk busy %',u:'%'},
+  {k:'swap',l:'Swap used %',u:'%'},{k:'conns',l:'Connections % of max',u:'%'},{k:'longSec',l:'Longest query (seconds)',u:'s'},
+  {k:'locks',l:'Queries waiting on locks',u:''},{k:'jobFails',l:'Failed job runs in 24 h',u:''}
+];
+let HL={data:null,timer:null,busy:false,draftLim:{},draftSync:{},jobEdit:null};
+function sarvHlCss_(){
+  if(byId('hlCss'))return;
+  const s=document.createElement('style');s.id='hlCss';
+  s.textContent='#ap_hlPane .hl-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:12px;}'
+   +'#ap_hlPane .hl-state{font-weight:800;font-size:13px;padding:5px 12px;border-radius:999px;}'
+   +'#ap_hlPane .hl-ok{background:#dcfce7;color:#166534;}#ap_hlPane .hl-warn{background:#fef3c7;color:#92400e;}#ap_hlPane .hl-bad{background:#fee2e2;color:#991b1b;}'
+   +'#ap_hlPane .hl-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:10px;margin-bottom:14px;}'
+   +'#ap_hlPane .hl-card{background:#fff;border:1px solid #e2e8f0;border-left:4px solid #22c55e;border-radius:10px;padding:10px 12px;}'
+   +'#ap_hlPane .hl-card.warn{border-left-color:#f59e0b;background:#fffbeb;}#ap_hlPane .hl-card.bad{border-left-color:#ef4444;background:#fef2f2;}'
+   +'#ap_hlPane .hl-card .t{font-size:10.5px;font-weight:800;color:#64748b;text-transform:uppercase;letter-spacing:.3px;}'
+   +'#ap_hlPane .hl-card .v{font-size:22px;font-weight:800;color:#0f172a;margin:2px 0;}#ap_hlPane .hl-card .s{font-size:11px;color:#64748b;}'
+   +'#ap_hlPane .hl-bar{position:relative;height:6px;background:#e2e8f0;border-radius:99px;margin-top:6px;overflow:visible;}'
+   +'#ap_hlPane .hl-bar i{display:block;height:100%;border-radius:99px;background:#22c55e;}#ap_hlPane .hl-card.warn .hl-bar i{background:#f59e0b;}#ap_hlPane .hl-card.bad .hl-bar i{background:#ef4444;}'
+   +'#ap_hlPane .hl-bar b{position:absolute;top:-3px;width:2px;height:12px;background:#0f172a;}'
+   +'#ap_hlPane .hl-sec{font-size:13px;font-weight:800;color:#0f172a;margin:16px 0 8px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;}'
+   +'#ap_hlPane .hl-sec small{font-weight:600;color:#64748b;font-size:11px;}'
+   +'#ap_hlPane table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;}'
+   +'#ap_hlPane th{background:#f1f5f9;text-align:left;padding:6px 8px;font-size:11px;color:#334155;}#ap_hlPane td{padding:6px 8px;border-top:1px solid #f1f5f9;vertical-align:middle;}'
+   +'#ap_hlPane td input[type=number]{width:80px;padding:4px 6px;border:1px solid #cbd5e1;border-radius:6px;}'
+   +'#ap_hlPane .hl-flag{display:inline-block;margin:2px 6px 2px 0;padding:3px 9px;border-radius:999px;background:#fee2e2;color:#991b1b;font-size:11.5px;font-weight:700;}'
+   +'#ap_hlPane .hl-graph{background:#fff;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;}'
+   +'#ap_hlPane .hl-leg span{font-size:11px;font-weight:700;margin-right:12px;}';
+  document.head.appendChild(s);
+}
+const hlPct_=v=>v==null?'—':(Math.round(v*10)/10)+'%';
+const hlBytes_=b=>{b=Number(b)||0;if(b>=1073741824)return (b/1073741824).toFixed(2)+' GB';if(b>=1048576)return (b/1048576).toFixed(0)+' MB';return Math.round(b/1024)+' KB';};
+// a cron schedule as minutes (only the plain shapes this screen writes; anything else is shown as it is)
+function hlSchedMin_(s){
+  s=String(s||'').trim();let m;
+  if(s==='* * * * *')return 1;
+  if((m=/^\*\/(\d+) \* \* \* \*$/.exec(s)))return +m[1];
+  if((m=/^0 \*\/(\d+) \* \* \*$/.exec(s)))return +m[1]*60;
+  if(s==='0 0 * * *')return 1440;
+  return null;
+}
+function hlSchedTxt_(s){
+  const m=hlSchedMin_(s);
+  if(m==null)return {'2-59/5 * * * *':'every 5 min (from :02)','5 * * * *':'hourly at :05','17 3 * * *':'daily 03:17 UTC','27 3 * * *':'daily 03:27 UTC','35 18 * * *':'daily 18:35 UTC'}[s]||s;
+  return m===1?'every minute':m<60?'every '+m+' min':m>=1440?'once a day':'every '+(m/60)+' h';
+}
+async function sarvHlLoad_(quiet){
+  const box=byId('ap_hlPane');if(!box)return;
+  sarvHlCss_();
+  if(HL.busy)return;HL.busy=true;
+  if(!quiet&&!HL.data)box.innerHTML='<div class="ap-empty">Loading…</div>';
+  try{
+    const r=await SB.rpc('sys_health',{p_token:srsToken_(),p_full:true});
+    if(r.error)throw r.error;
+    const d=r.data||{};
+    if(d.success===false){box.innerHTML='<div class="ap-warn" style="display:block;">'+escText(d.error==='NOT_ADMIN'?'Only an Admin login can see the System Health.':'Not read: '+(d.error||''))+'</div>';return;}
+    HL.data=d;
+    sarvHlRender_();
+  }catch(e){
+    const m=String(e.message||e);
+    box.innerHTML='<div class="ap-warn" style="display:block;">'+escText(/sys_health|schema cache|does not exist/i.test(m)?'The System Health needs sql/SYSTEM_HEALTH_MIGRATION.sql (run it in the Supabase SQL Editor).':'Could not read the System Health: '+m)+'</div>';
+  }finally{HL.busy=false;}
+  // every minute while this tab is on screen
+  clearInterval(HL.timer);
+  HL.timer=setInterval(()=>{
+    const p=byId('ap_hlPane');
+    if(!p||!p.offsetParent||sarvApPane!=='health'){clearInterval(HL.timer);HL.timer=null;return;}
+    if(document.visibilityState==='visible'&&!Object.keys(HL.draftLim).length&&!Object.keys(HL.draftSync).length&&!HL.jobEdit)sarvHlLoad_(true);
+  },60000);
+}
+function sarvHlCard_(t,val,pct,limit,sub){
+  const st=pct==null||limit==null?'':pct>=limit?'bad':pct>=limit*0.8?'warn':'';
+  return '<div class="hl-card '+st+'"><div class="t">'+escText(t)+'</div><div class="v">'+escText(val)+'</div>'
+    +(sub?'<div class="s">'+sub+'</div>':'')
+    +(pct!=null?'<div class="hl-bar"><i style="width:'+Math.max(0,Math.min(100,pct))+'%"></i>'+(limit!=null?'<b style="left:'+Math.min(100,limit)+'%" title="Limit '+limit+'"></b>':'')+'</div>':'')+'</div>';
+}
+// the last 6 hours of Memory / CPU / Connections % as three lines
+function sarvHlGraph_(h){
+  if(!h||h.length<2)return '<div class="hl-graph"><span style="font-size:12px;color:#94a3b8;">The graph fills in as the figures come every 2 minutes.</span></div>';
+  const W=900,H=140,t0=new Date(h[0].at).getTime(),t1=new Date(h[h.length-1].at).getTime()||t0+1;
+  const x=t=>((new Date(t).getTime()-t0)/Math.max(1,t1-t0))*W, y=v=>H-(Math.max(0,Math.min(100,v))/100)*H;
+  const line=(k,c)=>{const pts=h.filter(p=>p[k]!=null).map(p=>x(p.at).toFixed(1)+','+y(p[k]).toFixed(1));return pts.length>1?'<polyline fill="none" stroke="'+c+'" stroke-width="2" points="'+pts.join(' ')+'"/>':'';};
+  const lim=HL.data.limits||{}, grid=[25,50,75].map(v=>'<line x1="0" x2="'+W+'" y1="'+y(v)+'" y2="'+y(v)+'" stroke="#e2e8f0"/>').join('');
+  return '<div class="hl-graph"><div class="hl-leg"><span style="color:#7c3aed;">— Memory %</span><span style="color:#0ea5e9;">— CPU %</span><span style="color:#f97316;">— Connections %</span>'
+    +'<span style="color:#94a3b8;">last 6 h</span></div><svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="width:100%;height:150px;display:block;">'
+    +grid+'<line x1="0" x2="'+W+'" y1="'+y(+lim.mem||85)+'" y2="'+y(+lim.mem||85)+'" stroke="#ef4444" stroke-dasharray="6 4"/>'
+    +line('memPct','#7c3aed')+line('cpuPct','#0ea5e9')+line('connPct','#f97316')+'</svg></div>';
+}
+function sarvHlRender_(){
+  const box=byId('ap_hlPane'),d=HL.data;if(!box||!d)return;
+  const f=d.fig||{},L=d.limits||{},flags=d.flags||[];
+  const worst=flags.length?(flags.some(x=>['mem','swap','conns','long','locks','stale'].includes(x.k))?'bad':'warn'):'ok';
+  const when=f.at?new Date(f.at).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}):'—';
+  let h='<div class="hl-top"><span class="hl-state hl-'+worst+'">'+(worst==='ok'?'● All within limits':'● '+flags.length+' over the limit')+'</span>'
+    +'<span style="font-size:12px;color:#64748b;">Server figures of '+escText(when)+' (every 2 min)'+(f.lastErr?' · last try: '+escText(f.lastErr):'')+'</span>'
+    +'<span style="flex:1;"></span><button type="button" class="btn btn-neutral" id="hl_reload" style="height:30px;font-size:11px;">↻ Refresh</button>'
+    +'<a class="btn btn-neutral" href="https://supabase.com/dashboard/project/jdlzgjgxxjkjejkhvdij/reports/database" target="_blank" rel="noopener" style="height:30px;font-size:11px;display:inline-flex;align-items:center;text-decoration:none;">Supabase Reports ↗</a></div>';
+  if(flags.length)h+='<div style="margin-bottom:10px;">'+flags.map(x=>'<span class="hl-flag">'+escText(x.txt)+'</span>').join('')+'</div>';
+  h+='<div class="hl-cards">'
+    +sarvHlCard_('Memory',hlPct_(f.memPct),f.memPct,+L.mem,f.memTotal?hlBytes_(f.memTotal-f.memAvail)+' of '+hlBytes_(f.memTotal):'')
+    +sarvHlCard_('CPU',hlPct_(f.cpuPct),f.cpuPct,+L.cpu,f.load1!=null?'Load '+f.load1:'')
+    +sarvHlCard_('Disk full',hlPct_(f.diskPct),f.diskPct,+L.disk,f.diskSize?hlBytes_(f.diskAvail)+' free of '+hlBytes_(f.diskSize):'')
+    +sarvHlCard_('Disk busy',hlPct_(f.ioPct),f.ioPct,+L.io,'time the disk was working')
+    +sarvHlCard_('Swap',hlPct_(f.swapPct),f.swapPct,+L.swap,'memory spilled to disk')
+    +sarvHlCard_('Connections',(f.conns||0)+' / '+(f.maxConn||'—'),f.connPct,+L.conns,(f.active||0)+' running now')
+    +sarvHlCard_('Longest query',(f.longestSec||0)+' s',L.longSec?100*(f.longestSec||0)/L.longSec:null,100,'limit '+(L.longSec||'—')+' s')
+    +sarvHlCard_('Waiting on locks',String(f.waiting||0),L.locks?100*(f.waiting||0)/L.locks:null,100,'limit '+(L.locks||'—'))
+    +sarvHlCard_('Database size',hlBytes_(f.dbBytes),null,null,'photos inside it: see below')
+    +'</div>'+sarvHlGraph_(d.history);
+  // limits
+  h+='<div class="hl-sec">Limits <small>a card turns amber at 80 % of its limit and red at it; the pill on every screen shows the red ones</small></div>'
+    +'<table><thead><tr>'+HL_LIMITS.map(x=>'<th>'+escText(x.l)+'</th>').join('')+'<th></th></tr></thead><tbody><tr>'
+    +HL_LIMITS.map(x=>'<td><input type="number" min="1" max="100000" data-hl-lim="'+x.k+'" value="'+escText(HL.draftLim[x.k]!=null?HL.draftLim[x.k]:(L[x.k]!=null?L[x.k]:''))+'"></td>').join('')
+    +'<td><button type="button" class="btn btn-success" id="hl_saveLim" style="height:28px;font-size:11px;"'+(Object.keys(HL.draftLim).length?'':' disabled')+'>Save limits</button></td></tr></tbody></table>';
+  // jobs
+  const jobs=d.jobs||[];
+  h+='<div class="hl-sec">Scheduled jobs <small>how often each runs, on / off, and its time limit (a job past it is stopped, so an internet call can never hold the database)</small></div>'
+    +'<table><thead><tr><th>Job</th><th>Runs</th><th>Time limit</th><th>On</th><th>Last 24 h</th><th>Avg / max</th><th>Last run</th><th></th></tr></thead><tbody>'
+    +jobs.map(j=>{
+      const ed=HL.jobEdit&&HL.jobEdit.job===j.job, mins=hlSchedMin_(j.schedule);
+      const bad=j.lastStatus&&j.lastStatus!=='succeeded';
+      return '<tr><td><b>'+escText(j.label)+'</b><div style="font-size:10.5px;color:#94a3b8;">'+escText(j.job)+'</div></td>'
+        +(ed?'<td>every <input type="number" min="1" max="1440" data-hl-job="min" value="'+escText(HL.jobEdit.min)+'"> min</td>'
+             +'<td><input type="number" min="5" max="600" data-hl-job="lim" value="'+escText(HL.jobEdit.lim)+'"> s</td>'
+             +'<td><input type="checkbox" data-hl-job="on"'+(HL.jobEdit.on?' checked':'')+'></td>'
+            :'<td>'+escText(hlSchedTxt_(j.schedule))+'</td><td>'+(j.limitSec?j.limitSec+' s':'<span style="color:#b45309;">none</span>')+'</td>'
+             +'<td>'+(j.active?'<span style="color:#15803d;font-weight:800;">On</span>':'<span style="color:#b91c1c;font-weight:800;">Off</span>')+'</td>')
+        +'<td>'+(j.runs24||0)+' runs'+(j.fails24?' · <b style="color:#b91c1c;">'+j.fails24+' failed</b>':'')+'</td>'
+        +'<td>'+(j.avgSec!=null?j.avgSec+' / '+j.maxSec+' s':'—')+'</td>'
+        +'<td'+(bad?' style="color:#b91c1c;" title="'+escText(j.lastMsg||'')+'"':'')+'>'+(j.lastAt?escText(new Date(j.lastAt).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}))+(bad?' · failed':''):'—')+'</td>'
+        +'<td style="white-space:nowrap;">'+(!j.editable?'<span style="font-size:11px;color:#94a3b8;">fixed</span>'
+          :ed?'<button type="button" class="btn btn-success" data-hl-jobsave="'+escText(j.job)+'" style="height:26px;font-size:11px;">Save</button> <button type="button" class="btn btn-neutral" data-hl-jobcancel="1" style="height:26px;font-size:11px;">Cancel</button>'
+          :'<button type="button" class="btn btn-neutral" data-hl-jobedit="'+escText(j.job)+'" data-min="'+(mins||'')+'" data-lim="'+(j.limitSec||j.defLimit||30)+'" data-on="'+(j.active?1:0)+'" style="height:26px;font-size:11px;">✎ Change</button>')+'</td></tr>';
+    }).join('')+'</tbody></table>';
+  // app sync speed
+  const sync=d.sync||{};
+  h+='<div class="hl-sec">App sync speed <small>seconds each app waits between its automatic re-reads (2 – 3600); empty = the app\'s default. Slower = less load on the database. Takes effect when the app is opened again.</small>'
+    +'<span style="flex:1;"></span><button type="button" class="btn btn-success" id="hl_saveSync" style="height:28px;font-size:11px;"'+(Object.keys(HL.draftSync).length?'':' disabled')+'>Save sync speed</button></div>'
+    +'<table><thead><tr><th>App</th><th>Default</th><th>Seconds</th></tr></thead><tbody>'
+    +SARV_SYNC_APPS.map(a=>'<tr><td>'+escText(a.l)+'</td><td>'+a.d+' s</td><td><input type="number" min="2" max="3600" placeholder="'+a.d+'" data-hl-sync="'+a.k+'" value="'+escText(HL.draftSync[a.k]!=null?HL.draftSync[a.k]:(sync[a.k]!=null?sync[a.k]:''))+'"></td></tr>').join('')
+    +'</tbody></table>';
+  // photos + biggest tables
+  h+='<div class="hl-sec">Photos inside the database <small>moved to file storage step by step (each table needs its own screens updated first)</small></div>'
+    +'<table><thead><tr><th>Table</th><th>Size</th></tr></thead><tbody>'+(d.photos||[]).map(p=>'<tr><td>'+escText(p.table)+'</td><td>'+hlBytes_(p.bytes)+'</td></tr>').join('')+'</tbody></table>';
+  box.innerHTML=h;
+}
+document.addEventListener('click',async e=>{
+  const pane=e.target.closest&&e.target.closest('#ap_hlPane');if(!pane)return;
+  if(e.target.closest('#hl_reload')){HL.draftLim={};HL.draftSync={};HL.jobEdit=null;return sarvHlLoad_();}
+  const je=e.target.closest('[data-hl-jobedit]');
+  if(je){HL.jobEdit={job:je.dataset.hlJobedit,min:je.dataset.min||'',lim:je.dataset.lim,on:je.dataset.on==='1'};return sarvHlRender_();}
+  if(e.target.closest('[data-hl-jobcancel]')){HL.jobEdit=null;return sarvHlRender_();}
+  const js=e.target.closest('[data-hl-jobsave]');
+  if(js){
+    const row=js.closest('tr'), g=k=>row.querySelector('[data-hl-job="'+k+'"]');
+    const min=parseInt(g('min').value,10), lim=parseInt(g('lim').value,10), on=g('on').checked;
+    if(!(min>=1&&min<=1440))return showToast('Runs: every 1 to 1440 minutes','warn');
+    if(!(lim>=5&&lim<=600))return showToast('Time limit: 5 to 600 seconds','warn');
+    const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:'Change the job '+js.dataset.hlJobsave,recordInfo:'Every '+min+' min · limit '+lim+' s · '+(on?'On':'Off'),label:'Admin PIN',confirmText:'Save'});
+    if(pin==null)return;
+    try{
+      const r=await SB.rpc('sys_cron_set',{p_token:srsToken_(),p_admin_pin:pin.trim(),p_job:js.dataset.hlJobsave,p_minutes:min,p_active:on,p_limit_sec:lim});
+      if(r.error)throw r.error;
+      const d=r.data||{};
+      if(d.success===false)return showToast(escText({PIN_INVALID:'Incorrect Admin PIN',NOT_ADMIN:'Only an Admin can change the jobs',NOT_EDITABLE:'This job cannot be changed here'}[d.error]||d.error),'error');
+      showToast('Job '+escText(d.job)+' saved: '+escText(hlSchedTxt_(d.schedule))+(d.active?'':' (Off)'));
+      HL.jobEdit=null;sarvHlLoad_();
+    }catch(err){showToast('Not saved: '+escText(err.message||err),'error');}
+    return;
+  }
+  if(e.target.closest('#hl_saveLim')){
+    const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:'Save the health limits',label:'Admin PIN',confirmText:'Save'});
+    if(pin==null)return;
+    const val=Object.assign({},(HL.data&&HL.data.limits)||{});
+    Object.keys(HL.draftLim).forEach(k=>{const v=Number(HL.draftLim[k]);if(HL.draftLim[k]===''||!isFinite(v)||v<=0)delete val[k];else val[k]=v;});
+    const r=await SB.rpc('admin_save_setting',{p_key:'health_limits',p_value:val,p_admin_pin:pin.trim()});
+    if(r.error||r.data===false)return showToast(r.error?'Not saved: '+escText(r.error.message):'Incorrect Admin PIN','error');
+    showToast('Health limits saved');HL.draftLim={};return sarvHlLoad_();
+  }
+  if(e.target.closest('#hl_saveSync')){
+    const bad=Object.entries(HL.draftSync).filter(([k,v])=>v!==''&&!(Number(v)>=2&&Number(v)<=3600));
+    if(bad.length)return showToast('Seconds must be 2 to 3600','warn');
+    const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:'Save the app sync speed',recordInfo:'Each app uses it the next time it is opened',label:'Admin PIN',confirmText:'Save'});
+    if(pin==null)return;
+    // the whole map, read fresh so another Admin's change is kept
+    const cur=await SB.from('app_settings').select('value').eq('key','sync_intervals').maybeSingle();
+    const map=Object.assign({},(cur.data&&cur.data.value&&typeof cur.data.value==='object')?cur.data.value:{});
+    Object.entries(HL.draftSync).forEach(([k,v])=>{if(v==='')delete map[k];else map[k]=Number(v);});
+    const r=await SB.rpc('admin_save_setting',{p_key:'sync_intervals',p_value:map,p_admin_pin:pin.trim()});
+    if(r.error||r.data===false)return showToast(r.error?'Not saved: '+escText(r.error.message):'Incorrect Admin PIN','error');
+    try{localStorage.setItem('sarv_sync_cfg_v1',JSON.stringify({at:Date.now(),cfg:map}));}catch(err){}
+    showToast('App sync speed saved: each app uses it the next time it is opened');HL.draftSync={};return sarvHlLoad_();
+  }
+});
+document.addEventListener('input',e=>{
+  const t=e.target;if(!t.closest||!t.closest('#ap_hlPane'))return;
+  if(t.dataset.hlLim){HL.draftLim[t.dataset.hlLim]=t.value.trim();const b=byId('hl_saveLim');if(b)b.disabled=false;}
+  if(t.dataset.hlSync){HL.draftSync[t.dataset.hlSync]=t.value.trim();const b=byId('hl_saveSync');if(b)b.disabled=false;}
+  if(t.dataset.hlJob&&HL.jobEdit){if(t.dataset.hlJob==='on')HL.jobEdit.on=t.checked;else HL.jobEdit[t.dataset.hlJob]=t.value;}
+});
+// the status pill (sys-health-pill.js) opens this tab: Masters › Settings (the Admin Panel), as Administration › Admin Panel does
+window.sarvOpenSystemHealth=function(){
+  if(!isAdmin())return;
+  if(window.erpShellMarkLeaf)window.erpShellMarkLeaf('ADMIN','Admin Panel / Users & Roles');
+  sarvNavigateFromHome('MASTER');
+  if(typeof switchMasterSubTab==='function')switchMasterSubTab('settingsSub');
+  setTimeout(()=>{sarvShowApPane_('health');byId('sarvAdminPanel')?.scrollIntoView({block:'start',behavior:'smooth'});},250);
+};

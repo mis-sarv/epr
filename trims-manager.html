@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="hi">
-<head><script src="offline-sync.js?v=20261126f"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
+<head><script src="offline-sync.js?v=20261127a"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
 
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script><script src="caps-input.js"></script><script src="hover-tip.js"></script>
@@ -2440,7 +2440,7 @@ async function saveData(){
    The table is NOT redrawn while the cursor is in a box (it would throw away the
    typing / the open item list): the redraw waits until the box is left
    (_autoPending). The banner's ⟳ Refresh (loud: toasts) stays for "update now". */
-const AUTO_STORE_MS=5000;   // data sync every 5 s
+const AUTO_STORE_MS=(window.sarvSyncMs?sarvSyncMs('trims',5000):5000);   // SYNC SPEED (Admin Panel › System Health), default 5 s
 let _autoBusy=false, _autoPending=false;
 function editingNow_(){
   const a=document.activeElement;

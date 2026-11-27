@@ -1886,8 +1886,8 @@
        modal (half-drawn signature, typed GST, unsaved Qty), a busy overlay, or
        a backgrounded tab. Those cases set a pending flag and refresh the moment
        the way is clear, so nothing is merely skipped. */
-    // 10 s: the floor for when Realtime is not delivering; Realtime itself is instant.
-    const LIVE_POLL_MS = 10000;
+    // 5 s: the floor for when Realtime is not delivering (data sync every 5 s); Realtime itself is instant.
+    const LIVE_POLL_MS = (window.sarvSyncMs ? sarvSyncMs('mobile', 5000) : 5000);   // SYNC SPEED (Admin Panel › System Health), default 5 s
     let livePollTimer = null, liveChannel = null;
     let liveBusy = false, livePending = false, liveOn = false;
 
@@ -5016,13 +5016,19 @@
         return {};
     }
     function inwAppItems(r){ const p = inwAppPayload(r); return Array.isArray(p.items) ? p.items : []; }
+    /* STORE INWARD NO. (sql/INWARD_PENDING_MIGRATION.sql): the ERP gives the entry its real Store Inward No. on
+       Submit and the request carries it (inward_no, also payload.inwardNo); the entry is tracked by that number,
+       so the card and the detail show it first. An older request has none: its request no. as before. */
+    function inwAppNo(r){ return String((r && r.inward_no) || inwAppPayload(r).inwardNo || ''); }
+    function inwAppTitle(r){ return inwAppNo(r) || r.request_no || ('#' + r.id); }
     async function loadInwardApprovals_(){
         // Only a login that is shown the sub-tab pays for the query (default: MD only).
         if(!mTabVisible('M_RECV_' + INWAPP_VIEW, myRoleKey() === 'md') || inwAppTableMissing) return [];
         try{
             const q = await SB.from(INWAPP_TABLE).select('*').order('id', {ascending:false}).limit(200);
             if(q.error) throw q.error;
-            return q.data || [];
+            // Inactive = an old draft retired by the Store Inward No. workflow, or a cancelled Store Inward No.
+            return (q.data || []).filter(r => r.status !== 'Inactive');
         }catch(e){
             const msg = String(e.message || e);
             if(/inward_approvals/i.test(msg) && /does not exist|relation|schema cache|could not find/i.test(msg)){
@@ -5044,8 +5050,9 @@
             card.className = 'card ' + storeSkin_(p.store);
             card.onclick = () => openInwAppModal(r);
             const col = pend ? '#d97706' : (r.status === 'Approved' ? '#16a34a' : '#dc3545');
-            let html = `<div class="card-header"><span>${escText(r.request_no || ('#' + r.id))}</span>`
+            let html = `<div class="card-header"><span>${inwAppNo(r) ? 'Store Inward No. ' : ''}${escText(inwAppTitle(r))}</span>`
                      + `<span style="font-size:0.72rem;font-weight:800;color:${col};">${escText(r.status || 'Pending')}</span></div>`;
+            if(inwAppNo(r) && r.request_no) html += `<div class="card-detail" style="font-size:0.72rem;color:#64748b;">Request ${escText(r.request_no)}</div>`;
             html += `<div class="card-detail">Supplier: <b>${escText(r.supplier_name || '-')}</b></div>`;
             // Into which store (the ERP puts it in the payload; older requests are Store 2).
             html += `<div class="card-detail">Into: <b style="color:${p.store === 'STORE 1' ? '#6d28d9' : '#0f766e'};">${p.store === 'STORE 1' ? 'Store 1' : 'Store 2'}</b></div>`;
@@ -5075,7 +5082,7 @@
                 ? `<div class="card-action act">Tap to Approve or Reject</div>`
                 : (pend
                     ? `<div class="card-action wait">Waiting for the MD's decision</div>`
-                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approved; the draft is saved in the Store\'s Inward form' : '✖ Rejected; the Store must correct the values'}</div>`);
+                    : `<div class="card-action done">${r.status === 'Approved' ? '✔ Approved; the Store saves it under its Store Inward No.' : '✖ Rejected; the Store must correct the values'}</div>`);
             card.innerHTML = html;
             listDiv.appendChild(card);
         });
@@ -5085,6 +5092,7 @@
         storeEntry = r; storeMode = 'INWAPP';
         const p = inwAppPayload(r);
         const meta = [
+            inwAppNo(r) ? ['Store Inward No.', inwAppNo(r)] : null,
             ['Request No', r.request_no || ('#' + r.id)],
             ['Status', r.status || 'Pending'],
             ['Entry Type', r.entry_type || p.entryType || 'INWARD'],
@@ -5151,7 +5159,7 @@
                 <td>${it.poRate == null ? '-' : escText(nNum_(it.poRate))}</td>
               </tr>` + wtRow;
         }).join('') : `<tr><td colspan="9" style="text-align:center;color:#999;">No items found in this request</td></tr>`;
-        storeModalShell_((r.request_no || ('#' + r.id)) + ' — Inward Approval', metaHtml, head, body);
+        storeModalShell_(inwAppTitle(r) + ' — Inward Approval', metaHtml, head, body);
         // The GM / MD check box belongs to the other mode — keep it shut.
         document.getElementById('storeCheckBox').style.display = 'none';
         const box = document.getElementById('inwAppBox');
@@ -5178,8 +5186,8 @@
                        Weight / Rate locked, and books it whenever the
                        paperwork is ready. Said here because "go and type it
                        again" was the old instruction and is no longer true. */
-                    ? '✔ <b>Approved</b>: this draft is saved in the PO Number list of the Store\'s Inward form; '
-                      + 'the Store can submit it whenever ready at these Qty / Weight / Rate values'
+                    ? '✔ <b>Approved</b>: the entry waits in the Store\'s Inward form (Gate Entry No. list) under its Store Inward No.; '
+                      + 'the Store submits it at these Qty / Weight / Rate values'
                     : '✖ <b>Rejected</b>: the Store must correct the values and send it again');
             note.style.display = 'block';
         }
@@ -5197,10 +5205,10 @@
             document.getElementById('inwAppRemarks').focus();
             return;
         }
-        const label = r.request_no || ('#' + r.id);
+        const label = inwAppTitle(r);
         if(!confirm(decision === 'Approved'
-            ? ('Approve "' + label + '"?\n\nThis entry will be saved as a DRAFT in the Store\'s Inward form, '
-               + 'locked at these Qty / Weight / Rate values. The Store can submit it whenever ready.')
+            ? ('Approve "' + label + '"?\n\nThe Store then saves this entry under its Store Inward No., '
+               + 'locked at these Qty / Weight / Rate values.')
             : ('Reject "' + label + '"?\n\nThe Store will not be able to save this Inward until then.'))) return;
         ['inwAppApproveBtn','inwAppRejectBtn'].forEach(id => {
             const b = document.getElementById(id); if(b) b.disabled = true;
@@ -5224,7 +5232,7 @@
             await renderList();
             alert((decision === 'Approved' ? '✔ ' : '✖ ') + label + ' — ' + decision + '.\n\n'
                 + (decision === 'Approved'
-                    ? 'This draft is now saved in the Store\'s Inward form; they will submit it when ready.'
+                    ? 'The Store can now save it under its Store Inward No.'
                     : 'The Store must correct the values.'));
         }catch(err){
             alert('Error: ' + (err.message || err));
@@ -7976,6 +7984,8 @@
         // sign the Admin saved a minute ago already counts.
         if(showApproval){ await refreshMySignSaved(); applySignPadMode(); }
         document.getElementById('approvalModal').style.display = 'flex';
+        // PR / PO PREVIEW: what must be seen before Approve (loads in the background)
+        mpvOpenFor(entry, showApproval);
         // Restated now the modal is laid out: poChargeFiguresFor_ picks whichever
         // copy of the charge boxes is actually visible, which it cannot tell
         // while the whole modal is still display:none.
@@ -7989,6 +7999,7 @@
     function closeModal() {
         document.getElementById('approvalModal').style.display = 'none';
         currentEntry = null;
+        mpvReset_();
         // Something was saved from the modal (e.g. Vendor Info) — reload so the
         // record moves to the tab it now belongs in.
         if(dashDirty){ dashDirty = false; renderList(); return; }
@@ -8936,18 +8947,10 @@
         }catch(e){ console.warn('[MOBILE] PR PDF regen failed (cancel still saved):', e); }
     }
 
-    async function cancelPOApproval(po){
-        const newApprovals = {...(po.approvals||{})};
-        delete newApprovals[myStage];
-        // MD cancelling goes back to whatever the PO was before MD signed:
-        // "GM/CEO Approved" if it carried the Purchaser's sign-off, otherwise
-        // "Generated". Both sit in MD's pending list.
-        const newStatus = (myStage === 'md' && !newApprovals.gmCeo) ? 'Generated' : PREV_STATUS_PO[myStage];
-        const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
-        if(lq.error) throw lq.error;
-        const lines = lq.data || [];
-        await enrichPoLineAttrs_(lines);
-        const d = {
+    /* A PO's PDF data from the PO row + its lines (enrichPoLineAttrs_ already run) and the signatures to print.
+       Used by cancelPOApproval and by the approval preview (mpvPoBlob_), so both print the same PO. */
+    function poPdfData_(po, lines, sigs){
+        return {
             poNo: po.po_no, poDate: po.po_date, deliveryDate: po.delivery_date,
             vendorName: po.vendor_name, vendorMail: po.vendor_mail, vendorContact: po.vendor_contact, vendorAddress: po.vendor_address,
             paymentTerms: po.payment_terms, locationContact: po.location_contact || SARV_PO_LOCATION_CONTACT, freight: po.freight, otherExpense: po.other_expense,
@@ -8962,8 +8965,22 @@
                 netUnitPrice: l.unit_price, total: l.line_total, grossWeight: l.gross_weight||0,
                 billBasis: l.bill_basis||'QTY', taxPct: l.tax_pct||0,
             })),
-            signatures: newApprovals,
+            signatures: sigs || {},
         };
+    }
+
+    async function cancelPOApproval(po){
+        const newApprovals = {...(po.approvals||{})};
+        delete newApprovals[myStage];
+        // MD cancelling goes back to whatever the PO was before MD signed:
+        // "GM/CEO Approved" if it carried the Purchaser's sign-off, otherwise
+        // "Generated". Both sit in MD's pending list.
+        const newStatus = (myStage === 'md' && !newApprovals.gmCeo) ? 'Generated' : PREV_STATUS_PO[myStage];
+        const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
+        if(lq.error) throw lq.error;
+        const lines = lq.data || [];
+        await enrichPoLineAttrs_(lines);
+        const d = poPdfData_(po, lines, newApprovals);
 
         const updErr = await SB.from('purchase_orders').update({status:newStatus, approvals:newApprovals}).eq('id', po.id);
         if(updErr.error) throw updErr.error;
@@ -8997,8 +9014,203 @@
         }
     }
 
+    /* ══ PR / PO PREVIEW BEFORE APPROVAL (like bill-check.html) ═══════════
+       The approval sheet shows a Preview card on top of the approval section:
+       the document(s) being approved and how many of their pages have been
+       looked at. Approve stays disabled until EVERY page of every document that
+       could be opened has been seen in the full-screen viewer (mpvOpenViewer:
+       pages drawn by pdf.js from cdnjs; a page counts once most of it has been
+       on screen; zoom − / +). approveEntry checks it again. Reject is not held.
+         PO  its PDF (pdf_url, else built here from its lines, poPdfData_), plus
+             every PR PDF it was raised from (fetchLinkedPrPdfs)
+         PR  built fresh from its pdf_snapshot (exactly what is being signed),
+             else its saved PDF (pdf_url)
+       A document that cannot be opened is listed with the reason and not
+       counted; if none can be opened the note says so and Approve is allowed
+       (the work is never stopped by a network blip). The seen pages are for
+       this opening of the sheet only. */
+    // var: syncApproveBtn (which reads it) can run while this file is still being read
+    var MPV = { key:'', docs:[], ready:false, need:false, zoom:1, obs:null };
+    const MPV_PDFJS = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/';
+    let mpvLibP = null;
+    function mpvPdfJs_(){
+        if(window.pdfjsLib) return Promise.resolve(window.pdfjsLib);
+        if(mpvLibP) return mpvLibP;
+        mpvLibP = new Promise((res, rej) => {
+            const add = (src, ok) => { const sc = document.createElement('script'); sc.src = src; sc.onload = ok; sc.onerror = () => { mpvLibP = null; rej(new Error('The page viewer could not be loaded (internet?)')); }; document.head.appendChild(sc); };
+            // the worker script runs on this page too: a Worker started from cdnjs can be refused in a WebView
+            add(MPV_PDFJS + 'pdf.min.js', () => add(MPV_PDFJS + 'pdf.worker.min.js', () => {
+                try{ window.pdfjsLib.GlobalWorkerOptions.workerSrc = MPV_PDFJS + 'pdf.worker.min.js'; res(window.pdfjsLib); }catch(e){ rej(e); }
+            }));
+        });
+        return mpvLibP;
+    }
+    function mpvSeen_(){
+        let n = 0, t = 0;
+        MPV.docs.forEach(d => { if(d.pdf){ t += d.pages; n += d.seen.size; } });
+        return { n, t };
+    }
+    // Approve allowed? (no preview asked for / every opened page seen / nothing could be opened)
+    function mpvAllSeen_(){
+        if(!MPV.need) return true;
+        if(!MPV.ready) return false;
+        const s = mpvSeen_();
+        return s.t === 0 || s.n >= s.t;
+    }
+    async function mpvPoBlob_(po){
+        const lq = await SB.from('purchase_order_lines').select('*').eq('purchase_order_id', po.id).order('line_no');
+        if(lq.error) throw lq.error;
+        const lines = lq.data || [];
+        await enrichPoLineAttrs_(lines);
+        return buildPoNativePdfBlob(poPdfData_(po, lines, po.approvals || {}), []);
+    }
+    function mpvReset_(){
+        MPV.key = '';
+        MPV.docs.forEach(d => { try{ if(d.pdf) d.pdf.destroy(); }catch(e){} });
+        MPV.docs = []; MPV.ready = false; MPV.need = false;
+        const c = document.getElementById('mpvCard'); if(c){ c.style.display = 'none'; c.innerHTML = ''; }
+    }
+    // gate = the approval section is on screen for this user (only then is the preview required)
+    async function mpvOpenFor(entry, gate){
+        mpvReset_();
+        if(!entry || !gate) { syncApproveBtn(); return; }
+        const key = currentModule + ':' + (entry.id || '') + ':' + Date.now();
+        MPV.key = key; MPV.need = true;
+        const docs = [];
+        if(currentModule === 'PO'){
+            docs.push({ label: 'PO ' + (entry.po_no || ''), url: entry.pdf_url || '', build: entry.pdf_url ? null : () => mpvPoBlob_(entry) });
+            try{ (await fetchLinkedPrPdfs(entry)).forEach(p => docs.push({ label: 'PR ' + p.reqNo, url: p.url || '' })); }catch(e){}
+        } else {
+            const snap = entry.pdf_snapshot;
+            docs.push({ label: 'PR ' + (entry.req_no || ''), url: entry.pdf_url || '',
+                        build: snap ? () => buildRequirementNativePdfBlob({ ...snap, reqNo: entry.req_no, status: entry.status }) : null });
+        }
+        docs.forEach(d => { d.seen = new Set(); d.pages = 0; });
+        MPV.docs = docs; mpvPaintCard_(); syncApproveBtn();
+        let lib = null;
+        try{ lib = await mpvPdfJs_(); }catch(e){ docs.forEach(d => { d.err = e.message || String(e); }); }
+        for(const d of docs){
+            if(MPV.key !== key) return;
+            if(!lib || d.err) continue;
+            try{
+                let data = null;
+                if(d.build){
+                    try{ data = await (await d.build()).arrayBuffer(); }
+                    catch(e){ if(!d.url) throw e; console.warn('[MOBILE] preview build failed, the saved PDF is shown:', e.message || e); }
+                }
+                if(!data && d.url){
+                    const r = await fetch(d.url, { cache: 'no-store' });
+                    if(!r.ok) throw new Error('HTTP ' + r.status);
+                    data = await r.arrayBuffer();
+                }
+                if(!data){ d.err = 'PDF not available yet'; continue; }
+                if(MPV.key !== key) return;
+                d.pdf = await lib.getDocument({ data }).promise;
+                d.pages = d.pdf.numPages;
+            }catch(e){ d.err = 'could not be opened (' + (e.message || e) + ')'; }
+        }
+        if(MPV.key !== key) return;
+        MPV.ready = true; mpvPaintCard_(); syncApproveBtn();
+    }
+    function mpvPaintCard_(){
+        const c = document.getElementById('mpvCard'); if(!c) return;
+        if(!MPV.need){ c.style.display = 'none'; return; }
+        const s = mpvSeen_(), all = MPV.ready && mpvAllSeen_();
+        c.style.display = '';
+        c.className = 'mpv-card' + (all ? ' ok' : '');
+        const head = !MPV.ready ? 'Preview · loading the document(s)…'
+            : s.t === 0 ? 'Preview could not be opened: check the PDF links above before approving'
+            : all ? '✔ Preview checked · you can Approve now'
+            : 'Check the Preview first · ' + s.n + ' of ' + s.t + ' page(s) seen';
+        c.innerHTML = '<div class="mpv-h">' + escText(head) + '</div>'
+            + MPV.docs.map(d => '<div class="mpv-doc"><span>' + escText(d.label) + '</span>'
+                + (d.err ? '<span class="bad">' + escText(d.err) + '</span>'
+                    : !d.pdf ? '<span>…</span>'
+                    : '<span class="' + (d.seen.size >= d.pages ? 'done' : '') + '">' + d.seen.size + ' / ' + d.pages + ' page(s)' + (d.seen.size >= d.pages ? ' ✔' : '') + '</span>') + '</div>').join('')
+            + '<button type="button" class="mpv-open" onclick="mpvOpenViewer()"' + (MPV.ready && s.t ? '' : ' disabled') + '>' + (all ? 'Open Preview again' : 'Open Preview') + '</button>';
+    }
+    function mpvSeenTxt_(){
+        const s = mpvSeen_(), t = document.getElementById('mpvSeenTxt');
+        if(t) t.textContent = 'Seen ' + s.n + ' of ' + s.t + ' page(s)';
+        const b = document.getElementById('mpvBottom');
+        if(b) b.innerHTML = s.t && s.n >= s.t
+            ? '<button type="button" class="mpv-go" onclick="mpvCloseViewer(true)">✔ All pages checked · back to Approve</button>'
+            : '<div class="mpv-row"><div class="mpv-wait">Scroll through every page (' + (s.t - s.n) + ' left)</div><button type="button" class="mpv-x" onclick="mpvCloseViewer()">&#10005; Close</button></div>';
+    }
+    async function mpvOpenViewer(){
+        if(!MPV.ready) return;
+        const v = document.getElementById('mpvViewer'), box = document.getElementById('mpvPages'), sc = document.getElementById('mpvScroll');
+        if(!v || !box) return;
+        const key = MPV.key;
+        document.getElementById('mpvTitle').textContent = MPV.docs.map(d => d.label).join(' + ');
+        box.innerHTML = ''; box.style.width = (MPV.zoom * 100) + '%';
+        v.style.display = 'flex'; sc.scrollTop = 0;
+        mpvSeenTxt_();
+        if(MPV.obs) MPV.obs.disconnect();
+        // a page counts once most of it (or most of the screen, for a page taller than the screen) has been shown
+        MPV.obs = new IntersectionObserver(list => {
+            let changed = false;
+            list.forEach(en => {
+                if(!en.isIntersecting) return;
+                const need = 0.6 * Math.min(en.boundingClientRect.height, (en.rootBounds || { height: window.innerHeight }).height);
+                if(en.intersectionRect.height < need) return;
+                const el = en.target, d = MPV.docs[+el.dataset.doc];
+                if(!d || d.seen.has(+el.dataset.page)) return;
+                d.seen.add(+el.dataset.page); el.classList.add('seen'); changed = true;
+            });
+            if(changed){ mpvSeenTxt_(); mpvPaintCard_(); syncApproveBtn(); }
+        }, { root: sc, threshold: [0, 0.2, 0.4, 0.6, 0.8, 1] });
+        const cssW = Math.min(sc.clientWidth - 20, 900);
+        for(let di = 0; di < MPV.docs.length; di++){
+            const d = MPV.docs[di];
+            const h = document.createElement('div'); h.className = 'mpv-dochead';
+            h.textContent = d.label + (d.pdf ? ' · ' + d.pages + ' page(s)' : '');
+            box.appendChild(h);
+            if(!d.pdf){ const n = document.createElement('div'); n.className = 'mpv-note'; n.textContent = d.err || 'Not available'; box.appendChild(n); continue; }
+            for(let p = 1; p <= d.pages; p++){
+                if(MPV.key !== key || v.style.display === 'none') return;
+                const pg = document.createElement('div');
+                pg.className = 'mpv-page' + (d.seen.has(p) ? ' seen' : '');
+                pg.dataset.doc = di; pg.dataset.page = p;
+                pg.innerHTML = '<span class="mpv-pno">' + p + ' / ' + d.pages + '</span>';
+                box.appendChild(pg);
+                try{
+                    const page = await d.pdf.getPage(p), vp1 = page.getViewport({ scale: 1 });
+                    // drawn sharp enough for the zoom (up to 2x) on this screen
+                    const k = Math.min(4, (cssW / vp1.width) * (window.devicePixelRatio || 1) * 1.6), vp = page.getViewport({ scale: k });
+                    const cv = document.createElement('canvas'); cv.width = Math.round(vp.width); cv.height = Math.round(vp.height);
+                    pg.insertBefore(cv, pg.firstChild);
+                    await page.render({ canvasContext: cv.getContext('2d'), viewport: vp }).promise;
+                }catch(e){ const n = document.createElement('div'); n.className = 'mpv-note'; n.textContent = 'Page ' + p + ' could not be drawn'; pg.appendChild(n); }
+                MPV.obs.observe(pg);   // observed once it has its real height
+            }
+        }
+    }
+    function mpvCloseViewer(toApprove){
+        const v = document.getElementById('mpvViewer'); if(v) v.style.display = 'none';
+        if(MPV.obs){ MPV.obs.disconnect(); MPV.obs = null; }
+        const box = document.getElementById('mpvPages'); if(box) box.innerHTML = '';   // the page bitmaps go with it
+        mpvPaintCard_(); syncApproveBtn();
+        if(toApprove){ const b = document.getElementById('approveBtn'); if(b) b.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    }
+    // Esc closes the preview (desktop / keyboard)
+    document.addEventListener('keydown', e => {
+        const v = document.getElementById('mpvViewer');
+        if(e.key === 'Escape' && v && v.style.display !== 'none'){ e.preventDefault(); e.stopPropagation(); mpvCloseViewer(); }
+    }, true);
+    function mpvZoom(dir){
+        MPV.zoom = Math.max(1, Math.min(2.5, Math.round((MPV.zoom + dir * 0.25) * 100) / 100));
+        const box = document.getElementById('mpvPages'); if(box) box.style.width = (MPV.zoom * 100) + '%';
+    }
+
     async function approveEntry() {
         if(!currentEntry || !myStage || modalViewOnly || modalTab === 'VI') return;
+        // PR / PO PREVIEW: every page of the document(s) looked at first
+        if(!mpvAllSeen_()){
+            alert(MPV.ready ? 'Check the Preview first: open it and look at every page of the ' + (currentModule === 'PO' ? 'PO (and its PR)' : 'PR') + ' before approving.' : 'The Preview is still loading. Look at every page, then approve.');
+            if(MPV.ready) mpvOpenViewer();
+            return;
+        }
         // The signature is taken LAST (PIN + saved sign, below), after every check
         // that could still send the user back to fix something.
         // Approval (and the PO built from it) uses the SAVED vendor figures, so
@@ -9317,9 +9529,12 @@
         if(!btn) return;
         const signed = hasDrawn && sigHasInk();
         // Never locked on the pad any more: Approve asks for the PIN and lays the
-        // saved sign itself. The hint below just says so.
-        btn.disabled = false;
-        btn.title = signed ? '' : 'Pressing Approve will ask for your PIN; the saved signature is added automatically';
+        // saved sign itself. The hint below just says so. Held only until the
+        // PR / PO Preview has been checked (mpvAllSeen_).
+        const previewOk = mpvAllSeen_();
+        btn.disabled = !previewOk;
+        btn.title = !previewOk ? 'Open the Preview and look at every page first'
+            : signed ? '' : 'Pressing Approve will ask for your PIN; the saved signature is added automatically';
         const hint = document.getElementById('sigRequiredHint');
         if(hint) hint.style.display = signed ? 'none' : 'block';
     }

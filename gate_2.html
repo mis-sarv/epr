@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js?v=20261126f"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<head><script src="offline-sync.js?v=20261127a"></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.tailwindcss.com" crossorigin><link rel="preconnect" href="https://fonts.googleapis.com" crossorigin><link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content">
@@ -16,7 +16,7 @@
     <!-- One login for every app: the launcher session (sso-preboot hides the page until sso-gate has checked it) -->
     <script src="caps-input.js"></script><script src="hover-tip.js"></script>
     <script src="sso-preboot.js"></script>
-    <script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script>
+    <script src="sso-gate.js"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * {
@@ -2741,7 +2741,7 @@
         const GATE_CURSOR_KEY = 'gate2_cursor_v1', GATE_DELQ_KEY = 'gate2_delq_v1';
         const GATE_TRIM_DAYS = 3;
         // Auto sync every 5 s: the pull reads only what changed since the cursor, so a tick with nothing new is one small call
-        const GATE_REG_REFRESH_MS = 5 * 1000;
+        const GATE_REG_REFRESH_MS = (window.sarvSyncMs ? sarvSyncMs('gate_register', 5000) : 5000);   // SYNC SPEED (Admin Panel › System Health), default 5 s
         const GATE_LAST_SYNC_KEY = 'gate2_last_sync_v1';   // the last good sync, shown in the header (also after a reload / offline)
         let gateDeleteQueue = readLS(GATE_DELQ_KEY, []);
         if (!Array.isArray(gateDeleteQueue)) gateDeleteQueue = [];
@@ -8304,7 +8304,7 @@
         })();
     </script>
     <!-- Between Gate-1 and Gate-2 (unit transfer, visitor moving units, vehicle cross-check): shared by both gates -->
-    <script src="gate-link.js?v=20261124a"></script>
+    <script src="gate-link.js?v=20261127a"></script>
     <script src="app-back.js"></script>
 </body>
 </html>

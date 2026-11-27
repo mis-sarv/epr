@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js?v=20261126f"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261126a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<head><script src="offline-sync.js?v=20261127a"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script>
@@ -2179,7 +2179,9 @@ async function fillEmpDatalist(){
 <!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
 <script src="launcher-lock.js?v=20261118a"></script>
 <script src="launcher-login.js?v=20261118a"></script>
-<script src="launcher-visitor.js?v=20261127a"></script>
+<script src="launcher-visitor.js?v=20261127b"></script>
+<!-- Admin only: the database server's state, always in view (sys-health-pill.js, sql/SYSTEM_HEALTH_MIGRATION.sql) -->
+<script src="sys-health-pill.js?v=20261127a" defer></script>
 <!-- The splash that prevents the login screen from flashing does not run on
      this page (sso-preboot.js skips the launcher); the login screen must show
      here. -->

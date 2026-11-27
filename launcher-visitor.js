@@ -36,7 +36,7 @@
   if (window.self !== window.top) return;
 
   var K_TOKEN = 'sarv_sso_token', K_LOCK = 'sarv_launcher_locked';
-  var POLL_MS = 5000, AUTO_MS = 600;   // approvals list: data sync every 5 s (only while the launcher is on screen)
+  var POLL_MS = (window.sarvSyncMs ? sarvSyncMs('launcher_approvals', 5000) : 5000), AUTO_MS = 600;   // approvals list: SYNC SPEED, default 5 s (only while the launcher is on screen)
   var $ = function (id) { return document.getElementById(id); };
   var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
   function tok() { try { return localStorage.getItem(K_TOKEN) || ''; } catch (e) { return ''; } }
