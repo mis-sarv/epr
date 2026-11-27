@@ -33,7 +33,9 @@
   GATE INWARD tab (sql/GATE_INWARD_UNLOADER_MIGRATION.sql): the gate's Inward
   approver (launcher › Gate Approvals) assigns ONE Unloader when approving.
   That Unloader opens it here, sees the gate's bill / item / vehicle photos,
-  takes the Photos / Original Invoice (1-15) and confirms with their own PIN
+  takes the Photos / Original Invoice (1-15; two labelled parts, Original
+  Invoice and Items Photos, at least one each, sent invoice first as one
+  unlabelled list) and confirms with their own PIN
   (gate_ul_upload; again = the new set replaces the old one, until the Store
   books it). The ERP Inward shows them in its Photos / Original Invoice box as
   soon as that Gate Entry No. is picked, and then does NOT send the entry to
@@ -72,6 +74,13 @@
   .ul-bigbtn small { font-size: 0.7rem; font-weight: 700; color: #b91c1c; }
   .ul-bigbtn.ok { border-style: solid; border-color: #22c55e; background: #f0fdf4; color: #15803d; }
   .ul-bigbtn.ok small { color: #15803d; }
+  /* Gate Inward upload: Original Invoice and Items Photos as two labelled parts, each with its own pickers (green once one is added) */
+  .ul-part { border: 1px solid var(--border); border-radius: 10px; padding: 10px; margin-bottom: 10px; background: #fff; }
+  .ul-part.ok { border-color: #86efac; background: #f0fdf4; }
+  .ul-part-h { display: flex; align-items: center; gap: 7px; font-weight: 800; font-size: 0.88rem; color: #c2410c; margin-bottom: 8px; }
+  .ul-part.ok .ul-part-h { color: #15803d; }
+  .ul-part-h .cnt { margin-left: auto; font-size: 0.72rem; font-weight: 700; color: #64748b; }
+  .ul-part .ul-photos { margin: 8px 0 0; }
   .ul-pin { font-size: 1.5rem; letter-spacing: .5em; text-align: center; font-weight: 800; }
   .ul-decided { border-radius: 8px; padding: 9px 11px; font-size: 0.8rem; font-weight: 600; margin-bottom: 10px; }
   .ul-decided.ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
@@ -192,12 +201,31 @@
       <div id="gDone"></div>
       <div id="gAct">
         <div class="ul-sec"><span>Photos / Original Invoice <span style="color:#dc3545;">*</span></span><span id="gPhCount" style="font-size:0.75rem;color:#c2410c;"></span></div>
-        <div class="ul-pick">
-          <label>Take Photo<input type="file" data-up="ul-gate-invoice" accept="image/*" capture="environment" onchange="addGatePhotos(this)"></label>
-          <label>Choose Photos<input type="file" data-up="ul-gate-invoice" accept="image/*" multiple onchange="addGatePhotos(this)"></label>
+        <!-- Two labelled parts. A Camera + Gallery pair of one purpose shares its data-up key (upload-guard.js): the
+             invoice pair keeps the old key ul-gate-invoice, so the Admin's rule for it still applies -->
+        <div class="ul-part" id="gInvPart">
+          <div class="ul-part-h">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-2-3 2-3-2-3 2z"/><path d="M9 7h6M9 11h6M9 15h4"/></svg>
+            <span>Original Invoice <span style="color:#dc3545;">*</span></span><span class="cnt" id="gInvCount">Required</span>
+          </div>
+          <div class="ul-pick">
+            <label>Take Photo<input type="file" data-up="ul-gate-invoice" accept="image/*" capture="environment" onchange="addGatePhotos(this,'INV')"></label>
+            <label>Choose Photos<input type="file" data-up="ul-gate-invoice" accept="image/*" multiple onchange="addGatePhotos(this,'INV')"></label>
+          </div>
+          <div class="ul-photos" id="gInvGrid"></div>
         </div>
-        <div class="ul-photos" id="gPhGrid"></div>
-        <div class="ul-hint">The original invoice / bill and the unloaded material: 1 to 15 photos. The Store sees them on the ERP Inward form when it picks this Gate Entry No., and each one becomes a page of the Original Invoice PDF.</div>
+        <div class="ul-part" id="gItemPart">
+          <div class="ul-part-h">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+            <span>Items Photos <span style="color:#dc3545;">*</span></span><span class="cnt" id="gItemCount">Required</span>
+          </div>
+          <div class="ul-pick">
+            <label>Take Photo<input type="file" data-up="ul-gate-items" accept="image/*" capture="environment" onchange="addGatePhotos(this,'ITEM')"></label>
+            <label>Choose Photos<input type="file" data-up="ul-gate-items" accept="image/*" multiple onchange="addGatePhotos(this,'ITEM')"></label>
+          </div>
+          <div class="ul-photos" id="gItemGrid"></div>
+        </div>
+        <div class="ul-hint">At least 1 photo of the Original Invoice and 1 of the unloaded items (up to 15 in all). The Store sees them on the ERP Inward form when it picks this Gate Entry No.; each one becomes a page of the Original Invoice PDF, invoice pages first.</div>
         <div class="form-group" style="margin-top:12px;">
           <label>Remarks <small style="font-weight:500;color:#6b7280;">optional</small></label>
           <textarea id="gRemarks" rows="2" placeholder="Shortage, damage, wet bags, anything to note..."></textarea>
@@ -606,22 +634,38 @@ function closeGate(force){
   if (!force && GPHOTOS.length && !confirm('Discard the ' + GPHOTOS.length + ' photo(s) taken for this gate entry?')) return;
   $('gModal').style.display = 'none'; GOPEN = null; GDET = null; GPHOTOS = []; GEDIT = false;
 }
-async function addGatePhotos(inp){
+/* GPHOTOS = [{kind: 'INV' | 'ITEM', src}]: Original Invoice and Items Photos, at least one of each to upload.
+   gate_ul_upload takes ONE list (max GATE_PHOTO_MAX) with no label per photo, so the kinds are kept apart only
+   here and sent invoice first (gPhOrdered): that is their page order in the Original Invoice PDF. */
+const GPH_KIND = { INV: 'Invoice', ITEM: 'Item' };
+const gPhOf = k => GPHOTOS.filter(p => p.kind === k);
+const gPhOrdered = () => gPhOf('INV').concat(gPhOf('ITEM'));
+async function addGatePhotos(inp, kind){
+  kind = kind === 'INV' ? 'INV' : 'ITEM';
   const files = [...(inp.files || [])].filter(f => /^image\//.test(f.type));
   inp.value = '';
   if (!files.length) return;
-  const room = GATE_PHOTO_MAX - GPHOTOS.length;
-  if (room <= 0) return flash('At most ' + GATE_PHOTO_MAX + ' photos.');
+  // one place stays free for the other kind while it has none, so both can always be added
+  const other = kind === 'INV' ? 'ITEM' : 'INV';
+  const room = GATE_PHOTO_MAX - GPHOTOS.length - (gPhOf(other).length ? 0 : 1);
+  if (room <= 0) return flash(GPHOTOS.length >= GATE_PHOTO_MAX ? 'At most ' + GATE_PHOTO_MAX + ' photos.' : 'Keep one place for the ' + (other === 'INV' ? 'Original Invoice' : 'Items Photo') + ': at most ' + GATE_PHOTO_MAX + ' photos in all.');
   busy(true, 'Processing photo(s)…');
   try {
-    for (const f of files.slice(0, room)) { const d = await compress(f); if (d) GPHOTOS.push(d); }
+    for (const f of files.slice(0, room)) { const d = await compress(f); if (d) GPHOTOS.push({ kind, src: d }); }
   } finally { busy(false); }
-  if (files.length > room) flash('Only ' + GATE_PHOTO_MAX + ' photos can be attached; the rest were left out.');
+  if (files.length > room) flash('Only ' + room + ' more photo(s) fit (' + GATE_PHOTO_MAX + ' in all); the rest were left out.');
   renderGatePhotos();
 }
 function removeGatePhoto(i){ GPHOTOS.splice(i, 1); renderGatePhotos(); }
 function renderGatePhotos(){
-  $('gPhGrid').innerHTML = GPHOTOS.map((d, i) => '<div class="ul-photo"><img src="' + d + '" alt="Photo ' + (i + 1) + '"><button onclick="removeGatePhoto(' + i + ')" title="Remove">✕</button></div>').join('');
+  // each part its own photos; the ✕ removes by the photo's place in GPHOTOS
+  [['INV', 'gInvGrid', 'gInvPart', 'gInvCount'], ['ITEM', 'gItemGrid', 'gItemPart', 'gItemCount']].forEach(([k, g, part, cnt]) => {
+    const list = gPhOf(k);
+    $(g).innerHTML = list.map((p, n) => '<div class="ul-photo"><img src="' + p.src + '" alt="' + GPH_KIND[k] + ' photo ' + (n + 1) + '"><span class="cap">' + GPH_KIND[k] + ' ' + (n + 1) + '</span>'
+      + '<button onclick="removeGatePhoto(' + GPHOTOS.indexOf(p) + ')" title="Remove">✕</button></div>').join('');
+    $(part).classList.toggle('ok', list.length > 0);
+    $(cnt).textContent = list.length ? '✓ ' + list.length + ' added' : 'Required';
+  });
   $('gPhCount').textContent = GPHOTOS.length ? GPHOTOS.length + ' / ' + GATE_PHOTO_MAX : '';
 }
 function zoomImgs(keys){
@@ -638,7 +682,8 @@ function zoomUploaded(i){
 function askGatePin(){
   if (!GOPEN) return;
   if (!ME.emp_code || !ME.contact_no) return alert(ERR_TEXT.PROFILE_INCOMPLETE);
-  if (!GPHOTOS.length) return alert('Add at least one photo of the original invoice / material.');
+  if (!gPhOf('INV').length) return alert('Add at least one photo of the Original Invoice before uploading.');
+  if (!gPhOf('ITEM').length) return alert('Add at least one Items Photo (the unloaded material) before uploading.');
   ACTION = 'GATE_UPLOAD';
   $('pinTitle').textContent = 'Upload · ' + (GOPEN.entryId || '');
   $('pinBtn').textContent = '✔ Upload ' + GPHOTOS.length + ' photo(s)';
@@ -654,7 +699,7 @@ async function submitGateUpload(){
   const b = $('pinBtn'), old = b.textContent; b.disabled = true; b.textContent = 'Uploading…';
   busy(true, 'Uploading ' + GPHOTOS.length + ' photo(s)…');
   try {
-    await rpc('gate_ul_upload', { p_pin: pin, p_uid: GOPEN.uid, p_photos: GPHOTOS, p_remarks: $('gRemarks').value.trim() });
+    await rpc('gate_ul_upload', { p_pin: pin, p_uid: GOPEN.uid, p_photos: gPhOrdered().map(p => p.src), p_remarks: $('gRemarks').value.trim() });
     const no = GOPEN.entryId;
     closePin(); closeGate(true);
     flash('Photos of ' + no + ' uploaded. The Store sees them on the Inward form.');
