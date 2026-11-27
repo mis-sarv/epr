@@ -177,7 +177,7 @@
                 <div class="min-w-0">
                     <div class="flex items-center gap-1.5">
                         <h1 class="text-[16px] font-bold tracking-tight text-gray-900 leading-tight truncate">SARV INDIA <span class="text-blue-600">GATE-2</span></h1>
-                        <button onclick="openSettingsModal()" id="activeShiftBadge" class="ios-btn text-[10px] font-bold bg-emerald-500/10 text-emerald-700 px-2 py-0.5 rounded-full truncate max-w-[110px]" title="Change Guard / Shift">
+                        <button onclick="openSettingsModal()" id="activeShiftBadge" class="gate-admin-only hidden ios-btn text-[10px] font-bold bg-emerald-500/10 text-emerald-700 px-2 py-0.5 rounded-full truncate max-w-[110px]" title="Change Guard / Shift">
                             <i class="fa-solid fa-user-shield text-[9px] mr-0.5"></i> Day Shift
                         </button>
                     </div>
@@ -195,20 +195,21 @@
                     <span id="erpSyncDot" class="absolute top-1 right-1 w-2 h-2 rounded-full bg-gray-400 border border-white"></span>
                     <span id="gatePendingBadge" class="hidden absolute -top-1 -right-1 min-w-[16px] h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-extrabold flex items-center justify-center" title="Entries waiting to be sent to the server"></span>
                 </button>
+                <!-- Admin only from here to CSV (gate-admin-only, shown by gateAdminHeaderUi): a guard sees only Sync + Log out -->
                 <!-- Quick QR / Pass Verify Button -->
-                <button onclick="openQrVerifyModal()" class="ios-btn w-9 h-9 rounded-full bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm" title="Quick Verify / Scan Pass">
+                <button onclick="openQrVerifyModal()" class="gate-admin-only hidden ios-btn w-9 h-9 rounded-full bg-indigo-500/10 text-indigo-600 flex items-center justify-center text-sm" title="Quick Verify / Scan Pass">
                     <i class="fa-solid fa-qrcode"></i>
                 </button>
                 <!-- Master Data Manager (Parties & Store Passes) -->
-                <button onclick="openMasterModal()" class="ios-btn w-9 h-9 rounded-full bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm" title="Manage Parties & Passes">
+                <button onclick="openMasterModal()" class="gate-admin-only hidden ios-btn w-9 h-9 rounded-full bg-purple-500/10 text-purple-600 flex items-center justify-center text-sm" title="Manage Parties & Passes">
                     <i class="fa-solid fa-database"></i>
                 </button>
                 <!-- Settings, Storage & JSON Backup -->
-                <button onclick="openSettingsModal()" class="ios-btn w-9 h-9 rounded-full bg-gray-200/70 text-gray-700 flex items-center justify-center text-sm" title="Settings & Backup">
+                <button onclick="openSettingsModal()" class="gate-admin-only hidden ios-btn w-9 h-9 rounded-full bg-gray-200/70 text-gray-700 flex items-center justify-center text-sm" title="Settings & Backup">
                     <i class="fa-solid fa-gear"></i>
                 </button>
                 <!-- Export CSV -->
-                <button onclick="exportToCSV()" class="ios-btn bg-blue-600 text-white font-semibold text-xs px-3 py-2 rounded-full flex items-center gap-1.5 shadow-sm">
+                <button onclick="exportToCSV()" class="gate-admin-only hidden ios-btn bg-blue-600 text-white font-semibold text-xs px-3 py-2 rounded-full flex items-center gap-1.5 shadow-sm">
                     <i class="fa-solid fa-arrow-up-from-bracket"></i>
                     <span class="hidden sm:inline">CSV</span>
                 </button>
@@ -2106,7 +2107,7 @@
         </div>
     </div>
 
-    <!-- MODAL 4: Settings, Guard Shift, Storage Health & JSON Backup/Restore -->
+    <!-- MODAL 4: Settings, Guard Shift & JSON Backup/Restore -->
     <div id="settingsModal" class="fixed inset-0 z-50 hidden flex items-end sm:items-center justify-center">
         <div class="absolute inset-0 bg-black/40 backdrop-blur-sm ios-backdrop" onclick="closeSettingsModal()"></div>
         
@@ -2134,18 +2135,7 @@
                     <p class="text-[10px] text-emerald-800/80">Every entry and photo is also saved on the ERP server. Old photos are kept there only (they open when you open the pass), so this phone never fills up.</p>
                 </div>
 
-                <!-- 1. Storage Health Meter -->
-                <div class="bg-gray-50 p-3.5 rounded-2xl border border-gray-200/80 space-y-2">
-                    <div class="flex items-center justify-between">
-                        <span class="text-xs font-bold text-gray-800"><i class="fa-solid fa-hard-drive text-blue-600 mr-1.5"></i>Local Storage Health</span>
-                        <span id="storageUsageText" class="font-mono text-[11px] font-bold text-blue-600">0 KB / 5 MB</span>
-                    </div>
-                    <div class="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                        <div id="storageProgressBar" class="h-full bg-emerald-500 rounded-full transition-all duration-300" style="width: 5%"></div>
-                    </div>
-                    <p class="text-[10px] text-gray-500">Auto-image compression is active to maximize capacity.</p>
-                </div>
-
+                <!-- (the Local Storage Health meter was removed 2026-11-27: the register is in IndexedDB now, no 5 MB limit; REGISTER STORE) -->
                 <!-- 2. Duty Guard & Shift Configuration -->
                 <div class="bg-gray-50 p-3.5 rounded-2xl border border-gray-200/80 space-y-2.5">
                     <span class="block text-xs font-bold text-gray-800"><i class="fa-solid fa-user-shield text-emerald-600 mr-1.5"></i>Active Guard & Shift</span>
@@ -2258,9 +2248,64 @@
         let appSettings = Object.assign({ guardName: '', shiftName: 'Day Shift', adminPin: '1234' }, readLS('iosGateSettings_v2', {}));
         if (appSettings.guardName === 'Ramesh Singh') appSettings.guardName = '';   // the old demo default
 
-        let gateEntries = readLS('iosGateEntries_v1', []);
-        if (!Array.isArray(gateEntries)) gateEntries = [];
+        /* REGISTER STORE (2026-11-27): the register lives in IndexedDB (database GATE_IDB_NAME, store 'kv', key GATE_REG_KEY),
+           which takes as much as the phone allows (and is asked to be persistent, so the browser does not clear it), instead
+           of localStorage, which every browser stops at ~5 MB. localStorage keeps a copy only while it fits, because it is
+           read AT ONCE when the page opens (IndexedDB answers a moment later); once it does not fit, that copy is removed
+           (an old one must never be read) and not tried again on this visit. GATE_REG_AT_KEY = when the register was last
+           written (the IndexedDB record carries it too). gateIdbReady = the IndexedDB copy read and merged in
+           (gateIdbLoad); gateBoot waits for it before the first sync, and every IndexedDB write queues after it, so an
+           empty start-up register can never overwrite the saved one. make-gate1.js renames these keys for Gate-1. */
+        const GATE_IDB_NAME = 'gate2_idb', GATE_REG_KEY = 'iosGateEntries_v1', GATE_REG_AT_KEY = 'iosGateEntriesAt_v1';
+        let gateIdbP = null;
+        function gateIdb() {
+            if (!gateIdbP) gateIdbP = new Promise((res, rej) => {
+                if (!window.indexedDB) return rej(new Error('IndexedDB not available'));
+                const rq = indexedDB.open(GATE_IDB_NAME, 1);
+                rq.onupgradeneeded = () => rq.result.createObjectStore('kv');
+                rq.onsuccess = () => res(rq.result);
+                rq.onerror = () => rej(rq.error);
+                rq.onblocked = () => rej(new Error('IndexedDB blocked'));
+            }).catch(e => { gateIdbP = null; throw e; });
+            return gateIdbP;
+        }
+        const gateIdbGet = k => gateIdb().then(db => new Promise((res, rej) => {
+            const rq = db.transaction('kv').objectStore('kv').get(k);
+            rq.onsuccess = () => res(rq.result); rq.onerror = () => rej(rq.error);
+        }));
+        const gateIdbPut = (k, v) => gateIdb().then(db => new Promise((res, rej) => {
+            const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').put(v, k);
+            tx.oncomplete = () => res(true); tx.onerror = tx.onabort = () => rej(tx.error || new Error('IndexedDB write failed'));
+        }));
+        try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => { }); } catch (e) { }
+
+        let gateEntries = readLS(GATE_REG_KEY, null);
+        const gateRegFromLs = Array.isArray(gateEntries);   // false = no localStorage copy (too big, or never saved)
+        if (!gateRegFromLs) gateEntries = [];
         gateEntries = gateEntries.filter(e => e && e.id && !isDemoEntry(e));
+        let gateRegAt = Number(readLS(GATE_REG_AT_KEY, 0)) || 0, gateLsFull = false, gateIdbFailShown = false;
+        /* The IndexedDB copy into the page. Skipped when the localStorage copy is newer (an IndexedDB write that failed).
+           Merged, not replaced: a row changed on the page meanwhile (higher _rev) or not in the saved copy is kept. */
+        async function gateIdbLoad() {
+            let rec = null;
+            try { rec = await gateIdbGet(GATE_REG_KEY); } catch (e) { console.warn('[Gate-2] could not read the register from IndexedDB', e); return; }
+            if (!rec || !Array.isArray(rec.entries)) return;
+            if (gateRegFromLs && (Number(rec.at) || 0) < gateRegAt) return;
+            const mem = new Map(gateEntries.filter(e => e.uid).map(e => [e.uid, e])), seen = new Set(), out = [];
+            rec.entries.forEach(e => {
+                if (!e || !e.id || isDemoEntry(e)) return;
+                const m = e.uid && mem.get(e.uid);
+                out.push(m && (m._rev || 0) > (e._rev || 0) ? m : e);
+                if (e.uid) seen.add(e.uid);
+            });
+            gateEntries.forEach(e => { if (!e.uid || !seen.has(e.uid)) out.push(e); });
+            out.sort((a, b) => new Date(b.inTime) - new Date(a.inTime));
+            gateEntries = out;
+            gateRegAt = Math.max(gateRegAt, Number(rec.at) || 0);
+            try { gateRefreshViews(); gateRegUi(); } catch (e) { }
+        }
+        const gateIdbReady = gateIdbLoad();
+        let gateIdbQ = gateIdbReady;
 
         // Gate numbers: never two rows with the same id (the old random 4 digits could repeat)
         const cleanGateId = v => String(v || '').toUpperCase().replace(/[^A-Z0-9\-_\/.]/g, '').slice(0, 30);
@@ -2450,6 +2495,8 @@
 
         async function gateBoot() {
             try {
+                // REGISTER STORE: the saved register first, so the first sync works on all of it (a phone whose IndexedDB never answers waits 4 s at most)
+                await Promise.race([gateIdbReady, new Promise(r => setTimeout(r, 4000))]);
                 if (gateToken() && !(await gateServerReachable())) {
                     const c = gateReadSessionCache();
                     if (c) { GATE_USER = c.user; GATE_OFFLINE = true; gateStart(); return; }
@@ -2474,6 +2521,7 @@
                 writeLS('iosGateSettings_v2', appSettings);
             }
             updateShiftBadgeUI();
+            gateAdminHeaderUi();
             try { renderDkPending(); } catch (e) { }   // the user is known now: the Admin-only Delete in that list
             if (GATE_OFFLINE) showIosBanner('No internet: working with the last saved ERP lists', 'info');
             else gateLoadMasters(false);
@@ -2684,7 +2732,8 @@
                phones / guards saved (gate_entries_list, from a cursor), so a Dharam Kanta slip made on one phone
                is found on another;
              - photos go with the push, and after GATE_TRIM_DAYS the copy on the phone is dropped (they stay on the
-               server and are fetched again when the pass is opened), so the 5 MB of the phone never fills up;
+               server and are fetched again when the pass is opened), so the phone's copy stays light (the register
+               itself is in IndexedDB, no 5 MB limit: REGISTER STORE);
              - a delete is a soft delete on the server (who, when, how), checked with the user's ERP PIN. Offline it
                uses the phone's own PIN and is queued. Newest write wins. */
         // outPhoto = the visitor at Out. The host's signature ('hostSign') is a photo too, but only the server writes it (gate_vis_decide)
@@ -3393,10 +3442,22 @@
             }
         }
 
+        // REGISTER STORE (next to gateIdbLoad): IndexedDB always, the localStorage copy only while it fits
         function saveEntries() {
-            if (!writeLS('iosGateEntries_v1', gateEntries)) {
-                showIosBanner('Storage limit reached! Export JSON backup & clear old entries.', 'error');
+            const at = gateRegAt = Math.max(Date.now(), gateRegAt + 1);
+            let lsOk = false;
+            if (!gateLsFull) {
+                lsOk = writeLS(GATE_REG_KEY, gateEntries);
+                if (!lsOk) { gateLsFull = true; try { localStorage.removeItem(GATE_REG_KEY); } catch (e) { } }
             }
+            writeLS(GATE_REG_AT_KEY, at);
+            // one write at a time, after the start-up read; each takes the register as it is when its turn comes
+            gateIdbQ = gateIdbQ.then(() => gateIdbPut(GATE_REG_KEY, { at, entries: gateEntries }))
+                .then(() => { gateIdbFailShown = false; })
+                .catch(e => {
+                    console.warn('[Gate-2] could not save the register to IndexedDB', e);
+                    if (!lsOk && !gateIdbFailShown) { gateIdbFailShown = true; showIosBanner('The register could not be saved on this phone. Keep the internet on: entries sent to the server are safe.', 'error'); }
+                });
         }
 
         function saveMasters() {
@@ -5837,6 +5898,13 @@
         const dkNoMarkOut = e => !!e && e.category === 'DHARAM KANTA';
         // The logged-in ERP user has the Admin role (a login cached before this flag existed counts as not Admin until the next online start).
         const gateIsAdmin = () => !!(GATE_USER && GATE_USER.admin);
+        /* Top header: a guard sees only Sync (erpSyncBtn) and Log out; the Shift badge, Quick Verify, Masters, Settings and CSV
+           (class gate-admin-only, hidden in the markup so nothing flashes) appear for the Admin role only, the same
+           GATE_USER.admin as every other Admin-only button, kept in the offline login copy too. Run by gateStart. */
+        function gateAdminHeaderUi() {
+            const on = gateIsAdmin();
+            document.querySelectorAll('header .gate-admin-only').forEach(b => b.classList.toggle('hidden', !on));
+        }
         /* The list under the Dharam Kanta form: EVERY saved slip (old ones too, whatever its status) whose vehicle has
            no Dispatch Packing entry submitted yet. A slip is done when a Dispatch Packing entry was made from it
            ("DK: <slip>" in its host), or when the same vehicle got a Dispatch Packing entry at or after the slip's
@@ -7964,42 +8032,17 @@
         }
 
         // ==========================================
-        // 12. SETTINGS, STORAGE HEALTH & JSON BACKUP
+        // 12. SETTINGS & JSON BACKUP
         // ==========================================
         function openSettingsModal() {
             document.getElementById('settingGuardName').value = appSettings.guardName;
             document.getElementById('settingShiftName').value = appSettings.shiftName;
             document.getElementById('settingAdminPin').value = '';
-            updateStorageMeter();
             document.getElementById('settingsModal').classList.remove('hidden');
         }
 
         function closeSettingsModal() {
             document.getElementById('settingsModal').classList.add('hidden');
-        }
-
-        function updateStorageMeter() {
-            let totalBytes = 0;
-            for (let key in localStorage) {
-                if (Object.prototype.hasOwnProperty.call(localStorage, key)) {
-                    totalBytes += (localStorage[key].length + key.length) * 2;
-                }
-            }
-            const usedKB = (totalBytes / 1024).toFixed(1);
-            const maxBytes = 5 * 1024 * 1024;
-            const pct = Math.min(100, Math.max(2, Math.round((totalBytes / maxBytes) * 100)));
-
-            const textEl = document.getElementById('storageUsageText');
-            const barEl = document.getElementById('storageProgressBar');
-            if (textEl) textEl.textContent = `${usedKB} KB / 5 MB (${pct}%)`;
-            if (barEl) {
-                barEl.style.width = `${pct}%`;
-                barEl.className = pct > 80
-                    ? 'h-full bg-red-500 rounded-full transition-all duration-300'
-                    : pct > 55
-                        ? 'h-full bg-amber-500 rounded-full transition-all duration-300'
-                        : 'h-full bg-emerald-500 rounded-full transition-all duration-300';
-            }
         }
 
         function saveGuardSettings() {
@@ -8070,7 +8113,6 @@
                         localStorage.setItem('iosGateSettings_v2', JSON.stringify(appSettings));
                         updateShiftBadgeUI();
                     }
-                    updateStorageMeter();
                     updateHydraLiveUI();
                     showIosBanner('Backup Restored Successfully!', 'success');
                 } catch (err) {
