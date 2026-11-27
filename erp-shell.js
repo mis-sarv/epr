@@ -75,6 +75,10 @@
       { label: 'Store Dashboard' },
       { label: 'Material Inward', go: 'IN' },
       { label: 'Inward (NB) — Non-Billable', go: 'IN_NB' },
+      /* Every Gate Entry No. of this store on one kanban board, Fetch Data straight into the Inward form
+         (store-core.js › sarvOpenGateBoard, GATE ENTRY BOARD). Same right as Material Inward. */
+      { label: 'Gate Entry Board', action: 'sarvOpenGateBoard', access: 'HOME_IN',
+        words: 'gate entry board kanban inward fetch data pending return challan store inward no unloading gate 1 gate 2' },
       { label: 'Material Outward', go: 'OUT' },
       { label: 'Issue', go: 'ISSUE' },
       /* Unused material of an Issue of the last 3 days back into this store's
@@ -665,6 +669,9 @@
      Apps inside an ERP iframe (Catalog, Price List, FMS …) keep their own
      history; the browser steps through those first, as it always did. */
   const NAV = { quiet: 0, restoring: false, ready: false, pending: null, lastLeaf: null, opened: false };
+  /* A screen opened by code, not by its leaf (store-core.js › Gate Entry Board › Fetch Data opens Material Inward):
+     the step recorded when it opens (sarvNavigateFromHome wrapper) is that leaf, so Back / reload land on it. */
+  window.erpShellMarkLeaf = function (m, l) { NAV.lastLeaf = { m: m, l: l || null }; };
   const navSlug = s => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   function navUrl(st) {
     if (!st || !st.m) return '#/';

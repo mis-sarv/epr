@@ -34257,6 +34257,11 @@ var sarvInwGateChosen='', sarvInwGateRef=null, sarvInwGateUlPay='';
    Supervisor (it IS the Unloader's own bill; the Unloader prints as the unload info). */
 const INW_UL_PFX='UL|';
 function inwIsNbForm_(){return (byId('entryTypeSelect')?.value||'')==='INWARD NB';}
+// a gate entry made as INWARD NB at the gate (its In Entry Type; an older row without one: its IN-NB- / G1-IN-NB- number)
+function inwGateIsNbEntry_(r){return !!r&&(String(r.inEntryType||'').toUpperCase()==='INWARD NB'||/(^|-)IN-NB-/i.test(String(r.no||'')));}
+// the form's Nature of Inward is Return (value 'Repaired'), and a gate entry made through the gate's Pending Returnable
+function inwIsRetForm_(){return (byId('inwNatureOfInward')?.value||'')==='Repaired';}
+function inwGateIsRetEntry_(r){return !!r&&/^REPAIR$/i.test(String(r.refType||''));}
 function inwGateUlPayRow_(v){
   v=v==null?inwGateVal_():String(v||'');
   if(v.indexOf(INW_UL_PFX)!==0)return null;
@@ -34349,11 +34354,32 @@ function inwGateRender_(){
   const cur=sel.value||S.want, mine=sarvEditingInwardId?String(sarvEditingInwardId):'';
   /* STORE INWARD NO.: the entries submitted for approval come FIRST, under their number, with the step they are at;
      a gate entry one of them holds is offered only through it (never booked twice). */
-  const inp=mine?[]:(S.inp||[]).slice();
-  if(sarvInwPendActive&&!inp.some(p=>String(p.id)===String(sarvInwPendActive.id)))inp.unshift(sarvInwPendActive.row);
-  const held=new Set(inp.map(p=>p.gateEntryNo).filter(Boolean));
-  const opts=(S.list||[]).filter(r=>(!r.usedBy||r.usedBy.id===mine)&&!held.has(r.no));
-  const nb=inwIsNbForm_(), ulOpts=nb?(S.ulList||[]).filter(r=>!r.usedBy||r.usedBy.id===mine):[];
+  const inpAll=mine?[]:(S.inp||[]).slice();
+  if(sarvInwPendActive&&!inpAll.some(p=>String(p.id)===String(sarvInwPendActive.id)))inpAll.unshift(sarvInwPendActive.row);
+  const held=new Set(inpAll.map(p=>p.gateEntryNo).filter(Boolean));   // from ALL of them: a hidden one still holds its gate entry
+  const nb=inwIsNbForm_(), ret=inwIsRetForm_();
+  /* (2026-11-27) The store's own entries go by their Entry Type too: an INWARD NB Store Inward No. / challan is offered only on
+     an INWARD NB form and an INWARD one only on an INWARD form (the one loaded on the form always stays). */
+  const typeOk=t=>(String(t||'INWARD').toUpperCase()==='INWARD NB')===nb;
+  /* A Return form (Nature of Inward = Return) offers ONLY the gate's Pending Return entries (2026-11-27): no other gate
+     entry, Store Inward No., challan or unloading bill; the Store Inward No. loaded on the form stays (its link). */
+  const isActive=p=>!!(sarvInwPendActive&&String(p.id)===String(sarvInwPendActive.id));
+  const inp=inpAll.filter(p=>(!ret&&typeOk(p.entryType))||isActive(p));
+  /* (2026-11-27) A gate entry the guard made as INWARD NB (gate In Entry Type, inEntryType from gate_inward_list) is
+     offered only on an INWARD NB form, and one made through the gate's Pending Returnable (refType REPAIR) only while
+     Nature of Inward = Return ('Repaired'), which then offers nothing else; the record being edited keeps its own. */
+  const own=r=>mine&&r.usedBy&&r.usedBy.id===mine;
+  const opts=(S.list||[]).filter(r=>(!r.usedBy||r.usedBy.id===mine)&&!held.has(r.no)
+    &&(nb||!inwGateIsNbEntry_(r)||own(r))&&(ret===inwGateIsRetEntry_(r)||own(r)));
+  {const hid=cur&&!mine&&(S.list||[]).find(r=>r.no===cur&&((!nb&&inwGateIsNbEntry_(r))||(ret!==inwGateIsRetEntry_(r))));
+   if(hid){
+     S.want='';   // said once, not on every refresh
+     showToast('Gate entry '+escText(cur)+(!nb&&inwGateIsNbEntry_(hid)?' is an <b>Inward NB</b> at the gate: it is offered only when the Entry Type is INWARD NB.'
+       :ret?' is not a Pending Return: with Nature of Inward = Return only the gate\'s <b>Pending Return</b> entries are offered.'
+       :' is a <b>Pending Returnable</b> (Repair Return) at the gate: it is offered only when the Nature of Inward is Return.'),'warn');
+   }}
+  S.renderRet=ret;
+  const ulOpts=nb&&!ret?(S.ulList||[]).filter(r=>!r.usedBy||r.usedBy.id===mine):[];
   S.renderNb=nb;
   const inpHtml=inp.length?'<optgroup label="Store Inward No. · submitted, waiting / approved">'+inp.map(p=>
     '<option value="'+escText(INP_PFX+p.id)+'"'+(inpState_(p).ready?' data-iosdd-cls="ok" style="background:#dcfce7;color:#166534;font-weight:700;"':'')+'>'+escText(p.no)+(p.entryType==='INWARD NB'?' (NB)':'')+' · '+escText(p.supplier||'-')
@@ -34363,7 +34389,7 @@ function inwGateRender_(){
     return '<option value="'+escText(INW_UL_PFX+r.no)+'">UL · '+escText(r.no)+' · Unloader '+escText(w.name||'-')+' · '+escText((r.inward||{}).no||'-')
       +' · '+t.n+' item(s)'+(t.wt?' · '+escText(inwGateUlNum_(t.wt))+' Kg':'')+'</option>';}).join('')+'</optgroup>':'';
   // CHALLAN ENTRY: the Inwards booked against a challan, waiting for their bill
-  const chl=mine?[]:(S.chl||[]);
+  const chl=mine||ret?[]:(S.chl||[]).filter(r=>typeOk(r.entry_type));
   const chlHtml=chl.length?'<optgroup label="Challan · Bill pending (add the Original Invoice)">'+chl.map(r=>{
     const due=inwChallanDue_(r);
     return '<option value="'+escText(CHL_PFX+r.id)+'">'+escText(r.document_no||'-')+' · '+escText(r.supplier_name||'-')
@@ -34414,6 +34440,7 @@ function inwGateCheck_(){
   return {row:r,errs,warns,refChange};
 }
 function inwGateInfo_(){
+  inwGateFetchBtn_();   // GATE ENTRY FETCH: the button follows the box
   inwChallanPaint_();   // CHALLAN ENTRY: the bill being booked, under the box
   const box=byId('inwGateInfo');if(!box)return;
   const S=sarvInwGate, store=inwGateStoreOf_();
@@ -34429,13 +34456,23 @@ function inwGateInfo_(){
   const ip=inpRowOf_();
   if(ip&&!row){box.innerHTML=inpInfoHtml_(ip,false);return;}
   if(!row){
+    // a Return form lists only the gate's Pending Return entries (inwGateRender_): said so, counted the same way
+    if(inwIsRetForm_()){
+      const nbF=inwIsNbForm_(), rr=(S.list||[]).filter(r=>!r.usedBy&&inwGateIsRetEntry_(r)&&(nbF||!inwGateIsNbEntry_(r)));
+      box.innerHTML='<span style="color:#475569;">'+(S.list?(rr.length?'<b>'+rr.length+'</b> Pending Return entr'+(rr.length===1?'y':'ies')+' of '+escText(inwGateLabel_())+' (30 days) not booked yet. Choose the one of this delivery and press Fetch Data.'
+        :'No Pending Return entry of '+escText(inwGateLabel_())+' in the last 30 days. The gate makes it under Inward Material › Pending Returnable; then press Refresh.'):'Loading the gate entries…')+'</span>';
+      return;
+    }
     const n=(S.list||[]).filter(r=>!r.usedBy).length;
     if(inwIsNbForm_()){
       const nu=(S.ulList||[]).filter(r=>!r.usedBy).length;
       if(nu){box.innerHTML='<span style="color:#1e3a8a;font-weight:700;">'+nu+' Payable unloading'+(nu===1?'':'s')+' waiting for the Unloader\'s bill (UL · …). Choose one to book its bill as this Inward NB.</span>'
         +'<div style="margin-top:4px;color:#475569;">'+(n?n+' gate Inward entr'+(n===1?'y':'ies')+' not booked yet.':'')+'</div>';return;}
     }
-    const ni=(S.inp||[]).length, nc=(S.chl||[]).length, nco=(S.chl||[]).filter(r=>inwChallanDue_(r).late).length;
+    // counted like the list: only this form's Entry Type (inwGateRender_)
+    const nbF=inwIsNbForm_(), tOk=t=>(String(t||'INWARD').toUpperCase()==='INWARD NB')===nbF;
+    const chlT=(S.chl||[]).filter(r=>tOk(r.entry_type));
+    const ni=(S.inp||[]).filter(p=>tOk(p.entryType)).length, nc=chlT.length, nco=chlT.filter(r=>inwChallanDue_(r).late).length;
     box.innerHTML=(nc?'<div style="margin-bottom:4px;color:'+(nco?'#b91c1c':'#92400e')+';font-weight:700;">'+nc+' Inward'+(nc===1?'':'s')+' booked against a challan wait for the bill'+(nco?' ('+nco+' overdue)':'')+'. Choose one under "Challan · Bill pending" to add its Original Invoice.</div>':'')
       +(ni?'<div style="margin-bottom:4px;color:#1e3a8a;font-weight:700;">'+ni+' entr'+(ni===1?'y':'ies')+' submitted and waiting / approved under a Store Inward No. (at the top of the list). Choose one to see its step, or to Submit it once approved.</div>':'')
       +(S.inpNoMig&&isAdmin()?'<div style="margin-bottom:4px;color:#92400e;font-weight:700;">The Store Inward No. on Submit needs sql/INWARD_PENDING_MIGRATION.sql (Admin).</div>':'')
@@ -34488,6 +34525,62 @@ async function inwGateClearFill_(newNo){
     updateStoreTotals();
   }catch(e){console.warn('[SARV] previous gate entry not cleared:',e.message||e);}
   return true;
+}
+/* GATE ENTRY FETCH (2026-11-27): choosing in the Gate Entry No. box only SHOWS the entry (inwGateChosen_: its details,
+   pipeline and delivery photos under the box); the form is filled only by the Fetch Data button (inwGateFetch_), which
+   first clears EVERYTHING already on the form (clearInwardForm, asked first when anything is filled; the Entry Type and
+   its number series are kept) and then fills it through inwGatePicked_ (gate entry / Store Inward No. / challan /
+   unloading bill, as before). A gate entry not ready for the Store entry is not fetched (the form is not cleared for
+   nothing). sarvInwGateFetched = the box value the form was filled from; Submit refuses a box value that was not
+   fetched (inwGateGate_). On an edit the box works as before (no clear: the record is the one being edited). */
+var sarvInwGateFetched='';
+function inwGateChosen_(){
+  if(sarvEditingInwardId){inwGatePicked_().then(()=>{sarvInwGateFetched=byId('inwGateEntryNo')?.value||'';inwGateFetchBtn_();});return;}
+  const raw=byId('inwGateEntryNo')?.value||'';
+  sarvInwGate.want=raw;
+  const r=(sarvInwGate.list||[]).find(x=>x.no===inwGateVal_());
+  inwGatePhotosLoad_(r||null);   // the delivery's photos under the box, to look at
+  inwGateInfo_();
+  if(raw&&raw!==sarvInwGateFetched)showToast('Press <b>Fetch Data</b> to fill the form from this entry (what is on the form now is cleared first).');
+}
+// anything typed / picked on the Inward form that Fetch Data would throw away
+function inwFormHasData_(){
+  if(['supplierName','invoiceNumber','invoiceDate','inwRemarks','lotNo','gatePassNo','inwMachineName'].some(id=>String(byId(id)?.value||'').trim()))return true;
+  if(getSelectedPoNos().length||getSelectedPrNos().length||getSelectedRepairOutNos().length)return true;
+  if([...document.querySelectorAll('#itemTableBody tr:not(.po-info-row)')].some(tr=>(tr.querySelector('.item-name')?.value||'').trim()))return true;
+  return !!(window.getPhotos&&window.getPhotos('inward').length);
+}
+function inwGateFetchBtn_(){
+  const b=byId('inwGateFetchBtn');if(!b)return;
+  const raw=byId('inwGateEntryNo')?.value||'', on=!!raw&&!sarvEditingInwardId, done=on&&raw===sarvInwGateFetched;
+  b.disabled=!on;b.style.opacity=on?'1':'.45';b.style.cursor=on?'pointer':'not-allowed';
+  b.style.background=done?'#fff':'#6d28d9';b.style.color=done?'#6d28d9':'#fff';
+  b.textContent=done?'✓ Fetched':'Fetch Data';
+  b.title=sarvEditingInwardId?'Editing a saved Inward: Fetch Data is for a new entry':!raw?'Choose a Gate Entry No. first'
+    :done?'The form was filled from this entry. Press again to clear the form and fetch it again.':'Clear the form and fill it from the chosen entry';
+}
+async function inwGateFetch_(){
+  const sel=byId('inwGateEntryNo'), raw=sel?sel.value:'';
+  if(!raw)return showToast('Choose a Gate Entry No. first','warn');
+  if(sarvEditingInwardId)return showToast('Editing '+escText(sarvEditingInwardNo||'a saved Inward')+': Fetch Data is for a new entry.','warn');
+  const special=[INP_PFX,CHL_PFX,INW_UL_PFX].some(p=>raw.indexOf(p)===0);
+  if(!special){
+    const r=(sarvInwGate.list||[]).find(x=>x.no===raw);
+    if(!r)return showToast('Gate entry '+escText(raw)+' is not in the list any more. Press Refresh.','warn');
+    if(!inwGateReady_(r))return showToast('Gate entry <b>'+escText(r.no)+'</b>: '+escText(inwGateStepTxt_(r))+'. It can be fetched once it is ready for the Store entry.','warn');
+  }
+  // asked before anything is awaited (ios-dialog.js replays this click on OK)
+  const label=sel.options[sel.selectedIndex]?.textContent||raw;
+  if(inwFormHasData_()&&!confirm('Fetch Data clears everything already filled in this form (supplier, invoice, items, PO / PR, photos, remarks) and then fills it from:\n\n'+label+'\n\nContinue?'))return;
+  const pin=sarvInwardTypePinned, nat=byId('inwNatureOfInward'), natV=nat?nat.value:'';
+  sarvInwardTypePinned=true;   // the Entry Type (and its number series) stays through the clear
+  try{clearInwardForm();}finally{sarvInwardTypePinned=pin;}
+  // so does the Nature of Inward (the clear sets Purchase; a Return form must stay one, its Repair entries depend on it)
+  if(nat&&natV&&nat.value!==natV){nat.value=natV;nat.dispatchEvent(new Event('change'));}
+  if(sel)sel.value=raw;
+  await inwGatePicked_();
+  sarvInwGateFetched=byId('inwGateEntryNo')?.value||'';   // what it ends on (a Store Inward No. load may change it)
+  inwGateFetchBtn_();
 }
 /* Picked: the previous gate entry's data off the form (inwGateClearFill_), then fill from this one when it is ready
    for the Store entry. Supplier Name when blank; the gate's PO (or Field Boy PR) when nothing is ticked, no item row
@@ -34594,7 +34687,7 @@ async function inwGateRefresh_(force){
   const before=sarvInwGate.list, beforeUl=sarvInwGate.ulList, beforeInp=sarvInwGate.inp;
   await inwGateLoad_(force);
   inpFollow_();
-  if(force||before!==sarvInwGate.list||beforeUl!==sarvInwGate.ulList||beforeInp!==sarvInwGate.inp||sarvInwGate.renderNb!==inwIsNbForm_()||!byId('inwGateEntryNo').options.length)inwGateRender_();
+  if(force||before!==sarvInwGate.list||beforeUl!==sarvInwGate.ulList||beforeInp!==sarvInwGate.inp||sarvInwGate.renderNb!==inwIsNbForm_()||sarvInwGate.renderRet!==inwIsRetForm_()||!byId('inwGateEntryNo').options.length)inwGateRender_();
   else inwGateInfo_();
   // the Unloader uploaded while the Store waited on the form: their photos come in by themselves
   const r=(sarvInwGate.list||[]).find(x=>x.no===inwGateVal_());
@@ -34611,7 +34704,7 @@ async function inwGateRefresh_(force){
 }
 setInterval(()=>{
   const p=byId('inwardPanel');if(!p||p.offsetParent===null)return;
-  const sig=[pVal('supplierName'),inwGateStoreOf_(),getSelectedPoNos().join(','),getSelectedPrNos().join(','),pVal('entryTypeSelect')].join('|');
+  const sig=[pVal('supplierName'),inwGateStoreOf_(),getSelectedPoNos().join(','),getSelectedPrNos().join(','),pVal('entryTypeSelect'),pVal('inwNatureOfInward')].join('|');
   // read again every 60 s; every 15 s while a Store Inward No. entry waits for a decision
   if(sig===sarvInwGate.sig&&Date.now()-sarvInwGate.at<((sarvInwGate.inp||[]).some(p=>inpState_(p).wait)?15000:60000))return;
   sarvInwGate.sig=sig;inwGateRefresh_(false);
@@ -34637,6 +34730,13 @@ async function inwGateSetRequired_(on){
 async function inwGateGate_(){
   sarvInwGateChosen='';sarvInwGateRef=null;sarvInwGateUlPay='';
   const v0=inwGateVal_(), mine=String(sarvEditingInwardId||'');
+  // GATE ENTRY FETCH: an entry chosen in the box but never fetched does not go with a form filled some other way
+  {const raw=byId('inwGateEntryNo')?.value||'';
+   if(raw&&!mine&&raw!==sarvInwGateFetched){
+     byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+     showToast('The Gate Entry No. chosen in the box was not fetched. Press <b>Fetch Data</b> (it clears the form and fills it from that entry), or clear the box.','warn');
+     return false;
+   }}
   const list=await inwGateLoad_(true);
   const S=sarvInwGate;
   // booked by another Inward since it was picked: say so (the fresh list no longer offers it)
@@ -34811,6 +34911,7 @@ function inwGateReset_(){
   if(!sarvInwGate)return;
   const S=sarvInwGate;S.want='';S.editHad=false;S.editUlHad=false;S.editStore='';S.sig='';sarvInwGateChosen='';sarvInwGateUlPay='';
   sarvInwGateFill=null;   // the form is blank again: nothing of a gate entry is on it
+  sarvInwGateFetched='';  // GATE ENTRY FETCH: nor fetched from one
   if(typeof sarvInwGateUl!=='undefined'){sarvInwGateUl.no='';sarvInwGateUl.err='';}
   if(typeof sarvInwGatePh!=='undefined')inwGatePhotosLoad_(null);
   const sel=byId('inwGateEntryNo');if(sel)sel.value='';
@@ -35242,7 +35343,7 @@ async function inpAfterSend_(rows,needMd,needUl){
   sarvInwGate.at=0;inwGateRefresh_(true);
   const msg=(isNew?'Store Inward No. '+p.no+' is allotted to this entry.':'Store Inward No. '+p.no+' is sent again for approval.')
     +'\n\nIt waits for '+(waitFor||'its approval')+'.'
-    +'\n\nFollow it in the Gate Entry No. list of the Inward form (at the top, under its Store Inward No.). Once approved, choose it there, add the Original Invoice photo and Submit: it is saved with this same number.';
+    +'\n\nFollow it in the Gate Entry No. list of the Inward form (at the top, under its Store Inward No.). Once approved, choose it there, press Fetch Data, add the Original Invoice photo and Submit: it is saved with this same number.';
   if(window.IosDialog&&typeof IosDialog.alert==='function')IosDialog.alert(msg);else alert(msg);
 }
 // Picked in the Gate Entry No. list: the whole entry back onto the form
@@ -35550,4 +35651,235 @@ function inwChallanAskInvoice_(r){
     document.addEventListener('keydown',key,true);
     draw();
   });
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   GATE ENTRY BOARD   (2026-11-27; sidebar Store 1 / Store 2 › Gate Entry Board, right HOME_IN of that store)
+   Every entry the Inward form's Gate Entry No. box can take, for the store on screen, on one kanban board:
+   Ready · Inward / Ready · Inward NB / Pending Return / Waiting at the gate / Store Inward No. / Challan ·
+   Bill pending / Unloading bill. Same data and the same rules as the box: inwGateLoad_ (one read for both),
+   inwGateReady_, inwGateIsNbEntry_, inwGateIsRetEntry_, a gate entry held by a Store Inward No. is shown
+   only under that number.
+   Fetch Data on a card opens Material Inward / Inward (NB) of this store exactly as Home does (the NB
+   passkey sarvNbCodeGate_; the Nature pinned from the card: PO / PR = Purchase, Pending Return = Return,
+   a Store Inward No. / challan Purchase until its own record sets its Nature; any other card asks the usual
+   Nature chooser), then picks the entry in the box and runs the box's own Fetch Data (inwGateFetch_: the
+   form is cleared first, asked when anything is filled). The browser step recorded is the Inward leaf
+   (erp-shell.js › erpShellMarkLeaf). Re-read every GB_POLL_MS while open and on screen; Esc / ✕ closes.
+   ═══════════════════════════════════════════════════════════════════════ */
+const GB_POLL_MS=15000;
+let GB={store:'',items:[],timer:null,busy:false,sig:'',q:''};
+const GB_COLS=[
+  {k:'IN',  t:'Ready · Inward',        c:'#16a34a', hint:'Gate entries ready for the Store entry'},
+  {k:'NB',  t:'Ready · Inward NB',     c:'#7c3aed', hint:'Made as INWARD NB at the gate'},
+  {k:'RET', t:'Pending Return',        c:'#ea580c', hint:'Repair Returns from the gate (Nature = Return)'},
+  {k:'WAIT',t:'Waiting at the gate',   c:'#64748b', hint:'Approver or Unloader not done yet'},
+  {k:'INP', t:'Store Inward No.',      c:'#2563eb', hint:'Submitted, waiting / approved'},
+  {k:'CHL', t:'Challan · Bill pending',c:'#dc2626', hint:'Add the Original Invoice'},
+  {k:'UL',  t:'Unloading bill',        c:'#0891b2', hint:'Payable unloading, booked as Inward NB'}
+];
+// sidebar module + leaves of each store (erp-shell.js MODULES / storeLeaves)
+const GB_MOD={'STORE 1':'STORE1','STORE 2':'WAREHOUSE'};
+const GB_LEAF={IN:'Material Inward',IN_NB:'Inward (NB) — Non-Billable'};
+const gbD_=v=>{const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(v||''));return m?m[3]+'-'+m[2]+'-'+m[1]:(v||'');};
+function gbCss_(){
+  if(byId('gbCss'))return;
+  const s=document.createElement('style');s.id='gbCss';
+  s.textContent='#gbOv{position:fixed;inset:0;z-index:5000;background:#f1f5f9;display:none;flex-direction:column;}'
+   +'#gbOv .gb-hd{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 16px;background:#fff;border-bottom:1px solid #e2e8f0;}'
+   +'#gbOv .gb-ttl{font-size:17px;font-weight:800;color:#0f172a;margin:0;}#gbOv .gb-sub{font-size:12px;color:#64748b;}'
+   +'#gbOv .gb-q{flex:1;min-width:200px;max-width:420px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;}'
+   +'#gbOv .gb-btn{padding:7px 12px;border:1px solid #cbd5e1;background:#fff;border-radius:8px;font-weight:700;font-size:12px;cursor:pointer;color:#0f172a;}'
+   +'#gbOv .gb-btn:hover{background:#f8fafc;}#gbOv .gb-msg{padding:0 16px;}'
+   +'#gbOv .gb-cols{flex:1;display:flex;gap:12px;padding:12px 16px 16px;overflow-x:auto;overflow-y:hidden;align-items:stretch;min-height:0;}'
+   /* a column with cards takes the room left (230 px at least); an empty one stays narrow, so on a laptop every
+      column, Challan · Bill pending too, fits without scrolling sideways */
+   +'#gbOv .gb-col{flex:1 0 230px;max-width:340px;display:flex;flex-direction:column;background:#e2e8f0;border-radius:10px;min-height:0;border-top:4px solid var(--c);transition:box-shadow .2s;}'
+   +'#gbOv .gb-col.empty{flex:0 0 150px;}#gbOv .gb-col.hl{box-shadow:0 0 0 3px var(--c);}'
+   +'#gbOv .gb-sum{display:flex;gap:8px;padding:10px 16px 0;overflow-x:auto;}'
+   +'#gbOv .gb-tile{flex:1 0 128px;max-width:200px;text-align:left;background:#fff;border:1px solid #e2e8f0;border-top:3px solid var(--c);border-radius:8px;padding:8px 10px;cursor:pointer;}'
+   +'#gbOv .gb-tile:hover{background:#f8fafc;}#gbOv .gb-tile b{display:block;font-size:20px;line-height:1.1;color:var(--c);}'
+   +'#gbOv .gb-tile span{display:block;font-size:11.5px;font-weight:700;color:#0f172a;}#gbOv .gb-tile small{display:block;font-size:10.5px;font-weight:700;color:#b91c1c;min-height:13px;}'
+   +'#gbOv .gb-ch{padding:10px 12px 6px;}#gbOv .gb-ch b{font-size:13px;color:#0f172a;}'
+   +'#gbOv .gb-ch .n{float:right;min-width:22px;text-align:center;font-size:11px;font-weight:800;color:#fff;background:var(--c);border-radius:999px;padding:2px 7px;}'
+   +'#gbOv .gb-ch small{display:block;font-size:11px;color:#64748b;margin-top:2px;}'
+   +'#gbOv .gb-list{flex:1;overflow-y:auto;padding:4px 8px 10px;display:flex;flex-direction:column;gap:8px;}'
+   +'#gbOv .gb-card{background:#fff;border:1px solid #e2e8f0;border-left:3px solid var(--c);border-radius:8px;padding:9px 10px;box-shadow:0 1px 2px rgba(15,23,42,.06);font-size:12px;color:#334155;}'
+   +'#gbOv .gb-card .no{font-family:ui-monospace,monospace;font-weight:800;font-size:13px;color:#0f172a;}'
+   +'#gbOv .gb-card .pt{font-weight:700;color:#0f172a;margin:3px 0 2px;word-break:break-word;}#gbOv .gb-card .ln{color:#64748b;font-size:11.5px;word-break:break-word;}'
+   +'#gbOv .gb-tag{display:inline-block;font-size:10px;font-weight:800;padding:1px 6px;border-radius:999px;margin-left:6px;vertical-align:1px;background:#ede9fe;color:#5b21b6;}'
+   +'#gbOv .gb-pill{display:inline-block;margin-top:6px;font-size:10.5px;font-weight:700;padding:2px 8px;border-radius:999px;background:#f1f5f9;color:#475569;}'
+   +'#gbOv .gb-pill.ok{background:#dcfce7;color:#166534;}#gbOv .gb-pill.bad{background:#fee2e2;color:#991b1b;}#gbOv .gb-pill.wait{background:#fef3c7;color:#92400e;}'
+   +'#gbOv .gb-act{margin-top:8px;display:flex;align-items:center;gap:8px;}'
+   +'#gbOv .gb-fetch{padding:6px 12px;border:0;border-radius:6px;background:#6d28d9;color:#fff;font-weight:800;font-size:12px;cursor:pointer;}'
+   +'#gbOv .gb-fetch:hover{background:#5b21b6;}#gbOv .gb-note{font-size:11px;color:#94a3b8;font-weight:600;}'
+   +'#gbOv .gb-empty{font-size:12px;color:#94a3b8;text-align:center;padding:18px 6px;}'
+   +'@media (max-width:640px){#gbOv .gb-col{flex-basis:84vw;}#gbOv .gb-hd{padding:10px 12px;}#gbOv .gb-cols{padding:10px 12px 14px;}}';
+  document.head.appendChild(s);
+}
+function gbEnsure_(){
+  gbCss_();
+  let ov=byId('gbOv');if(ov)return ov;
+  ov=document.createElement('div');ov.id='gbOv';
+  ov.innerHTML='<div class="gb-hd"><div style="min-width:0;"><h3 class="gb-ttl" id="gbTitle">Gate Entry Board</h3><div class="gb-sub" id="gbSub"></div></div>'
+    +'<input type="search" class="gb-q" id="gbQ" placeholder="Search gate no, party, PO / PR, vehicle, Store Inward No." autocomplete="off">'
+    +'<button type="button" class="gb-btn" id="gbRefresh" title="Read the gate entries again">↻ Refresh</button>'
+    +'<button type="button" class="gb-btn" id="gbClose" title="Close (Esc)">✕ Close</button></div>'
+    +'<div class="gb-msg" id="gbMsg"></div><div class="gb-sum" id="gbSum"></div><div class="gb-cols" id="gbCols"></div>';
+  document.body.appendChild(ov);
+  byId('gbQ').addEventListener('input',e=>{GB.q=e.target.value;gbRender_();});
+  byId('gbRefresh').addEventListener('click',()=>gbLoad_(true,true));
+  byId('gbClose').addEventListener('click',gbClose_);
+  byId('gbCols').addEventListener('click',e=>{const b=e.target.closest('.gb-fetch');if(b)gbFetch_(b.getAttribute('data-v'));});
+  // a summary card brings its column into view and marks it for a moment
+  byId('gbSum').addEventListener('click',e=>{
+    const t=e.target.closest('.gb-tile');if(!t)return;
+    const col=byId('gbCol_'+t.getAttribute('data-col'));if(!col)return;
+    col.scrollIntoView({behavior:'smooth',block:'nearest',inline:'center'});
+    col.classList.add('hl');setTimeout(()=>col.classList.remove('hl'),1400);
+  });
+  return ov;
+}
+async function sarvOpenGateBoard(){
+  if(!SB_READY)return showToast('Please configure the Supabase URL/key','warn');
+  if(!(await sarvStoreReady_()))return showToast(sarvStoreLabel()+' needs sql/STORE1_MIGRATION.sql to be run first.','warn');
+  if(!sarvStoreTabVisible(sarvStore,'HOME_IN')&&!sarvStoreTabVisible(sarvStore,'HOME_IN_NB'))return showToast('Material Inward is not open for you in '+sarvStoreLabel()+'.','warn');
+  const ov=gbEnsure_();
+  GB.store=sarvStore;GB.sig='';
+  byId('gbTitle').textContent='Gate Entry Board · '+sarvStoreLabel();
+  byId('gbSub').textContent='Every Gate Entry No. of '+inwGateLabel_()+' still to be booked, by group. Fetch Data opens the Inward form and fills it from the entry.';
+  byId('gbCols').innerHTML='<div class="gb-empty" style="flex:1;">Loading the gate entries…</div>';
+  ov.style.display='flex';
+  document.addEventListener('keydown',gbKey_,true);
+  setTimeout(()=>byId('gbQ')?.focus(),30);
+  await gbLoad_(true);
+  clearInterval(GB.timer);
+  GB.timer=setInterval(()=>{if(byId('gbOv')?.style.display==='flex'&&document.visibilityState==='visible'&&navigator.onLine!==false)gbLoad_(false);},GB_POLL_MS);
+}
+window.sarvOpenGateBoard=sarvOpenGateBoard;
+function gbClose_(){
+  const ov=byId('gbOv');if(ov)ov.style.display='none';
+  clearInterval(GB.timer);GB.timer=null;
+  document.removeEventListener('keydown',gbKey_,true);
+}
+function gbKey_(e){
+  // only while the board is on top (the Nature chooser / NB passkey handle their own Escape)
+  if(e.key==='Escape'&&!byId('sarvNatureGate')&&!byId('sarvNbGate')){e.preventDefault();gbClose_();}
+}
+async function gbLoad_(force,manual){
+  if(GB.busy)return;GB.busy=true;
+  const msg=(cls,t)=>'<div style="margin-top:10px;padding:8px 10px;border-radius:8px;font-size:12px;font-weight:700;'+cls+'">'+t+'</div>';
+  try{
+    // the board reads the store it was opened for, even if another screen switched sarvStore meanwhile
+    if(GB.store&&sarvStore!==GB.store&&window.sarvSetStore)window.sarvSetStore(GB.store);
+    await inwGateLoad_(true);
+    const S=sarvInwGate;
+    byId('gbMsg').innerHTML=S.noMig?msg('border:1px solid #fcd34d;background:#fffbeb;color:#92400e;','The gate link needs sql/GATE_INWARD_LINK_MIGRATION.sql (Admin).')
+      :S.err?msg('border:1px solid #fecaca;background:#fef2f2;color:#991b1b;','Could not read the gate entries ('+escText(S.err)+'). Press Refresh.')
+      :S.inpErr?msg('border:1px solid #fecaca;background:#fef2f2;color:#991b1b;','The Store Inward No. entries could not be read: '+escText(S.inpErr)+'.'):'';
+    GB.items=gbItems_();
+    const sig=GB.items.map(i=>i.col+'|'+i.val+'|'+i.pill+'|'+i.fetchable).join('~');
+    if(force||sig!==GB.sig){GB.sig=sig;gbRender_();}
+    if(manual)showToast('Gate entries read again');
+  }catch(e){byId('gbMsg').innerHTML=msg('color:#991b1b;',escText(e.message||e));}
+  finally{GB.busy=false;}
+}
+// every card of the board, with its column and how Fetch Data opens it
+function gbItems_(){
+  const S=sarvInwGate, store=GB.store||sarvStore, out=[];
+  const canIn=sarvStoreTabVisible(store,'HOME_IN'), canNb=sarvStoreTabVisible(store,'HOME_IN_NB');
+  const inp=S.inp||[], held=new Set(inp.map(p=>p.gateEntryNo).filter(Boolean));
+  (S.list||[]).filter(r=>!r.usedBy&&!held.has(r.no)).forEach(r=>{
+    const nb=inwGateIsNbEntry_(r), ret=inwGateIsRetEntry_(r), ready=inwGateReady_(r);
+    const lines=[];
+    if(r.kind==='VISITOR')lines.push('Working visitor '+(r.visitor||'-'));
+    if(inwGateIsSmp_(r))lines.push('Sample / Other ('+(r.returnType==='RETURNABLE'?'Returnable':'Non-Returnable')+')'+(r.item?' · '+r.item:''));
+    if(r.refNo)lines.push((ret?'Repair Outward':(r.refType||'Ref'))+' '+r.refNo);
+    if(r.vehicle&&r.vehicle!=='N/A')lines.push('Vehicle '+r.vehicle);
+    lines.push('In '+inwGateDmyT_(r.inTime)+' · '+(r.gate==='G1'?'Gate-1':'Gate-2'));
+    out.push({kind:'GATE',col:!ready?'WAIT':ret?'RET':nb?'NB':'IN',val:r.no,nb,
+      nature:ret?'Repaired':/^P[OR]$/i.test(r.refType||'')?'Purchase':null,
+      no:r.no,title:r.party||'-',lines,pill:inwGateStepTxt_(r),pillCls:ready?'ok':'wait',
+      tag:nb&&(ret||!ready)?'NB':''});
+  });
+  inp.forEach(p=>{
+    const st=inpState_(p), nb=String(p.entryType||'').toUpperCase()==='INWARD NB';
+    out.push({kind:'INP',col:'INP',val:INP_PFX+p.id,nb,nature:'Purchase',no:p.no,title:p.supplier||'-',
+      lines:[(p.invoiceNo?'Invoice '+p.invoiceNo:'')+(p.invoiceDate?' · '+gbD_(p.invoiceDate):''),p.gateEntryNo?'Gate '+p.gateEntryNo:'','By '+(p.by||'-')+' · '+inwGateDmyT_(p.at)].filter(Boolean),
+      pill:st.txt,pillCls:st.rej?'bad':st.ready?'ok':'wait',tag:nb?'NB':''});
+  });
+  (S.chl||[]).forEach(r=>{
+    const due=inwChallanDue_(r), nb=String(r.entry_type||'').toUpperCase()==='INWARD NB', ci=r.challan_info||{};
+    out.push({kind:'CHL',col:'CHL',val:CHL_PFX+r.id,nb,nature:'Purchase',no:r.document_no||'-',title:r.supplier_name||'-',
+      lines:[r.invoice_no?'Challan '+r.invoice_no:'',r.receiving_date?'Received '+gbD_(r.receiving_date):'',
+        ci.billDue?'Bill due '+gbD_(ci.billDue):'',pNum(ci.amount)?'Amount ₹ '+nNum_(ci.amount):'',r.po_number?'PO '+r.po_number:''].filter(Boolean),
+      pill:due.txt,pillCls:due.late?'bad':'wait',tag:nb?'NB':'',late:!!due.late,btn:'Add Bill ▸'});
+  });
+  (S.ulList||[]).filter(r=>!r.usedBy).forEach(r=>{
+    const t=inwGateUlPayTot_(r), w=r.unloader||{};
+    out.push({kind:'UL',col:'UL',val:INW_UL_PFX+r.no,nb:true,nature:null,no:'UL · '+r.no,title:'Unloader '+(w.name||'-'),
+      lines:['Inward '+((r.inward||{}).no||'-'),t.n+' item(s)'+(t.wt?' · '+inwGateUlNum_(t.wt)+' Kg':'')],
+      pill:'Payable · book as Inward NB',pillCls:'ok',tag:''});
+  });
+  out.forEach(i=>{
+    i.allowed=i.nb?canNb:canIn;
+    i.fetchable=i.allowed&&i.col!=='WAIT';
+    i.why=i.col==='WAIT'?'Fetch once it is ready':!i.allowed?('No '+(i.nb?'Inward (NB)':'Material Inward')+' right in '+sarvStoreLabel(store)):'';
+    i.hay=[i.no,i.title,i.lines.join(' '),i.pill,i.tag];
+  });
+  return out;
+}
+function gbCard_(i,c){
+  return '<div class="gb-card" style="--c:'+c+';">'
+    +'<div><span class="no">'+escText(i.no)+'</span>'+(i.tag?'<span class="gb-tag">'+escText(i.tag)+'</span>':'')+'</div>'
+    +'<div class="pt">'+escText(i.title)+'</div>'
+    +i.lines.map(l=>'<div class="ln">'+escText(l)+'</div>').join('')
+    +'<span class="gb-pill '+escText(i.pillCls||'')+'">'+escText(i.pill||'')+'</span>'
+    +'<div class="gb-act">'+(i.fetchable?'<button type="button" class="gb-fetch" data-v="'+escText(i.val)+'">'+escText(i.btn||'Fetch Data ▸')+'</button>'
+      :'<span class="gb-note">'+escText(i.why)+'</span>')+'</div></div>';
+}
+function gbRender_(){
+  const box=byId('gbCols');if(!box)return;
+  const q=GB.q||'', list=q?GB.items.filter(i=>sarvSearchMatch(i.hay,q)):GB.items;
+  // the summary cards: one per column with its count (Challan: how many are overdue), tap = that column
+  const sum=byId('gbSum');
+  if(sum)sum.innerHTML=GB_COLS.map(c=>{
+    const cs=list.filter(i=>i.col===c.k), late=c.k==='CHL'?cs.filter(i=>i.late).length:0;
+    return '<button type="button" class="gb-tile" data-col="'+c.k+'" style="--c:'+c.c+';"><b>'+cs.length+'</b><span>'+escText(c.t)+'</span>'
+      +'<small>'+(late?late+' overdue':'')+'</small></button>';
+  }).join('');
+  box.innerHTML=GB_COLS.map(c=>{
+    const cards=list.filter(i=>i.col===c.k);
+    return '<div class="gb-col'+(cards.length?'':' empty')+'" id="gbCol_'+c.k+'" style="--c:'+c.c+';"><div class="gb-ch"><b>'+escText(c.t)+'</b><span class="n">'+cards.length+'</span><small>'+escText(c.hint)+'</small></div>'
+      +'<div class="gb-list">'+(cards.length?cards.map(i=>gbCard_(i,c.c)).join('')
+        :'<div class="gb-empty">'+(q?'Nothing matches the search':'Nothing here')+'</div>')+'</div></div>';
+  }).join('');
+}
+/* Fetch Data from a card: Material Inward / Inward (NB) of the board's store, opened as Home opens it (passkey,
+   Nature), then the box takes the entry and its own Fetch Data fills the form. */
+function gbFetch_(val){
+  const it=GB.items.find(i=>i.val===val);
+  if(!it||!it.fetchable)return;
+  if(sarvEditingInwardId)return showToast('Inward '+escText(sarvEditingInwardNo||'')+' is open for edit. Finish or cancel the edit first, then Fetch Data.','warn');
+  const go=it.nb?'IN_NB':'IN', store=GB.store||sarvStore;
+  const open=()=>{
+    if(it.nature)sarvHomeNature.inward=it.nature;   // one picked in the Nature chooser is already set there
+    gbClose_();
+    if(sarvStore!==store&&window.sarvSetStore)window.sarvSetStore(store);
+    if(window.erpShellMarkLeaf&&GB_MOD[store])window.erpShellMarkLeaf(GB_MOD[store],GB_LEAF[go]);
+    sarvNavigateFromHome(go);
+    setTimeout(()=>gbAfterOpen_(it),80);
+  };
+  const withNature=it.nature?open:()=>sarvNatureGate_(go,open);
+  if(go==='IN_NB')sarvNbCodeGate_(withNature);else withNature();
+}
+async function gbAfterOpen_(it){
+  await inwGateLoad_(true);
+  inwGateRender_();
+  const sel=byId('inwGateEntryNo');
+  byId('inwGateGroup')?.scrollIntoView({behavior:'smooth',block:'center'});
+  if(!sel||![...sel.options].some(o=>o.value===it.val))
+    return showToast('<b>'+escText(it.no)+'</b> is not offered on this form (booked meanwhile, or another Nature of Inward / Entry Type was chosen). Choose it in the Gate Entry No. box.','warn');
+  sel.value=it.val;sarvInwGate.want=it.val;inwGateInfo_();
+  await inwGateFetch_();
 }
