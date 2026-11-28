@@ -40,6 +40,12 @@
   books it). The ERP Inward shows them in its Photos / Original Invoice box as
   soon as that Gate Entry No. is picked, and then does NOT send the entry to
   the To Verify list any more. Without the migration the tab stays empty.
+
+  UNLOADING CHARGE (sql/GATE_INWARD_UL_SUPPLIER_MIGRATION.sql, 2026-11-28): with the photos the Unloader
+  chooses FOC (free) or Payable (empty on a first upload; the approver's pick is a hint) and, for Payable,
+  the Supplier Name from the Supplier Master (gate_ul_suppliers). gate_ul_upload_charge saves photos +
+  type + Supplier in one transaction. ERP › Inward NB then books that Payable unloading's bill against
+  that Supplier only. Without the migration the part is hidden and the upload is as before.
 -->
 <link rel="stylesheet" href="mobile.css?v=20261023a">
 <style>
@@ -81,6 +87,12 @@
   .ul-part.ok .ul-part-h { color: #15803d; }
   .ul-part-h .cnt { margin-left: auto; font-size: 0.72rem; font-weight: 700; color: #64748b; }
   .ul-part .ul-photos { margin: 8px 0 0; }
+  /* Unloading charge (FOC / Payable) + the Supplier of a Payable unloading */
+  .ul-seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .ul-seg button { padding: 11px 8px; border: 2px solid var(--border); border-radius: 10px; background: #fff; font-weight: 800; font-size: 0.86rem; color: #334155; cursor: pointer; }
+  .ul-seg button.on { border-color: #c2410c; background: #fff7ed; color: #c2410c; }
+  .ul-seg button.on[data-chg="FOC"] { border-color: #16a34a; background: #f0fdf4; color: #15803d; }
+  .ul-chg-hint { font-size: 0.7rem; color: #64748b; margin-top: 6px; }
   .ul-pin { font-size: 1.5rem; letter-spacing: .5em; text-align: center; font-weight: 800; }
   .ul-decided { border-radius: 8px; padding: 9px 11px; font-size: 0.8rem; font-weight: 600; margin-bottom: 10px; }
   .ul-decided.ok { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
@@ -226,6 +238,23 @@
           <div class="ul-photos" id="gItemGrid"></div>
         </div>
         <div class="ul-hint">At least 1 photo of the Original Invoice and 1 of the unloaded items (up to 15 in all). The Store sees them on the ERP Inward form when it picks this Gate Entry No.; each one becomes a page of the Original Invoice PDF, invoice pages first.</div>
+        <!-- UNLOADING CHARGE (sql/GATE_INWARD_UL_SUPPLIER_MIGRATION.sql): FOC / Payable, and for Payable the Supplier the
+             Store books the unloading bill against (ERP › Inward NB). Hidden when the server has no gate_ul_suppliers. -->
+        <div class="ul-part" id="gChgPart" style="margin-top:12px;display:none;">
+          <div class="ul-part-h">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/></svg>
+            <span>Unloading Charge <span style="color:#dc3545;">*</span></span><span class="cnt" id="gChgCount">Required</span>
+          </div>
+          <div class="ul-seg" role="radiogroup" aria-label="Unloading charge">
+            <button type="button" data-chg="FOC" role="radio" onclick="gSetCharge('FOC')">FOC (free)</button>
+            <button type="button" data-chg="PAYABLE" role="radio" onclick="gSetCharge('PAYABLE')">Payable</button>
+          </div>
+          <div class="form-group" id="gSupRow" style="display:none;margin:10px 0 0;">
+            <label for="gSup">Supplier Name <span style="color:#dc3545;">*</span></label>
+            <select id="gSup" class="form-select" data-iosdd-search onchange="gSupPick(this)"><option value="">Choose the Supplier…</option></select>
+          </div>
+          <div class="ul-chg-hint" id="gChgHint"></div>
+        </div>
         <div class="form-group" style="margin-top:12px;">
           <label>Remarks <small style="font-weight:500;color:#6b7280;">optional</small></label>
           <textarea id="gRemarks" rows="2" placeholder="Shortage, damage, wet bags, anything to note..."></textarea>
@@ -267,6 +296,10 @@ let TAB = 'PENDING', ROWS = { PENDING: [], GATE: [], DONE: [] }, ME = {}, OPEN =
 // Gate Inward tab: the open gate entry, its detail (gate photos + uploaded ones) and the new photo set
 let GOPEN = null, GDET = null, GPHOTOS = [], GEDIT = false, GATE_ON = true;
 const GATE_PHOTO_MAX = 15;
+/* UNLOADING CHARGE (sql/GATE_INWARD_UL_SUPPLIER_MIGRATION.sql): the Unloader's choice for the open gate entry
+   (GCHG.type 'FOC' / 'PAYABLE' / '' = not chosen, GCHG.sup = Supplier Master name) and the Supplier list.
+   CHG_ON = the server has gate_ul_suppliers / gate_ul_upload_charge; false = the old upload, no charge part. */
+let GCHG = { type: '', sup: '' }, SUPS = null, CHG_ON = null;
 
 /* ── Server calls: one door for every ul_* RPC ───────────────────────── */
 const SESSION_ERR = { NO_TOKEN: 1, NO_SESSION: 1, SESSION_REVOKED: 1, SESSION_EXPIRED: 1, USER_INACTIVE: 1 };
@@ -287,7 +320,10 @@ const ERR_TEXT = {
   NOT_FOUND: 'This entry was not found. Refresh the list.',
   // The store moved it to another supervisor while it was open here.
   NOT_ASSIGNED: 'This entry has been sent to a different Unloader. It is no longer in your list.',
-  ALREADY_BOOKED: 'The Store has already booked this gate entry in the ERP, so its photos cannot be changed any more.'
+  ALREADY_BOOKED: 'The Store has already booked this gate entry in the ERP, so its photos cannot be changed any more.',
+  BAD_CHARGE: 'Choose the Unloading Charge: FOC (free) or Payable.',
+  SUPPLIER_REQUIRED: 'Payable unloading: choose the Supplier Name the unloading bill is made against.',
+  SUPPLIER_NOT_FOUND: 'That Supplier is not in the Supplier Master any more. Choose it again from the list.'
 };
 async function rpc(fn, args){
   let r;
@@ -561,8 +597,9 @@ function renderGateList(q){
   }
   $('list').innerHTML = list.map(r => {
     let act;
-    if (r.bookedBy) act = '<div class="card-action done">✔ ' + esc(r.photoCount || 0) + ' photo(s) · booked by the Store as Inward ' + esc(r.bookedBy) + '</div>';
-    else if (r.status === 'DONE') act = '<div class="card-action done">✔ ' + esc(r.photoCount || 0) + ' photo(s) uploaded by ' + esc(r.doneBy || '-') + ' · ' + esc(stamp(r.doneAt)) + ' · waiting for the Store</div>';
+    const chg = r.status === 'DONE' && r.chargeType ? '<div class="card-detail">Unloading: <b>' + esc(chgText(r)) + '</b></div>' : '';
+    if (r.bookedBy) act = chg + '<div class="card-action done">✔ ' + esc(r.photoCount || 0) + ' photo(s) · booked by the Store as Inward ' + esc(r.bookedBy) + '</div>';
+    else if (r.status === 'DONE') act = chg + '<div class="card-action done">✔ ' + esc(r.photoCount || 0) + ' photo(s) uploaded by ' + esc(r.doneBy || '-') + ' · ' + esc(stamp(r.doneAt)) + ' · waiting for the Store</div>';
     else act = '<div class="card-action act">Tap to upload the Photos / Original Invoice</div>';
     return '<div class="card" onclick="openGate(\'' + esc(r.uid) + '\')">'
       + '<div class="card-header"><span>' + esc(r.entryId || '-') + '</span><span style="font-size:0.75rem;color:#64748b;">'
@@ -576,7 +613,7 @@ function renderGateList(q){
 }
 async function openGate(uid){
   const r = (ROWS.GATE || []).find(x => x.uid === uid); if (!r) return;
-  GOPEN = r; GDET = null; GPHOTOS = []; GEDIT = false;
+  GOPEN = r; GDET = null; GPHOTOS = []; GEDIT = false; gChgInit(r);
   $('gTitle').textContent = r.entryId + ' · ' + (r.inEntryType === 'INWARD NB' ? 'Inward NB' : 'Inward');
   $('gMeta').innerHTML = '<b>' + esc(r.party || '-') + '</b><br>'
     + esc(gateName(r.gate)) + ' · ' + esc(gateRef(r)) + '<br>'
@@ -593,6 +630,7 @@ async function openGate(uid){
     const d = await rpc('gate_ul_detail', { p_uid: uid });
     if (!GOPEN || GOPEN.uid !== uid) return;
     GDET = d; GOPEN = Object.assign({}, r, d.row || {});
+    if (!GCHG.touched) gChgInit(GOPEN);   // the fresh row (another phone may have changed it); never over a choice made here
   } catch (e) {
     if (!GOPEN || GOPEN.uid !== uid) return;
     GDET = { gatePhotos: {}, photos: [] };
@@ -616,6 +654,7 @@ function gatePaint(){
   $('gState').innerHTML = booked
     ? '<div class="ul-decided ok">✔ Booked by the Store as Inward <b>' + esc(r.bookedBy) + '</b>. The photos can no longer be changed.</div>'
     : done ? '<div class="ul-decided ok">✔ ' + esc(r.photoCount || up.length) + ' photo(s) uploaded by <b>' + esc(r.doneBy || '-') + '</b> · ' + esc(stamp(r.doneAt))
+      + (r.chargeType ? '<br>Unloading: <b>' + esc(chgText(r)) + '</b>' : '')
       + '<br>The Store sees them when it picks ' + esc(r.entryId) + ' on the ERP Inward form.' + (r.remarks ? '<br>Remarks: ' + esc(r.remarks) : '') + '</div>'
     : (!r.mine ? '<div class="ul-note warn" style="margin:0 0 10px;">Assigned to ' + esc(r.to || '-') + '. As Admin you can upload on their behalf.</div>' : '');
   $('gDone').innerHTML = done && !GEDIT && up.length
@@ -624,7 +663,77 @@ function gatePaint(){
       + (booked ? '' : '<button class="clear-btn" style="margin:4px 0 8px;" onclick="gateReplace()">Replace these photos</button>')
     : '';
   $('gAct').style.display = !booked && (!done || GEDIT) ? '' : 'none';
-  renderGatePhotos();
+  renderGatePhotos(); gChgPaint();
+}
+
+/* ── UNLOADING CHARGE (sql/GATE_INWARD_UL_SUPPLIER_MIGRATION.sql) ─────
+   The Unloader confirms the Unloading type with the photos: FOC (free) or Payable, and for Payable the
+   Supplier (Supplier Master) the Store books the unloading bill against in ERP › Inward NB. It starts
+   EMPTY on a first upload (the approver's pick is only shown as a hint), like every choice on the gate
+   approval; a Replace starts from what the Unloader saved before. Saved with the photos, in one call. */
+const CHG_TXT = { FOC: 'FOC (free)', PAYABLE: 'Payable' };
+const chgText = r => (CHG_TXT[r.chargeType] || r.chargeType || '-') + (r.chargeType === 'PAYABLE' && r.ulSupplier ? ' · Supplier ' + r.ulSupplier : '');
+function gChgInit(r){
+  const mine = r && r.status === 'DONE' && r.chargeBy;   // set by an upload before (the Unloader), not only by the approver
+  GCHG = { type: mine ? (r.chargeType || '') : '', sup: mine ? (r.ulSupplier || '') : '', touched: false };
+  gChgLoad();
+}
+let SUP_BUSY = null;
+async function gChgLoad(){
+  if (CHG_ON === false || SUPS) return gChgPaint();
+  if (SUP_BUSY) return SUP_BUSY;
+  SUP_BUSY = (async () => {
+    try {
+      const d = await rpc('gate_ul_suppliers');
+      SUPS = d.suppliers || []; CHG_ON = true;
+    } catch (e) {
+      if (e.code === 'NO_MIGRATION') CHG_ON = false;
+      else console.warn('[UL] Supplier list not read:', e.message || e);
+    } finally { SUP_BUSY = null; }
+    gChgPaint();
+  })();
+  return SUP_BUSY;
+}
+function gSetCharge(t){
+  GCHG.type = t === 'PAYABLE' ? 'PAYABLE' : 'FOC'; GCHG.touched = true;
+  if (GCHG.type === 'PAYABLE') setTimeout(() => { const s = $('gSup'); if (s && !s.value) s.focus(); }, 30);
+  gChgPaint();
+}
+function gSupPick(sel){ GCHG.sup = sel.value || ''; GCHG.touched = true; gChgPaint(); }
+function gChgPaint(){
+  const part = $('gChgPart'); if (!part) return;
+  // shown unless the server has no charge step (false); null = the list is still loading / could not be read
+  part.style.display = CHG_ON === false ? 'none' : '';
+  if (CHG_ON === false || !GOPEN) return;
+  const sel = $('gSup');
+  if (sel) {
+    // rebuilt only when the list arrived / changed or the box does not show the choice (another entry opened);
+    // a Supplier saved before that has left the master since stays offered, marked
+    const want = GCHG.sup, names = (SUPS || []).map(s => s.name), key = names.length + '|' + want;
+    if (sel.dataset.k !== key || sel.value !== want) {
+      sel.innerHTML = '<option value="">Choose the Supplier…</option>'
+        + (want && names.indexOf(want) < 0 ? '<option value="' + esc(want) + '">' + esc(want) + ' (not in the master)</option>' : '')
+        + (SUPS || []).map(s => '<option value="' + esc(s.name) + '">' + esc(s.name) + (s.city ? ' · ' + esc(s.city) : '') + '</option>').join('');
+      sel.value = want; sel.dataset.k = key;
+    }
+  }
+  part.querySelectorAll('[data-chg]').forEach(b => { const on = b.dataset.chg === GCHG.type; b.classList.toggle('on', on); b.setAttribute('aria-checked', on ? 'true' : 'false'); });
+  $('gSupRow').style.display = GCHG.type === 'PAYABLE' ? '' : 'none';
+  const ok = GCHG.type === 'FOC' || (GCHG.type === 'PAYABLE' && !!GCHG.sup);
+  part.classList.toggle('ok', ok);
+  $('gChgCount').textContent = ok ? '✓ ' + CHG_TXT[GCHG.type] : GCHG.type === 'PAYABLE' ? 'Choose the Supplier' : 'Required';
+  const ap = GOPEN.chargeType && !GOPEN.chargeBy ? 'The approver chose ' + CHG_TXT[GOPEN.chargeType] + '. ' : '';
+  $('gChgHint').textContent = CHG_ON === null ? 'Reading the Supplier list… (no internet = tap Upload again once it is back)' : ap + (GCHG.type === 'PAYABLE'
+    ? 'Payable: after the Store books this Inward, ERP › Inward NB lists this unloading under the chosen Supplier, and its unloading bill can be booked against that Supplier only.'
+    : GCHG.type === 'FOC' ? 'FOC: no unloading bill is made for this entry.' : 'Choose FOC (free) or Payable.');
+}
+// Upload check: null = fine, else the text to show
+function gChgProblem(){
+  if (CHG_ON === false) return null;                     // older server: the photos only, as before
+  if (CHG_ON === null) { gChgLoad(); return 'The Supplier list could not be read yet. Check the internet connection and press Upload again.'; }
+  if (!GCHG.type) return ERR_TEXT.BAD_CHARGE;
+  if (GCHG.type === 'PAYABLE' && !GCHG.sup) return ERR_TEXT.SUPPLIER_REQUIRED;
+  return null;
 }
 function gateReplace(){
   if (!confirm('Take a new set of photos? It replaces the ' + ((GDET && GDET.photos) || []).length + ' uploaded photo(s) once you upload it with your PIN.')) return;
@@ -684,6 +793,7 @@ function askGatePin(){
   if (!ME.emp_code || !ME.contact_no) return alert(ERR_TEXT.PROFILE_INCOMPLETE);
   if (!gPhOf('INV').length) return alert('Add at least one photo of the Original Invoice before uploading.');
   if (!gPhOf('ITEM').length) return alert('Add at least one Items Photo (the unloaded material) before uploading.');
+  { const p = gChgProblem(); if (p) { $('gChgPart').scrollIntoView({ behavior: 'smooth', block: 'center' }); return alert(p); } }
   ACTION = 'GATE_UPLOAD';
   $('pinTitle').textContent = 'Upload · ' + (GOPEN.entryId || '');
   $('pinBtn').textContent = '✔ Upload ' + GPHOTOS.length + ' photo(s)';
@@ -699,14 +809,21 @@ async function submitGateUpload(){
   const b = $('pinBtn'), old = b.textContent; b.disabled = true; b.textContent = 'Uploading…';
   busy(true, 'Uploading ' + GPHOTOS.length + ' photo(s)…');
   try {
-    await rpc('gate_ul_upload', { p_pin: pin, p_uid: GOPEN.uid, p_photos: gPhOrdered().map(p => p.src), p_remarks: $('gRemarks').value.trim() });
-    const no = GOPEN.entryId;
+    const args = { p_pin: pin, p_uid: GOPEN.uid, p_photos: gPhOrdered().map(p => p.src), p_remarks: $('gRemarks').value.trim() };
+    // with the Unloading charge in the same call (one transaction); an older server = the photos only
+    if (CHG_ON) await rpc('gate_ul_upload_charge', Object.assign(args, { p_charge: GCHG.type, p_supplier: GCHG.type === 'PAYABLE' ? GCHG.sup : null }));
+    else await rpc('gate_ul_upload', args);
+    const no = GOPEN.entryId, chg = CHG_ON ? ' · Unloading ' + CHG_TXT[GCHG.type] + (GCHG.type === 'PAYABLE' ? ' (' + GCHG.sup + ')' : '') : '';
     closePin(); closeGate(true);
-    flash('Photos of ' + no + ' uploaded. The Store sees them on the Inward form.');
+    flash('Photos of ' + no + ' uploaded' + chg + '. The Store sees them on the Inward form.');
     await load();
   } catch (e) {
     if (e.code === 'PIN_INVALID' || e.code === 'TOO_MANY_ATTEMPTS') { $('pinIn').value = ''; showErr(e.message); }
-    else { closePin(); alert(e.message || e); if (/^ALREADY_|^NOT_ASSIGNED$|^NOT_FOUND$/.test(e.code || '')) { closeGate(true); load(); } }
+    else {
+      closePin(); alert(e.message || e);
+      if (/^ALREADY_|^NOT_ASSIGNED$|^NOT_FOUND$/.test(e.code || '')) { closeGate(true); load(); }
+      else if (e.code === 'SUPPLIER_NOT_FOUND') { SUPS = null; GCHG.sup = ''; gChgLoad(); }   // the master changed: read it again
+    }
   } finally { b.disabled = false; b.textContent = old; busy(false); }
 }
 

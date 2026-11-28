@@ -150,7 +150,9 @@
   }
   function unloaderLine(ul) {
     if (!ul) return '';
-    var chg = ul.chargeType ? ' · Unloading ' + esc(CHG[ul.chargeType] || ul.chargeType) : '';
+    // GATE_INWARD_UL_SUPPLIER_MIGRATION.sql: the Unloader may change it with the photos and names the Supplier of a Payable one
+    var chg = ul.chargeType ? ' · Unloading ' + esc(CHG[ul.chargeType] || ul.chargeType)
+      + (ul.chargeType === 'PAYABLE' && ul.ulSupplier ? ' (Supplier ' + esc(ul.ulSupplier) + ')' : '') : '';
     return (ul.status === 'DONE'
       ? esc(ul.doneBy || ul.to || '-') + ' · ' + esc(ul.photoCount || 0) + ' photo(s) uploaded · ' + esc(when(ul.doneAt))
       : esc(ul.to || '-') + (ul.toEmp ? ' (' + esc(ul.toEmp) + ')' : '') + ' · photos not uploaded yet') + chg;
