@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
-<head><script src="offline-sync.js?v=20261127a"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
+<head><script src="offline-sync.js?v=20261128a"></script><script src="upload-guard.js?v=20261126a"></script><script src="live-assist.js?v=20261127a" defer></script><link rel="preconnect" href="https://jdlzgjgxxjkjejkhvdij.supabase.co" crossorigin><link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin>
 
 <meta charset="UTF-8">
 <script src="date-dmy.js"></script>
@@ -450,6 +450,10 @@ a.app .cnt{
 }
 a.app .cnt.ok{background:#22c55e; color:#052e14;}
 
+/* APP SWITCH: the apps the Admin switched off, named under the grid (appSwitchTiles); colours from the theme variables */
+.app-off-note{
+  margin:10px 2px 0; font-size:12px; line-height:1.5; color:var(--txt-3); text-align:center;
+}
 .none{
   background:var(--surface); border:1px solid var(--hairline);
   border-radius:var(--radius); box-shadow:var(--shadow);
@@ -1750,7 +1754,30 @@ async function loadMyPhoto(id){
   }catch(e){ /* without a photo the first letter is fine */ }
 }
 
+/* ── APP SWITCH (offline-sync.js › APP SWITCH, ERP › Admin Panel › App Switch) ──
+   An app the Admin switched off has no tile here and none of its counts is asked for (Leave, SOPs, Live Assist,
+   Gate Approvals when both gates are off); one line under the grid names them. The page itself would show its
+   "switched off" card anyway. A change of the switch redraws the home with the same user. */
+let LAST_HOME_USER = null;
+const appOff = k => !!(window.sarvAppSwitch && window.sarvAppSwitch.isOff(k));
+function appSwitchTiles(){
+  const grid = $('appGrid'), S = window.sarvAppSwitch;
+  if (!grid || !S) return;
+  const gone = [];
+  grid.querySelectorAll('a.app[href]').forEach(el => {
+    const k = S.appOf(el.getAttribute('href'));
+    if (k && S.isOff(k)) { const a = S.apps.find(x => x.key === k); gone.push(a ? a.label : k); el.remove(); }
+  });
+  let note = $('appOffNote');
+  if (!gone.length) { if (note) note.remove(); return; }
+  if (!note) { note = document.createElement('div'); note.id = 'appOffNote'; note.className = 'app-off-note'; grid.insertAdjacentElement('afterend', note); }
+  note.textContent = 'Switched off by the Admin for now: ' + gone.join(', ');
+  if (!grid.querySelector('a.app')) { $('appsHead').style.display = 'none'; $('noApps').style.display = 'block'; }
+}
+if (window.sarvAppSwitch) window.sarvAppSwitch.onChange(() => { if (LAST_HOME_USER && $('homeWrap').style.display !== 'none') renderHome(LAST_HOME_USER); });
+
 function renderHome(user){
+  LAST_HOME_USER = user;
   showView('homeWrap');
 
   const roles = (user.roles && user.roles.length ? user.roles : [user.primary_role]).filter(Boolean);
@@ -1805,12 +1832,13 @@ function renderHome(user){
   });
   $('appsHead').style.display = n ? 'block' : 'none';
   $('noApps').style.display   = n ? 'none' : 'block';
-  notepadTile();
-  leaveTile();
-  if (roles.indexOf('ADMIN_PIN') >= 0) liveAssistTile();   // LIVE ASSIST: Admin only (the la_* RPCs check it again)
-  sopTile();
+  if (!appOff('APP_NOTEPAD')) notepadTile();
+  if (!appOff('APP_LEAVE')) leaveTile(); else { const o = $('lvTile'); if (o) o.remove(); }
+  if (roles.indexOf('ADMIN_PIN') >= 0 && !appOff('APP_LIVE_ASSIST')) liveAssistTile();   // LIVE ASSIST: Admin only (the la_* RPCs check it again)
+  if (!appOff('APP_MY_SOPS')) sopTile(); else { const o = $('sopTile'); if (o) o.remove(); }
   // Visitor Approvals (launcher-visitor.js): visitors at Gate-2 waiting for this user's PIN; kept first in the grid
-  if (window.visApprovalTile) visApprovalTile();
+  if (window.visApprovalTile && !(appOff('HOME_GATE1') && appOff('HOME_GATE2'))) visApprovalTile();
+  appSwitchTiles();   // APP SWITCH: the tiles of switched-off apps out (keys of the session list too)
 }
 
 /* ── My Notepad ────────────────────────────────────────────────────────
@@ -2185,7 +2213,7 @@ async function fillEmpDatalist(){
 <!-- Lock (Ctrl+Alt+L) and Screen Saver (Ctrl+Shift+S). Needs the launcher's SB client above, so it comes after it. -->
 <script src="launcher-lock.js?v=20261118a"></script>
 <script src="launcher-login.js?v=20261118a"></script>
-<script src="launcher-visitor.js?v=20261128a"></script>
+<script src="launcher-visitor.js?v=20261128b"></script>
 <!-- Admin only: the database server's state, always in view (sys-health-pill.js, sql/SYSTEM_HEALTH_MIGRATION.sql) -->
 <script src="sys-health-pill.js?v=20261127a" defer></script>
 <!-- The splash that prevents the login screen from flashing does not run on

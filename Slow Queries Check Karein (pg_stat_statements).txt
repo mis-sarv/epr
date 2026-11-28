@@ -1,0 +1,154 @@
+-- Sabse zyada total execution time lene wali top 15 queries
+SELECT
+  queryid,
+  calls,
+  ROUND(total_exec_time::numeric, 2) AS total_ms,
+  ROUND(mean_exec_time::numeric, 2) AS avg_ms,
+  ROUND(max_exec_time::numeric, 2) AS max_ms,
+  rows,
+  LEFT(query, 300) AS query_preview
+FROM pg_stat_statements
+WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+ORDER BY total_exec_time DESC
+LIMIT 15;
+
+
+result:
+
+[
+  {
+    "queryid": "1725200589023118469",
+    "calls": 23,
+    "total_ms": "450049.90",
+    "avg_ms": "19567.39",
+    "max_ms": "63258.89",
+    "rows": 23,
+    "query_preview": "select public.solar_sync_auto_()"
+  },
+  {
+    "queryid": "-5276299889630405941",
+    "calls": 36827,
+    "total_ms": "283432.91",
+    "avg_ms": "7.70",
+    "max_ms": "3641.38",
+    "rows": 36827,
+    "query_preview": "SELECT wal->>$5 as type,\n       wal->>$6 as schema,\n       wal->>$7 as table,\n       COALESCE(wal->>$8, $9) as columns,\n       COALESCE(wal->>$10, $11) as record,\n       COALESCE(wal->>$12, $13) as old_record,\n       wal->>$14 as commit_timestamp,\n       subscription_ids,\n       errors,\n       slot_"
+  },
+  {
+    "queryid": "7883489736236019113",
+    "calls": 212,
+    "total_ms": "113648.67",
+    "avg_ms": "536.08",
+    "max_ms": "1890.72",
+    "rows": 212,
+    "query_preview": "select public.fms_auto_sync_()"
+  },
+  {
+    "queryid": "-8601727541031588424",
+    "calls": 31,
+    "total_ms": "110813.96",
+    "avg_ms": "3574.64",
+    "max_ms": "7488.16",
+    "rows": 31,
+    "query_preview": "WITH pgrst_source AS ( SELECT \"public\".\"v_purchase_tracking\".* FROM \"public\".\"v_purchase_tracking\"   LIMIT $1 OFFSET $2 )  SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, (SELECT coalesce(string_agg(a.k, $4), $5)  FROM (    SELECT json_object_keys(r)::text as k  "
+  },
+  {
+    "queryid": "-553332076803934721",
+    "calls": 987,
+    "total_ms": "106850.70",
+    "avg_ms": "108.26",
+    "max_ms": "1922.38",
+    "rows": 987,
+    "query_preview": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_token\", \"p_from\", \"p_to\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_token\" text, \"p_from\" date, \"p_to\" date) LIMIT $4) pgrst_body , LATERAL (SELECT \"public\".\"tm_load\"(\"p_tok"
+  },
+  {
+    "queryid": "-3468542992973240912",
+    "calls": 14720,
+    "total_ms": "102344.57",
+    "avg_ms": "6.95",
+    "max_ms": "2939.92",
+    "rows": 14720,
+    "query_preview": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_token\", \"p_tab\", \"p_page\", \"p_title\", \"p_visible\", \"p_device\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_token\" text, \"p_tab\" text, \"p_page\" text, \"p_title\" text, \"p_visible"
+  },
+  {
+    "queryid": "8808588056004808653",
+    "calls": 702,
+    "total_ms": "100595.51",
+    "avg_ms": "143.30",
+    "max_ms": "2806.47",
+    "rows": 702,
+    "query_preview": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_token\", \"p_scope\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_token\" text, \"p_scope\" text) LIMIT $4) pgrst_body , LATERAL (SELECT \"public\".\"ul_list\"(\"p_token\" := pgrst_body.\""
+  },
+  {
+    "queryid": "7192734458302726603",
+    "calls": 22,
+    "total_ms": "89062.54",
+    "avg_ms": "4048.30",
+    "max_ms": "6695.23",
+    "rows": 22,
+    "query_preview": "select public.emission_sync_auto_()"
+  },
+  {
+    "queryid": "-6481481296393588067",
+    "calls": 1058,
+    "total_ms": "68300.95",
+    "avg_ms": "64.56",
+    "max_ms": "1586.73",
+    "rows": 1058,
+    "query_preview": "select public.sarv_photo_move_($1)"
+  },
+  {
+    "queryid": "6617248295005491777",
+    "calls": 212,
+    "total_ms": "65328.66",
+    "avg_ms": "308.15",
+    "max_ms": "954.55",
+    "rows": 212,
+    "query_preview": "select public.cmp_ir_sync_()"
+  },
+  {
+    "queryid": "-6245018140413543831",
+    "calls": 2435,
+    "total_ms": "60073.24",
+    "avg_ms": "24.67",
+    "max_ms": "2431.02",
+    "rows": 2435,
+    "query_preview": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_token\", \"p_slip\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_token\" text, \"p_slip\" text) LIMIT $4) pgrst_body , LATERAL (SELECT \"public\".\"gate_dk_loaded\"(\"p_token\" := pgrst_b"
+  },
+  {
+    "queryid": "5629072740709883084",
+    "calls": 141,
+    "total_ms": "56778.60",
+    "avg_ms": "402.69",
+    "max_ms": "2875.35",
+    "rows": 141,
+    "query_preview": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT \"public\".\"sarv_pr_light\"() pgrst_scalar) pgrst_call) SELECT $3::bigint AS total_result_set, pg_catalog.count(_postgrest_t) AS page_total, coalesce(json_agg(_postgrest_t.pgrst_scalar), $4) AS body, nullif(current_setting($5, $6), $7) A"
+  },
+  {
+    "queryid": "2072314546011273328",
+    "calls": 127,
+    "total_ms": "52754.71",
+    "avg_ms": "415.39",
+    "max_ms": "2399.44",
+    "rows": 127,
+    "query_preview": "WITH pgrst_source AS (SELECT pgrst_call.pgrst_scalar FROM (SELECT $1 AS json_data) pgrst_payload, LATERAL (SELECT \"p_token\" FROM json_to_record(pgrst_payload.json_data) AS _(\"p_token\" text) LIMIT $4) pgrst_body , LATERAL (SELECT \"public\".\"gate_masters\"(\"p_token\" := pgrst_body.\"p_token\") pgrst_scalar"
+  },
+  {
+    "queryid": "-4141295214096496820",
+    "calls": 291,
+    "total_ms": "48862.53",
+    "avg_ms": "167.91",
+    "max_ms": "6675.90",
+    "rows": 291,
+    "query_preview": "WITH pgrst_source AS ( SELECT \"public\".\"cmp_machine_complaints\".*, COALESCE( \"cmp_machine_complaints_photo_count_1\".\"cmp_machine_complaints_photo_count_1\", $5) AS \"photo_count\" FROM \"public\".\"cmp_machine_complaints\" LEFT JOIN LATERAL ( SELECT json_agg(\"cmp_machine_complaints_photo_count_1\")::jsonb A"
+  },
+  {
+    "queryid": "-5762779145433153912",
+    "calls": 515,
+    "total_ms": "44085.79",
+    "avg_ms": "85.60",
+    "max_ms": "306.12",
+    "rows": 515,
+    "query_preview": "select public.sys_health_collect_() first_run"
+  }
+]

@@ -1,0 +1,121 @@
+-- Sabse bade tables aur unke sequential scans dekhein
+SELECT
+  relname AS table_name,
+  n_live_tup AS estimated_rows,
+  seq_scan,
+  idx_scan,
+  pg_size_pretty(pg_total_relation_size(relid)) AS total_size
+FROM pg_stat_user_tables
+ORDER BY pg_total_relation_size(relid) DESC
+LIMIT 15;
+
+
+result:
+
+[
+  {
+    "table_name": "inward_unload_photos",
+    "estimated_rows": 16,
+    "seq_scan": 0,
+    "idx_scan": 43,
+    "total_size": "199 MB"
+  },
+  {
+    "table_name": "issue_approval_photos",
+    "estimated_rows": 7,
+    "seq_scan": 0,
+    "idx_scan": 29,
+    "total_size": "89 MB"
+  },
+  {
+    "table_name": "cmp_complaint_photos",
+    "estimated_rows": 6,
+    "seq_scan": 0,
+    "idx_scan": 14238,
+    "total_size": "41 MB"
+  },
+  {
+    "table_name": "objects",
+    "estimated_rows": 309,
+    "seq_scan": 0,
+    "idx_scan": 6749,
+    "total_size": "28 MB"
+  },
+  {
+    "table_name": "purchase_requirements",
+    "estimated_rows": 3,
+    "seq_scan": 25334,
+    "idx_scan": 5996,
+    "total_size": "26 MB"
+  },
+  {
+    "table_name": "gate_inward_unload_photos",
+    "estimated_rows": 20,
+    "seq_scan": 1,
+    "idx_scan": 111,
+    "total_size": "20 MB"
+  },
+  {
+    "table_name": "tm_task_proofs",
+    "estimated_rows": 168,
+    "seq_scan": 1059,
+    "idx_scan": 609,
+    "total_size": "19 MB"
+  },
+  {
+    "table_name": "purchase_orders",
+    "estimated_rows": 0,
+    "seq_scan": 18397,
+    "idx_scan": 6169,
+    "total_size": "17 MB"
+  },
+  {
+    "table_name": "gate_entry_photos",
+    "estimated_rows": 32,
+    "seq_scan": 0,
+    "idx_scan": 515,
+    "total_size": "16 MB"
+  },
+  {
+    "table_name": "audit_log",
+    "estimated_rows": 316,
+    "seq_scan": 0,
+    "idx_scan": 0,
+    "total_size": "13 MB"
+  },
+  {
+    "table_name": "emission_readings",
+    "estimated_rows": 2141,
+    "seq_scan": 0,
+    "idx_scan": 35456,
+    "total_size": "12 MB"
+  },
+  {
+    "table_name": "catalog_templates",
+    "estimated_rows": 0,
+    "seq_scan": 0,
+    "idx_scan": 0,
+    "total_size": "10 MB"
+  },
+  {
+    "table_name": "cmp_maint_info",
+    "estimated_rows": 0,
+    "seq_scan": 322,
+    "idx_scan": 23,
+    "total_size": "9976 kB"
+  },
+  {
+    "table_name": "cmp_machine_photos",
+    "estimated_rows": 0,
+    "seq_scan": 0,
+    "idx_scan": 0,
+    "total_size": "8488 kB"
+  },
+  {
+    "table_name": "mr_receipt_photos",
+    "estimated_rows": 1,
+    "seq_scan": 0,
+    "idx_scan": 0,
+    "total_size": "7360 kB"
+  }
+]

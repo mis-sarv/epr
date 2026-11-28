@@ -633,3 +633,230 @@
     clear: cacheClear
   };
 })();
+
+/* ═══ APP SWITCH (2026-11-28) ═══
+   ERP › Admin Panel › App Switch turns a whole app OFF / ON (app_settings 'app_off' = {KEY: {off, at, by, reason,
+   jobs}}, written by app_switch_set in sql/APP_SWITCH_MIGRATION.sql with the Admin PIN; that RPC also pauses the
+   app's server jobs and takes it out of the login app list). While an app is OFF, its page here:
+     - sends NOTHING to this Supabase project: every fetch (tables, RPCs, storage, Edge Functions) is answered on the
+       device with 503 {code:'APP_OFF'}, so its timers, lists and live re-reads cost the database nothing; a Realtime
+       socket is refused (and one already open is closed);
+     - shows a full-screen "switched off" card over the page (Back to Apps; inside an ERP iframe just the card);
+     - comes back by itself when the Admin switches it ON (the page is reloaded once).
+   An entry with  rpc  also stops those RPCs on EVERY page (Live Assist's la_* presence runs from every app page).
+   The list is read at once when a page opens (tiny request, kept in localStorage sarv_app_off_v1 so the decision
+   is made before the page's first request) and again every 60 s while the page is on screen.
+   Installed LAST in this file, so it sees each request before every other wrapper (the APK cache too).
+   APPS = the one registry: store-core.js (Admin Panel list) and launcher.html (tiles) read it via window.sarvAppSwitch.
+   A new app page = one entry here (its launcher key, else an APP_ key of its own). launcher.html / index.html are
+   never switched off (they host the switch). */
+(function () {
+  'use strict';
+  if (window.sarvAppSwitch) return;
+  var HOST = 'jdlzgjgxxjkjejkhvdij.supabase.co', K = 'sarv_app_off_v1', POLL = 60000;
+  var ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpkbHpnamd4eGpramVqa2h2ZGlqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAwODUwMDcsImV4cCI6MjEwNTY2MTAwN30.ow4i6e78i-dGoJJh2-N4FX6EQE7f2FRQDgCMJHpxAWk';
+  // [key, label, page (file, lower case, + optional #hash), rpc names it owns on every page]
+  var APPS = [
+    ['HOME_APPROVAL_APP', 'Mobile Approvals (PR / PO)', 'mobile.html'],
+    ['HOME_COMPLAINT_APP', 'Complaints', 'complaint.html'],
+    ['HOME_PACKING', 'Packing & Dispatch', 'packing.html'],
+    ['HOME_ORDER_FORM', 'Order Form', 'order-form.html'],
+    ['HOME_SHEET_LINKS', 'Google Sheet Links', 'google sheet links.html'],
+    ['HOME_TASK_MANAGER', 'Task Manager', 'task_manager.html'],
+    ['HOME_MY_REQUESTS', 'Track My Store Request', 'my-requests.html'],
+    ['HOME_DISPATCH_REPORT', 'Dispatch Report', 'dispatch_report_interface.html'],
+    ['HOME_HR_PAYROLL', 'HR & Payroll', 'hr-payroll.html'],
+    ['HOME_UNLOADER', 'Unloader Supervisor', 'unloader.html'],
+    ['HOME_ISSUER', 'Issue Supervisor', 'issuer.html'],
+    ['HOME_ISSUE_BILL_CHECK', 'Issue Bill Check', 'bill-check.html#issue'],
+    ['HOME_BILL_CHECK', 'Bill Check', 'bill-check.html'],
+    ['HOME_YARN_UNLOADING', 'Yarn Unloading', 'yarn-unloading.html'],
+    ['HOME_GATE1', 'Gate-1 (Unit-1)', 'gate_1.html'],
+    ['HOME_GATE2', 'Gate-2 (Unit-2)', 'gate_2.html'],
+    ['HOME_CATALOG_MAKER', 'Catalog Maker', 'catalog_maker.html'],
+    ['HOME_EMISSION_LIVE', 'Stack Emission (Live)', 'emission-live.html'],
+    ['HOME_SOLAR_LIVE', 'Solar Plant (Live)', 'solar-live.html'],
+    ['HOME_AMAZON_BARCODE', 'Amazon Barcode', 'barcode.html'],
+    ['HOME_WASTE_SALE', 'Waste Sale Entry', 'wasteentry.html'],
+    ['HOME_FMS_TRACKING', 'FMS Tracking', 'fms-tracking.html'],
+    ['HOME_PRICE_LIST', 'Price List', 'price_list_generator.html'],
+    ['HOME_SOP_MASTER', 'SOP Master', 'sop.html#master'],
+    ['APP_MY_SOPS', 'My SOPs', 'sop.html'],
+    ['APP_NOTEPAD', 'My Notepad', 'notepad.html'],
+    ['APP_LEAVE', 'Leave Approval', 'ios_leave_approval.html'],
+    ['APP_LIVE_ASSIST', 'Live Assist (and its presence on every page)', 'live-assist.html', /^la_/],
+    ['APP_FMS', 'FMS Builder / View / Task Tracker', 'fms.html'],
+    ['APP_LOT_CARD', 'Lot Card Manager', 'lot-card-manager.html'],
+    ['APP_PRINTING_LOT', 'Printing Lot Card', 'printing-lot.html'],
+    ['APP_TRIMS', 'Trims & Packing Material', 'trims-manager.html']
+  ].map(function (a) { var p = a[2].split('#'); return { key: a[0], label: a[1], page: a[2], file: p[0], hash: p[1] || '', rpc: a[3] || null }; });
+
+  var cfg = {}, at = 0;
+  try { var c0 = JSON.parse(localStorage.getItem(K) || 'null'); if (c0 && typeof c0.cfg === 'object' && c0.cfg) { cfg = c0.cfg; at = +c0.at || 0; } } catch (e) {}
+  var offOf = function (k) { var v = cfg && cfg[k]; return v && v.off ? v : null; };
+
+  // which registered app a URL / this page is: a #hash entry first (bill-check.html#issue before bill-check.html)
+  function appOf(href) {
+    var u; try { u = new URL(href, location.href); } catch (e) { return null; }
+    var f = ''; try { f = decodeURIComponent(u.pathname.split('/').pop() || '').toLowerCase(); } catch (e) { f = String(u.pathname.split('/').pop() || '').toLowerCase(); }
+    var h = String(u.hash || '').replace(/^#/, '').toLowerCase(), best = null;
+    APPS.forEach(function (a) {
+      if (a.file !== f) return;
+      if (a.hash) { if (h.indexOf(a.hash) === 0) best = a; }
+      else if (!best) best = a;
+    });
+    return best;
+  }
+  var PAGE = appOf(location.href);
+  window.addEventListener('hashchange', function () { var p = appOf(location.href); if (p !== PAGE) { PAGE = p; apply(); } });
+
+  // null = let it go; else the app whose switch stops it
+  function stopper(url) {
+    url = String(url || '');
+    if (url.indexOf(HOST) < 0) return null;
+    if (url.indexOf('/rest/v1/app_settings') >= 0 && url.indexOf('app_off') >= 0) return null;   // the switch's own read
+    if (PAGE && offOf(PAGE.key)) return PAGE;
+    var m = /\/rest\/v1\/rpc\/([A-Za-z0-9_]+)/.exec(url);
+    if (m) for (var i = 0; i < APPS.length; i++) if (APPS[i].rpc && APPS[i].rpc.test(m[1]) && offOf(APPS[i].key)) return APPS[i];
+    return null;
+  }
+  function refused(a) {
+    var msg = a.label + ' is switched off by the Admin (ERP › Admin Panel › App Switch).';
+    return new Response(JSON.stringify({ code: 'APP_OFF', message: msg, hint: msg, details: a.key, success: false, error: 'APP_OFF' }),
+      { status: 503, statusText: 'App switched off', headers: { 'Content-Type': 'application/json', 'x-sarv-app-off': a.key } });
+  }
+
+  // ── fetch ──
+  var inner = window.fetch ? window.fetch.bind(window) : null;
+  if (inner) {
+    window.fetch = function (input, init) {
+      try {
+        var a = stopper(typeof input === 'string' ? input : (input && input.url) || String(input));
+        if (a) return Promise.resolve(refused(a));
+      } catch (e) {}
+      return inner(input, init);
+    };
+  }
+  // ── XMLHttpRequest (a few libraries still use it) ──
+  if (window.XMLHttpRequest) {
+    var xo = XMLHttpRequest.prototype.open, xs = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (m, u) { this.__sarvUrl = u; return xo.apply(this, arguments); };
+    XMLHttpRequest.prototype.send = function () {
+      if (stopper(this.__sarvUrl)) { var x = this; setTimeout(function () { try { x.abort(); } catch (e) {} }, 0); return; }
+      return xs.apply(this, arguments);
+    };
+  }
+  // ── Realtime: no new socket while off, the open ones closed when it goes off ──
+  var OWS = window.WebSocket, socks = [];
+  if (OWS) {
+    var W = function (url, prot) {
+      if (String(url || '').indexOf(HOST) >= 0 && PAGE && offOf(PAGE.key)) {
+        var fake = { url: String(url), readyState: 3, protocol: '', extensions: '', bufferedAmount: 0, binaryType: 'blob',
+          send: function () {}, close: function () {}, addEventListener: function () {}, removeEventListener: function () {}, dispatchEvent: function () { return false; },
+          onopen: null, onclose: null, onerror: null, onmessage: null, CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 };
+        setTimeout(function () { try { if (fake.onclose) fake.onclose({ code: 1000, reason: 'APP_OFF', wasClean: true }); } catch (e) {} }, 0);
+        return fake;
+      }
+      var s = prot === undefined ? new OWS(url) : new OWS(url, prot);
+      if (String(url).indexOf(HOST) >= 0) { socks.push(s); if (socks.length > 20) socks = socks.filter(function (x) { return x.readyState < 2; }); }
+      return s;
+    };
+    W.prototype = OWS.prototype; W.CONNECTING = 0; W.OPEN = 1; W.CLOSING = 2; W.CLOSED = 3;
+    window.WebSocket = W;
+  }
+
+  // ── the card over a switched-off page ──
+  var card = null, shown = '';
+  var escH = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]; }); };
+  function when(t) { var d = new Date(t); if (isNaN(d)) return ''; try { return d.toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (e) { return d.toString(); } }
+  function paintCard() {
+    var a = PAGE, v = a && offOf(a.key);
+    if (!v) { if (card) { card.remove(); card = null; } return; }
+    if (!document.body) { document.addEventListener('DOMContentLoaded', paintCard, { once: true }); return; }
+    if (card && !card.isConnected) { card = null; shown = ''; }   // the page rebuilt its body: put it back
+    var sig = a.key + '|' + (v.at || '') + '|' + (v.reason || '');
+    if (card && shown === sig) return;
+    shown = sig;
+    if (!card) {
+      card = document.createElement('div');
+      card.id = 'sarvAppOff'; card.setAttribute('data-no-caps', '1'); card.setAttribute('role', 'alertdialog'); card.setAttribute('aria-modal', 'true');
+      card.style.cssText = 'position:fixed;inset:0;z-index:2147483600;display:flex;align-items:center;justify-content:center;padding:16px;'
+        + 'background:rgba(15,23,42,.72);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);font:14px/1.45 -apple-system,"Segoe UI",system-ui,sans-serif;';
+      // nothing under it can be clicked or typed into
+      ['click', 'keydown', 'touchstart', 'submit'].forEach(function (ev) { card.addEventListener(ev, function (e) { if (!e.target.closest('[data-sarv-ok]')) e.stopPropagation(); }, true); });
+      document.body.appendChild(card);
+      try { if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur(); } catch (e) {}   // no typing into a box under it
+    }
+    var top = window.top === window;
+    card.innerHTML = '<div style="max-width:420px;width:100%;background:#fff;color:#0f172a;border-radius:16px;padding:22px 20px;box-shadow:0 20px 60px rgba(0,0,0,.35);text-align:center;">'
+      + '<div style="width:52px;height:52px;margin:0 auto 10px;border-radius:50%;background:#fee2e2;color:#b91c1c;display:flex;align-items:center;justify-content:center;">'
+      + '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v8"/><path d="M6.3 6.3a8 8 0 1 0 11.4 0"/></svg></div>'
+      + '<div style="font-weight:800;font-size:18px;margin-bottom:4px;">' + escH(a.label) + ' is switched off</div>'
+      + '<div style="color:#475569;">The Admin has switched this app off for now. Nothing is read from or saved to the server while it is off.</div>'
+      + (v.reason ? '<div style="margin-top:10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:8px 10px;color:#334155;"><b>Reason:</b> ' + escH(v.reason) + '</div>' : '')
+      + '<div style="margin-top:8px;font-size:12px;color:#94a3b8;">' + escH([v.by ? 'By ' + v.by : '', when(v.at)].filter(Boolean).join(' · ')) + '</div>'
+      + '<div style="margin-top:6px;font-size:12px;color:#94a3b8;">It opens again by itself as soon as it is switched on.</div>'
+      + (top ? '<a data-sarv-ok="1" href="launcher.html" style="display:inline-block;margin-top:14px;background:#0a84ff;color:#fff;font-weight:700;text-decoration:none;padding:10px 18px;border-radius:10px;">Back to Apps</a>' : '')
+      + '</div>';
+  }
+  function closeSocks() { socks.forEach(function (s) { try { if (s.readyState < 2) s.close(1000, 'APP_OFF'); } catch (e) {} }); socks = []; }
+
+  var listeners = [], wasOff = !!(PAGE && offOf(PAGE.key));
+  function apply() {
+    var off = !!(PAGE && offOf(PAGE.key));
+    if (off) closeSocks();
+    paintCard();
+    // switched back ON while this page was stopped: start it cleanly (its timers gave up meanwhile)
+    if (wasOff && !off && PAGE) { wasOff = false; try { location.reload(); } catch (e) {} return; }
+    wasOff = off;
+    listeners.forEach(function (fn) { try { fn(cfg); } catch (e) {} });
+  }
+
+  var busy = false;
+  function refresh() {
+    if (busy || !inner) return Promise.resolve(cfg);
+    busy = true;
+    return inner('https://' + HOST + '/rest/v1/app_settings?key=eq.app_off&select=value', { headers: { apikey: ANON, Authorization: 'Bearer ' + ANON } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (rows) {
+        if (!Array.isArray(rows)) return cfg;               // an error answer never changes the switch
+        var v = rows[0] && rows[0].value;
+        var next = (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
+        var changed = JSON.stringify(next) !== JSON.stringify(cfg);
+        cfg = next; at = Date.now();
+        try { localStorage.setItem(K, JSON.stringify({ at: at, cfg: cfg })); } catch (e) {}
+        if (changed) apply();
+        return cfg;
+      })
+      .catch(function () { return cfg; })
+      .then(function (x) { busy = false; return x; });
+  }
+  // another tab of this browser switched it (the Admin's own ERP tab): follow at once
+  window.addEventListener('storage', function (e) {
+    if (e.key !== K) return;
+    try { var c = JSON.parse(e.newValue || 'null'); if (c && typeof c.cfg === 'object') { cfg = c.cfg || {}; at = +c.at || 0; apply(); } } catch (x) {}
+  });
+
+  window.sarvAppSwitch = {
+    apps: APPS.map(function (a) { return { key: a.key, label: a.label, page: a.page }; }),
+    page: function () { return PAGE ? PAGE.key : ''; },
+    appOf: function (href) { var a = appOf(href); return a ? a.key : ''; },
+    isOff: function (k) { return !!offOf(k); },
+    entry: function (k) { return offOf(k); },
+    cfg: function () { return cfg; },
+    // the Admin Panel sets it right after a save, so this browser follows without waiting for the next read
+    set: function (next) {
+      cfg = (next && typeof next === 'object') ? next : {}; at = Date.now();
+      try { localStorage.setItem(K, JSON.stringify({ at: at, cfg: cfg })); } catch (e) {}
+      apply();
+    },
+    refresh: refresh,
+    onChange: function (fn) { if (typeof fn === 'function') listeners.push(fn); }
+  };
+
+  if (wasOff) paintCard();
+  refresh();
+  setInterval(function () { if (document.visibilityState === 'visible') refresh(); }, POLL);
+  setInterval(function () { if (PAGE && offOf(PAGE.key)) paintCard(); }, 3000);
+  document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible' && Date.now() - at > 15000) refresh(); });
+})();

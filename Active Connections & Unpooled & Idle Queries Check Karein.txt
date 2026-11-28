@@ -1,0 +1,42 @@
+-- Active aur idle connections ki summary
+SELECT
+  state,
+  backend_type,
+  COUNT(*) AS connection_count
+FROM pg_stat_activity
+GROUP BY state, backend_type
+ORDER BY connection_count DESC;
+
+-- Abhi chal rahi queries aur unki duration dekhein
+SELECT
+  pid,
+  usename,
+  application_name,
+  client_addr,
+  state,
+  wait_event_type,
+  wait_event,
+  NOW() - query_start AS duration,
+  query
+FROM pg_stat_activity
+WHERE datname = current_database()
+  AND pid <> pg_backend_pid()
+  AND state <> 'idle'
+ORDER BY duration DESC;
+
+
+result :
+
+[
+  {
+    "pid": 83556,
+    "usename": "supabase_admin",
+    "application_name": "realtime_replication_connection",
+    "client_addr": "2406:da18:19fc:1d00:e04b:4b01:2ec4:c1e0",
+    "state": "active",
+    "wait_event_type": "Client",
+    "wait_event": "WalSenderWaitForWal",
+    "duration": "02:46:12.55941",
+    "query": "START_REPLICATION SLOT supabase_realtime_messages_replication_slot_2_174_2_a640b93 LOGICAL 0/0 (proto_version '2', publication_names 'supabase_realtime_messages_publication', binary 'true')"
+  }
+]

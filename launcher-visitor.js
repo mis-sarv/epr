@@ -157,8 +157,11 @@
       ? esc(ul.doneBy || ul.to || '-') + ' · ' + esc(ul.photoCount || 0) + ' photo(s) uploaded · ' + esc(when(ul.doneAt))
       : esc(ul.to || '-') + (ul.toEmp ? ' (' + esc(ul.toEmp) + ')' : '') + ' · photos not uploaded yet') + chg;
   }
+  // APP SWITCH (offline-sync.js): both gates switched off by the Admin = no tile and nothing asked
+  function gatesOff() { var S = window.sarvAppSwitch; return !!(S && S.isOff('HOME_GATE1') && S.isOff('HOME_GATE2')); }
   async function refresh() {
     if (busy || NOMIG || !loggedIn()) return;
+    if (gatesOff()) { INBOX = null; paint(); return; }
     busy = true; spin(true);
     var r = await rpc('gate_vis_inbox');
     var ro = EO_NOMIG || !r.ok ? null : await rpc('gate_out_inbox');
@@ -183,7 +186,7 @@
   function paint(fresh) {
     var grid = $('appGrid'), old = $('visTile');
     if (old) old.remove();
-    if (!grid || !INBOX || !loggedIn()) return;
+    if (!grid || !INBOX || !loggedIn() || gatesOff()) return;
     var mine = (INBOX.pending || []).length, oth = (INBOX.others || []).length, rec = (INBOX.recent || []).length;
     if (!mine && !oth && !rec) return;
     var el = document.createElement('a');

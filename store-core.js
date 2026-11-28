@@ -8442,6 +8442,7 @@ function sarvShowApPane_(p){
   if(p==='pdf')sarvRenderPdfSettings_();   // PDF Settings: built on opening, with a fresh preview
   if(p==='uploads')sarvUpLoad_();          // Uploads: the list is read fresh on every opening
   if(p==='health')sarvHlLoad_();           // System Health: fresh on every opening, then every minute while open
+  if(p==='apps')sarvAsLoad_();             // App Switch: fresh on every opening
 }
 function sarvRoleLabelOf_(code){const r=SARV_PERM_ROLES.find(x=>x.code===code);return r?r.label:(SARV_ROLE_LABEL[code]||code);}
 function sarvRenderUsers_(){
@@ -36373,3 +36374,144 @@ window.sarvOpenSystemHealth=function(){
   if(typeof switchMasterSubTab==='function')switchMasterSubTab('settingsSub');
   setTimeout(()=>{sarvShowApPane_('health');byId('sarvAdminPanel')?.scrollIntoView({block:'start',behavior:'smooth'});},250);
 };
+
+/* ═══════════════════════════════════════════════════════════════════════
+   APP SWITCH   (2026-11-28; sql/APP_SWITCH_MIGRATION.sql, offline-sync.js › APP SWITCH)
+   Admin Panel › App Switch, Admin only: a whole app OFF / ON for EVERYONE (the Admin too).
+     OFF = app_switch_set(..., p_off true, reason) with the Admin PIN:
+       - every page of that app stops sending anything to the database (offline-sync.js answers its requests on the
+         device) and shows a "switched off" card; pages already open follow within a minute;
+       - its scheduled jobs (app_switch_jobs_: Solar / Emission sync, complaint syncs, FMS, Waste follow-up, Dispatch
+         target scores) are paused if asked, and put back as they were on ON;
+       - it leaves the login app list (erp_apps_filter_), so the server's own app check refuses it too.
+     ON = the reverse; the open pages reload by themselves.
+   The list of apps is offline-sync.js's registry (window.sarvAppSwitch.apps): a new app page = one entry there.
+   ERP itself (index.html) and the launcher are never switched off: they host the switch. Without the migration the
+   switch is saved with admin_save_setting (pages only, no jobs) and the pane says so.
+   ═══════════════════════════════════════════════════════════════════════ */
+let AS={data:null,busy:false,q:'',noMig:false};
+function sarvAsCss_(){
+  if(byId('asCss'))return;
+  const s=document.createElement('style');s.id='asCss';
+  s.textContent='#ap_asPane .as-top{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px;}'
+   +'#ap_asPane .as-state{font-weight:800;font-size:13px;padding:5px 12px;border-radius:999px;background:#dcfce7;color:#166534;}'
+   +'#ap_asPane .as-state.off{background:#fee2e2;color:#991b1b;}'
+   +'#ap_asPane table{width:100%;border-collapse:collapse;font-size:12px;background:#fff;}'
+   +'#ap_asPane th{background:#f1f5f9;text-align:left;padding:6px 8px;font-size:11px;color:#334155;position:sticky;top:0;}'
+   +'#ap_asPane td{padding:7px 8px;border-top:1px solid #f1f5f9;vertical-align:middle;}'
+   +'#ap_asPane tr.off td{background:#fef2f2;}'
+   +'#ap_asPane .as-on{color:#15803d;font-weight:800;}#ap_asPane .as-off{color:#b91c1c;font-weight:800;}'
+   +'#ap_asPane .as-job{display:inline-block;margin:1px 4px 1px 0;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:700;background:#f1f5f9;color:#475569;}'
+   +'#ap_asPane .as-job.run{background:#dcfce7;color:#166534;}#ap_asPane .as-job.stop{background:#fee2e2;color:#991b1b;}'
+   +'#ap_asPane .as-sub{font-size:10.5px;color:#64748b;margin-top:2px;}'
+   +'#ap_asPane .as-btn-off{background:#dc2626;color:#fff;border:0;}'
+   +'#ap_asPane .as-note{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px;}';
+  document.head.appendChild(s);
+}
+async function sarvAsLoad_(){
+  const box=byId('ap_asPane');if(!box)return;
+  sarvAsCss_();
+  if(!window.sarvAppSwitch){box.innerHTML='<div class="ap-warn" style="display:block;">offline-sync.js (APP SWITCH) is not loaded on this page: reload the ERP.</div>';return;}
+  if(AS.busy)return;AS.busy=true;
+  if(!AS.data)box.innerHTML='<div class="ap-empty">Loading…</div>';
+  try{
+    const r=await SB.rpc('app_switch_state',{p_token:srsToken_()});
+    if(r.error){
+      if(r.error.code==='PGRST202'||r.error.code==='42883'||/app_switch_state|schema cache/i.test(r.error.message||'')){
+        AS.noMig=true;
+        const cur=await SB.from('app_settings').select('value').eq('key','app_off').maybeSingle();
+        AS.data={apps:(cur.data&&cur.data.value&&typeof cur.data.value==='object')?cur.data.value:{},jobs:[],log:[]};
+      }else throw r.error;
+    }else{
+      const d=r.data||{};
+      if(d.success===false){box.innerHTML='<div class="ap-warn" style="display:block;">'+escText(d.error==='NOT_ADMIN'?'Only an Admin login can use the App Switch.':'Not read: '+(d.error||''))+'</div>';return;}
+      AS.noMig=false;AS.data={apps:d.apps||{},jobs:d.jobs||[],log:d.log||[]};
+    }
+    window.sarvAppSwitch.set(AS.data.apps);   // this browser follows at once
+    sarvAsRender_();
+  }catch(e){box.innerHTML='<div class="ap-warn" style="display:block;">Could not read the App Switch: '+escText(e.message||e)+'</div>';}
+  finally{AS.busy=false;}
+}
+const asWhen_=t=>{const d=new Date(t);return isNaN(d)?'':d.toLocaleString('en-IN',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});};
+function sarvAsJobs_(key){return ((AS.data&&AS.data.jobs)||[]).filter(j=>j.app===key&&j.exists);}
+function sarvAsRender_(){
+  const box=byId('ap_asPane'),d=AS.data;if(!box||!d)return;
+  const apps=window.sarvAppSwitch.apps, off=apps.filter(a=>d.apps[a.key]&&d.apps[a.key].off);
+  const list=apps.filter(a=>!AS.q||sarvSearchMatch([a.label,a.key,a.page],AS.q));
+  let h='<div class="as-top"><span class="as-state'+(off.length?' off':'')+'">'+(off.length?'● '+off.length+' app'+(off.length>1?'s':'')+' switched off':'● Every app is on')+'</span>'
+    +'<input type="text" class="form-control" id="as_q" placeholder="Search app…" value="'+escText(AS.q)+'" style="width:220px;height:30px;font-size:12px;">'
+    +'<span style="flex:1;"></span><button type="button" class="btn btn-neutral" id="as_reload" style="height:30px;font-size:11px;">↻ Refresh</button></div>'
+    +'<div class="as-note"><b>Switch off</b> = for every user (the Admin too) the app\'s pages send nothing to the database and show a "switched off" card; pages already open stop within a minute. '
+    +'Its scheduled server jobs can be paused with it and are put back as they were when it is switched on again. ERP and the launcher are never switched off.</div>'
+    +(AS.noMig?'<div class="ap-warn" style="display:block;margin-bottom:10px;">The server has no <code>sql/APP_SWITCH_MIGRATION.sql</code> yet: a switch stops the PAGES only (no server jobs, the login list unchanged). Run it in the Supabase SQL Editor.</div>':'')
+    +'<div class="table-container" style="max-height:60vh;overflow:auto;"><table><thead><tr><th>App</th><th>Status</th><th>Server jobs</th><th style="width:140px;"></th></tr></thead><tbody>'
+    +list.map(a=>{
+      const e=d.apps[a.key], isOff=!!(e&&e.off), jobs=sarvAsJobs_(a.key);
+      return '<tr class="'+(isOff?'off':'')+'"><td><b>'+escText(a.label)+'</b><div class="as-sub">'+escText(a.page)+' · '+escText(a.key)+'</div></td>'
+        +'<td>'+(isOff?'<span class="as-off">Off</span><div class="as-sub">'+escText([e.by?'by '+e.by:'',asWhen_(e.at)].filter(Boolean).join(' · '))+'</div>'
+          +(e.reason?'<div class="as-sub">Reason: '+escText(e.reason)+'</div>':''):'<span class="as-on">On</span>')+'</td>'
+        +'<td>'+(jobs.length?jobs.map(j=>'<span class="as-job '+(j.active?'run':'stop')+'" title="'+(j.active?'running':'paused')+'">'+escText(j.job)+'</span>').join(''):'<span class="as-sub">none</span>')+'</td>'
+        +'<td style="text-align:right;">'+(isOff
+          ?'<button type="button" class="btn btn-success" data-as-on="'+escText(a.key)+'" style="height:28px;font-size:11px;">Switch on</button>'
+          :'<button type="button" class="btn as-btn-off" data-as-off="'+escText(a.key)+'" style="height:28px;font-size:11px;">Switch off</button>')+'</td></tr>';
+    }).join('')+'</tbody></table></div>';
+  const log=d.log||[];
+  if(log.length)h+='<details style="margin-top:12px;"><summary style="cursor:pointer;font-weight:800;font-size:12px;">Last changes ('+log.length+')</summary>'
+    +'<table style="margin-top:6px;"><thead><tr><th>When</th><th>App</th><th>Change</th><th>By</th><th>Reason</th><th>Jobs</th></tr></thead><tbody>'
+    +log.map(l=>{const a=apps.find(x=>x.key===l.app);return '<tr><td>'+escText(asWhen_(l.at))+'</td><td>'+escText(a?a.label:l.app)+'</td><td>'+(l.off?'<span class="as-off">Off</span>':'<span class="as-on">On</span>')
+      +'</td><td>'+escText(l.by||'-')+'</td><td>'+escText(l.reason||'')+'</td><td>'+escText(Object.keys(l.jobs||{}).filter(k=>k!=='_error').join(', '))+'</td></tr>';}).join('')
+    +'</tbody></table></details>';
+  box.innerHTML=h;
+}
+async function sarvAsSet_(key,off){
+  const a=window.sarvAppSwitch.apps.find(x=>x.key===key);if(!a)return;
+  const jobs=sarvAsJobs_(key);
+  let reason='',withJobs=true;
+  if(off){
+    const ask=window.IosDialog?IosDialog.prompt('Switch off '+a.label+'\n\nReason (shown to the users on the app):','',{placeholder:'e.g. server load, not in use this week'})
+      :Promise.resolve(prompt('Reason for switching off '+a.label+':',''));
+    reason=String((await ask)||'').trim();
+    if(!reason)return showToast('A reason is needed to switch an app off','warn');
+    if(jobs.length&&!AS.noMig){
+      const ch=window.IosDialog?await IosDialog.choose('Also pause its server jobs?\n\n'+jobs.map(j=>j.job+(j.active?' (running)':' (already paused)')).join('\n'),
+        [{label:'App + its jobs',value:'all',bold:true},{label:'App only',value:'app'},{label:'Cancel',value:null,cancel:true}]):'all';
+      if(!ch)return;
+      withJobs=ch==='all';
+    }
+  }
+  const pin=await askSecret({title:'Confirm with Admin PIN',subtitle:(off?'Switch OFF ':'Switch ON ')+a.label,
+    recordInfo:off?'Reason: '+reason+(jobs.length&&withJobs&&!AS.noMig?' · jobs paused: '+jobs.map(j=>j.job).join(', '):''):'Its pages start again; jobs paused with it are resumed',
+    label:'Admin PIN',confirmText:off?'Switch off':'Switch on'});
+  if(pin==null)return;
+  try{
+    let apps;
+    if(!AS.noMig){
+      const r=await SB.rpc('app_switch_set',{p_token:srsToken_(),p_admin_pin:pin.trim(),p_app:key,p_off:!!off,p_reason:reason||null,p_jobs:withJobs});
+      if(r.error)throw r.error;
+      const d=r.data||{};
+      if(d.success===false)return showToast(escText({PIN_INVALID:'Incorrect Admin PIN',NOT_ADMIN:'Only an Admin can switch apps',REASON_REQUIRED:'A reason is needed',BAD_APP:'This app cannot be switched'}[d.error]||d.error),'error');
+      apps=d.apps||{};
+    }else{
+      // no migration: the switch only, read fresh so another Admin's change is kept
+      const cur=await SB.from('app_settings').select('value').eq('key','app_off').maybeSingle();
+      apps=Object.assign({},(cur.data&&cur.data.value&&typeof cur.data.value==='object')?cur.data.value:{});
+      if(off)apps[key]={off:true,at:new Date().toISOString(),by:(sarvCurrentUser&&(sarvCurrentUser.name||sarvCurrentUser.user_name))||'Admin',reason};else delete apps[key];
+      const r=await SB.rpc('admin_save_setting',{p_key:'app_off',p_value:apps,p_admin_pin:pin.trim()});
+      if(r.error||r.data===false)return showToast(r.error?'Not saved: '+escText(r.error.message):'Incorrect Admin PIN','error');
+    }
+    window.sarvAppSwitch.set(apps);
+    showToast(escText(a.label)+(off?' switched OFF for everyone':' switched ON again'));
+    sarvAsLoad_();
+  }catch(e){showToast('Not saved: '+escText(e.message||e),'error');}
+}
+document.addEventListener('click',e=>{
+  if(!e.target.closest||!e.target.closest('#ap_asPane'))return;
+  if(e.target.closest('#as_reload'))return sarvAsLoad_();
+  const o=e.target.closest('[data-as-off]');if(o)return sarvAsSet_(o.dataset.asOff,true);
+  const n=e.target.closest('[data-as-on]');if(n)return sarvAsSet_(n.dataset.asOn,false);
+});
+document.addEventListener('input',e=>{
+  if(!e.target||e.target.id!=='as_q')return;
+  AS.q=e.target.value;const p=e.target.selectionStart;sarvAsRender_();
+  const q=byId('as_q');if(q){q.focus();try{q.setSelectionRange(p,p);}catch(x){}}
+});

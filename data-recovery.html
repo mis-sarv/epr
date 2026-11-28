@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Data Recovery</title>
+<!--
+  DATA RECOVERY (2026-11-28, after the database was restored to the backup of 27-11 8:00 PM by mistake).
+  READ ONLY. Loads NO app script (no offline-sync.js, no login, no Supabase): opening it never refreshes any
+  device copy and never sends anything anywhere. It reads what the ERP and the apps keep ON THIS DEVICE for this
+  web address (same origin as the ERP):
+    IndexedDB  sarv_list_cache (ERP lists: Inward / Outward / PO / PR + lines …), gate1_idb / gate2_idb (Gate
+               registers), sarv_offline (APK copy of every read), sarvPdfOutbox (ERP PDFs not uploaded yet),
+               sarv_notepad, and any other database of this address (except the complaint app's compiled code)
+    localStorage every key except session tokens / PINs / passwords
+  and puts it in ONE file (recovery-<device>-<time>.json) to download / share and send to the Admin.
+  A database is opened only if it already exists (a new one is never made). Blobs (PDFs, photos) are kept as
+  data URLs. The "after" counts are only a guide: rows whose created / updated time is after the chosen time.
+-->
+<style>
+  :root{--bg:#f2f2f7;--card:#fff;--txt:#0f172a;--txt2:#475569;--line:#e2e8f0;--blue:#0a84ff;--red:#b91c1c;--green:#15803d;}
+  @media (prefers-color-scheme:dark){:root{--bg:#000;--card:#1c1c1e;--txt:#f5f5f7;--txt2:#a1a1aa;--line:#2c2c2e;--blue:#0a84ff;--red:#f87171;--green:#4ade80;}}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.45 -apple-system,"Segoe UI",system-ui,Roboto,sans-serif}
+  .wrap{max-width:760px;margin:0 auto;padding:18px 16px 40px}
+  h1{font-size:22px;margin:4px 0 6px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-top:12px}
+  .warn{border-color:#fca5a5;background:color-mix(in srgb,var(--card) 88%,#ef4444)}
+  .warn b{color:var(--red)}
+  label{display:block;font-size:13px;font-weight:700;margin:10px 0 4px;color:var(--txt2)}
+  input{width:100%;font:inherit;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--txt)}
+  .row{display:flex;gap:10px;flex-wrap:wrap}
+  .row>div{flex:1;min-width:200px}
+  button{font:inherit;font-weight:700;border:0;border-radius:10px;padding:12px 16px;cursor:pointer}
+  .pri{background:var(--blue);color:#fff}
+  .sec{background:var(--line);color:var(--txt)}
+  button:disabled{opacity:.5;cursor:default}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 6px;border-top:1px solid var(--line);vertical-align:top}
+  th{font-size:12px;color:var(--txt2);border-top:0}
+  td.n{text-align:right;white-space:nowrap}
+  .after{color:var(--green);font-weight:800}
+  .muted{color:var(--txt2);font-size:13px}
+  #status{margin-top:10px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Data Recovery</h1>
+  <div class="muted">This page only READS what the ERP and the apps saved on this device and puts it in one file. It sends nothing and changes nothing.</div>
+
+  <div class="card warn">
+    <b>Do this BEFORE opening the ERP or any app on this device.</b> Opening them now replaces the data saved on this device with the restored (older) data from the server.
+    Do not clear the browser data and do not uninstall the app.
+  </div>
+
+  <div class="card">
+    <div class="row">
+      <div><label for="dev">Device / person (goes in the file name)</label><input id="dev" placeholder="e.g. STORE-1 PC, GATE-2 PHONE, RAMESH" autocomplete="off"></div>
+      <div><label for="cut">Count rows changed after</label><input id="cut" type="datetime-local" value="2026-11-27T19:30"></div>
+    </div>
+    <div class="row" style="margin-top:14px;">
+      <button class="pri" id="scan">1. Read this device</button>
+      <button class="sec" id="dl" disabled>2. Download file</button>
+      <button class="sec" id="share" disabled style="display:none;">Share file</button>
+    </div>
+    <div id="status" class="muted"></div>
+  </div>
+
+  <div class="card" id="sumCard" style="display:none;">
+    <div style="font-weight:800;margin-bottom:6px;">Found on this device</div>
+    <table><thead><tr><th>Where</th><th>What</th><th class="n">Records</th><th class="n">After the time</th><th class="n">Size</th></tr></thead><tbody id="sum"></tbody></table>
+    <div class="muted" style="margin-top:8px;">Send the downloaded file to the Admin (WhatsApp / email / pen drive). It can hold business data: share it only with the Admin.</div>
+  </div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+const KNOWN = ['sarv_list_cache', 'gate2_idb', 'gate1_idb', 'sarv_offline', 'sarvPdfOutbox', 'sarv_notepad', 'sarv_notepad_local'];
+const SKIP_DB = /^sarv_cmp_cache$/;                                  // compiled code of complaint.html, no data
+const SECRET_KEY = /token|pin|passw|secret|session/i;
+const WHAT = { sarv_list_cache: 'ERP lists (Inward, Outward, PO, PR, lines, masters)', gate2_idb: 'Gate-2 register', gate1_idb: 'Gate-1 register',
+  sarv_offline: 'APK copy of the data it read', sarvPdfOutbox: 'ERP PDFs not uploaded yet', sarv_notepad: 'My Notepad', sarv_notepad_local: 'Notepad (standalone)' };
+let OUT = null, FILE = null;
+
+function status(t, bad){ const s = $('status'); s.textContent = t; s.style.color = bad ? 'var(--red)' : ''; }
+
+// Open a database ONLY if it exists: an upgrade means it did not, so that open is aborted (nothing is made)
+function openExisting(name){
+  return new Promise(res => {
+    let made = false, r;
+    try { r = indexedDB.open(name); } catch (e) { return res(null); }
+    r.onupgradeneeded = () => { made = true; try { r.transaction.abort(); } catch (e) {} };
+    r.onsuccess = () => { if (made) { try { r.result.close(); } catch (e) {} res(null); } else res(r.result); };
+    r.onerror = () => res(null);
+    r.onblocked = () => res(null);
+  });
+}
+function readStore(db, store){
+  return new Promise(res => {
+    try {
+      const tx = db.transaction(store, 'readonly'), st = tx.objectStore(store), out = [];
+      const c = st.openCursor();
+      c.onsuccess = () => { const cur = c.result; if (!cur) return res(out); out.push({ key: cur.key, value: cur.value }); cur.continue(); };
+      c.onerror = () => res(out);
+    } catch (e) { res([]); }
+  });
+}
+// Blobs / binary to data URLs so the file keeps PDFs and photos
+function blobUrl(b){ return new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res('[unreadable blob]'); fr.readAsDataURL(b); }); }
+async function plain(v, depth){
+  if (depth > 40 || v == null || typeof v !== 'object') return v;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof Blob !== 'undefined' && v instanceof Blob) return { __blob: true, type: v.type, size: v.size, dataUrl: await blobUrl(v) };
+  if (v instanceof ArrayBuffer) return { __bytes: true, dataUrl: await blobUrl(new Blob([v])) };
+  if (ArrayBuffer.isView(v)) return { __bytes: true, dataUrl: await blobUrl(new Blob([v])) };
+  if (Array.isArray(v)) { const a = []; for (const x of v) a.push(await plain(x, depth + 1)); return a; }
+  const o = {}; for (const k of Object.keys(v)) o[k] = await plain(v[k], depth + 1); return o;
+}
+// rows whose own created / updated time is after the cut (a guide only)
+const TIME_KEYS = ['created_at', 'updated_at', 'createdAt', 'updatedAt', 'requested_at', 'decided_at', 'inTime', 'outTime', 'at', 'date'];
+function countAfter(v, cut, depth){
+  if (depth > 6 || v == null || typeof v !== 'object') return 0;
+  if (Array.isArray(v)) {
+    let n = 0;
+    for (const x of v) {
+      if (x && typeof x === 'object' && !Array.isArray(x)) {
+        const t = TIME_KEYS.map(k => Date.parse(x[k])).filter(isFinite);
+        if (t.length) { if (Math.max.apply(null, t) > cut) n++; continue; }
+      }
+      n += countAfter(x, cut, depth + 1);
+    }
+    return n;
+  }
+  let n = 0; for (const k of Object.keys(v)) n += countAfter(v[k], cut, depth + 1); return n;
+}
+const size = s => s > 1048576 ? (s / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(s / 1024)) + ' KB';
+
+$('scan').addEventListener('click', async () => {
+  $('scan').disabled = true; $('dl').disabled = true; $('share').style.display = 'none';
+  status('Reading this device…');
+  const cut = Date.parse($('cut').value) || Date.parse('2026-11-27T19:30');
+  const out = { app: 'sarv-recovery', v: 1, at: new Date().toISOString(), origin: location.origin + location.pathname.replace(/[^/]*$/, ''),
+    device: $('dev').value.trim(), agent: navigator.userAgent, cut: new Date(cut).toISOString(), indexedDB: {}, localStorage: {} };
+  const rows = [];
+  try {
+    let names = KNOWN.slice();
+    if (indexedDB.databases) { try { (await indexedDB.databases()).forEach(d => { if (d && d.name && names.indexOf(d.name) < 0) names.push(d.name); }); } catch (e) {} }
+    for (const name of names) {
+      if (SKIP_DB.test(name)) continue;
+      const db = await openExisting(name); if (!db) continue;
+      out.indexedDB[name] = {};
+      for (const st of Array.from(db.objectStoreNames)) {
+        status('Reading ' + name + ' › ' + st + '…');
+        const recs = await readStore(db, st);
+        const p = []; for (const r of recs) p.push({ key: await plain(r.key, 0), value: await plain(r.value, 0) });
+        out.indexedDB[name][st] = p;
+        const txt = JSON.stringify(p);
+        rows.push({ where: name + ' › ' + st, what: WHAT[name] || '', n: p.length, after: countAfter(p.map(x => x.value), cut, 0), size: txt.length });
+      }
+      try { db.close(); } catch (e) {}
+    }
+    let lsN = 0, lsSize = 0, lsAfter = 0;
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i); if (!k || SECRET_KEY.test(k)) continue;
+      const raw = localStorage.getItem(k); let v = raw;
+      try { v = JSON.parse(raw); } catch (e) {}
+      out.localStorage[k] = v; lsN++; lsSize += (raw || '').length; lsAfter += countAfter(v, cut, 0);
+    }
+    rows.push({ where: 'localStorage', what: 'Gate / Waste Sale / app settings and waiting entries (no tokens or PINs)', n: lsN, after: lsAfter, size: lsSize });
+  } catch (e) { status('Could not read everything: ' + (e.message || e), true); }
+  OUT = out;
+  const json = JSON.stringify(out);
+  const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+  const dev = (out.device || 'device').replace(/[^A-Za-z0-9_-]+/g, '-').slice(0, 40);
+  FILE = new File([json], 'recovery-' + dev + '-' + stamp + '.json', { type: 'application/json' });
+  $('sum').innerHTML = rows.length ? rows.map(r => '<tr><td>' + esc(r.where) + '</td><td>' + esc(r.what) + '</td><td class="n">' + r.n + '</td><td class="n' + (r.after ? ' after' : '') + '">' + r.after
+    + '</td><td class="n">' + size(r.size) + '</td></tr>').join('') : '<tr><td colspan="5">Nothing saved by the ERP / apps on this device for this address.</td></tr>';
+  $('sumCard').style.display = '';
+  $('dl').disabled = false;
+  if (navigator.canShare && navigator.canShare({ files: [FILE] })) $('share').style.display = '';
+  status('Ready: ' + size(json.length) + '. Press Download file' + ($('share').style.display === '' ? ' or Share file' : '') + '.');
+  $('scan').disabled = false;
+});
+$('dl').addEventListener('click', () => {
+  if (!FILE) return;
+  const a = document.createElement('a'); a.href = URL.createObjectURL(FILE); a.download = FILE.name;
+  document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+  status('Downloaded ' + FILE.name + '. Send it to the Admin.');
+});
+$('share').addEventListener('click', async () => {
+  if (!FILE) return;
+  try { await navigator.share({ files: [FILE], title: FILE.name }); } catch (e) {}
+});
+</script>
+</body>
+</html>
