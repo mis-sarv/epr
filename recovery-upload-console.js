@@ -27,7 +27,7 @@
   // ▼▼▼ CHANGE THESE ▼▼▼
   const DEVICE = 'CHANGE-ME device / person name';       // e.g. 'STORE-1 PC', 'GATE-2 PHONE', 'RAMESH LAPTOP'
   const CODE = '';                                       // the recovery code from the Admin (needed when the login here is no longer valid)
-  const CUT = '2026-11-28T19:30:00+05:30';               // send what changed after this (the backup was of 8:00 PM)
+  const CUT = '2026-11-27T22:30:00+05:30';               // send what changed after this (the restored backup is of 27-11 10:54 PM)
   const INCLUDE_APK_CACHE = false;
   // ▲▲▲
 

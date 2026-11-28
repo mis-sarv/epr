@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Data Recovery</title>
 <!--
-  DATA RECOVERY (2026-11-28, after the database was restored to the backup of 27-11 8:00 PM by mistake).
+  DATA RECOVERY (2026-11-28, after the database was restored by mistake to the daily backup of 27-11 10:54 PM).
   READ ONLY. Loads NO app script (no offline-sync.js, no login, no Supabase): opening it never refreshes any
   device copy and never sends anything anywhere. It reads what the ERP and the apps keep ON THIS DEVICE for this
   web address (same origin as the ERP):
@@ -57,7 +57,7 @@
   <div class="card">
     <div class="row">
       <div><label for="dev">Device / person (goes in the file name)</label><input id="dev" placeholder="e.g. STORE-1 PC, GATE-2 PHONE, RAMESH" autocomplete="off"></div>
-      <div><label for="cut">Count rows changed after</label><input id="cut" type="datetime-local" value="2026-11-27T19:30"></div>
+      <div><label for="cut">Count rows changed after</label><input id="cut" type="datetime-local" value="2026-11-27T22:30"></div>
     </div>
     <div class="row" style="margin-top:14px;">
       <button class="pri" id="scan">1. Read this device</button>
@@ -141,7 +141,7 @@ const size = s => s > 1048576 ? (s / 1048576).toFixed(1) + ' MB' : Math.max(1, M
 $('scan').addEventListener('click', async () => {
   $('scan').disabled = true; $('dl').disabled = true; $('share').style.display = 'none';
   status('Reading this device…');
-  const cut = Date.parse($('cut').value) || Date.parse('2026-11-27T19:30');
+  const cut = Date.parse($('cut').value) || Date.parse('2026-11-27T22:30');
   const out = { app: 'sarv-recovery', v: 1, at: new Date().toISOString(), origin: location.origin + location.pathname.replace(/[^/]*$/, ''),
     device: $('dev').value.trim(), agent: navigator.userAgent, cut: new Date(cut).toISOString(), indexedDB: {}, localStorage: {} };
   const rows = [];
