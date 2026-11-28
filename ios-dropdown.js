@@ -18,7 +18,9 @@
    read as HTML). Nothing here changes a page's layout; the page's own CSS stays as it is.
    Options are read when the list opens, so lists filled later by the page are always current.
    window.IOS_DROPDOWN = { selects:false } / { datalists:false } before this script switches a part
-   off; window.IosDropdown.close() closes an open list. Load it on every app page, after the
+   off; window.IosDropdown.close() closes an open list.
+   Per box: data-iosdd-search on a <select> = the Search box always (not only from 9 options);
+   data-iosdd-cls="ok" on an <option> = that row gets the class (ok = green, warn = amber; ios-dropdown.css). Load it on every app page, after the
    page's own head scripts, with ios-dropdown.css. */
 (function () {
     'use strict';
@@ -80,7 +82,7 @@
             dragToClose(panel, panel.firstChild, head);
         }
         var search = null;
-        if (kind === 'select' && el.options.length >= CFG.searchFrom) {
+        if (kind === 'select' && (el.options.length >= CFG.searchFrom || el.hasAttribute('data-iosdd-search'))) {
             var sw = mk('div', 'iosdd-search'); search = mk('input'); search.type = 'search'; search.placeholder = 'Search';
             search.setAttribute('autocomplete', 'off'); search.setAttribute('data-no-caps', '');
             sw.appendChild(search); panel.appendChild(sw);
@@ -133,7 +135,8 @@
             if (n.hidden || n.style.display === 'none') return;
             var grp = n.parentNode && n.parentNode.tagName === 'OPTGROUP' ? (n.parentNode.label || '') : '';
             if (!grp) g = null;
-            out.push({ value: n.value, text: n.label || n.textContent, group: grp, disabled: n.disabled || (n.parentNode && n.parentNode.disabled), selected: n.selected, ph: !n.value });
+            out.push({ value: n.value, text: n.label || n.textContent, group: grp, disabled: n.disabled || (n.parentNode && n.parentNode.disabled), selected: n.selected, ph: !n.value,
+                       cls: String(n.getAttribute('data-iosdd-cls') || '').replace(/[^a-z0-9 -]/gi, '') });
         });
         return out;
     }
@@ -162,7 +165,7 @@
         shown.forEach(function (it) {
             if (it.group && it.group !== lastGrp) { frag.appendChild(mk('div', 'iosdd-grp', it.group)); }
             lastGrp = it.group || null;
-            var row = mk('div', 'iosdd-opt' + (it.selected ? ' sel' : '') + (it.disabled ? ' dis' : '') + (it.ph ? ' ph' : ''));
+            var row = mk('div', 'iosdd-opt' + (it.selected ? ' sel' : '') + (it.disabled ? ' dis' : '') + (it.ph ? ' ph' : '') + (it.cls ? ' ' + it.cls : ''));
             row.setAttribute('role', 'option'); if (it.selected) row.setAttribute('aria-selected', 'true');
             row.appendChild(mk('span', 'v', it.text || ' '));
             if (it.sub) row.appendChild(mk('span', 's', it.sub));

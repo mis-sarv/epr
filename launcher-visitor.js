@@ -65,6 +65,21 @@
   var isDsp = function (v) { return !!v && v.category === 'DISPATCH PACKING'; };
   var inwRef = function (v) { return v.refNo ? (v.refType || 'Ref') + ': ' + v.refNo : ''; };
   var smpType = function (v) { return v.returnType === 'RETURNABLE' ? 'Returnable' : 'Non-Returnable'; };
+  // EARLY OUT (sql/GATE_INWARD_EARLY_OUT_MIGRATION.sql): an Inward vehicle unloaded but its Store entry not booked yet;
+  // the gate asked ONE Purchaser to let it go out (gate_out_inbox / gate_out_detail / gate_out_decide). Its rows are
+  // merged into the same lists with uid 'eo:<request id>' and _eo: true.
+  var isEo = function (v) { return !!v && !!v._eo; };
+  var EO_NOMIG = false;
+  function eoRows(list) { return (list || []).map(function (x) { return Object.assign({}, x, { _eo: true, eoId: x.id, entryUid: x.uid, uid: 'eo:' + x.id }); }); }
+  function eoMerge(base, eo) {
+    if (!eo) return base;
+    var by = function (k) { return function (a, b) { return String(a[k] || '').localeCompare(String(b[k] || '')); }; };
+    return Object.assign({}, base, {
+      pending: (base.pending || []).concat(eoRows(eo.pending)).sort(by('requestedAt')),
+      others: (base.others || []).concat(eoRows(eo.others)).sort(by('requestedAt')),
+      recent: (base.recent || []).concat(eoRows(eo.recent)).sort(function (a, b) { return by('decidedAt')(b, a); })
+    });
+  }
   function ago(iso) {
     var m = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
     if (!isFinite(m)) return '';
@@ -144,12 +159,14 @@
     if (busy || NOMIG || !loggedIn()) return;
     busy = true; spin(true);
     var r = await rpc('gate_vis_inbox');
+    var ro = EO_NOMIG || !r.ok ? null : await rpc('gate_out_inbox');
+    if (ro && !ro.ok && ro.error === 'NO_MIGRATION') EO_NOMIG = true;
     busy = false; spin(false);
     if (!r.ok) {
       if (r.error === 'NO_MIGRATION') { NOMIG = true; INBOX = null; paint(); }
       return;
     }
-    INBOX = r.data;
+    INBOX = eoMerge(r.data, ro && ro.ok ? ro.data : null);
     var n = (INBOX.pending || []).length;
     // a new visitor for me since the last look: a short buzz and a line on top
     if (lastN >= 0 && n > lastN) { buzz([30, 60, 30]); toast(n - lastN === 1 ? 'A gate entry is waiting for your approval' : (n - lastN) + ' gate entries are waiting for your approval'); }
@@ -235,16 +252,18 @@
     if (isSmp(v)) chip = '<span class="lv-chip gr">Sample</span>' + chip;
     if (isInw(v)) chip = '<span class="lv-chip gr">Inward</span>' + chip;
     if (isDsp(v)) chip = '<span class="lv-chip gr">Dispatch</span>' + chip;
+    if (isEo(v)) { chip = '<span class="lv-chip gr">Early Out</span>' + chip; av = 'O'; }
     // which gate (GATE1_UNIT1_MIGRATION.sql): Gate-1 = Unit-1, Gate-2 = Unit-2
     if (v.gate) chip = '<span class="lv-chip gr">' + (v.gate === 'G1' ? 'Gate-1' : 'Gate-2') + '</span>' + chip;
-    var line2 = kind === 'others' ? 'For ' + (v.host || '-') + (v.hostFound ? '' : ' (no ERP login)') + ' · ' + (v.purpose || '')
+    var line2 = isEo(v) && kind !== 'recent' ? (kind === 'others' ? 'For ' + (v.approver || '-') + ' · ' : '') + 'Store entry pending · asked by ' + (v.requestedBy || 'gate') + ' · ' + when(v.requestedAt)
+      : kind === 'others' ? 'For ' + (v.host || '-') + (v.hostFound ? '' : ' (no ERP login)') + ' · ' + (v.purpose || '')
       : kind === 'recent' ? (v.decidedBy ? 'By ' + v.decidedBy + ' · ' : '') + when(v.decidedAt)
       : (v.purpose || '-') + ' · ' + when(v.inTime || v.requestedAt);
     return '<button class="lv-row" data-uid="' + esc(v.uid) + '">'
       + '<span class="lv-av' + (kind === 'recent' ? (st === 'APPROVED' ? '' : st === 'REJECTED' ? ' r' : ' g') : '') + '">' + esc(av) + '</span>'
       // the chips (Gate-x · kind · status / time) sit in one small line UNDER the details, so the details keep the
       // row's whole width (three chips beside them squeezed the text column to nothing on a phone)
-      + '<span class="lv-tx"><b>' + esc(v.name || '-') + '</b><small>' + esc((isSmp(v) ? (v.person || '-') + ' · ' + smpType(v) + ' · ' : '') + (isInw(v) ? inwRef(v) || 'Inward' : (v.mobile || '')) + (v.vehicle && v.vehicle !== 'N/A' ? ' · ' + v.vehicle : '') + ' · ' + (v.entryId || '')) + '</small><small class="l2">' + esc(line2) + '</small>'
+      + '<span class="lv-tx"><b>' + esc(v.name || '-') + '</b><small>' + esc((isSmp(v) ? (v.person || '-') + ' · ' + smpType(v) + ' · ' : '') + (isInw(v) || isEo(v) ? inwRef(v) || 'Inward' : (v.mobile || '')) + (v.vehicle && v.vehicle !== 'N/A' ? ' · ' + v.vehicle : '') + ' · ' + (v.entryId || '')) + '</small><small class="l2">' + esc(line2) + '</small>'
       + '<span class="lv-chips">' + chip + '</span></span>'
       + '<span class="lv-chev">' + IC.chev + '</span></button>';
   }
@@ -274,21 +293,61 @@
     var cached = [].concat((INBOX || {}).pending || [], (INBOX || {}).others || [], (INBOX || {}).recent || []).filter(function (v) { return v.uid === uid; })[0];
     DET = { uid: uid, row: cached || { uid: uid }, photos: null, canDecide: cached ? cached.status === 'PENDING' : false };
     renderDetail();
-    var r = await rpc('gate_vis_detail', { p_uid: uid });
+    var r = cached && isEo(cached) ? await rpc('gate_out_detail', { p_id: cached.eoId }) : await rpc('gate_vis_detail', { p_uid: uid });
     if (!DET || DET.uid !== uid) return;
     if (!r.ok) {
       DET.err = r.error === 'NOT_FOUND' ? 'This visitor entry is no longer at the gate (deleted).' : r.error === 'NOT_ALLOWED' ? 'Only the person he came to meet (or the Admin) can open this.' : r.error === 'NET' ? 'No internet. Try again.' : 'Could not load: ' + (r.detail || r.error);
       DET.photos = {}; DET.canDecide = false; renderDetail(); return;
     }
-    DET.row = r.data.row || DET.row; DET.photos = r.data.photos || {}; DET.canDecide = !!r.data.canDecide;
+    DET.row = r.data.row ? (isEo(DET.row) ? eoRows([r.data.row])[0] : r.data.row) : DET.row; DET.photos = r.data.photos || {}; DET.canDecide = !!r.data.canDecide;
     renderDetail();
   }
   function photoTile(src, label, waiting) {
     if (src) return '<button class="lv-ph" data-src="1"><img src="' + esc(src) + '" alt="' + esc(label) + '"><span>' + esc(label) + '</span></button>';
     return '<div class="lv-ph wait">' + (waiting ? 'Loading photo...' : 'No ' + esc(label.toLowerCase())) + '</div>';
   }
+  // one Early Out request: vehicle photo at Out + the inward's bill / item photos, where it stands, Approve / Reject
+  function renderEoDetail() {
+    var v = DET.row || {}, p = DET.photos, ul = v.unloader, st = v.store || {};
+    var kv = function (k, val) { return val ? '<div class="lv-kv"><span>' + esc(k) + '</span><b>' + val + '</b></div>' : ''; };
+    var mineRow = (INBOX && INBOX.pending || []).some(function (x) { return x.uid === v.uid; });
+    var h = '<div class="ls-nav"><button class="ls-back lv-back">' + IC.back + ' Approvals</button></div>'
+      + '<div class="ls-title">' + esc(v.name || 'Inward vehicle') + '</div>'
+      + '<p class="ls-sub">' + (v.gate ? (v.gate === 'G1' ? 'Gate-1 (Unit-1) · ' : 'Gate-2 (Unit-2) · ') : '') + 'Early Out · Store entry pending · ' + esc(v.entryId || '') + '</p>'
+      + '<div class="lv-photos">' + photoTile(p && p.outPhoto, 'Vehicle at Out', !p) + photoTile(p && p.billPhoto, 'Bill', !p) + photoTile(p && p.itemPhoto, 'Item', !p) + '</div>'
+      + '<div class="lv-sec">Details</div><div class="lv-group">'
+      + kv('Supplier', esc(v.name || '-'))
+      + kv(v.refType || 'PO / PR', esc(v.refNo || ''))
+      + kv('Entry Against', esc(v.inwardType || ''))
+      + kv('Vehicle', v.vehicle && v.vehicle !== 'N/A' ? esc(v.vehicle) : '')
+      + kv('Inward No', esc(v.entryId || ''))
+      + kv('Gate In', esc(when(v.inTime)) + (v.guard ? ' · ' + esc(v.guard) : ''))
+      + kv('Gate Approval', v.approval && v.approval.by ? esc(v.approval.by) + ' · ' + esc(when(v.approval.at)) : '')
+      + (ul ? kv('Unloader', unloaderLine(ul)) : '')
+      + kv('Store Entry', st.booked ? 'Booked: ' + esc(st.no || '-') + ' · ' + esc(when(st.at)) : st.pending ? 'No. ' + esc(st.pending.no || '-') + ' taken, not final yet' : 'Not booked yet')
+      + kv('Asked by', esc(v.requestedBy || '-') + ' · ' + esc(when(v.requestedAt)))
+      + kv('Purchaser', esc(v.approver || '-'))
+      + '</div>';
+    if (DET.err) h += '<div class="lv-state no">' + esc(DET.err) + '</div>';
+    if (v.status === 'APPROVED') h += '<div class="lv-state ok"><b>Approved</b> by ' + esc(v.decidedBy || '-') + ' · ' + esc(when(v.decidedAt)) + (v.via === 'ADMIN' ? ' (Admin)' : '') + '. The gate can let the vehicle out.</div>';
+    else if (v.status === 'REJECTED') h += '<div class="lv-state no"><b>Rejected</b> by ' + esc(v.decidedBy || '-') + ' · ' + esc(when(v.decidedAt)) + (v.remarks ? '<br>' + esc(v.remarks) : '') + '</div>';
+    if (st.booked && v.status === 'PENDING') h += '<div class="lv-state ok">The Store has booked this Inward now, so the gate can let it out without this approval.</div>';
+    if (DET.canDecide && v.status === 'PENDING') {
+      if (!mineRow && INBOX && INBOX.isAdmin) h += '<div class="lv-state wait">This request is for <b>' + esc(v.approver || '-') + '</b>. As Admin you decide on his behalf.</div>';
+      h += '<div class="lv-acts"><button class="ls-btn red lv-rej">Reject</button><button class="ls-btn green lv-apr"' + (DET.photos ? '' : ' disabled') + '>Approve</button></div>';
+    } else h += '<div class="lv-acts"><button class="ls-btn gray lv-back2">Back</button></div>';
+    SHEET.body.innerHTML = h;
+    SHEET.sh.scrollTop = 0;
+    var q = function (s) { return SHEET.body.querySelector(s); };
+    q('.lv-back').addEventListener('click', backToList);
+    if (q('.lv-back2')) q('.lv-back2').addEventListener('click', backToList);
+    if (q('.lv-apr')) q('.lv-apr').addEventListener('click', function () { askPin('APPROVE'); });
+    if (q('.lv-rej')) q('.lv-rej').addEventListener('click', function () { askPin('REJECT'); });
+    [].forEach.call(SHEET.body.querySelectorAll('.lv-ph[data-src]'), function (b) { b.addEventListener('click', function () { zoom(b.querySelector('img').src); }); });
+  }
   function renderDetail() {
     if (!SHEET || !DET) return;
+    if (isEo(DET.row)) { renderEoDetail(); return; }
     var v = DET.row || {}, p = DET.photos, keys = v.photoKeys || [];
     var hyd = isHyd(v), smp = isSmp(v), inw = isInw(v), dsp = isDsp(v);
     var hasVeh = !hyd && !smp && ((p && p.vehiclePhoto) || keys.indexOf('vehiclePhoto') >= 0);
@@ -426,8 +485,9 @@
     // an Inward is approved together with the Unloader who will upload its Photos / Original Invoice
     var withUl = !rej && withUnloader(v) && !UL_NOMIG;
     SHEET.body.innerHTML = '<div class="ls-nav"><button class="ls-back lv-back">' + IC.back + ' ' + esc(v.name || 'Visitor') + '</button></div>'
-      + '<div class="ls-title">' + (rej ? 'Reject ' : 'Approve ') + (isHyd(v) ? 'Hydra / JCB' : isSmp(v) ? 'Sample / Other' : isInw(v) ? 'inward material' : isDsp(v) ? 'dispatch slip' : 'visitor') + '</div>'
-      + '<p class="ls-sub">' + (rej ? 'Write why ' + esc(v.name || 'the visitor') + ' is not allowed, then your PIN.' : 'Enter your PIN to let <b>' + esc(v.name || 'the visitor') + '</b> in. Your signature prints on ' + (isHyd(v) ? 'the Hydra / JCB pass' : isSmp(v) ? 'the Sample / Other inward pass' : isInw(v) ? 'the inward gate pass' : isDsp(v) ? 'the dispatch gate pass' : 'his Digital Visitor Pass') + '.') + '</p>'
+      + '<div class="ls-title">' + (rej ? 'Reject ' : 'Approve ') + (isEo(v) ? 'Early Out' : isHyd(v) ? 'Hydra / JCB' : isSmp(v) ? 'Sample / Other' : isInw(v) ? 'inward material' : isDsp(v) ? 'dispatch slip' : 'visitor') + '</div>'
+      + '<p class="ls-sub">' + (isEo(v) ? (rej ? 'Write why the vehicle of ' + esc(v.name || '-') + ' must wait, then your PIN.' : 'Enter your PIN to let the vehicle of <b>' + esc(v.name || '-') + '</b> (' + esc(v.vehicle || '-') + ') go out before its Store entry.') :
+      rej ? 'Write why ' + esc(v.name || 'the visitor') + ' is not allowed, then your PIN.' : 'Enter your PIN to let <b>' + esc(v.name || 'the visitor') + '</b> in. Your signature prints on ' + (isHyd(v) ? 'the Hydra / JCB pass' : isSmp(v) ? 'the Sample / Other inward pass' : isInw(v) ? 'the inward gate pass' : isDsp(v) ? 'the dispatch gate pass' : 'his Digital Visitor Pass') + '.') + '</p>'
       + (rej ? '<textarea class="lv-reason" placeholder="Reason (the gate sees it)" maxlength="300"></textarea>' : '')
       // both compulsory (red *), both empty every time: chosen by hand on each approval
       + (withUl ? '<div class="lv-sec">Choose the Unloader <span style="color:#ef4444;">*</span> · uploads the Photos / Original Invoice</div><div class="lv-unlbox"><p class="lv-unlmsg">Loading the Unloader users…</p></div>'
@@ -488,7 +548,9 @@
     sending = true; go.disabled = true; go.textContent = act === 'REJECT' ? 'Rejecting...' : 'Approving...';
     var uid = DET.uid, name = (DET.row || {}).name || 'Visitor';
     var args = { p_uid: uid, p_action: act, p_pin: pin.value, p_remarks: reason ? reason.value.trim() : null };
-    var r = unl ? await rpc('gate_vis_decide_ul', Object.assign({ p_unloader: unl, p_charge: chg || 'FOC' }, args)) : await rpc('gate_vis_decide', args);
+    var eo = isEo(DET.row);
+    var r = eo ? await rpc('gate_out_decide', { p_id: DET.row.eoId, p_action: act, p_pin: pin.value, p_remarks: args.p_remarks })
+      : unl ? await rpc('gate_vis_decide_ul', Object.assign({ p_unloader: unl, p_charge: chg || 'FOC' }, args)) : await rpc('gate_vis_decide', args);
     // a server without the Unloading type (GATE_INWARD_UL_PAYABLE_MIGRATION.sql): the Unloader alone, as before (FOC)
     var chgLost = false;
     if (unl && !r.ok && r.error === 'NO_MIGRATION') { r = await rpc('gate_vis_decide_ul', Object.assign({ p_unloader: unl }, args)); chgLost = r.ok && chg === 'PAYABLE'; }
@@ -498,7 +560,7 @@
     if (!SHEET || !DET || DET.uid !== uid) return;
     if (!r.ok) {
       if (r.error === 'ALREADY_DONE') {
-        var st = ((r.data || {}).visApproval || {}).status || '';
+        var st = ((r.data || {}).visApproval || (r.data || {}).out || {}).status || '';
         toast(name + ': already ' + (st === 'CANCELLED' ? 'out of the gate' : st.toLowerCase() || 'decided'));
         backToList(); return;
       }
@@ -510,6 +572,7 @@
     buzz(20);
     var ulName = unl ? (((r.data || {}).unloader || {}).to || '') : '';
     if (chgLost) toast('Approved as FOC: the server needs GATE_INWARD_UL_PAYABLE_MIGRATION.sql (Admin) for Payable unloading.');
+    else if (eo) toast(act === 'REJECT' ? name + ': Early Out rejected. The gate sees it now.' : name + ': Early Out approved. The gate can let the vehicle out now.');
     else toast(act === 'REJECT' ? name + ' rejected. The gate sees it now.' : name + ' approved. The gate ' + (isHyd(DET && DET.row) ? 'can start the work now.' : isSmp(DET && DET.row) ? 'can allow the unloading now.' : isInw(DET && DET.row) ? 'can allow the unloading now' + (ulName ? '; ' + ulName + ' uploads the photos' + (chg === 'PAYABLE' ? ' (Unloading Payable).' : '.') : '.') : isDsp(DET && DET.row) ? 'can let the vehicle out after Done.' : 'can print his pass now.'));
     backToList();
   }

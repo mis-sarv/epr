@@ -1125,3 +1125,37 @@
         }
         .store-pill.st1 { background: linear-gradient(120deg, #6b0f22, #9f1239); }
         .store-pill.st2 { background: linear-gradient(120deg, #0f766e, #0d9488); }
+
+/* ── PR / PO preview before approval (mobile-core.js PR / PO PREVIEW) ── */
+.mpv-card { margin:0 0 12px; border:1.5px solid #fcd34d; background:#fffbeb; border-radius:10px; padding:10px 12px; }
+.mpv-card.ok { border-color:#86efac; background:#f0fdf4; }
+.mpv-card .mpv-h { font-size:0.82rem; font-weight:800; color:#92400e; margin-bottom:6px; }
+.mpv-card.ok .mpv-h { color:#166534; }
+.mpv-card .mpv-doc { display:flex; justify-content:space-between; gap:8px; font-size:0.76rem; font-weight:600; color:#334155; padding:3px 0; border-top:1px solid rgba(0,0,0,.06); }
+.mpv-card .mpv-doc:first-of-type { border-top:0; }
+.mpv-card .mpv-doc .bad { color:#b91c1c; }
+.mpv-card .mpv-doc .done { color:#15803d; font-weight:800; }
+.mpv-card .mpv-open { width:100%; margin-top:8px; padding:10px; border:0; border-radius:8px; background:#2563eb; color:#fff; font-weight:800; font-size:0.85rem; cursor:pointer; }
+.mpv-card.ok .mpv-open { background:#16a34a; }
+.mpv-card .mpv-open:disabled { opacity:.55; cursor:default; }
+.mpv-viewer { position:fixed; inset:0; z-index:1300; background:#0f172a; display:flex; flex-direction:column; }
+.mpv-top { display:flex; align-items:center; gap:8px; padding:calc(8px + env(safe-area-inset-top)) 10px 8px; background:#111827; color:#fff; }
+.mpv-top .mpv-title { flex:1; min-width:0; display:flex; flex-direction:column; line-height:1.2; }
+.mpv-top .mpv-title b { font-size:0.9rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.mpv-top .mpv-title span { font-size:0.72rem; color:#cbd5e1; }
+.mpv-btn { width:36px; height:36px; border-radius:50%; border:0; background:rgba(255,255,255,.14); color:#fff; font-size:1rem; font-weight:800; cursor:pointer; flex-shrink:0; }
+.mpv-scroll { flex:1; overflow:auto; -webkit-overflow-scrolling:touch; padding:10px; }
+.mpv-pages { margin:0 auto; max-width:100%; }
+.mpv-dochead { color:#e2e8f0; font-size:0.78rem; font-weight:800; margin:6px 2px 6px; }
+.mpv-page { position:relative; background:#fff; margin:0 auto 12px; box-shadow:0 2px 10px rgba(0,0,0,.4); min-height:120px; }
+.mpv-page canvas { display:block; width:100%; height:auto; }
+.mpv-page .mpv-pno { position:absolute; top:6px; right:6px; background:rgba(15,23,42,.75); color:#fff; font-size:0.68rem; font-weight:800; padding:2px 7px; border-radius:10px; }
+.mpv-page.seen .mpv-pno { background:#16a34a; }
+.mpv-note { color:#fca5a5; font-size:0.78rem; font-weight:700; padding:8px 4px; }
+.mpv-bottom { padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:#111827; }
+.mpv-bottom .mpv-go { width:100%; padding:12px; border:0; border-radius:10px; font-weight:800; font-size:0.9rem; color:#fff; background:#16a34a; cursor:pointer; }
+.mpv-bottom .mpv-wait { color:#cbd5e1; font-size:0.78rem; font-weight:700; text-align:center; padding:6px; }
+.mpv-close { flex-shrink:0; height:36px; padding:0 14px; border:0; border-radius:18px; background:#dc2626; color:#fff; font-size:0.85rem; font-weight:800; cursor:pointer; white-space:nowrap; }
+.mpv-bottom .mpv-row { display:flex; align-items:center; gap:8px; }
+.mpv-bottom .mpv-row .mpv-wait { flex:1; }
+.mpv-bottom .mpv-x { flex-shrink:0; padding:10px 16px; border:1px solid #475569; border-radius:10px; background:#1f2937; color:#fff; font-weight:800; font-size:0.85rem; cursor:pointer; }

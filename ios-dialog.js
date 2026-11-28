@@ -58,6 +58,7 @@
         if (o.kind === 'prompt') {
             input = mk('input', 'iosdlg-input'); input.type = o.inputType || 'text'; input.value = o.def == null ? '' : String(o.def);
             input.setAttribute('autocomplete', 'off'); if (o.placeholder) input.placeholder = o.placeholder;
+            if (o.inputMode) input.setAttribute('inputmode', o.inputMode);   // 'numeric' / 'decimal' = the phone's number keyboard
             body.appendChild(input);
         }
         card.appendChild(body);
@@ -101,7 +102,7 @@
         },
         prompt: function (msg, def, o) {
             o = o || {};
-            return show({ kind: 'prompt', msg: msg, def: def, title: o.title, placeholder: o.placeholder, inputType: o.type,
+            return show({ kind: 'prompt', msg: msg, def: def, title: o.title, placeholder: o.placeholder, inputType: o.type, inputMode: o.inputMode,
                 buttons: [{ label: o.cancel || 'Cancel', value: false, cancel: true }, { label: o.ok || 'OK', value: true, bold: true }] });
         },
         // Several answers: buttons [{label, value, red, bold, cancel}] → the chosen value

@@ -53,6 +53,7 @@ together**. Mailing just `Store.html` to someone gives them an empty page.
 | `supabase/functions/erp-sso/index.ts` | Edge Function: creates a **real** Supabase Auth session for Complaint / Packing from the ERP session token (no password, and their RLS is left alone). `supabase functions deploy erp-sso`. |
 | `PURCHASE_TRACKING_VIEW.sql` | The `v_purchase_tracking` view: a flat tracking sheet of PR → PO → Receiving → Requester (totals only, no item lines). See below. |
 | `TRIMS_MANAGER_V2_MIGRATION.sql` | **Trims Manager: Manual Order + PR No.** Three things: (1) `order_manual` · `party_name` · `brand_name` · `designs` on `mfg_trims_sheets`: when the Order No is typed by hand, the sheet keeps its own Party / Brand / Design list; (2) `pr_no` · `po_manual` · `target_date_manual` on `mfg_trims_lines`: the user picks a **PR**, and once a PO is made against that PR it is found automatically through `purchase_order_lines.req_no`; (3) `outward_lines.lot_no`, for one ISSUE covering several lots later on. The `mfg_save_trims_sheet()` RPC is also recreated (the old one is dropped). Run once, **after `TRIMS_MANAGER_MIGRATION.sql`**; safe to re-run. Until it runs, everything on the Trims Manager screen works, but PR No / Party / Brand / Design are **not saved**, and the sheet says so in a red banner. See below. |
+| `FIX_TRIMS_SHEET_PER_PRODUCT.sql` | **Trims sheet of product #2, #3 … would not save** ("duplicate key … mfg_trims_sheets_order_ci"). The first migration's unique index on `lower(order_no)` (one sheet per ORDER) was never dropped when `TRIMS_MANAGER_V3_MIGRATION.sql` made sheets product-wise, so only one product of an order could have a sheet. Drops it; `mfg_trims_sheets_order_line_uq` (Order No + product line) stays and still blocks a real duplicate. No data touched, the save function is unchanged. Run once, after V3; safe to re-run. Until it runs, Trims Manager says to run it instead of showing the raw error. |
 | `_backup_before_erp_split/` | The original single-file `Store.html` and `mobile.html` from before the split. |
 
 ## Script load order: do not change
@@ -1122,6 +1123,9 @@ once, and that's it.
    (a suggestion), and all of the order's photos are **pre-selected** (they can
    be removed in the picker; each photo is copied into the lot's own bucket).
    Once a lot exists, **Track LOT …** (status · sections done) → Production tab.
+   Generate Lot Card is NOT locked behind the product's Trims requirement any more:
+   with no saved PROCUREMENT (TRIMS MANAGER) sheet the button still works; the amber
+   PROCUREMENT button, the "Requirement: …" line and a reminder toast show it is pending.
 4. Links: `prl_lots.order_no` + `prl_lots.extra.src_order_line` (and
    `src_order_no / src_order_type / src_item_code`). The hand-off localStorage key
    is `sarv_prl_handoff` (v:1, 15 min); its shape is in `ofGenerateLot()`, the

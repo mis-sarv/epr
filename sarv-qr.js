@@ -10,6 +10,8 @@
 
    What a code holds: "SARV:" + a short JSON object (SarvQR.encode):
      t    PKS = packing slip, IN = store inward (also NB), OUT = store outward
+          TB = saved Tempo-Bill (packing.html: no, veh, d, dk = its Dharam Kanta slips,
+          n / pk / wt / fr; the gate opens the tempo's Dispatch Packing entry, gateScanTempoBill)
      no   the document number (slip no / inward no / outward no)
      st   STORE 1 / STORE 2      et  entry type (INWARD NB ...)
      p    party / supplier       d   date YYYY-MM-DD
@@ -17,6 +19,17 @@
      it   first item (+ n more)  q   total qty    wt  total weight   pk packs
    Keep it short: every key is printed into the code. A gate pass QR of
    gate_2.html itself is "ID|CATEGORY|VEHICLE|STATUS" and is read by parse too.
+
+   BARCODE (Store In / Out bills, next to or instead of the QR; ERP › Admin Panel ›
+   PDF Settings › Store › Gate code): a long horizontal Code 128 of the bill NUMBER
+   only (drawBarcodePdf, vector bars, the number printed under it). The bar pattern
+   comes from JsBarcode (cdnjs, barReady()). It reads faster than the QR from a
+   distance but holds no details: decode() hands a barcode back as
+   BC_PREFIX + number, parse() makes it {t:'DOC', no}, and the gate fetches the
+   bill's details from the server (gate_store_doc). When a frame holds both, the
+   QR wins (it works offline). Reading: BarcodeDetector (qr_code + code_128)
+   where the phone has it, else jsQR for the QR and ZXing (jsDelivr) for the
+   barcode (decoderReady loads what this phone needs).
 
    The encoder (qrcode-generator) and the decoder (jsQR, only where the
    phone has no BarcodeDetector) come from a CDN on first use: ready() /
@@ -30,7 +43,9 @@
 
   var GEN_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
   var DEC_SRC = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.min.js';
-  var PREFIX = 'SARV:';
+  var BAR_SRC = 'https://cdnjs.cloudflare.com/ajax/libs/jsbarcode/3.11.6/JsBarcode.all.min.js';
+  var ZX_SRC = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+  var PREFIX = 'SARV:', BC_PREFIX = 'SARVBC:';
   var loading = {};
 
   var failedAt = {};
@@ -50,6 +65,35 @@
   }
   var hasGen = function () { return typeof window.qrcode === 'function'; };
   var hasDec = function () { return typeof window.jsQR === 'function'; };
+  var hasBar = function () { return typeof window.JsBarcode === 'function'; };
+  var hasZx = function () { return !!(window.ZXing && window.ZXing.MultiFormatReader && window.ZXing.RGBLuminanceSource); };
+
+  /* Code 128 of a text as '1' (bar) / '0' (space) modules, or '' (no library / not encodable).
+     JsBarcode's object renderer hands the encoding back without drawing anything. */
+  function barModules(text) {
+    if (!hasBar() || !text) return '';
+    try {
+      var o = {};
+      window.JsBarcode(o, String(text), { format: 'CODE128', displayValue: false, margin: 0 });
+      var enc = o.encodings || [];
+      return enc.map(function (e) { return e && e.data || ''; }).join('');
+    } catch (e) { return ''; }
+  }
+  /* Into a jsPDF page as vector bars: x, y, w, h in the doc's unit; a white quiet zone of 10 modules
+     each side is inside w. Runs of bars are one rect each. Returns false when nothing could be drawn. */
+  function drawBarcodePdf(doc, text, x, y, w, h) {
+    var m = barModules(text); if (!m || !doc) return false;
+    var q = 10, unit = w / (m.length + q * 2);
+    doc.setFillColor(255, 255, 255); doc.rect(x, y, w, h, 'F');
+    doc.setFillColor(0, 0, 0);
+    var i = 0;
+    while (i < m.length) {
+      if (m.charAt(i) !== '1') { i++; continue; }
+      var i0 = i; while (i < m.length && m.charAt(i) === '1') i++;
+      doc.rect(x + (i0 + q) * unit, y, (i - i0) * unit, h, 'F');
+    }
+    return true;
+  }
 
   // The module grid of a text (error correction M: still reads with a crease or a stamp on it), or null
   function matrix(text) {
@@ -117,6 +161,7 @@
   function parse(raw) {
     var s = String(raw == null ? '' : raw).trim();
     if (!s) return null;
+    if (s.indexOf(BC_PREFIX) === 0) return { t: 'DOC', no: s.slice(BC_PREFIX.length).trim(), via: 'barcode' };
     if (s.indexOf(PREFIX) === 0) {
       try { var o = JSON.parse(s.slice(PREFIX.length)); if (o && o.t) return o; } catch (e) { }
     }
@@ -125,20 +170,59 @@
     return { t: 'TEXT', text: s };
   }
 
-  // One video frame / picture -> text or '' (BarcodeDetector where the phone has it, else jsQR)
-  var BD = null;
+  /* One video frame / picture -> text or '' : a QR's text, or BC_PREFIX + a Code 128 barcode's.
+     BarcodeDetector where the phone has it (asked for the barcode too when it supports it), else jsQR
+     for the QR and ZXing for the barcode. A frame with both: the QR. */
+  var BD = null, BD_BAR = false, BD_P = null;
   function detector() {
     if (BD !== null) return BD;
     try { BD = ('BarcodeDetector' in window) ? new window.BarcodeDetector({ formats: ['qr_code'] }) : false; } catch (e) { BD = false; }
     return BD;
   }
+  // upgrades the detector to QR + Code 128 when this phone's BarcodeDetector supports it
+  function detectorBar() {
+    if (BD_P) return BD_P;
+    BD_P = (async function () {
+      if (!detector()) return false;
+      try {
+        var f = window.BarcodeDetector.getSupportedFormats ? await window.BarcodeDetector.getSupportedFormats() : [];
+        if (f.indexOf('code_128') >= 0) { BD = new window.BarcodeDetector({ formats: ['qr_code', 'code_128'] }); BD_BAR = true; }
+      } catch (e) { }
+      return BD_BAR;
+    })();
+    return BD_P;
+  }
+  var ZX = null;
+  function zxRead(lum, w, h) {
+    if (!hasZx()) return '';
+    try {
+      if (!ZX) {
+        ZX = new window.ZXing.MultiFormatReader();
+        var hints = new Map();
+        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [window.ZXing.BarcodeFormat.CODE_128]);
+        hints.set(window.ZXing.DecodeHintType.TRY_HARDER, true);
+        ZX.setHints(hints);
+      }
+      var src = new window.ZXing.RGBLuminanceSource(lum, w, h);
+      var res = ZX.decodeWithState(new window.ZXing.BinaryBitmap(new window.ZXing.HybridBinarizer(src)));
+      return res && res.getText ? res.getText() : '';
+    } catch (e) { return ''; }   // NotFoundException: nothing in this frame
+  }
   async function decode(source, canvas) {
     var bd = detector();
     if (bd) {
-      try { var r = await bd.detect(source); if (r && r.length && r[0].rawValue) return r[0].rawValue; return ''; }
-      catch (e) { BD = false; }   // some WebViews list it but cannot run it: jsQR from now on
+      try {
+        var r = await bd.detect(source);
+        if (r && r.length) {
+          var qr = r.filter(function (x) { return x.format === 'qr_code' && x.rawValue; })[0];
+          if (qr) return qr.rawValue;
+          var bc = r.filter(function (x) { return x.format === 'code_128' && x.rawValue; })[0];
+          if (bc) return BC_PREFIX + bc.rawValue;
+        }
+        if (BD_BAR || !hasZx()) return '';   // it reads barcodes itself, or nothing else is loaded
+      }
+      catch (e) { BD = false; }   // some WebViews list it but cannot run it: jsQR / ZXing from now on
     }
-    if (!hasDec()) return '';
     var w = source.videoWidth || source.naturalWidth || source.width, h = source.videoHeight || source.naturalHeight || source.height;
     if (!w || !h) return '';
     var k = Math.min(1, 900 / Math.max(w, h));   // a smaller frame decodes much faster and still reads a 40 mm code
@@ -147,15 +231,34 @@
     var g = cv.getContext('2d', { willReadFrequently: true });
     g.drawImage(source, 0, 0, cv.width, cv.height);
     var img = g.getImageData(0, 0, cv.width, cv.height);
-    var res = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
-    return res && res.data ? res.data : '';
+    if (!BD && hasDec()) {
+      var res = window.jsQR(img.data, img.width, img.height, { inversionAttempts: 'dontInvert' });
+      if (res && res.data) return res.data;
+    }
+    if (hasZx()) {
+      var d = img.data, n = img.width * img.height, lum = new Uint8ClampedArray(n);
+      for (var i = 0, j = 0; i < n; i++, j += 4) lum[i] = (d[j] * 77 + d[j + 1] * 150 + d[j + 2] * 29) >> 8;
+      var t = zxRead(lum, img.width, img.height);
+      if (t) return BC_PREFIX + t;
+    }
+    return '';
   }
 
   window.SarvQR = {
-    PREFIX: PREFIX,
+    PREFIX: PREFIX, BC_PREFIX: BC_PREFIX,
     ready: function () { return load(GEN_SRC, hasGen); },
-    // jsQR is always fetched too: a BarcodeDetector that fails on its first frame falls back to it
-    decoderReady: function () { var p = load(DEC_SRC, hasDec); return detector() ? Promise.resolve(true) : p; },
-    matrix: matrix, drawPdf: drawPdf, dataUrl: dataUrl, encode: encode, parse: parse, decode: decode
+    barReady: function () { return load(BAR_SRC, hasBar); },
+    /* jsQR is always fetched too (a BarcodeDetector that fails on its first frame falls back to it), and
+       ZXing for the barcode when this phone's BarcodeDetector cannot read Code 128 (or there is none).
+       Answers true when at least the QR can be read. */
+    decoderReady: function () {
+      var p = load(DEC_SRC, hasDec);
+      return detectorBar().then(function (bar) {
+        if (!bar) load(ZX_SRC, hasZx);   // in the background: the QR does not wait for it
+        return detector() ? true : p;
+      });
+    },
+    matrix: matrix, drawPdf: drawPdf, dataUrl: dataUrl, encode: encode, parse: parse, decode: decode,
+    barModules: barModules, drawBarcodePdf: drawBarcodePdf
   };
 })();

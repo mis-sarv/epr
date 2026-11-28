@@ -55,6 +55,10 @@
 .iosdd-opt.sel { color: #007aff; }
 .iosdd-opt .ck { width: 16px; height: 16px; flex-shrink: 0; color: #007aff; }
 .iosdd-opt.ph { color: #9ca3af; font-weight: 500; }
+/* an option the page marks with data-iosdd-cls (ERP Gate Entry No.: ready for the Store entry = ok) */
+.iosdd-opt.ok { background: #dcfce7; color: #166534; font-weight: 700; box-shadow: inset 3px 0 0 #16a34a; }
+.iosdd-opt.ok:hover, .iosdd-opt.ok.act { background: #bbf7d0; }
+.iosdd-opt.warn { background: #fffbeb; color: #92400e; }
 .iosdd-opt.dis { color: #c7c7cc; cursor: default; background: none; }
 .iosdd-grp { position: sticky; top: 0; z-index: 1; padding: 7px 14px 4px; font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
   text-transform: uppercase; color: #6b7280; background: #f9fafb; border-bottom: 1px solid #f3f4f6; }

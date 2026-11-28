@@ -16,7 +16,14 @@
           - live → the in-page camera (getUserMedia); the photo is stamped LIVE PHOTO · name · date time and handed to
             the page as if picked (DataTransfer + a change event), so every page's own handler just works.
         In a Camera + Gallery pair the button of a way that is switched off is hidden (when it is a <label>).
-   A box with no rule yet (server not reached, migration not run) behaves exactly as before. */
+   A box with no rule yet (server not reached, migration not run) behaves exactly as before.
+     4. PHOTO QUALITY % (2026-11-26, Admin Panel › Uploads › Photo quality; app_settings 'upload_quality' = {key: %},
+        no % = the page's own). Every page shrinks a picked photo itself (a canvas of its own size, then a JPEG of its
+        own quality). With a % set for the box, for a few seconds after its photo is picked (UPQ) the page's canvas
+        is drawn bigger: at least that % of the photo's OWN pixels on each side (100 % = as taken, at most 4096 px),
+        under the same coordinates the page uses (transform + the canvas keeps reporting the page's own width /
+        height), and its JPEG quality is raised to at least 0.6 + 0.4 × % (100 % = 1.0). The live camera follows it
+        too. A higher % = sharper but bigger files. */
 (function () {
   'use strict';
   if (window.__sarvUpGuard) return;
@@ -31,6 +38,8 @@
     'bill-check.html':'Bill Check', 'sop.html':'SOP', 'order-form.html':'Order Form', 'notepad.html':'My Notepad', 'launcher.html':'Launcher' };
 
   var POL = {};                                   // key -> {f, c, l}
+  var QMAP = {}, LS_Q = 'sarv_up_quality_v1';     // key -> photo quality % (PHOTO QUALITY)
+  try { var q0 = JSON.parse(localStorage.getItem(LS_Q) || 'null'); if (q0 && q0.map) QMAP = q0.map; } catch (e) {}
   try { var c0 = JSON.parse(localStorage.getItem(LS_POL) || 'null'); if (c0 && c0.rows) POL = c0.rows; } catch (e) {}
   var SENT = {};
   try { SENT = JSON.parse(localStorage.getItem(LS_SENT) || '{}') || {}; } catch (e) {}
@@ -40,7 +49,18 @@
     return fetch(SB_URL + '/rest/v1/rpc/' + fn, { method:'POST', headers:{ 'Content-Type':'application/json', apikey:SB_KEY, Authorization:'Bearer ' + SB_KEY },
       body:JSON.stringify(body || {}) }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
   }
+  function loadQuality() {
+    return fetch(SB_URL + '/rest/v1/app_settings?key=eq.upload_quality&select=value', { headers:{ apikey:SB_KEY, Authorization:'Bearer ' + SB_KEY } })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        if (!Array.isArray(d)) return;
+        var v = d[0] && d[0].value; QMAP = (v && typeof v === 'object') ? v : {};
+        try { localStorage.setItem(LS_Q, JSON.stringify({ at:Date.now(), map:QMAP })); } catch (e) {}
+      }).catch(function () {});
+  }
+  function qualityOf(el) { var q = Number(QMAP[keyOf(el)]); return q >= 10 && q <= 100 ? q : 0; }
   function loadPolicy() {
+    loadQuality();
     return rpc('up_policy_list', {}).then(function (d) {
       if (!d || !d.success || !d.rows) return;
       POL = d.rows;
@@ -275,7 +295,8 @@
     window.addEventListener('popstate', close);
     var start = function () {
       stop(); msg.hidden = true;
-      navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facing }, width:{ ideal:1920 }, height:{ ideal:1080 } }, audio:false })
+      var lq = qualityOf(el);
+      navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facing }, width:{ ideal:lq >= 80 ? 3840 : 1920 }, height:{ ideal:lq >= 80 ? 2160 : 1080 } }, audio:false })
         .then(function (s) { stream = s; v.srcObject = s; v.play().catch(function () {}); })
         .catch(function (e) {
           msg.hidden = false;
@@ -288,7 +309,8 @@
     };
     var shoot = function () {
       if (!v.videoWidth) return;
-      var k = Math.min(1, 1920 / Math.max(v.videoWidth, v.videoHeight)), W = Math.round(v.videoWidth * k), H = Math.round(v.videoHeight * k);
+      var lq = qualityOf(el), maxSide = lq ? Math.max(1920, Math.round(4096 * lq / 100)) : 1920;
+      var k = Math.min(1, maxSide / Math.max(v.videoWidth, v.videoHeight)), W = Math.round(v.videoWidth * k), H = Math.round(v.videoHeight * k);
       var cv = document.createElement('canvas'); cv.width = W; cv.height = H;
       var g = cv.getContext('2d'); g.drawImage(v, 0, 0, W, H);
       var fs = Math.max(14, Math.round(W / 42)), band = Math.round(fs * 2), line = 'LIVE PHOTO · ' + (who() || 'User') + ' · ' + stampOf(new Date());
@@ -307,7 +329,7 @@
         c.querySelector('.vw').insertAdjacentHTML('beforeend', '<img class="pv" src="' + url + '" alt="" style="position:absolute">');
         v.style.visibility = 'hidden';
         row.innerHTML = '<button type="button" class="tx" data-a="retake">Retake</button><span></span><button type="button" class="tx" data-a="done" style="font-weight:600;color:#ffcc00">Use Photo</button>';
-      }, 'image/jpeg', .86);
+      }, 'image/jpeg', qualityOf(el) ? Math.min(1, 0.6 + 0.4 * qualityOf(el) / 100) : .86);
     };
     var deliver = function () {
       if (!shots.length) return close();
@@ -337,6 +359,63 @@
     start();
   }
 
+  /* ── PHOTO QUALITY: the page's own photo shrink, kept to the Admin's % (see 4. above) ── */
+  var UPQ = null;   // {q, until, n}: a photo of a box with a % was just picked
+  document.addEventListener('change', function (e) {
+    var el = e.target;
+    if (!el || el.tagName !== 'INPUT' || el.type !== 'file' || !el.files || !el.files.length) return;
+    var q = qualityOf(el);
+    UPQ = q ? { q:q, until:Date.now() + 9000, n:el.files.length + 2 } : null;
+  }, true);
+  function upqOn() { return UPQ && Date.now() < UPQ.until && UPQ.n > 0; }
+  try {
+    var CP = CanvasRenderingContext2D.prototype, HP = HTMLCanvasElement.prototype;
+    var nDraw = CP.drawImage, nDataUrl = HP.toDataURL, nToBlob = HP.toBlob;
+    var nW = Object.getOwnPropertyDescriptor(HP, 'width'), nH = Object.getOwnPropertyDescriptor(HP, 'height');
+    var isId = function (ctx) { try { var m = ctx.getTransform(); return m.a === 1 && m.b === 0 && m.c === 0 && m.d === 1 && m.e === 0 && m.f === 0; } catch (e) { return false; } };
+    // the canvas drawn bigger, the page's coordinates kept: width / height keep their page values (logical size)
+    var upsize = function (ctx, src, sw, sh, dw, dh) {
+      var cv = ctx.canvas; if (!cv || cv.__upq) return;
+      var q = UPQ.q / 100, k = Math.min(sw * q / dw, sh * q / dh);
+      var big = Math.max(dw, dh) * k; if (big > 4096) k = 4096 / Math.max(dw, dh);
+      if (!(k > 1.02)) return;
+      var W = Math.round(dw * k), H = Math.round(dh * k);
+      // what the page already painted (a white fill under a PNG), and the drawing state, carried over
+      var keep = document.createElement('canvas'); nW.set.call(keep, nW.get.call(cv)); nH.set.call(keep, nH.get.call(cv));
+      keep.getContext('2d').drawImage(cv, 0, 0);
+      var st = {}; ['fillStyle', 'strokeStyle', 'globalAlpha', 'font', 'lineWidth', 'textAlign', 'textBaseline', 'imageSmoothingEnabled', 'imageSmoothingQuality', 'globalCompositeOperation']
+        .forEach(function (p) { try { st[p] = ctx[p]; } catch (e) {} });
+      nW.set.call(cv, W); nH.set.call(cv, H);
+      Object.keys(st).forEach(function (p) { try { ctx[p] = st[p]; } catch (e) {} });
+      ctx.imageSmoothingEnabled = true; try { ctx.imageSmoothingQuality = 'high'; } catch (e) {}
+      ctx.setTransform(k, 0, 0, k, 0, 0);
+      nDraw.call(ctx, keep, 0, 0, dw, dh);
+      cv.__upq = { q:UPQ.q, w:dw, h:dh };
+      Object.defineProperty(cv, 'width', { configurable:true, get:function () { return dw; }, set:function (v) { delete cv.width; delete cv.height; delete cv.__upq; nW.set.call(cv, v); } });
+      Object.defineProperty(cv, 'height', { configurable:true, get:function () { return dh; }, set:function (v) { delete cv.width; delete cv.height; delete cv.__upq; nH.set.call(cv, v); } });
+      UPQ.n--;
+    };
+    CP.drawImage = function (src) {
+      try {
+        if (upqOn() && src && (src instanceof HTMLImageElement || (window.ImageBitmap && src instanceof ImageBitmap) || src instanceof HTMLCanvasElement) && isId(this)) {
+          var a = arguments, cv = this.canvas, sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height, dx, dy, dw, dh;
+          if (a.length === 5) { dx = a[1]; dy = a[2]; dw = a[3]; dh = a[4]; }
+          else if (a.length === 9) { sw = a[3]; sh = a[4]; dx = a[5]; dy = a[6]; dw = a[7]; dh = a[8]; }
+          // only the page's "the whole photo onto the whole canvas" draw
+          if (dw && dh && Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(dw - nW.get.call(cv)) <= 1 && Math.abs(dh - nH.get.call(cv)) <= 1 && sw > dw * 1.02) upsize(this, src, sw, sh, dw, dh);
+        }
+      } catch (e) {}
+      return nDraw.apply(this, arguments);
+    };
+    var qOf = function (cv, type, given) {
+      var q = cv.__upq ? cv.__upq.q : (upqOn() ? UPQ.q : 0);
+      if (!q || !/^image\/(jpeg|webp)$/i.test(String(type || ''))) return given;
+      return Math.max(typeof given === 'number' ? given : 0.92, Math.min(1, 0.6 + 0.4 * q / 100));
+    };
+    HP.toDataURL = function (type, quality) { return nDataUrl.call(this, type, qOf(this, type, quality)); };
+    HP.toBlob = function (cb, type, quality) { return nToBlob.call(this, cb, type, qOf(this, type, quality)); };
+  } catch (e) {}
+
   /* ── start ── */
   var obsT = 0;
   function boot() {
@@ -352,5 +431,5 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
   // For the Admin Panel: re-read the rules at once after a save
-  window.SARV_UPLOAD = { reload:loadPolicy, keyOf:keyOf, policyOf:policyOf };
+  window.SARV_UPLOAD = { reload:loadPolicy, keyOf:keyOf, policyOf:policyOf, qualityOf:qualityOf };
 })();
