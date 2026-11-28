@@ -6808,7 +6808,7 @@ const SARV_APP_KEYS=['HOME_ERP_APP','HOME_PR','HOME_PO','HOME_IN','HOME_IN_NB','
   'HOME_TRIMS','HOME_APPROVAL_APP','HOME_COMPLAINT_APP','HOME_PACKING','HOME_ORDER_FORM','HOME_SHEET_LINKS',
   'HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_MY_REQUESTS','HOME_DISPATCH_REPORT','HOME_HR_PAYROLL','HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK',
   'HOME_YARN_UNLOADING','HOME_SOP_MASTER','HOME_CATALOG_MAKER','HOME_PRICE_LIST','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER',
-  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1','HOME_WASTE_SALE','HOME_FMS_TRACKING'];
+  'HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_GATE2','HOME_GATE1','HOME_WASTE_SALE','HOME_FMS_TRACKING','HOME_AMAZON_BARCODE'];
 function sarvAllowedApps_(){
   return SARV_APP_KEYS.filter(k=>sarvTabVisible(k));
 }
@@ -7857,6 +7857,9 @@ const SARV_TABS=[
   /* FMS Tracking (fms-tracking.html, opens from the launcher): Inward and Dispatch step by step, read only
      (sql/FMS_TRACKING_MIGRATION.sql; fmt_ctx_ checks this key). Same default as the launcher tile's defRoles. */
   {key:'HOME_FMS_TRACKING',label:'FMS Tracking',hint:'Every Inward (Gate In, approvals, Unloader, Store, MD, GM / EA / MD-1 / Debit / Accounts checks) and every Dispatch (Dharam Kanta, loading, Outward Dharam Kanta, approval, Gate Out) step by step: planned / actual time, who, delay; filters, CSV (fms-tracking.html, opens from the launcher)',def:['ADMIN_PIN','USER_MD_PIN','USER_GM_PIN']},
+  /* barcode.html: Amazon catalog (Parent / Slave SKUs, ASIN, MRP / SP), Amazon POs with master carton maths and the
+     4x4 thermal labels (sql/AMAZON_BARCODE_MIGRATION.sql; amz_ctx_ checks this key). Same default as the launcher tile. */
+  {key:'HOME_AMAZON_BARCODE',label:'Amazon Barcode',hint:'Amazon Parent / Slave SKU catalog, Amazon POs with master carton packing and 100 x 100 mm thermal barcode labels (barcode.html, opens from the launcher). Delete = Admin only',def:['ADMIN_PIN']},
   {key:'HOME_WASTE_SALE',label:'Waste Sale Entry',hint:'Waste / scrap sale bills: party, items, GST + TCS, Bank / Cash split, compulsory Gate Pass photo, date / month / item / party / slip reports (WasteEntry.html, opens from the launcher)',def:['ADMIN_PIN']},
   {key:'HOME_YARN_UNLOADING',label:'Yarn Unloading',hint:'Box-wise yarn unloading weights, drafts, PDF / CSV reports (Yarn-Unloading.html, opens from the launcher). OFF by default',def:[]},
   /* emission-live.html: the boiler stack's online monitoring readings (PM,
@@ -8927,7 +8930,7 @@ const SARV_ACCESS_AREAS=[
   {t:'Purchase & Approvals',keys:['HOME_PR','HOME_PO','HOME_APPROVAL_APP','HOME_MY_REQUESTS']},
   {t:'Supervisor apps',keys:['HOME_UNLOADER','HOME_ISSUER','HOME_BILL_CHECK','HOME_ISSUE_BILL_CHECK','HOME_YARN_UNLOADING','HOME_GATE1','HOME_GATE2']},
   {t:'Production & Manufacturing',keys:['HOME_PRODUCTION','HOME_LOT_CARD','HOME_PRINTING_LOT','HOME_TRIMS']},
-  {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER']},
+  {t:'Sales & Dispatch',keys:['HOME_ORDER_FORM','HOME_PACKING','HOME_DISPATCH_REPORT','HOME_PRICE_LIST','HOME_CATALOG_MAKER','HOME_AMAZON_BARCODE']},
   {t:'Tasks, FMS & SOP',keys:['HOME_TASK_MANAGER','HOME_MY_TASKS','HOME_FMS_BUILDER','HOME_FMS_VIEW','HOME_TASK_TRACKER','HOME_TT_ESCALATIONS','HOME_TT_SCORECARD','HOME_TT_PLANACTUAL','HOME_SOP_MASTER','HOME_FMS_TRACKING']},
   {t:'HR, Quality & Others',keys:['HOME_HR_PAYROLL','HOME_COMPLAINT_APP','HOME_EMISSION_LIVE','HOME_SOLAR_LIVE','HOME_WASTE_SALE','HOME_SHEET_LINKS']}
 ];
